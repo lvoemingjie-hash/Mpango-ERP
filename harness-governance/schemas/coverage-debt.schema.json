@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "mpango/harness-governance/coverage-debt.schema.json",
+  "title": "Mpango ERP coverage debt register",
+  "description": "Required cells that are BLOCKED or NOT_COVERED, per docs/ai/HARNESS_ENGINEERING_GOVERNANCE_STANDARD.md section 13. BLOCKED is an honest state, never a passing state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "debts"],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "notes": { "type": "string" },
+    "debts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "debt_id",
+          "capability",
+          "risk",
+          "status",
+          "reason",
+          "blocker_class",
+          "owner",
+          "closure_condition",
+          "target_milestone",
+          "release_blocked",
+          "node_ids"
+        ],
+        "properties": {
+          "debt_id": { "type": "string", "pattern": "^DEBT-[A-Z0-9]+(-[A-Z0-9]+)*$", "minLength": 5 },
+          "capability": { "type": "string", "minLength": 1 },
+          "risk": { "enum": ["P0", "P1", "P2", "P3"] },
+          "status": { "enum": ["BLOCKED", "NOT_COVERED", "CLOSED"] },
+          "reason": { "type": "string", "minLength": 1 },
+          "blocker_class": { "enum": ["product", "harness", "environment", "data", "operator"] },
+          "owner": { "type": "string", "minLength": 1 },
+          "closure_condition": { "type": "string", "minLength": 1 },
+          "target_milestone": { "type": "string", "minLength": 1 },
+          "release_blocked": { "type": "boolean" },
+          "node_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "affected_paths": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 2 },
+            "description": "product paths whose uncovered change this debt record registers (prefix match); a changed debt entry covers these paths for the semantic sync gate"
+          },
+          "date_opened": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}

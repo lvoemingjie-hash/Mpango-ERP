@@ -1,0 +1,141 @@
+name: Harness Governance Gate (HE2-R1)
+
+# DC-12R1-MVP-L1-HE2-R1: machine-enforced, bypass-closed harness governance.
+# Mandatory for every pull request and push targeting product-dev-recovered.
+#
+# The PR/push gate is the STRUCTURAL gate (fixed required-check name:
+# "HE2-R1 structural gate" — do not rename it, branch protection depends on
+# it). Ordinary PRs are not blocked by already-registered release debt, but
+# structural GREEN is never a release statement. The RELEASE gate
+# ("HE2-R1 release gate") runs on workflow_dispatch for release/milestone
+# decisions and fails while any open P0/P1 release-blocking debt remains.
+#
+# Gates run, in order:
+#   1. validator unit tests (stdlib unittest, no dependencies);
+#   2. the deterministic RED mutation gate (30 RED mutations, 5 GREEN
+#      controls, candidate-tree integrity check);
+#   3. the governance validator against the branch point (semantic sync,
+#      drift anti-replay, waiver scoping, evidence binding), emitting the
+#      coverage summary and debt summary.
+# BLOCKED and NOT_COVERED never count as PASS in any summary.
+
+on:
+  push:
+    branches: [product-dev-recovered]
+  pull_request:
+    branches: [product-dev-recovered]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'gate mode'
+        required: false
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - structural
+
+permissions:
+  contents: read
+
+jobs:
+  structural-gate:
+    name: HE2-R1 structural gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validator unit tests
+        run: python -m unittest discover -s harness-governance/tests -p "test_*.py" -v
+
+      - name: Deterministic RED mutation gate
+        run: python harness-governance/tests/run_red_mutations.py
+
+      - name: Resolve baseline ref
+        run: |
+          set -eu
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Frozen base SHA at PR creation — not a moving branch tip.
+            BASELINE="${{ github.event.pull_request.base.sha }}"
+            git cat-file -e "$BASELINE" || {
+              echo "ERROR: PR base SHA $BASELINE not found after fetch-depth:0"
+              exit 1
+            }
+          else
+            BASELINE="${{ github.event.before }}"
+            if [ -z "$BASELINE" ] || [ "$BASELINE" = "0000000000000000000000000000000000000000" ]; then
+              BASELINE="HEAD^"
+            fi
+          fi
+          echo "BASELINE=$BASELINE" >> "$GITHUB_ENV"
+          echo "baseline ref: $BASELINE"
+
+      - name: Validate harness governance (structural RED blocks merge)
+        run: |
+          python harness-governance/validator/harness_governance_validator.py \
+            --root . \
+            --baseline-ref "$BASELINE" \
+            --mode structural \
+            --report-json harness_governance_report.json \
+            --markdown-summary harness_governance_summary.md
+
+      - name: Publish coverage and debt summary
+        if: always()
+        run: |
+          if [ -f harness_governance_summary.md ]; then
+            cat harness_governance_summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload governance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-governance-report
+          path: harness_governance_report.json
+          if-no-files-found: ignore
+
+  release-gate:
+    name: HE2-R1 release gate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate release gate (open P0/P1 release-blocking debt fails)
+        run: |
+          python harness-governance/validator/harness_governance_validator.py \
+            --root . \
+            --mode "${{ github.event.inputs.mode || 'release' }}" \
+            --report-json harness_governance_release_report.json \
+            --markdown-summary harness_governance_release_summary.md
+
+      - name: Publish release summary
+        if: always()
+        run: |
+          if [ -f harness_governance_release_summary.md ]; then
+            cat harness_governance_release_summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload release report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-governance-release-report
+          path: harness_governance_release_report.json
+          if-no-files-found: ignore

@@ -1,5 +1,14 @@
 # Mpango ERP – Test Contract
 
+> **Acceptance-harness governance:** This legacy contract defines baseline
+> unit/API organization and code-coverage expectations. Product acceptance,
+> browser journeys, cross-cutting integration, fresh-runtime evidence, mutation
+> gates, and exploratory testing are governed by
+> `docs/ai/HARNESS_ENGINEERING_GOVERNANCE_STANDARD.md`. In particular, the
+> requirement below to mock external dependencies applies to bounded unit tests,
+> not to authoritative integration/browser gates, which must use the real
+> approved dependencies in isolated task-owned runtimes.
+
 **Version:** 1.0
 **Owner:** Jeff + ChatGPT + GLM
 **Target:** KIRO Code + Dev Team

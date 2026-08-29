@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.1.0",
+  "notes": "Data-driven governance configuration. governed_prefixes: directory prefixes whose change requires a matching semantic inventory record change (node anchor, interaction source/affected path, debt affected path, or a new protocol delta), or an active scoped waiver. The validator enforces a hardcoded floor on top of this file: the minimum product prefixes (backend/, frontend/src/, scenarios/) and the governance self-protection paths (workflow, this file, validator/, schemas/, tests/) can never be removed or waived here. required_interaction_categories: categories that must exist in critical-interactions.json. Editing this file is a protected-path change: it needs a kind=governance protocol delta.",
+  "governed_prefixes": [
+    "backend/",
+    "frontend/src/",
+    "scenarios/",
+    "harness-governance/validator/",
+    "harness-governance/schemas/"
+  ],
+  "required_interaction_categories": [
+    "auth-interceptor",
+    "tenant",
+    "rate-limit",
+    "idempotency",
+    "token-replay",
+    "transaction-rollback",
+    "mobile-navigation"
+  ]
+}

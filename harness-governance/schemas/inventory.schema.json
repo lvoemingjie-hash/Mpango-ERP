@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "mpango/harness-governance/inventory.schema.json",
+  "title": "Mpango ERP harness coverage inventory",
+  "description": "Machine-parseable coverage inventory required by docs/ai/HARNESS_ENGINEERING_GOVERNANCE_STANDARD.md section 9. Node order in the array is the canonical order and may not change silently.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "standard", "nodes"],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "standard": { "type": "string", "minLength": 1 },
+    "notes": { "type": "string" },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/node" }
+    }
+  },
+  "definitions": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "capability",
+        "risk",
+        "actor",
+        "tenant_role",
+        "entry",
+        "session_state",
+        "tenant_state",
+        "resource_state",
+        "input_state",
+        "action",
+        "response_class",
+        "ui_oracle",
+        "navigation_oracle",
+        "network_oracle",
+        "session_oracle",
+        "persistence_security_oracle",
+        "viewport",
+        "runtime",
+        "layer",
+        "authoritative",
+        "source_anchors",
+        "mutation_id",
+        "owner",
+        "evidence_sha",
+        "status"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*$", "minLength": 3 },
+        "capability": { "type": "string", "minLength": 1 },
+        "risk": { "enum": ["P0", "P1", "P2", "P3"] },
+        "actor": { "type": "string", "minLength": 1 },
+        "tenant_role": { "type": "string", "minLength": 1 },
+        "entry": { "type": "string", "minLength": 1 },
+        "session_state": { "type": "string", "minLength": 1 },
+        "tenant_state": { "type": "string", "minLength": 1 },
+        "resource_state": { "type": "string", "minLength": 1 },
+        "input_state": { "type": "string", "minLength": 1 },
+        "action": { "type": "string", "minLength": 1 },
+        "response_class": { "type": "string", "minLength": 1 },
+        "ui_oracle": { "type": "string", "minLength": 1 },
+        "navigation_oracle": { "type": "string", "minLength": 1 },
+        "network_oracle": { "type": "string", "minLength": 1 },
+        "session_oracle": { "type": "string", "minLength": 1 },
+        "persistence_security_oracle": { "type": "string", "minLength": 1 },
+        "viewport": { "type": "string", "minLength": 1 },
+        "runtime": { "type": "string", "minLength": 1 },
+        "layer": { "enum": ["unit", "route_api", "full_stack", "browser", "human_exploratory", "real_device"] },
+        "authoritative": { "type": "boolean" },
+        "source_anchors": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "mutation_id": { "type": "string" },
+        "owner": { "type": "string", "minLength": 1 },
+        "evidence_sha": { "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})?$" },
+        "evidence_paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 2 },
+          "description": "committed evidence artifacts; required non-empty when status is PASS; each path must exist at the evidence commit; a 64-hex evidence_sha must equal the SHA-256 of the blob at evidence_commit:evidence_paths[0]"
+        },
+        "evidence_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "description": "required binding commit for 64-hex evidence digests"
+        },
+        "status": { "enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN", "NOT_APPLICABLE"] },
+        "interaction_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "renamed_from": { "type": "string", "minLength": 3 },
+        "blocked_owner": { "type": "string" },
+        "blocked_closure_condition": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "schema_version": "1.0.0",
+  "notes": "Cross-cutting registry per standard section 15. New public or protected routes must map to applicable entries and inherit their mandatory interaction tuples.",
+  "interactions": [
+    {
+      "interaction_id": "CI-AUTH-INTERCEPTOR",
+      "category": "auth-interceptor",
+      "mechanism": "Global Axios request/response interceptors: bearer injection, atomic single-flight token refresh with failed-request queue, 401 redirect to /login (or /retail/login), and skipAuthInterceptors opt-out for public credential-bearing calls.",
+      "risk": "P0",
+      "source_anchors": [
+        "frontend/src/services/api.ts:47",
+        "frontend/src/services/api.ts:87",
+        "frontend/src/services/api.ts:104",
+        "frontend/src/services/api.ts:179",
+        "backend/api/app.py:38"
+      ],
+      "mandatory_tuples": [
+        "public endpoint x anonymous session x expected 4xx x global auth interceptor",
+        "public endpoint x stale contextual session x explicit no-auth request",
+        "protected endpoint x expired access token x valid refresh token",
+        "protected endpoint x expired access token x missing/invalid refresh token",
+        "user-visible failure x route stability x fixed neutral copy x zero secret leakage"
+      ],
+      "owner": "cto"
+    },
+    {
+      "interaction_id": "CI-TENANT-ROUTING",
+      "category": "tenant",
+      "mechanism": "Schema-per-tenant routing: TenantContext resolution from JWT, tenant-scoped session with SET LOCAL search_path, per-request finalize (commit/rollback), and tenant filtering guards.",
+      "risk": "P0",
+      "source_anchors": [
+        "backend/api/context/tenant.py:56",
+        "backend/api/context/tenant.py:65",
+        "backend/api/context/tenant.py:73",
+        "backend/api/context/tenant.py:80",
+        "backend/api/context/tenant.py:135",
+        "backend/db/tenant_filter.py:1"
+      ],
+      "mandatory_tuples": [
+        "multi-tenant identity x each workspace x authorization and isolation",
+        "tenant-local operation x shared pool/search path x another tenant",
+        "suspended/deactivated tenant x contextual session x supported recovery path"
+      ],
+      "owner": "cto"
+    },
+    {
+      "interaction_id": "CI-RATE-LIMIT",
+      "category": "rate-limit",
+      "mechanism": "Redis-backed token-bucket rate limiter keyed by client IP/endpoint, enforced by ASGI middleware with rate-limit response headers and 429 rejection.",
+      "risk": "P1",
+      "source_anchors": [
+        "backend/core/rate_limiter.py:26",
+        "backend/core/rate_limiter.py:60",
+        "backend/api/middleware/rate_limiting.py:91"
+      ],
+      "mandatory_tuples": [
+        "rate-limited route x anonymous context x 429 x no side effects",
+        "rate-limited route x authenticated context x 429 x rate-limit headers",
+        "rate-limited route x rejected-auth context x no session creation"
+      ],
+      "owner": "cto"
+    },
+    {
+      "interaction_id": "CI-IDEMPOTENCY",
+      "category": "idempotency",
+      "mechanism": "Canonical-key payment declaration replay resolution (same key/same payload returns original, same key/different payload rejected) plus the general X-Idempotency-Key middleware replay cache.",
+      "risk": "P0",
+      "source_anchors": [
+        "backend/services/payment_declaration_service.py:13",
+        "backend/services/payment_declaration_service.py:79",
+        "backend/services/payment_declaration_service.py:132",
+        "backend/services/payment_declaration_service.py:189",
+        "backend/api/middleware/idempotency.py:55"
+      ],
+      "mandatory_tuples": [
+        "idempotent mutation x duplicate click x single persistence effect",
+        "idempotent mutation x replayed request x original result returned",
+        "idempotent mutation x concurrent request x exactly one record",
+        "same idempotency key x different payload x explicit rejection"
+      ],
+      "owner": "cto"
+    },
+    {
+      "interaction_id": "CI-TOKEN-REPLAY",
+      "category": "token-replay",
+      "mechanism": "Hash-locked single-use token rows (reset and invitation): expiry/used/revoked/soft-deleted states, used-at marked only after the guarded mutation succeeds, issuance filtered to unused tokens.",
+      "risk": "P0",
+      "source_anchors": [
+        "backend/services/password_reset_service.py:163",
+        "backend/services/password_reset_service.py:192",
+        "backend/services/password_reset_service.py:240",
+        "backend/services/password_reset_service.py:251",
+        "backend/services/invitation_service.py:1"
+      ],
+      "mandatory_tuples": [
+        "token link x valid token x single-use consumption",
+        "token link x expired token x neutral rejection",
+        "token link x used token x replay denied",
+        "token link x revoked token x neutral rejection",
+        "token link x forged token x neutral rejection x no enumeration"
+      ],
+      "owner": "cto"
+    },
+    {
+      "interaction_id": "CI-TRANSACTION-BOUNDARY",
+      "category": "transaction-rollback",
+      "mechanism": "Per-request tenant transaction ownership: finalize_tenant_context commits on success and rolls back on failure; services never commit or roll back themselves.",
+      "risk": "P1",
+      "source_anchors": [
+        "backend/api/context/tenant.py:135",
+        "backend/database/session.py:69",
+        "backend/database/session.py:117"
+      ],
+      "mandatory_tuples": [
+        "tenant request success x commit x complete state",
+        "tenant request failure mid-transaction x rollback x no partial state",
+        "service-layer exception x no self-managed commit x caller-owned boundary"
+      ],
+      "owner": "cto"
+    },
+    {
+      "interaction_id": "CI-MOBILE-NAV",
+      "category": "mobile-navigation",
+      "mechanism": "Dual-mode sidebar: fixed desktop rail and conditionally-mounted mobile off-canvas drawer below the lg breakpoint, with drawer close on route change/Escape/backdrop and content shift.",
+      "risk": "P1",
+      "source_anchors": [
+        "frontend/src/components/layout/Sidebar.tsx:270",
+        "frontend/src/components/layout/Sidebar.tsx:289",
+        "frontend/src/components/layout/MainLayout.tsx:11",
+        "frontend/src/router/AppRouter.tsx:77"
+      ],
+      "mandatory_tuples": [
+        "mobile route x long content x navigation drawer x no layout overflow",
+        "mobile route x form submission x drawer closed x single submission",
+        "viewport 390px x back/forward x route stability x no stuck backdrop"
+      ],
+      "owner": "cto"
+    }
+  ]
+}

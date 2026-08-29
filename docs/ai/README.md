@@ -10,11 +10,12 @@ This folder is the canonical starting point for Codex and other AI coding agents
 4. `docs/ai/PROJECT.md`
 5. `docs/ai/PROJECT_MEMORY.md`
 6. `docs/ai/AI_TEAM_OPERATING_RULES.md`
-7. `docs/ai/AGENT_DELEGATION_PROTOCOL.md`
-8. `docs/contracts/Boot contract.md`
-9. `docs/contracts/AI workrules.md`
-10. `docs/mpango_erp_v0_3_development_master_plan.md`
-11. `decision-register/README.md`
+7. `docs/ai/HARNESS_ENGINEERING_GOVERNANCE_STANDARD.md`
+8. `docs/ai/AGENT_DELEGATION_PROTOCOL.md`
+9. `docs/contracts/Boot contract.md`
+10. `docs/contracts/AI workrules.md`
+11. `docs/mpango_erp_v0_3_development_master_plan.md`
+12. `decision-register/README.md`
 
 ## Platform Product Track Entry
 
@@ -96,6 +97,7 @@ P25 CLOSEOUT STATUS (2026-07-08): P25_PLATFORM_FRONTEND_CUSTOMER_READINESS_READY
 - When priorities change, update `CTO_CONTEXT.md` first
 - When hidden assumptions from old chats are recovered, add them to `PROJECT_MEMORY.md`
 - When team operating rules for AI agents change, update `AI_TEAM_OPERATING_RULES.md`
+- When acceptance coverage, harness evidence, exploratory testing, or coverage-debt rules change, update `HARNESS_ENGINEERING_GOVERNANCE_STANDARD.md`
 
 ## Multi-Agent Sync Rules
 

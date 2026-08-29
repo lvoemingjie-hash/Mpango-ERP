@@ -1,15 +1,15 @@
 # REPORT — DC-12R1-MVP-L1-J1-H2-C-I1-R1-V1
 ## Lubuntu OpenCode2 Independent Fresh-Runtime Backend and Browser Authority Final
 
-**VERDICT: `STOP_AND_REPORT_CTO_WITH_FIRST_AUTHENTIC_RED`**
+> **E1 EVIDENCE-TRUTH CORRECTION APPLIED (this revision).**
+> **ORIGINAL_RUNTIME_VERDICT:** `STOP_AND_REPORT_CTO_WITH_FIRST_AUTHENTIC_RED` (preserved verbatim below and in the base report `0f6f790b…`, which remains byte-identical and published).
+> **EFFECTIVE_VERDICT: `VOID_ENVIRONMENT_PRECHECK`** — every one of the 88 red nodes is deterministically attributable to executor-environment omissions (CWD=25, `MPANGO_TEMP_DB_ALLOWED_PORTS`=57, unsafe test DB name=6; gap=0); none is a product defect. The "Phase 2 Preflight PASS" and the "Phase 4 Authoritative Backend Run" are WITHDRAWN as authoritative results. The 3784-executed fact is retained but carries **no product-attribution validity**. Full forensic basis: `E1_EVIDENCE_TRUTH_CORRECTION.md`. The expected PASS verdict
+> (`PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_C_I1_R1_V1_LUBUNTU_OPENCODE_INDEPENDENT_BACKEND_AND_BROWSER_FINAL`)
+> remains **NOT** awarded. VOID does not constitute a product, candidate, or test RED; the browser authority run was **NOT** executed, nothing was rerun, nothing was retried, the candidate was never modified.
+>
+> Sections below are the ORIGINAL report retained for evidence truth; superseded labels are annotated in place.
 
-The expected PASS verdict
-(`PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_C_I1_R1_V1_LUBUNTU_OPENCODE_INDEPENDENT_BACKEND_AND_BROWSER_FINAL`)
-is **NOT** awarded: the single authoritative backend run produced an
-authentic RED after a fully valid fail-closed preflight. Per the task
-contract the round stopped immediately: the browser authority run was
-**NOT** executed, nothing was rerun, nothing was retried, the candidate
-was never modified.
+**ORIGINAL VERDICT LINE (preserved): `STOP_AND_REPORT_CTO_WITH_FIRST_AUTHENTIC_RED`**
 
 - **CANDIDATE:** `42c5d3286cacaf48604550eecd881e379cc76818` (remote tip
   `origin/zcode/dc12r1-mvp-l1-j1-h2-c-i1-r1-actual-current-baseline-integration-2026-08-29`)
@@ -34,7 +34,7 @@ byte-identical local==remote at open and at close. Fresh detached
 worktree created from CANDIDATE; `git status --porcelain` = 0 before,
 during (runtime debris removed) and after.
 
-## Phase 2 — Fail-Closed Preflight: PASS
+## Phase 2 — Fail-Closed Preflight: PASS **[WITHDRAWN BY E1 — see §3 of E1_EVIDENCE_TRUTH_CORRECTION.md]**
 
 Task-exclusive fresh stack (pre-gate `dc12r1i1f-*`, authority
 `dc12r1i1a-*`; both destroyed at close):
@@ -84,7 +84,7 @@ was required — Node 22.23.2's native TS type-stripping preempts Playwright
 1.49.1's babel transform and breaks ESM linking of type-only imports.
 Frozen harness bytes were never modified.
 
-## Phase 4 — Single Authoritative Backend Run: **AUTHENTIC RED**
+## Phase 4 — Single Authoritative Backend Run: **AUTHENTIC RED** **[WITHDRAWN BY E1 — reclassified VOID_ENVIRONMENT_PRECHECK; 88/88 red nodes executor-environment-attributed (CWD=25, TEMP_DB_PORTS=57, DB-name=6, gap=0); no product-attribution validity]**
 
 Executor invocation-defect disclosure (VOID, zero tests executed, zero
 results farmed):
@@ -183,8 +183,7 @@ operations. See `evidence/cleanup/cleanup-evidence.txt`.
 
 ## Adjudication
 
-Phase 4 produced the round's first authentic RED after a valid
-fail-closed preflight. Under the task contract this mandates
+E1 CORRECTION: Phase 4 did NOT produce an authentic product RED; the run is reclassified VOID_ENVIRONMENT_PRECHECK (88/88 red nodes executor-environment-attributed; preflight omissions CWD / MPANGO_TEMP_DB_ALLOWED_PORTS / TEST_DATABASE_URL name-safety / sessionstart non-recheck, §6 of E1_EVIDENCE_TRUTH_CORRECTION.md). The original wording is preserved: Under the task contract this mandates
 `STOP_AND_REPORT_CTO_WITH_FIRST_AUTHENTIC_RED`: no browser run, no
 rerun, no merge, no deploy, no product work. The CTO must adjudicate
 the red family (launcher-CWD environment coupling vs product defects)

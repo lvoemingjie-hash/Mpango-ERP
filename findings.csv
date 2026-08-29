@@ -16,11 +16,21 @@ F14,phase3,build,pnpm-build,PASS,vite build ok
 F15,phase3,harness,static-gates,PASS,list 15/1 validate-static 11/11 neutrality G1-G6 runtime-contracts tsc
 F16,phase4,invocation-defect,launch1,VOID_EXECUTOR_INVOCATION_DEFECT,missing --authority flag; pytest launched 0 times
 F17,phase4,invocation-defect,launch2,VOID_EXECUTOR_INVOCATION_DEFECT,wrong cwd; 0 tests executed (junit tests=0)
-F18,phase4,authority,backend-full-suite,RED,67 failed 3602 passed 79 skipped 15 xfailed 21 errors exit=1
+F18,phase4,authority,backend-full-suite,RED_WITHDRAWN_BY_E1,67 failed 3602 passed 79 skipped 15 xfailed 21 errors exit=1; reclassified VOID_ENVIRONMENT_PRECHECK; 88/88 red nodes executor-environment-attributed; no product-attribution validity
 F19,phase4,authority,launch-count,PASS,sentinel_calls=1 in authoritative process
 F20,phase4,reconciliation,gap,PASS,collected 3784 == executed 3784 gap=0
-F21,phase4,diagnostic,cwd-coupling,DIAGNOSTIC_ONLY,relative-path failures dominate red set; non-authoritative signal for CTO
+F21,phase4,diagnostic,cwd-coupling,DIAGNOSTIC_ONLY_SUPERSEDED_BY_E1_DETERMINISTIC,relative-path failures dominate red set; superseded by deterministic attribution CWD=25 TEMP_DB_PORTS=57 DB-name=6 total=88 gap=0
 F22,phase5,browser,authority-run,NOT_RUN,backend RED stop rule; playwright never invoked
 F23,cleanup,residue,post-run-truth,PASS,db15=0 temp-dbs=0 setup/reset-tokens=0
 F24,cleanup,stack,destroy,PASS,both stacks containers+volumes+networks removed ports freed
-F25,verdict,round,final,STOP_AND_REPORT_CTO_WITH_FIRST_AUTHENTIC_RED,PASS token not awarded
+F25,verdict,round,final_original,ORIGINAL_RUNTIME_VERDICT=STOP_AND_REPORT_CTO_WITH_FIRST_AUTHENTIC_RED,preserved verbatim; base report 0f6f790b unchanged
+F26,e1,verdict,final_effective,EFFECTIVE_VERDICT=VOID_ENVIRONMENT_PRECHECK,VOID is not product/candidate/test RED
+F27,e1,attribution,cwd,25,24 FileNotFoundError relative-path + 1 alembic Path-doesnt-exist; runner launched pytest from worktree root not backend/
+F28,e1,attribution,temp-db-ports,57,MPANGO_TEMP_DB_ALLOWED_PORTS never set; async_test_utils.py:115 fail-closed
+F29,e1,attribution,unsafe-test-db-name,6,mpango_erp_test fails _TEST_DATABASE_NAME pattern async_test_utils.py:22
+F30,e1,attribution,total,88,gap=0
+F31,e1,preflight,omissions,4,process CWD unbound; MPANGO_TEMP_DB_ALLOWED_PORTS unverified; TEST_DATABASE_URL name-safety unverified; pytest_sessionstart re-verifies none
+F32,e1,pregate,strict-reverse-11-errors,TEST_GLOBAL_STATE_RESIDUE,separate classification; never part of authority result
+F33,e1,browser,phase,NOT_RUN,playwright invocation=0
+F34,e1,evidence,blob-immutability,PASS,tree delta limited to REPORT.md findings.csv E1_EVIDENCE_TRUTH_CORRECTION.md committed-blob-manifest.csv
+F35,e1,verdict,e1-closure,PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_C_I1_R1_V1_E1_AUTHORITY_PREFLIGHT_EVIDENCE_TRUTH_CLOSURE,scope VOID_ENVIRONMENT_EVIDENCE_TRUTH_ONLY

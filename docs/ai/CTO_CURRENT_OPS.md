@@ -1,16 +1,17 @@
 # CTO Current Ops
 
-**Last updated:** 2026-08-26
+**Last updated:** 2026-08-30
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Current reviewed product-code baseline:** `436d61e2dfed88a9469e4572615b98b9c4a7aed4` (the accepted DC-12R1-MVP-L1-J1-H2-B-R3-R2-M1 controlled merge; fetch the live protected tip and verify this commit is its ancestor)
+**Current reviewed product-code baseline:** `d9dc2e4130ea87a57d433dfadeb2f2736576fac6` (the accepted DC-12R1-MVP-L1-HE2-ET1-R3-A1-M1 controlled governance merge; before new controlled work, fetch the live protected tip, require this baseline to be its ancestor, then freeze that live tip)
+**HE2 R3+A1 status: MERGED_AND_INDEPENDENTLY_RUNTIME_VERIFIED** - controlled merge `d9dc2e41` has parents `cdb39e96` and `483b8ab0`; its tree is identical to source `483b8ab0`. Accepted evidence: Kilo cumulative governance review `db87f0d3`, Lubuntu fresh-runtime authority-profile final `6fb1e31e`, and merge report `1017be0c`. The authority runner now binds backend CWD/temp-DB inputs and profile-authorized Alembic head/parent lineage; it does not merge migration `038` or any SKU product code.
 **H2-B status: MERGED_AND_BROWSER_VERIFIED** - controlled merge `436d61e2` has parents `6e9470a1` and `25626f4d`; its tree is identical to the reviewed source `25626f4d`. Accepted evidence: source `25626f4d`, Kilo review `d6289a6b`, backend authority `90f96e3f` (3773 collected / 3710 passed / 48 skipped / 15 xfailed / zero red), browser E1 `04134016` (24/24 browser PASS, 29-node inventory gap=0), and merge report `c400b7c5`.
 **Accepted J1-H2-A-R2 merge:** `6e9470a1daa5d6eece29724316fdd8aef6b737c1` - parents `c5b66d26` and `bf574cf9`; it is now an ancestor of the current tip, not the tip itself.
 **Accepted R4-C1-R1 merge:** `a29f8db02365737c64d0d8d442e8ef48a8a19d6d` - parents `9067e38f` and `f51c109`; merge tree identical to the independently reviewed source; fresh-runtime browser matrix `162/162`; now an ancestor, not the current tip.
 **Accepted H7 merge:** `ea9908263d57737e434d7d61e06e5f0ee941aa81` - parents `a6ef3aac` and `a0a14e4d`; merge tree identical to the independently reviewed source.
 **Accepted readiness-debt merge:** `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` - DC-12R1-MVP-R0-R1 P2/P3 readiness-debt closure and direct parent of the H7 source lineage; it is now an ancestor, not the current tip.
 **Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5` (accepted Contract D merge; an ancestor of the current tip, NOT the tip itself)
-**Current migration head:** `037_payment_declarations_schema`
+**Current migration head:** `037_payment_declarations_schema` (the merged authority profile can authorize a future exact successor `038_catalog_identity_vertical_slice` with parent `037`; that migration is not in the baseline)
 **Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
 
 This is the short operating picture for Mpango agents. Read
@@ -19,12 +20,13 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `436d61e2` is the current reviewed product-code baseline. It carries accepted
+- `d9dc2e41` is the current reviewed baseline. It carries accepted
   Contracts A-D, H7 setup/dependency reconciliation, PW1 auth/rate-limit/cache/
   permission closures, the R4-C1-R1 responsive MainLayout closure, the J1
   friction-audit merge lineage, the J1-H2-A-R2 credential closure, and the
-  H2-B password-recovery and test-hygiene closure. The live protected tip may
-  contain later docs-only commits and must descend from it.
+  H2-B password-recovery/test-hygiene closure, plus the merged HE2 authority
+  controls through R3+A1. New controlled work must fetch and verify the live
+  protected tip exactly; do not silently branch from an older ancestor.
 - The earlier merges `6e9470a1`, `c5b66d26`, `a29f8db0`, `9067e38f`,
   `ea990826`, `a6ef3aac`, `d796dcb0`, and `adcc7f28` are ANCESTORS of the
   current tip, not the tip itself. Do not branch from or reference them as the
@@ -82,8 +84,30 @@ in `ai-ledger/`.
   - the user role assignment `MissingGreenlet` async serialization defect;
   - the corresponding test-residue and temporary-database teardown/stability
     fixes behind the authoritative zero-red and browser evidence.
+- HE2 R3+A1 (merged at `d9dc2e41`) closes the authority-runner gaps that
+  previously allowed an invalid backend CWD/temp-DB environment to reach test
+  execution and that hard-coded Alembic head `037`. Authority is now bound to
+  protected profile bytes, exact head/declared-parent lineage, runner/child
+  cross-checks, and fail-closed drift detection. It authorizes validation of a
+  future exact `038 -> 037` SKU migration; it does not add that migration.
 
 ## Latest Accepted Evidence
+
+HE2 R3+A1 controlled governance merge and independent authority verification:
+
+`origin/product-dev-recovered@d9dc2e41` is the current reviewed baseline.
+
+- Approved source: `483b8ab0`; merge tree equals the reviewed source tree.
+- Kilo cumulative governance review: `db87f0d3` - independently executed
+  186/186 governance tests and 102 RED / 9 GREEN mutation controls.
+- Lubuntu authority-profile final: `6fb1e31e` - fresh PostgreSQL 16 + Redis 7,
+  core chain 8/8, Redis cases 7/7, authority command exactly once on GREEN,
+  and 17/17 negative controls VOID with zero command launches.
+- Controlled merge report: `1017be0c`.
+- Structural validator is green; release remains blocked only by the existing
+  `DEBT-AUTH-CRITICAL-TUPLES` and `DEBT-COMMERCE-CRITICAL-TUPLES` debts.
+- This is governance/runtime-authority evidence, not product migration `038`,
+  SKU-M1, deployment, release, or customer-readiness evidence.
 
 H2-B password-recovery controlled merge and independent verification:
 
@@ -219,6 +243,13 @@ Post-merge validation:
   non-blocking.
 - `RT0` remains `BLOCKED_BY_H2_C` (retailer discovery layer missing); no API
   bypass of the missing retailer UI is permitted.
+- H2-C integration candidate `42c5d328` is not merged. Its Lubuntu run was
+  corrected by `31adf492` to `VOID_ENVIRONMENT_PRECHECK`; browser execution
+  was NOT_RUN. It requires a new baseline integration and valid authority run.
+- SKU-R0-M1 is an authorized parallel V3 work line on baseline `d9dc2e41`, but
+  it currently has no frozen candidate. Migration `038`, three-layer catalog
+  product code, full-suite evidence, browser evidence, and independent final
+  review all remain unaccepted.
 - `REMOTE_ENFORCEMENT_NOT_VERIFIED`: remote/server-side enforcement has not
   been verified.
 - Nothing is deployed: no VPS deployment and no real-device acceptance have
@@ -521,19 +552,25 @@ review path, not the current gate state.
 
 ## Active Phase
 
-**Active gate:** pre-delivery execution queue (see
+**Active gate:** dual-line pre-delivery execution (see
 `docs/planning/2026-08-26_mvp_pre_delivery_execution_queue.md`).
 
-The H2-B password-recovery closure is merged and browser-verified at
-`436d61e2`. The ordered queue into delivery is:
+The current baseline is `d9dc2e41`. Two bounded product lines may progress in
+parallel, and both must close before the pricing implementation chain begins:
 
-1. `H2-C` (retailer discovery layer; also unblocks `RT0`)
-2. `PRICING-R0` (freeze base/special-price/order-price/reorder contracts)
-3. `PRICING-R1` (SKU base price + per-retailer special price)
-4. `ORDER-PRICE-R1` (one-shot wholesaler price adjustment + retailer
+1. `H2-C` closure: re-integrate the retailer discovery candidate on the current
+   baseline, pass a valid backend authority run, then execute its reviewed
+   browser inventory. `RT0` remains blocked until this line merges.
+2. `SKU-R0-M1-R1`: Codex-L leads the customer-centered
+   `CatalogProduct -> SellableUnit -> CatalogOffer boundary` vertical slice;
+   OpenCode2 supplies independent source/runtime/browser review. No candidate
+   exists yet and no pricing semantics are authorized.
+3. `PRICING-R0` (freeze base/special-price/order-price/reorder contracts after
+   H2-C and stable catalog identity are accepted)
+4. `PRICING-R1` (SKU base price + per-retailer special price)
+5. `ORDER-PRICE-R1` (one-shot wholesaler price adjustment + retailer
    confirm/reject/24h timeout)
-5. `REORDER-R1` (reorder from history with current-price re-resolution)
-6. `SKU-R0` (freeze MVP core SKU fields and three-layer extension boundary)
+6. `REORDER-R1` (reorder from history with current-price re-resolution)
 7. First-use onboarding (首次使用引导)
 8. Full business journey / VPS / real-device final acceptance
 
@@ -541,8 +578,8 @@ Standing boundaries:
 
 - `FINANCE_LOCALIZATION_R0 = AUDIT_ONLY_NON_BLOCKING`: Uganda/UGX and
   multi-currency questions do not block the MVP queue.
-- Custom SKU fields remain `POST_MVP_DISCOVERY`; `SKU-R0` freezes only the
-  bounded core field set.
+- Custom SKU fields remain `POST_MVP_DISCOVERY`; SKU-M1 is limited to stable
+  product/package identity and immutable order snapshots.
 - This queue is planning truth, not implementation authorization; each entry
   still requires its own CTO-authorized gate before product code changes.
 - A local rehearsal or merged browser gate is not a VPS, HTTPS,
@@ -570,8 +607,9 @@ Standing boundaries:
    `c5b66d26` and the J1-H2-A-R2 credential closure merged as `6e9470a1`.
 9. **MVP-L1-J1-H2-B (completed):** wholesaler password recovery and
    test-hygiene closure merged and browser-verified as `436d61e2`.
-10. **Pre-delivery queue (active, in order):** `H2-C` → `PRICING-R0` →
-    `PRICING-R1` → `ORDER-PRICE-R1` → `REORDER-R1` → `SKU-R0` → first-use
+10. **Pre-delivery queue (active dual line):** `H2-C` and `SKU-R0-M1-R1` run
+    as separately gated parallel lines; after both merge, continue with
+    `PRICING-R0` → `PRICING-R1` → `ORDER-PRICE-R1` → `REORDER-R1` → first-use
     onboarding → full business journey / VPS / real-device final acceptance.
     Details and frozen pricing inputs live in
     `docs/planning/2026-08-26_mvp_pre_delivery_execution_queue.md`.
@@ -586,9 +624,14 @@ Standing boundaries:
 
 ## Agent Assignment
 
-- **Product coding agent:** execute each pre-delivery queue entry only under
-  its own CTO-authorized gate, from a fetched, clean, isolated worktree at
-  the current reviewed baseline `436d61e2` (or its descendant).
+- **Zcode/Windows product line:** close H2-C baseline integration and bounded
+  corrections under explicit CTO gates.
+- **Codex-L SKU supervisor:** own SKU-M1 architecture, implementation, internal
+  review and candidate evidence within the frozen product/package boundary.
+- **OpenCode2:** independently review SKU source, migration, tests, fresh
+  runtime and browser evidence; it must not inherit Codex-L's PASS claims.
+- **All product agents:** start from a fetched, clean, isolated worktree at
+  current baseline `d9dc2e41`; no self-reported PASS is merge authority.
 - **Journey observer:** for the onboarding and final-acceptance queue entries,
   record workflow time, clicks, assistance, API-only steps, dead ends, and
   abandonment risk without coaching away product friction.
@@ -609,8 +652,9 @@ Standing boundaries:
 
 Stop and report to the CTO if:
 
-- fetched `origin/product-dev-recovered` does not descend from reviewed
-  product-code baseline `436d61e2dfed88a9469e4572615b98b9c4a7aed4`, or that
+- fetched `origin/product-dev-recovered` is not exactly the authorized task
+  base or does not descend from reviewed baseline
+  `d9dc2e4130ea87a57d433dfadeb2f2736576fac6`, or that
   baseline does not descend from the J1-H2-A-R2 merge
   `6e9470a1daa5d6eece29724316fdd8aef6b737c1`, the R4-C1-R1 merge
   `a29f8db02365737c64d0d8d442e8ef48a8a19d6d`, or accepted Contract D merge
@@ -627,6 +671,11 @@ Stop and report to the CTO if:
   event/outbox, a new migration, permission, dependency, or financial write;
 - S3-S3-D edits product code instead of remaining a design/audit gate;
 - the task changes deployment or protected refs;
+- a SKU task changes pricing, order lifecycle, payment, or customer-special-
+  price semantics; migration `038` has the wrong parent, creates multiple
+  heads, guesses legacy identity by code/name, or partially mutates tenants;
+- an authority run starts after CWD, temp-DB, profile, Alembic, PG, Redis, or
+  child-proof preflight has failed;
 - evidence relies on skip, xfail, deselection, or assertion weakening.
 
 ## Update Protocol

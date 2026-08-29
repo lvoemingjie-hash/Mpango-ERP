@@ -142,6 +142,116 @@ def _redis_module_binding(env) -> tuple:
     return problems, recomputed
 
 
+BACKEND_ENV_KEY = "et1_backend_env_authority"
+
+
+def _backend_env_canonical_path() -> Path:
+    return (Path(__file__).resolve().parents[1] / "validator" / "backend_env_authority.py").resolve()
+
+
+def _module_origin_is_canonical_be(module, canonical: Path) -> bool:
+    if module is None:
+        return False
+    spec = getattr(module, "__spec__", None)
+    origin = getattr(spec, "origin", None) if spec is not None else None
+    file_attr = getattr(module, "__file__", None)
+    for candidate in (origin, file_attr):
+        if not candidate or not isinstance(candidate, str):
+            return False
+        try:
+            if Path(candidate).resolve() != canonical:
+                return False
+        except (OSError, ValueError):
+            return False
+    return True
+
+
+class _BackendEnvBindingError(Exception):
+    def __init__(self, category):
+        super().__init__(f"backend_env_module:{category}")
+        self.category = category
+
+
+def _load_backend_env_module():
+    import importlib.util
+
+    canonical = _backend_env_canonical_path()
+    preloaded = sys.modules.get(BACKEND_ENV_KEY)
+    tampered = preloaded is not None and not _module_origin_is_canonical_be(
+        preloaded, canonical)
+    sys.modules.pop(BACKEND_ENV_KEY, None)
+    try:
+        spec = importlib.util.spec_from_file_location(BACKEND_ENV_KEY, str(canonical))
+    except (ValueError, OSError):
+        raise _BackendEnvBindingError("origin_untrusted") from None
+    if spec is None or getattr(spec, "loader", None) is None:
+        raise _BackendEnvBindingError("origin_untrusted")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[BACKEND_ENV_KEY] = module
+    try:
+        spec.loader.exec_module(module)
+    except _BackendEnvBindingError:
+        raise
+    except Exception:
+        raise _BackendEnvBindingError("origin_untrusted") from None
+    if not _module_origin_is_canonical_be(module, canonical):
+        raise _BackendEnvBindingError("origin_untrusted")
+    return module, tampered
+
+
+def _backend_env_recheck_problems(env) -> tuple:
+    import hashlib
+
+    try:
+        module, tampered = _load_backend_env_module()
+    except _BackendEnvBindingError as err:
+        return ([f"benv:{err.category}", "benv:preload_detected"], "")
+    problems: list = []
+    if tampered:
+        problems.append("benv:preload_detected")
+    try:
+        facts = module.backend_env_facts(
+            url=env.get("TEST_DATABASE_URL", ""),
+            mpango_env=env.get("MPANGO_ENV", ""),
+            allowed_ports_raw=env.get("MPANGO_TEMP_DB_ALLOWED_PORTS", ""),
+            allowed_hosts_raw=env.get("MPANGO_TEMP_DB_ALLOWED_HOSTS", ""),
+            authority_cwd=(Path(__file__).resolve().parents[2] / "backend").resolve(),
+        )
+    except module.BackendEnvAuthorityError as err:
+        problems.append(f"benv:{err.category}")
+        return problems, ""
+    digest_input = "|".join([
+        facts["mpango_env"], facts["db_name"], str(facts["port"]),
+        facts["host"], facts["allowed_ports"], facts["allowed_hosts"],
+        facts["authority_cwd"],
+    ])
+    recomputed = module.binding_digest(digest_input)
+    runner_original = env.get("ET1_RUNNER_TEMPDB_BINDING_SHA", "") or ""
+    if not runner_original:
+        problems.append("benv:digest_missing")
+    elif recomputed != runner_original:
+        problems.append("benv:digest_mismatch")
+    return problems, recomputed
+
+
+def _alembic_recheck_problems(env) -> tuple:
+    try:
+        module, _tampered = _load_backend_env_module()
+    except _BackendEnvBindingError as err:
+        return [f"alembic:{err.category}"], ""
+    expected = env.get("ET1_RUNNER_ALEMBIC_EXPECTED", "") or ""
+    parent = env.get("ET1_RUNNER_ALEMBIC_PARENT", "") or None
+    if not expected:
+        return ["alembic:digest_missing"], ""
+    try:
+        facts = module.alembic_verify(
+            module.canonical_backend_dir(__file__) / "alembic" / "versions",
+            expected, parent)
+    except module.BackendEnvAuthorityError as err:
+        return [f"alembic:{err.category}"], ""
+    return [], facts["alembic_head"]
+
+
 def _redis_recheck_problems(env) -> list:
     """R2-R1 CHILD-side live Redis recheck via the SHARED authority module.
 
@@ -229,6 +339,14 @@ def sessionstart_gate(env) -> dict:
     module_problems, redis_module_sha = _redis_module_binding(env)
     problems.extend(module_problems)
 
+    # R3: independent backend-CWD / temp-DB re-verification in the child.
+    benv_problems, tempdb_binding_sha = _backend_env_recheck_problems(env)
+    problems.extend(benv_problems)
+
+    # R3-A1: independent alembic successor verification in the child.
+    alembic_problems, alembic_actual = _alembic_recheck_problems(env)
+    problems.extend(alembic_problems)
+
     # LIVE role re-verification in the child: not superuser AND createdb.
     role = {"verified": False, "rolsuper": True, "rolcreatedb": False}
     if db_url.strip():
@@ -259,6 +377,10 @@ def sessionstart_gate(env) -> dict:
         "role": role,
         "redis_module_sha": redis_module_sha,
         "redis_module_ok": not module_problems,
+        "tempdb_binding_sha": tempdb_binding_sha,
+        "tempdb_ok": not benv_problems,
+        "alembic_actual_head": alembic_actual,
+        "alembic_ok": not alembic_problems,
     }
 
 
@@ -272,6 +394,10 @@ def _write_sessionstart_proof(path, gate_result, nonce) -> None:
         "nonce_chars": len(nonce),
         "redis_module_ok": gate_result.get("redis_module_ok", False),
         "redis_module_sha_chars": len(gate_result.get("redis_module_sha", "")),
+        "backend_env_ok": gate_result.get("tempdb_ok", False),
+        "tempdb_binding_sha_chars": len(gate_result.get("tempdb_binding_sha", "")),
+        "alembic_ok": gate_result.get("alembic_ok", False),
+        "alembic_head_chars": len(gate_result.get("alembic_actual_head", "")),
     }
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -300,6 +426,10 @@ def pytest_collection_finish(session):
     """Items are populated: real node IDs + live SHA re-verification."""
     _module_problems, redis_module_sha = _redis_module_binding(os.environ)
     redis_module_ok = not _module_problems
+    _benv_problems, tempdb_binding_sha = _backend_env_recheck_problems(os.environ)
+    tempdb_ok = not _benv_problems
+    _alembic_problems, alembic_actual = _alembic_recheck_problems(os.environ)
+    alembic_ok = not _alembic_problems
     nonce = os.environ.get("ET1_RUNNER_NONCE", "")
     candidate_expected = os.environ.get("ET1_RUNNER_CANDIDATE_SHA", "")
     profile_expected = os.environ.get("ET1_RUNNER_PROFILE_SHA", "")
@@ -340,6 +470,10 @@ def pytest_collection_finish(session):
             errors.append(f"sha_drift:{key}")
     if not redis_module_ok:
         errors.append("redis_module:drift")
+    if not tempdb_ok:
+        errors.append("backend_env:drift")
+    if not alembic_ok:
+        errors.append("alembic:drift")
 
     collected = []
     try:
@@ -375,6 +509,10 @@ def pytest_collection_finish(session):
         "sha_match": sha_match,
         "redis_module_sha": redis_module_sha,
         "redis_module_ok": redis_module_ok,
+        "tempdb_binding_sha": tempdb_binding_sha,
+        "tempdb_ok": tempdb_ok,
+        "alembic_actual_head": alembic_actual,
+        "alembic_ok": alembic_ok,
         "nonce": nonce,
         "collected_node_ids": sorted(collected),
     }

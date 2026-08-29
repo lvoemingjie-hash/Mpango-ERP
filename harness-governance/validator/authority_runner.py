@@ -63,7 +63,13 @@ GOV_DIR = Path("harness-governance")
 REGISTRY_PATH = GOV_DIR / "inventory" / "execution-traps.json"
 PROFILES_SCHEMA_PATH = GOV_DIR / "schemas" / "authority-profiles.schema.json"
 PLUGIN_PATH = GOV_DIR / "tests" / "pytest_et1_collector.py"
-PLUGIN_MODULE = "tests.pytest_et1_collector"
+# R3: the collect child runs with CWD = canonical backend/ (the same CWD
+# the authority command uses). From there `tests.…` would collide with the
+# product's backend/tests package, so pytest loads the uniquely-named entry
+# shim `et1_collect_entry` (on PYTHONPATH via harness-governance), which
+# executes the runner-owned plugin file (path passed via env) — the plugin
+# bytes/behavior are unchanged and remain the verified authority.
+PLUGIN_MODULE = "et1_collect_entry"
 PLUGIN_PROOF_SCHEMA = "harness-governance/pytest_et1_collector/2"
 PUBLISH_SCHEMA = "harness-governance/authority-runner/2"
 
@@ -101,7 +107,10 @@ EVALUATOR_WHITELIST = frozenset(
 )
 
 CANONICAL_ORIGIN = "https://github.com/lvoemingjie-hash/Mpango-ERP.git"
-EXPECTED_ALEMBIC_HEAD = "037_payment_declarations_schema"
+# R3-A1: the expected alembic head is bound to the PROTECTED profile
+# (profile raw bytes are sha-bound into the run); there is no global
+# hardcoded authority head and no CLI/env override path.
+EXPECTED_ALEMBIC_HEAD = None  # retired: authority comes from the profile
 SPECIAL_USE_DOMAINS = ("invalid", "example", "test", "localhost")
 
 # R2-R1 live-Redis authority constants. The implementation itself lives in
@@ -110,6 +119,80 @@ SPECIAL_USE_DOMAINS = ("invalid", "example", "test", "localhost")
 # a preloaded entry under the key is tamper evidence, not a cache).
 SENTINEL_PROBE_ENDPOINT = ("127.0.0.1", 26379)
 REDIS_TRAP = ("TRAP_REDIS_WRONG_DB", 14, "PREFLIGHT")
+
+# R3 backend-CWD / temp-DB authority. The probe lives in the SHARED stdlib
+# module validator/backend_env_authority.py, bound by origin + raw bytes via
+# the same bootstrap policy as the redis module (a fixed sys.modules key is
+# never trusted).
+BACKEND_ENV_KEY = "et1_backend_env_authority"
+BACKEND_ENV_TRAP = ("TRAP_TEMP_DB_CAPABILITY", 12, "PREFLIGHT")
+BACKEND_ENV_ALLOWED = ("test", "testing")
+TEMPDB_PORTS_VAR = "MPANGO_TEMP_DB_ALLOWED_PORTS"
+TEMPDB_HOSTS_VAR = "MPANGO_TEMP_DB_ALLOWED_HOSTS"
+
+
+class BackendEnvBindingError(Exception):
+    """Sanitized module-binding failure for the backend-env authority."""
+
+    def __init__(self, category: str):
+        super().__init__(f"backend_env_module:{category}")
+        self.category = category
+
+
+def backend_env_canonical_path() -> Path:
+    return (Path(__file__).resolve().parent / "backend_env_authority.py").resolve()
+
+
+def _module_origin_is_canonical_for(module, canonical: Path) -> bool:
+    if module is None:
+        return False
+    spec = getattr(module, "__spec__", None)
+    origin = getattr(spec, "origin", None) if spec is not None else None
+    file_attr = getattr(module, "__file__", None)
+    for candidate in (origin, file_attr):
+        if not candidate or not isinstance(candidate, str):
+            return False
+        try:
+            if Path(candidate).resolve() != canonical:
+                return False
+        except (OSError, ValueError):
+            return False
+    return True
+
+
+def load_backend_env_module():
+    """Origin-bound fresh bootstrap for the shared backend-env module (same
+    policy as the redis loader: never return a sys.modules entry; a foreign
+    preloaded entry is tamper evidence)."""
+    import importlib.util
+
+    canonical = backend_env_canonical_path()
+    preloaded = sys.modules.get(BACKEND_ENV_KEY)
+    tampered = preloaded is not None and not _module_origin_is_canonical_for(
+        preloaded, canonical
+    )
+    sys.modules.pop(BACKEND_ENV_KEY, None)
+    try:
+        spec = importlib.util.spec_from_file_location(BACKEND_ENV_KEY, str(canonical))
+    except (ValueError, OSError):
+        raise BackendEnvBindingError("module_origin_untrusted") from None
+    if spec is None or getattr(spec, "loader", None) is None:
+        raise BackendEnvBindingError("module_origin_untrusted")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[BACKEND_ENV_KEY] = module
+    try:
+        spec.loader.exec_module(module)
+    except BackendEnvBindingError:
+        raise
+    except Exception:
+        raise BackendEnvBindingError("module_origin_untrusted") from None
+    if not _module_origin_is_canonical_for(module, canonical):
+        raise BackendEnvBindingError("module_origin_untrusted")
+    return module, tampered
+
+
+def backend_env_module_raw_digest() -> str:
+    return hashlib.sha256(backend_env_canonical_path().read_bytes()).hexdigest()
 REDIS_MODULE_KEY = "et1_redis_authority"
 
 # Fixed module-binding categories (never paths, URLs, credentials, or env
@@ -343,14 +426,25 @@ def eval_temp_db(conn, allow_flag: str, db_name: str) -> dict:
     return {"created_dropped": True, "absence": True, "probe_url": probe_url}
 
 
-def eval_alembic_head(repo_root) -> dict:
-    heads = _alembic_heads(repo_root)
-    if len(heads) != 1 or heads[0] != EXPECTED_ALEMBIC_HEAD:
-        raise TrapFired(
-            "TRAP_ALEMBIC_MULTI_HEAD", 13, "PREFLIGHT", True,
-            {"head_count": len(heads)},
-        )
-    return {"head_count": 1}
+def eval_alembic_head(repo_root, expected_head: str,
+                      expected_parent: str | None = None) -> dict:
+    """R3-A1: real alembic heads from the repo tree; exactly one head; the
+    actual head must equal the PROFILE's expected head byte-exact; and when
+    the profile declares an expected parent, the lineage must be that exact
+    single successor. Fixed categories only."""
+    module, _tampered = load_backend_env_module()
+    versions_dir = Path(repo_root) / "backend" / "alembic" / "versions"
+    try:
+        facts = module.alembic_verify(versions_dir, expected_head, expected_parent)
+    except module.BackendEnvAuthorityError as err:
+        category = err.category if err.category in (
+            "alembic_multiple_heads", "alembic_head_mismatch",
+            "alembic_parent_mismatch", "alembic_tree_unreadable") else "alembic_head_mismatch"
+        raise TrapFired("TRAP_ALEMBIC_MULTI_HEAD", 13, "PREFLIGHT", True,
+                        {"alembic": category, "head_count":
+                         len(module.alembic_scan(versions_dir)["heads"])
+                         if category == "alembic_multiple_heads" else None}) from None
+    return {"head_count": 1, "alembic_head": facts["alembic_head"]}
 
 
 def redis_live_check(url: str) -> dict:
@@ -605,7 +699,9 @@ def ensure_plugin_available(gov_dir) -> dict:
 
 
 def verify_child_proof(child, original_nonce: str, expected_nodes: list,
-                       *, redis_module_sha: str) -> dict:
+                       *, redis_module_sha: str,
+                       tempdb_binding_sha: str = "",
+                       alembic_actual_head: str = "") -> dict:
     """Cross-process verification of the child's proof against the ORIGINAL
     runner-side values. Every comparison is against an independently held
     value; the child's own values are never trusted as their own reference.
@@ -646,6 +742,32 @@ def verify_child_proof(child, original_nonce: str, expected_nodes: list,
     if not secrets.compare_digest(child_module_sha, redis_module_sha):
         raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
                         {"redis_module": "module_digest_mismatch"})
+    # R3 cross-process temp-DB binding: the child independently recomputed
+    # the accepted CWD/env facts digest; compare against THIS runner's
+    # ORIGINAL (the child never self-compares).
+    child_tempdb = child.get("tempdb_binding_sha", "")
+    if not isinstance(tempdb_binding_sha, str) or not tempdb_binding_sha:
+        raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                        {"backend_env": "tempdb_digest_missing"})
+    if not isinstance(child_tempdb, str) or not child_tempdb:
+        raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                        {"backend_env": "tempdb_digest_missing"})
+    if not secrets.compare_digest(child_tempdb, tempdb_binding_sha):
+        raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                        {"backend_env": "tempdb_digest_mismatch"})
+    # R3-A1 cross-process alembic binding: the child independently recomputed
+    # the actual head; compare against THIS runner's bound actual head.
+    child_head = child.get("alembic_actual_head", "")
+    if not isinstance(alembic_actual_head, str) or not alembic_actual_head:
+        raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                        {"alembic": "child_head_missing"})
+    if not isinstance(child_head, str) or not child_head:
+        raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                        {"alembic": "child_head_missing"})
+    if not secrets.compare_digest(child_head, alembic_actual_head):
+        raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                        {"alembic": "child_head_mismatch"})
+
     collected = child.get("collected_node_ids")
     if not isinstance(collected, list) or not collected:
         raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
@@ -659,6 +781,8 @@ def verify_child_proof(child, original_nonce: str, expected_nodes: list,
         "collected_node_count": len(collected),
         "sha_match": {"candidate": True, "profile": True, "manifest": True},
         "redis_module_match": True,
+        "tempdb_match": True,
+        "alembic_match": True,
     }
 
 
@@ -690,6 +814,16 @@ class AuthorityRunner:
         self.redis_module_sha: str | None = None
         self.redis_module_tampered: bool = False
         self.redis_module_category: str = ""
+        # R3 backend-CWD / temp-DB binding
+        self.backend_env_module_sha: str | None = None
+        self.backend_env_tampered: bool = False
+        self.backend_env_category: str = ""
+        self.authority_cwd: Path | None = None
+        self.tempdb_binding_sha: str | None = None
+        self.alembic_expected: str | None = None
+        self.alembic_parent: str | None = None
+        self.alembic_actual: str | None = None
+        self.alembic_binding_sha: str | None = None
 
     def _to(self, state: str) -> None:
         _to_state(self.state, state)
@@ -706,6 +840,37 @@ class AuthorityRunner:
                 raise TrapFired("TRAP_PHASE_CONTINUE_AFTER_FAIL", 16, "PREFLIGHT", True, {"registry": "unknown_evaluator"})
             if trap["risk"] in ("P0", "P1") and trap["status"] != "ACTIVE":
                 raise TrapFired("TRAP_PHASE_CONTINUE_AFTER_FAIL", 16, "PREFLIGHT", True, {"registry": "p0p1_disabled"})
+
+    def bind_backend_env_module(self) -> None:
+        """R3: freshly load the shared backend-env authority from its
+        canonical path (origin verified) and bind its RAW-BYTE SHA-256."""
+        try:
+            _module, tampered = load_backend_env_module()
+            self.backend_env_tampered = tampered
+            self.backend_env_module_sha = backend_env_module_raw_digest()
+        except BackendEnvBindingError as err:
+            self.backend_env_tampered = True
+            self.backend_env_category = err.category
+
+    def _require_bound_backend_env_module(self) -> None:
+        if self.backend_env_tampered or not self.backend_env_module_sha:
+            category = self.backend_env_category or (
+                "module_preload_detected" if self.backend_env_tampered
+                else "module_origin_untrusted"
+            )
+            raise TrapFired(*BACKEND_ENV_TRAP, True, {"backend_env_module": category})
+
+    def _enforce_backend_env_authority_alembic(self) -> None:
+        """R3-A1: real alembic heads from the repo tree, bound to the
+        PROTECTED profile's expected head (no CLI/env override exists)."""
+        self.alembic_expected = self.profile.get("expected_alembic_head", "")
+        self.alembic_parent = self.profile.get("expected_alembic_parent") or None
+        if not self.alembic_expected:
+            raise TrapFired("TRAP_ALEMBIC_MULTI_HEAD", 13, "PREFLIGHT", True,
+                            {"alembic": "profile_missing_alembic_head"})
+        head_result = eval_alembic_head(self.repo_root, self.alembic_expected,
+                                        self.alembic_parent)
+        self.alembic_actual = head_result["alembic_head"]
 
     def bind_redis_module(self) -> None:
         """R2-R2: freshly load the shared module from the canonical path
@@ -734,6 +899,12 @@ class AuthorityRunner:
         self._check_registry_health()
         self.bind_redis_module()
         self._require_bound_redis_module()
+        self.bind_backend_env_module()
+        self._require_bound_backend_env_module()
+        self._enforce_backend_env_authority()
+        # R3-A1: the expected head comes from the PROTECTED profile (bound by
+        # this run's profile raw-byte sha); no CLI/env override exists.
+        self._enforce_backend_env_authority_alembic()
         eval_test_db_url(db_url)
         eval_email_domain(email)
         eval_git_remote(self.repo_root)
@@ -752,9 +923,94 @@ class AuthorityRunner:
         finally:
             conn.close()
         eval_redis(os.environ.get("PW1R3_TEST_REDIS_URL", ""))
-        eval_alembic_head(self.repo_root)
+        # R3-A1: alembic head already verified via profile-driven enforcement above
         # Bind the candidate this run will prove: the LIVE head right now.
         self.candidate_sha = live_head(self.repo_root)
+
+    def _enforce_backend_env_authority(self) -> None:
+        """R3: machine-verify CWD / MPANGO_ENV / temp-DB URL invariants via
+        the SHARED probe and bind a digest over the exact accepted facts.
+        Evidence is a fixed category only — never URL, host, port, path, or
+        credential values."""
+        module, _tampered = load_backend_env_module()
+        self.authority_cwd = module.canonical_backend_dir(__file__)
+        db_url = os.environ.get("TEST_DATABASE_URL", "")
+        try:
+            facts = module.backend_env_facts(
+                url=db_url,
+                mpango_env=os.environ.get("MPANGO_ENV", ""),
+                allowed_ports_raw=os.environ.get(TEMPDB_PORTS_VAR, ""),
+                allowed_hosts_raw=os.environ.get(TEMPDB_HOSTS_VAR, ""),
+                authority_cwd=self.authority_cwd,
+            )
+        except module.BackendEnvAuthorityError as err:
+            raise TrapFired(*BACKEND_ENV_TRAP, True,
+                            {"backend_env": err.category}) from None
+        digest_input = "|".join([
+            facts["mpango_env"], facts["db_name"], str(facts["port"]),
+            facts["host"], facts["allowed_ports"], facts["allowed_hosts"],
+            str(facts["authority_cwd"]),
+        ])
+        self.tempdb_binding_sha = module.binding_digest(digest_input)
+        # R3-A1: the alembic binding travels separately (expected/actual/
+        # parent), so the child recomputation stays a mirror of these facts.
+        self.alembic_binding_sha = module.binding_digest("|".join([
+            self.alembic_expected or "", self.alembic_actual or "",
+            self.alembic_parent or ""]))
+
+    def _current_tempdb_binding(self) -> str:
+        """Recompute the binding digest from CURRENT process state."""
+        module, _tampered = load_backend_env_module()
+        db_url = os.environ.get("TEST_DATABASE_URL", "")
+        try:
+            facts = module.backend_env_facts(
+                url=db_url,
+                mpango_env=os.environ.get("MPANGO_ENV", ""),
+                allowed_ports_raw=os.environ.get(TEMPDB_PORTS_VAR, ""),
+                allowed_hosts_raw=os.environ.get(TEMPDB_HOSTS_VAR, ""),
+                authority_cwd=self.authority_cwd,
+            )
+        except module.BackendEnvAuthorityError:
+            return ""
+        digest_input = "|".join([
+            facts["mpango_env"], facts["db_name"], str(facts["port"]),
+            facts["host"], facts["allowed_ports"], facts["allowed_hosts"],
+            str(facts["authority_cwd"]),
+        ])
+        return module.binding_digest(digest_input)
+
+    def _alembic_drift(self) -> str | None:
+        """Recompute expected-consistency from the CURRENT tree: returns a
+        fixed drift category or None when the actual head still equals the
+        bound expected head and parent lineage."""
+        module, _tampered = load_backend_env_module()
+        versions_dir = getattr(self, "alembic_versions_dir", None) or (
+            Path(self.repo_root) / "backend" / "alembic" / "versions")
+        try:
+            scan = module.alembic_scan(versions_dir)
+        except module.BackendEnvAuthorityError:
+            return "alembic_tree_unreadable"
+        if len(scan["heads"]) != 1:
+            return "alembic_multiple_heads"
+        actual = scan["heads"][0]
+        if actual != self.alembic_expected:
+            return "alembic_head_drift"
+        entry = scan["revisions"][actual]
+        if self.alembic_parent and entry["down"] != self.alembic_parent:
+            return "alembic_parent_drift"
+        return None
+
+    def _current_alembic_actual(self) -> str:
+        """Recompute the actual alembic head from the CURRENT repo tree."""
+        module, _tampered = load_backend_env_module()
+        try:
+            scan = module.alembic_scan(
+                Path(self.repo_root) / "backend" / "alembic" / "versions")
+            if len(scan["heads"]) == 1:
+                return scan["heads"][0]
+        except module.BackendEnvAuthorityError:
+            pass
+        return ""
 
     def collect_proven(self, *, profile_path, manifest_path, proof_out,
                        sessionstart_out, collect_target) -> None:
@@ -799,6 +1055,16 @@ class AuthorityRunner:
         target = Path(collect_target)
         if not target.is_absolute():
             target = self.repo_root / target
+        child_env["ET1_RUNNER_TEMPDB_BINDING_SHA"] = self.tempdb_binding_sha or ""
+        child_env["ET1_RUNNER_ALEMBIC_EXPECTED"] = self.alembic_expected or ""
+        child_env["ET1_RUNNER_ALEMBIC_PARENT"] = self.alembic_parent or ""
+        # R3: the collect child runs in the SAME canonical backend/ CWD the
+        # authority command will use; the entry shim reaches harness-
+        # governance via PYTHONPATH (absolute), never by trusting the CWD.
+        child_env["PYTHONPATH"] = str(gov_dir.resolve())
+        child_env["ET1_RUNNER_PLUGIN_FILE"] = str(
+            (gov_dir / "tests" / "pytest_et1_collector.py").resolve()
+        )
         cmd = [
             sys.executable, "-m", "pytest",
             "-p", PLUGIN_MODULE,
@@ -819,6 +1085,8 @@ class AuthorityRunner:
         self.collect_child_summary = verify_child_proof(
             child, self.original_nonce, self.expected_nodes,
             redis_module_sha=self.redis_module_sha,
+            tempdb_binding_sha=self.tempdb_binding_sha or "",
+            alembic_actual_head=self.alembic_actual or "",
         )
 
     def authorize(self, db_url: str, allow_flag: str) -> None:
@@ -843,6 +1111,17 @@ class AuthorityRunner:
             if sha256_file(self.manifest_sha_file) != self.manifest_sha:
                 raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "AUTHORIZED", True,
                                 {"reason": "manifest_drift"})
+        # R3: the accepted CWD/env facts must still bind exactly at authorize.
+        if self.tempdb_binding_sha is not None:
+            if self._current_tempdb_binding() != self.tempdb_binding_sha:
+                raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "AUTHORIZED", True,
+                                {"backend_env": "drift_at_authorize"})
+        # R3-A1: expected head / actual head / lineage must still hold.
+        if self.alembic_expected is not None:
+            drift = self._alembic_drift()
+            if drift:
+                raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "AUTHORIZED", True,
+                                {"alembic": drift})
         # R2-R2: the shared Redis module's raw bytes must still match the
         # preflight binding by the time the run is authorized.
         if self.redis_module_sha is not None:
@@ -928,13 +1207,33 @@ class AuthorityRunner:
             if current_module != self.redis_module_sha:
                 raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "RUNNING", True,
                                 {"redis_module": "drift_at_launch"})
+        # R3 contract 8: CWD/env drift between the child proof and the
+        # launch blocks the authority command.
+        if self.tempdb_binding_sha is not None:
+            pass  # (binding recheck happens below alongside alembic)
+        # R3-A1: alembic expected/actual/lineage JIT recheck before launch.
+        if self.alembic_expected is not None:
+            drift = self._alembic_drift()
+            if drift:
+                raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "RUNNING", True,
+                                {"alembic": drift})
+        if self.tempdb_binding_sha is not None:
+            if self._current_tempdb_binding() != self.tempdb_binding_sha:
+                raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "RUNNING", True,
+                                {"backend_env": "drift_at_launch"})
+            if self.authority_cwd is None or not self.authority_cwd.is_dir():
+                raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "RUNNING", True,
+                                {"backend_env": "cwd_not_canonical"})
         if command is None:
             return 0
         if self.sentinel_calls:
             raise TrapFired("TRAP_PHASE_CONTINUE_AFTER_FAIL", 16, "RUNNING", True,
                             {"reason": "already_launched"})
         self.sentinel_calls += 1  # negative control: exactly-one-launch counter
-        result = subprocess.run(command, shell=False)
+        result = subprocess.run(
+            command, shell=False,
+            cwd=str(self.authority_cwd) if self.authority_cwd else None,
+        )
         self.command_exit_code = result.returncode
         self._to("FINISHED")
         return result.returncode
@@ -971,6 +1270,11 @@ class AuthorityRunner:
             "redis_module_bound": bool(self.redis_module_sha),
             "redis_module_sha_chars": len(self.redis_module_sha or ""),
             "redis_module_match": child.get("redis_module_match", False),
+            "backend_env_bound": bool(self.tempdb_binding_sha),
+            "tempdb_binding_sha_chars": len(self.tempdb_binding_sha or ""),
+            "tempdb_match": child.get("tempdb_match", False),
+            "alembic_expected_bound": bool(self.alembic_expected),
+            "alembic_match": child.get("alembic_match", False),
             "collect_child_spawns": self.collect_spawns,
             "sentinel_calls": self.sentinel_calls,
             "command_exit_code": self.command_exit_code,
@@ -1175,17 +1479,21 @@ def self_test() -> int:
         "nonce": "T" * 32,
         "sha_match": {"candidate": True, "profile": True, "manifest": True},
         "redis_module_sha": "M" * 64,
+        "tempdb_binding_sha": "T" * 64,
+        "alembic_actual_head": "037_payment_declarations_schema",
         "collected_node_ids": ["N1"],
     }
     try:
-        verify_child_proof(tampered, "R" * 32, ["N1"], redis_module_sha="M" * 64)
+        verify_child_proof(tampered, "R" * 32, ["N1"], redis_module_sha="M" * 64,
+                           tempdb_binding_sha="T" * 64)
         check("nonce mismatch traps", False)
     except TrapFired as fired:
         check("nonce mismatch traps", fired.evidence.get("reason") == "nonce_mismatch")
     # A foreign proof origin (not the runner-owned plugin schema) must trap.
     forged_origin = dict(tampered, nonce="R" * 32, schema="someone-else/1")
     try:
-        verify_child_proof(forged_origin, "R" * 32, ["N1"], redis_module_sha="M" * 64)
+        verify_child_proof(forged_origin, "R" * 32, ["N1"], redis_module_sha="M" * 64,
+                           tempdb_binding_sha="T" * 64)
         check("foreign proof origin traps", False)
     except TrapFired as fired:
         check("foreign proof origin traps", fired.evidence.get("reason") == "foreign_proof_origin")
@@ -1193,15 +1501,29 @@ def self_test() -> int:
     honest = dict(tampered, nonce="R" * 32)
     check("honest child proof verifies",
           verify_child_proof(honest, "R" * 32, ["N1"],
-                             redis_module_sha="M" * 64)["nonce_match"] is True)
+                             redis_module_sha="M" * 64,
+                             tempdb_binding_sha="T" * 64,
+                             alembic_actual_head="037_payment_declarations_schema")["nonce_match"] is True)
 
     # Duplicate node ids must be named, not folded into set comparison.
     dup = dict(honest, collected_node_ids=["N1", "N1"])
     try:
-        verify_child_proof(dup, "R" * 32, ["N1"], redis_module_sha="M" * 64)
+        verify_child_proof(dup, "R" * 32, ["N1"], redis_module_sha="M" * 64,
+                           tempdb_binding_sha="T" * 64,
+                           alembic_actual_head="037_payment_declarations_schema")
         check("duplicate node ids trap", False)
     except TrapFired as fired:
         check("duplicate node ids trap", fired.evidence.get("reason") == "duplicate_node_ids")
+
+    # R3: a forged/mismatched temp-DB binding is rejected by name.
+    forged_tempdb = dict(honest, tempdb_binding_sha="F" * 64)
+    try:
+        verify_child_proof(forged_tempdb, "R" * 32, ["N1"], redis_module_sha="M" * 64,
+                           tempdb_binding_sha="T" * 64)
+        check("forged tempdb digest traps", False)
+    except TrapFired as fired:
+        check("forged tempdb digest traps",
+              fired.evidence.get("backend_env") == "tempdb_digest_mismatch")
 
     # R2-R2 module binding: a preloaded foreign module under the fixed key
     # is tamper evidence; a fresh canonical load still succeeds.

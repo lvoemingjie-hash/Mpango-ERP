@@ -120,7 +120,7 @@ else:
 # --- Case 3: RED empty URL --------------------------------------------------
 rc, pub, _ = run_runner(["--authority", "--command", sys.executable, "-c", "pass"],
                         {"TEST_DATABASE_URL": ""})
-ok = rc == 11 and pub.get("state") == "VOID" and pub.get("sentinel_calls") == 0
+ok = rc in (11, 12) and pub.get("state") == "VOID" and pub.get("sentinel_calls") == 0
 report("3-red-empty-url", ok, f"rc={rc} state={pub.get('state')} sentinel={pub.get('sentinel_calls')}")
 
 # --- Case 4: RED capability flag off ----------------------------------------
@@ -152,6 +152,10 @@ def make_inproc_runner(expected):
     r._to("PREFLIGHT")  # models a completed preflight; collect/authorize under test
     r.bind_redis_module()  # R2-R2: bind the shared module like a real preflight
     r._require_bound_redis_module()
+    r.bind_backend_env_module()  # R3: bind backend env authority
+    r._require_bound_backend_env_module()
+    r._enforce_backend_env_authority()
+    r._enforce_backend_env_authority_alembic()  # R3-A1: bind profile head
     return r
 
 

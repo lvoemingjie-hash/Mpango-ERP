@@ -19,14 +19,14 @@ GT02,gates,release validator,PASS-as-expected,exit 3; only pre-existing debts DE
 GT03,gates,git diff --check HEAD^1..HEAD,PASS,exit 0
 GT04,gates,detect-secrets read-only hook,PASS,true exit code 0 (no pipes); baseline sha256 c8f3aa245b94... identical before/after; baseline NOT rewritten
 GT05,gates,strict encoding over 113 merge-diff paths,PASS,UTF-8; no BOM; no NUL; no CR; no U+FFFD
-CL01,classification,85 RED / 9 GREEN not re-run,PASS-as-instructed,M1_SAME_TREE_REUSED_EVIDENCE — M1 executed them on rehearsal merge ad3f0d24 whose tree is the same 9d35b301...; tree-SHA identity re-proven this round
+EV01,classification,85 RED / 9 GREEN not re-run,PASS-as-instructed,M1_SAME_TREE_REUSED_EVIDENCE — M1 executed them on rehearsal merge ad3f0d24 whose tree is the same 9d35b301...; tree-SHA identity re-proven this round
 EW01,wording,REMOTE_PUSH_SUCCEEDED,PASS,true — M2 push rc 0; remote tip re-verified == cdb39e96
 EW02,wording,REMOTE_ENFORCEMENT_NOT_VERIFIED,PASS,true — re-affirmed
 EW03,wording,push-proves-enforcement claim,RETRACTED,M2 close-out sentence 'first corroboration of the remote-enforcement caveat' withdrawn; successful push proves only REMOTE_PUSH_SUCCEEDED
 PUB01,publish,report branch from MERGE,PASS,reports/dc12r1-mvp-l1-he2-et1-r2-r2-r1-m2-e1-post-merge-evidence-closure-2026-08-29 created at cdb39e96
 PUB02,publish,report commit parent == MERGE,PASS,parent = cdb39e96a50b308aff91d4e94fd8526e7540d921 (verified pre-push)
 PUB03,publish,only review.md + findings.csv added,PASS,git diff --name-only cdb39e96..HEAD = review.md findings.csv (verify at push)
-PUB04,publish,local == remote,DEFER-TO-PUSH,recorded post-push in transcript (must be OK to close)
-CL01,cleanup,worktree removed,PASS,../he2et1_m2e1 deleted (recorded post-publish)
-CL02,cleanup,GitNexus temp index removed,PASS,.gitnexus inside worktree deleted with it (recorded post-publish)
-CL03,cleanup,PG/Redis + volumes + network removed,PASS,docker rm -f -v both containers; network he2et1m2e1_net removed; ports 15452/16385 CLOSED; credentials never published (recorded post-publish)
+PUB04,publish,original M2-E1 publication facts,ORIGINAL_M2_E1_LOCAL_REMOTE=PASS,ORIGINAL_M2_E1_PUBLICATION_SHA=925df992a3b80ef044cc41f3957cea9e9f03e2c5 (push rc 0; remote tip re-verified == this sha immediately after push). E2's own sha/local==remote is NOT pre-claimed here; it is reported externally after push.
+CU01,cleanup,worktree removed,PASS,../he2et1_m2e1 deleted (recorded post-publish)
+CU02,cleanup,GitNexus temp index removed,PASS,.gitnexus inside worktree deleted with it (recorded post-publish)
+CU03,cleanup,PG/Redis + volumes + network removed,PASS,docker rm -f -v both containers; network he2et1m2e1_net removed; ports 15452/16385 CLOSED; credentials never published (recorded post-publish)

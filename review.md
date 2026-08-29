@@ -92,3 +92,27 @@ Report commit parent == `cdb39e96a50b308aff91d4e94fd8526e7540d921`
 (verified). STOP. H2-C, PRICING, SKU and deployment remain frozen; the
 formal merge itself is complete and was NOT reverted or re-pushed; the
 push proves only `REMOTE_PUSH_SUCCEEDED`.
+
+## 8. Publication evidence model (M2-E2 appendix)
+
+PUBLICATION_EVIDENCE_MODEL: a committed report records PRIOR IMMUTABLE
+publication facts — e.g. PUB04 records
+ORIGINAL_M2_E1_PUBLICATION_SHA=925df992a3b80ef044cc41f3957cea9e9f03e2c5
+with ORIGINAL_M2_E1_LOCAL_REMOTE=PASS (proven immediately after that
+push). A report commit can never truthfully pre-claim its own final SHA
+or its own local==remote equality, because both are determined only at
+push time; the E2 tip's equality is therefore proven after push and
+reported in the external final response only.
+
+Machine-readable fixes in this commit (findings.csv): the duplicate
+finding ID CL01 is resolved — the classification row is renamed EV01
+(M1_SAME_TREE_REUSED_EVIDENCE) and the three cleanup rows are renamed
+CU01/CU02/CU03; all 31 finding IDs are globally unique and the CSV
+strict-parses. PUB04 no longer reads DEFER-TO-PUSH.
+
+Unchanged and re-affirmed: MERGE_SHA=cdb39e96a50b308aff91d4e94fd8526e7540d921;
+REMOTE_PUSH_SUCCEEDED=true; REMOTE_ENFORCEMENT_NOT_VERIFIED=true; every
+execution-gate result in sections 4–5. E2 verdict:
+PASS_FOR_CTO_DC12R1_MVP_L1_HE2_ET1_R2_R2_R1_M2_E2_PUBLICATION_AND_
+FINDINGS_INTEGRITY_CLOSURE (publication metadata only; nothing re-run;
+formal merge remains complete at cdb39e96).

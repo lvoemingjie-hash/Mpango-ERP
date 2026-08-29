@@ -1,0 +1,15 @@
+HC01 valid portal shows Forgot password entry
+HC02 invalid portal hides entry with zero POST
+HC03 forgot page renders email form
+HC04 forgot page 390px no overflow (simulated)
+HC05 invalid email blocked with zero POST
+HC06 genuine double click single POST single issuance
+HC07 established retailer correct supplier
+HC08 unknown account neutral result
+HC09 genuine wrong supplier neutral result
+HC10 unverified account neutral result
+HC12 reset POST observed with full leak scan
+HC13 success returns to canonical portal
+HC14 legacy valid-token link neutral guidance
+HC15 forged token neutral failure
+HC16 real reset form 390px interactive no overflow

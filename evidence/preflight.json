@@ -1,0 +1,13 @@
+{
+ "task_id": "DC-12R1-MVP-L1-J1-H2-C-I1-R1-V1",
+ "candidate": "42c5d3286cacaf48604550eecd881e379cc76818",
+ "tree": "b89bf1dfe522506fc3084f53b48b27e5094614bb",
+ "verification_tier": "V4_INDEPENDENT_LINUX_AUTHORITY",
+ "preflight": "PASS",
+ "runner_profile": "AUTHORITY_H2C_BACKEND",
+ "baseline_sha": "e2274af7816b80d0efb83a8294b2c6503e246b19",
+ "presence": {"TEST_DATABASE_URL_set": true, "MPANGO_ALLOW_TEMP_DB_CREATE": "1", "PW1R3_TEST_REDIS_URL_set": true, "J1H2C_RETAILER_EMAIL_validated_offline": true},
+ "pg": {"major": 16, "test_role_rolsuper": false, "test_role_rolcreatedb": true, "unique_alembic_head": "037_payment_declarations_schema"},
+ "redis": {"db15_dbsize_before": 0, "db15_dbsize_after": 0, "sentinel_26379": "unreachable"},
+ "env_vars_proven_by_name_only": ["TEST_DATABASE_URL", "MPANGO_ALLOW_TEMP_DB_CREATE", "PW1R3_TEST_REDIS_URL", "DATABASE_URL", "REDIS_URL", "REPORTING_USER_PASSWORD", "SECRET_KEY", "MPANGO_ENV"]
+}

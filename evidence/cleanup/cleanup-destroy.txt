@@ -1,0 +1,7 @@
+== pre-cleanup task containers ==
+dc12r1i1a-redis7 Up 44 minutes
+dc12r1i1a-pg16 Up 44 minutes
+== destroy ==
+dc12r1i1a-pg16
+dc12r1i1a-redis7
+dc12r1i1a-net

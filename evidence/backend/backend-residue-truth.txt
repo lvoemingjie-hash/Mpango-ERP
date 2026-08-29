@@ -1,0 +1,17 @@
+=== POST-RUN RESIDUE TRUTH 2026-08-29T18:23:18+08:00 ===
+--- Redis DB15 (expect 0)
+0
+--- DB15 keys sample
+(end)
+--- temp DBs created by suite (expect only mpango_erp_test + postgres/template)
+ mpango_erp_test
+ postgres
+ template0
+ template1
+
+--- non-i1run roles created at runtime (dc11t2fr_* family expected 0 now)
+1
+--- h2c residue tables in main DB
+ERROR:  column "code" does not exist
+LINE 2:  (SELECT count(*) FROM retailers WHERE code LIKE 'h2c-%') AS...
+                                               ^

@@ -1,0 +1,7 @@
+
+- generated xml file: /tmp/opencode/dc12r1i1-evidence/backend-fullsuite-authoritative.xml -
+no tests ran in 0.25s
+ERROR: file or directory not found: tests/
+
+RUN_VERDICT=TEST_RED_REAL_COMMAND_NONZERO exit=4 (real test RED; environment stays FINISHED, never VOID)
+AUTHORITY_RUNNER_EXIT_CODE=4

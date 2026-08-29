@@ -1,0 +1,16 @@
+{
+ "collected": 3784,
+ "passed": 3602,
+ "failed": 67,
+ "errors": 21,
+ "skipped": 79,
+ "xfailed": 15,
+ "xpassed": 0,
+ "gap": 0,
+ "frozen_collect_baseline": 3784,
+ "collected_minus_baseline": 0,
+ "run_verdict": "TEST_RED_REAL_COMMAND_NONZERO",
+ "round_verdict": "STOP_AND_REPORT_CTO_WITH_FIRST_AUTHENTIC_RED",
+ "authority_launch_count_in_authoritative_process": 1,
+ "browser_phase": "NOT_RUN_BACKEND_RED_STOP"
+}

@@ -1,0 +1,12 @@
+== post-cleanup containers (expect none) ==
+0
+== volumes (expect none) ==
+0
+== networks (expect none) ==
+0
+== task ports free (expect no listener) ==
+0
+== sentinel 26379 ==
+unreachable-ok
+== credentials env file (expect destroyed=1) ==
+0

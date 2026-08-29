@@ -1,0 +1,14 @@
+{
+  "nonce_chars": 32,
+  "ok": true,
+  "phase": "SESSIONSTART",
+  "problems": [],
+  "redis_module_ok": true,
+  "redis_module_sha_chars": 64,
+  "role": {
+    "rolcreatedb": true,
+    "rolsuper": false,
+    "verified": true
+  },
+  "schema": "harness-governance/pytest_et1_collector_sessionstart/2"
+}

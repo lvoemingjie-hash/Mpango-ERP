@@ -1,0 +1,318 @@
+[
+ {
+  "node": "tests.test_alembic_migrations.TestAlembicMigrationIsolation::test_migration_creates_tenant_schema",
+  "reason": "Requires running Alembic CLI - integration test"
+ },
+ {
+  "node": "tests.test_alembic_migrations.TestAlembicMigrationIsolation::test_tenant_migration_does_not_affect_public_schema",
+  "reason": "Requires running Alembic CLI - integration test"
+ },
+ {
+  "node": "tests.test_alembic_migrations.TestAlembicMigrationIsolation::test_public_migration_does_not_create_tenant_tables",
+  "reason": "Requires running Alembic CLI - integration test"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveSchemaContract::test_live_has_retailer_id",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveSchemaContract::test_live_retailer_id_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveSchemaContract::test_live_has_transaction_id",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveSchemaContract::test_live_transaction_id_nullable",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveSchemaContract::test_live_has_order_id_index",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveSchemaContract::test_live_has_transaction_id_partial_unique",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_retailer_id",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_retailer_id_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_sku_id",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_sku_id_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_price",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_price_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_created_at_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_updated_at_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_is_deleted_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_unique_constraint",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_check_constraint",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_retailer_id_index",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_payments_schema_contract.TestLiveRetailerPricesContract::test_live_has_sku_id_index",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_tables_exist_in_public",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_exact_columns_extra_forbid[durable_approval_audit_events-expected0]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_exact_columns_extra_forbid[durable_approval_decisions-expected1]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_exact_columns_extra_forbid[durable_approval_idempotency_keys-expected2]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_exact_columns_extra_forbid[durable_approval_requests-expected3]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_exact_columns_extra_forbid[durable_approval_retention_jobs-expected4]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_key_types",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_no_execution_and_redaction_defaults",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_indexes_exist_in_public[durable_approval_audit_events-expected0]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_indexes_exist_in_public[durable_approval_decisions-expected1]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_indexes_exist_in_public[durable_approval_idempotency_keys-expected2]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_indexes_exist_in_public[durable_approval_requests-expected3]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_indexes_exist_in_public[durable_approval_retention_jobs-expected4]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_unique_indexes_present",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_decision_foreign_keys",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_action_class-expected0]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_actor_role-expected1]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_audit_result-expected2]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_decision-expected3]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_event_type-expected4]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_execution_gate-expected5]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_identity_context-expected6]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_job_status-expected7]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_job_type-expected8]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_retention_class-expected9]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_scope_key-expected10]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_source_status-expected11]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_state-expected12]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_storage_class-expected13]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_value_sets[durable_approval_validation_status-expected14]",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_platform_p21_durable_approval_schema::test_enum_types_live_in_public",
+  "reason": "refusing to run against the developer mpango_erp database; point TEST_DATABASE_URL at an ephemeral DB"
+ },
+ {
+  "node": "tests.test_route_coverage.TestOpenAPIRouteCoverage::test_all_openapi_paths_have_routes",
+  "reason": "docs/contracts/openapi.yaml not yet generated"
+ },
+ {
+  "node": "tests.test_route_coverage.TestOpenAPISpecLoading::test_openapi_spec_file_exists",
+  "reason": "docs/contracts/openapi.yaml not yet generated"
+ },
+ {
+  "node": "tests.test_route_coverage.TestOpenAPISpecLoading::test_openapi_spec_is_valid_yaml",
+  "reason": "docs/contracts/openapi.yaml not yet generated"
+ },
+ {
+  "node": "tests.test_s3_profiling.TestSQLProfilingMiddleware::test_profiling_headers_on_health_endpoint",
+  "reason": "SQL profiling disabled in current environment (ENABLE_SQL_PROFILING != true)"
+ },
+ {
+  "node": "tests.test_s3_profiling.TestSQLProfilingMiddleware::test_profiling_skips_metrics_endpoint",
+  "reason": "SQL profiling disabled in current environment (ENABLE_SQL_PROFILING != true)"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveTenantSchemaBootstrapped::test_all_required_tables_present",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveAdminPermissionsComplete::test_admin_user_exists_and_is_active",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveAdminPermissionsComplete::test_admin_has_at_least_one_role",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveAdminPermissionsComplete::test_admin_role_has_all_required_permissions",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestNearRealContextualJwtFlow::test_encode_decode_roundtrip",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestNearRealContextualJwtFlow::test_decoded_token_is_contextual_not_identity",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_dashboard_kpi_summary",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_dashboard_sales_trend",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_dashboard_cash_flow",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_orders_list",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_skus_list",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_stock_list_endpoint",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_pricing_prices",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_payments_list",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_retailers_list",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_retailer_bindings",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestLiveEndpointSmoke::test_exports_status",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestBusinessEmptyStateProof::test_pricing_non_200_is_business_not_auth",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s3b_fresh_tenant_live_runtime_proof.TestBusinessEmptyStateProof::test_exports_non_200_is_business_not_auth",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'paymen"
+ },
+ {
+  "node": "tests.test_s5c_runtime_sku_import_http_integration::test_sku_import_preview_validate_apply_happy_path",
+  "reason": "runtime import HTTP proof requires MPANGO_RUNTIME_BASE_URL, MPANGO_RUNTIME_TEST_EMAIL, MPANGO_RUNTIME_TEST_PASSWORD, MPANGO_RUNTIME_TENANT_ID"
+ },
+ {
+  "node": "tests.test_s5c_runtime_sku_import_http_integration::test_sku_import_preview_returns_401_without_token",
+  "reason": "runtime import HTTP proof requires MPANGO_RUNTIME_BASE_URL, MPANGO_RUNTIME_TEST_EMAIL, MPANGO_RUNTIME_TEST_PASSWORD, MPANGO_RUNTIME_TENANT_ID"
+ }
+]

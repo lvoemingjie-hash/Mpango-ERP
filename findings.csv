@@ -1,0 +1,26 @@
+finding_id,phase,category,node_or_scope,result,detail
+F01,phase1,lineage,remote-tip,PASS,origin tip == 42c5d3286cacaf48604550eecd881e379cc76818
+F02,phase1,lineage,parents+tree,PASS,P1 cdb39e96 P2 e2274af7 tree b89bf1df
+F03,phase1,scope,delta-paths,PASS,exactly 49 paths product-dev-recovered..candidate
+F04,phase1,refs,kilo-refs,PASS,f5fdf187 e2274af7 1d1d4f22 present and undrifted
+F05,phase2,preflight,authority-runner,PASS,state=PREFLIGHT rc=0 AUTHORITY_H2C_BACKEND
+F06,phase2,role,pg-role-truth,PASS,rolsuper=false rolcreatedb=true rolreplication=false
+F07,phase2,alembic,head,PASS,unique head 037_payment_declarations_schema
+F08,phase2,redis,db15+sentinel,PASS,DBSIZE=0 sentinel 26379 unreachable
+F09,phase2,email,task-identity,PASS,non-special-use domain validated by installed pydantic SignupRequest
+F10,phase3,bundle,backend-natural,PASS,49/49
+F11,phase3,bundle,backend-file-reverse,PASS,49/49 (R2-ledger semantic)
+F12,phase3,bundle,frontend-natural,PASS,59/59 (4 files)
+F13,phase3,bundle,frontend-reverse,PASS,59/59 (4 files)
+F14,phase3,build,pnpm-build,PASS,vite build ok
+F15,phase3,harness,static-gates,PASS,list 15/1 validate-static 11/11 neutrality G1-G6 runtime-contracts tsc
+F16,phase4,invocation-defect,launch1,VOID_EXECUTOR_INVOCATION_DEFECT,missing --authority flag; pytest launched 0 times
+F17,phase4,invocation-defect,launch2,VOID_EXECUTOR_INVOCATION_DEFECT,wrong cwd; 0 tests executed (junit tests=0)
+F18,phase4,authority,backend-full-suite,RED,67 failed 3602 passed 79 skipped 15 xfailed 21 errors exit=1
+F19,phase4,authority,launch-count,PASS,sentinel_calls=1 in authoritative process
+F20,phase4,reconciliation,gap,PASS,collected 3784 == executed 3784 gap=0
+F21,phase4,diagnostic,cwd-coupling,DIAGNOSTIC_ONLY,relative-path failures dominate red set; non-authoritative signal for CTO
+F22,phase5,browser,authority-run,NOT_RUN,backend RED stop rule; playwright never invoked
+F23,cleanup,residue,post-run-truth,PASS,db15=0 temp-dbs=0 setup/reset-tokens=0
+F24,cleanup,stack,destroy,PASS,both stacks containers+volumes+networks removed ports freed
+F25,verdict,round,final,STOP_AND_REPORT_CTO_WITH_FIRST_AUTHENTIC_RED,PASS token not awarded

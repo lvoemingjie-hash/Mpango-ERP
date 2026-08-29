@@ -1,0 +1,32 @@
+id,area,check,result,evidence
+PG01,proof-gate,git fetch --all --prune,PASS,no errors
+PG02,proof-gate,TARGET == live remote,PASS,d9dc2e4130ea87a57d433dfadeb2f2736576fac6 == origin/product-dev-recovered
+PG03,proof-gate,SOURCE == live remote,PASS,08d1ed4d6140d9c35c294d1126eedae22c596400 == origin/codex/…ct2-current-truth-sync-2026-08-30
+PG04,proof-gate,M0_REPORT == live remote,PASS,c4ac2a8cdc91508884f35a621d0f84334b6684d2 == origin/reports/…ct2-m0-current-truth-docs-merge-readiness-rehearsal-2026-08-30
+PG05,proof-gate,SOURCE^ == TARGET,PASS,parent of 08d1ed4d is d9dc2e41
+PG06,proof-gate,TARGET..SOURCE 4 files,PASS,CTO_CURRENT_OPS.md + PROJECT.md + execution_queue.md + ct2_current_truth.md
+MR01,merge,isolated worktree from exact TARGET,PASS,../he2et1_ct2m1 at d9dc2e41 on integration branch
+MR02,merge,git merge --no-ff --no-commit SOURCE,PASS,exit 0
+MR03,merge,zero conflicts / zero manual edits,PASS,git status clean immediately post-merge
+MR04,merge,MERGE_HEAD == SOURCE,PASS,MERGE_HEAD = 08d1ed4d
+MR05,merge,staged paths == TARGET..SOURCE,PASS,4 paths set-equal
+MR06,merge,staged tree == SOURCE tree,PASS,d19a35527a6c32e6ac46859d2fbaac5b4ef1af72 == both
+GT01,gates,GitNexus analyze,PASS,exit 0; indexed d9dc2e4 in merge worktree
+GT02,gates,GitNexus status,PASS,Indexed commit == Current commit
+GT03,gates,GitNexus detect-changes --scope staged,PASS,true exit 0; 4 files / 36 symbols / 0 processes / risk low
+GT04,gates,git diff --cached --check,PASS,exit 0
+GT05,gates,detect-secrets read-only hook,PASS,true exit 0; baseline SHA-256 c8f3aa245b94... identical before/after; baseline NOT rewritten
+GT06,gates,strict encoding 4 docs,PASS,UTF-8; no BOM; no NUL; no CR; no U+FFFD
+GT07,gates,fact-progression compliance,PASS,migration 038 not in baseline; H2C not merged; browser NOT_RUN; SKU not candidate; PRICING not started — correctly documented
+X01,limits,product tests/PG/Redis/Playwright,NOT-RUN,per prohibition; not executed
+CL01,cleanup,worktree removed,PASS,../he2et1_ct2m1 deleted
+CL02,cleanup,integration branch deleted,PASS,integration/ct2-m1-docs-controlled-merge-2026-08-30 deleted
+PP01,push,TARGET unchanged pre-push,PASS,cdb39e96 still origin/product-dev-recovered tip
+PP02,push,SOURCE unchanged pre-push,PASS,08d1ed4d still origin/codex tip
+PP03,push,M0_REPORT unchanged pre-push,PASS,c4ac2a8c still origin/reports tip
+PP04,push,normal push (no force),PASS,d9dc2e41..24a28d76 fast-forward on product-dev-recovered
+PP05,push,post-push product tip,PASS,origin/product-dev-recovered == 24a28d76
+PP06,push,post-push refs no drift,PASS,SOURCE/KILO/LUBUNTU/M1-E1/main all unchanged
+LIM01,limits,remote enforcement,NOT_VERIFIED,REMOTE_ENFORCEMENT_NOT_VERIFIED
+LIM02,limits,H2-C/PRICING/SKU/deployment,FROZEN,continue frozen per M2-E1 carry-forward
+LIM03,limits,merge approval scope,NOTED,CONTROLLED_DOCUMENTATION_MERGE_ONLY; docs-only merge authorized by CTO

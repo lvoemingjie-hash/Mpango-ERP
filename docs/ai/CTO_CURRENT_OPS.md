@@ -239,8 +239,8 @@ Post-merge validation:
 - Full-suite post-state test-hygiene debt stands at 4 wholesalers /
   0 registrations / 29 uuid-named schemas (4/0/29): attributed to other test
   files that run after the closed module; the module's net contribution is
-  zero and replaying it on a dirty database restores 0/0/0. Unfixed, tracked,
-  non-blocking.
+  zero and replaying it on a dirty database restores 0/0/0. It remains
+  unfixed and is now a pre-delivery evidence blocker under `CQ-TEST-001`.
 - `RT0` remains `BLOCKED_BY_H2_C` (retailer discovery layer missing); no API
   bypass of the missing retailer UI is permitted.
 - H2-C integration candidate `42c5d328` is not merged. Its Lubuntu run was
@@ -251,7 +251,14 @@ Post-merge validation:
   product code, full-suite evidence, browser evidence, and independent final
   review all remain unaccepted.
 - `REMOTE_ENFORCEMENT_NOT_VERIFIED`: remote/server-side enforcement has not
-  been verified.
+  been verified. `CQ-CI-001` requires the actual integration/PR path to run
+  product and read-only security gates before final MVP delivery.
+- The 2026-08-30 source-quality review recorded pre-delivery blockers for
+  dual order-lifecycle authority (`CQ-ORD-001`), stable order-line identity
+  (`CQ-SKU-001`), real-branch CI (`CQ-CI-001`), test residue
+  (`CQ-TEST-001`), duplicate `jsdom` declarations (`CQ-DEP-001`), and the
+  existing HE2 release debts (`CQ-HE2-001`). Canonical register:
+  `docs/planning/2026-08-30_mvp_code_quality_debt_register.md`.
 - Nothing is deployed: no VPS deployment and no real-device acceptance have
   been performed on the current baseline. No customer-ready or
   release-approved claim is made.
@@ -555,8 +562,9 @@ review path, not the current gate state.
 **Active gate:** dual-line pre-delivery execution (see
 `docs/planning/2026-08-26_mvp_pre_delivery_execution_queue.md`).
 
-The current baseline is `d9dc2e41`. Two bounded product lines may progress in
-parallel, and both must close before the pricing implementation chain begins:
+The current product-code baseline is `d9dc2e41`. Two bounded product lines may
+progress in parallel. A cross-cutting lifecycle contract must also close before
+the pricing implementation chain begins:
 
 1. `H2-C` closure: re-integrate the retailer discovery candidate on the current
    baseline, pass a valid backend authority run, then execute its reviewed
@@ -565,14 +573,18 @@ parallel, and both must close before the pricing implementation chain begins:
    `CatalogProduct -> SellableUnit -> CatalogOffer boundary` vertical slice;
    OpenCode2 supplies independent source/runtime/browser review. No candidate
    exists yet and no pricing semantics are authorized.
-3. `PRICING-R0` (freeze base/special-price/order-price/reorder contracts after
-   H2-C and stable catalog identity are accepted)
-4. `PRICING-R1` (SKU base price + per-retailer special price)
-5. `ORDER-PRICE-R1` (one-shot wholesaler price adjustment + retailer
+3. `ORDER-LIFECYCLE-R0` / `CQ-ORD-001`: select one state-transition authority,
+   route all state writes through it, and freeze draft void versus confirmed/
+   paid cancellation semantics before pricing or timeout work.
+4. `PRICING-R0` (freeze base/special-price/order-price/reorder contracts after
+   H2-C, stable catalog identity, and the lifecycle contract are accepted)
+5. `PRICING-R1` (SKU base price + per-retailer special price)
+6. `ORDER-PRICE-R1` (one-shot wholesaler price adjustment + retailer
    confirm/reject/24h timeout)
-6. `REORDER-R1` (reorder from history with current-price re-resolution)
-7. First-use onboarding (首次使用引导)
-8. Full business journey / VPS / real-device final acceptance
+7. `REORDER-R1` (reorder from history with current-price re-resolution)
+8. First-use onboarding (首次使用引导)
+9. Close the remaining `MVP_REQUIRED` quality gates, then run the full business
+   journey / VPS / real-device final acceptance.
 
 Standing boundaries:
 
@@ -580,6 +592,9 @@ Standing boundaries:
   multi-currency questions do not block the MVP queue.
 - Custom SKU fields remain `POST_MVP_DISCOVERY`; SKU-M1 is limited to stable
   product/package identity and immutable order snapshots.
+- New pricing/order/reorder code must follow `CQ-MOD-001` and
+  `CQ-WARN-001`: do not enlarge the existing order route monolith, add
+  `datetime.utcnow()`, or add blanket warning suppression.
 - This queue is planning truth, not implementation authorization; each entry
   still requires its own CTO-authorized gate before product code changes.
 - A local rehearsal or merged browser gate is not a VPS, HTTPS,
@@ -607,14 +622,17 @@ Standing boundaries:
    `c5b66d26` and the J1-H2-A-R2 credential closure merged as `6e9470a1`.
 9. **MVP-L1-J1-H2-B (completed):** wholesaler password recovery and
    test-hygiene closure merged and browser-verified as `436d61e2`.
-10. **Pre-delivery queue (active dual line):** `H2-C` and `SKU-R0-M1-R1` run
-    as separately gated parallel lines; after both merge, continue with
-    `PRICING-R0` → `PRICING-R1` → `ORDER-PRICE-R1` → `REORDER-R1` → first-use
-    onboarding → full business journey / VPS / real-device final acceptance.
+10. **Pre-delivery queue (active dual line plus quality gate):** `H2-C` and
+    `SKU-R0-M1-R1` run as separately gated parallel lines. Before pricing,
+    close `ORDER-LIFECYCLE-R0`; then continue with `PRICING-R0` → `PRICING-R1`
+    → `ORDER-PRICE-R1` → `REORDER-R1` → first-use onboarding → remaining
+    `MVP_REQUIRED` quality closures → full business journey / VPS / real-device
+    final acceptance.
     Details and frozen pricing inputs live in
     `docs/planning/2026-08-26_mvp_pre_delivery_execution_queue.md`.
     `FINANCE_LOCALIZATION_R0 = AUDIT_ONLY_NON_BLOCKING`; custom SKU fields
-    remain `POST_MVP_DISCOVERY`.
+    remain `POST_MVP_DISCOVERY`. Quality dispositions are frozen in
+    `docs/planning/2026-08-30_mvp_code_quality_debt_register.md`.
 11. **S3-S2B-I2C-I3 (deferred post-MVP):** transactional outbox, event emission,
     and provider delivery require separate CTO authorization.
 12. **DB-OPS:** access, backups, restore, monitoring, retention, and incident

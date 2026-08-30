@@ -408,7 +408,23 @@ real browser/mailbox journey.
 3. Dedicated platform operator runtime authentication is incomplete.
 4. User manuals and operator runbooks do not yet match final deployed behavior.
 
-### Tracked known debt (preserved, non-blocking)
+### P1 engineering blockers before pricing or final delivery
+
+1. Order state mutation has two reachable authorities: the canonical
+   `OrderService.transition` path and direct CRUD route paths. The lifecycle
+   contract must be unified before price adjustment, payment acceptance, or
+   24-hour timeout logic is added (`CQ-ORD-001`).
+2. Order lines lack a stable product/package identity despite stale model
+   documentation claiming `product_id`. `SKU-R0-M1-R1` must close this with
+   stable sellable-unit identity plus immutable snapshots, without guessed
+   legacy backfill (`CQ-SKU-001`).
+3. Major product/security workflows do not target the actual
+   `product-dev-recovered` integration path, and remote required-check
+   enforcement is unverified (`CQ-CI-001`).
+4. The complete disposition and acceptance gates are in
+   `docs/planning/2026-08-30_mvp_code_quality_debt_register.md`.
+
+### Tracked known debt and active blockers
 
 1. Full-suite post-state test-hygiene residue of 4 wholesalers /
    0 registrations / 29 uuid-named schemas (4/0/29), externally attributed to
@@ -427,6 +443,11 @@ real browser/mailbox journey.
    verified.
 6. Not deployed: no VPS deployment or real-device acceptance exists for the
    current baseline; no customer-ready or release-approved status is claimed.
+7. `frontend/package.json` has duplicate `jsdom` declarations; resolve to one
+   version and regenerate the lockfile before the final frontend gate
+   (`CQ-DEP-001`).
+8. HE2 release validation remains blocked by the existing auth-critical and
+   commerce-critical tuple debts (`CQ-HE2-001`).
 
 ### Important but later
 
@@ -588,20 +609,29 @@ lines now run in parallel and must both close before pricing implementation:
 2. `SKU-R0-M1-R1` - customer-centered stable catalog identity:
    `CatalogProduct -> SellableUnit -> CatalogOffer boundary`, with immutable
    order snapshots and no pricing implementation
-3. `PRICING-R0` - freeze base-price, customer special-price, order-price
+3. `ORDER-LIFECYCLE-R0` - close `CQ-ORD-001`: one state authority, explicit
+   draft void / confirmed cancel / paid refund semantics, and atomic side
+   effects
+4. `PRICING-R0` - freeze base-price, customer special-price, order-price
    snapshot, price-adjustment, and reorder contracts
-4. `PRICING-R1` - implement SKU base price and single-retailer special price
-5. `ORDER-PRICE-R1` - implement one-shot wholesaler order price adjustment
+5. `PRICING-R1` - implement SKU base price and single-retailer special price
+6. `ORDER-PRICE-R1` - implement one-shot wholesaler order price adjustment
    with retailer confirm/reject/24h timeout
-6. `REORDER-R1` - generate new drafts from historical orders with
+7. `REORDER-R1` - generate new drafts from historical orders with
    current-price re-resolution
-7. First-use onboarding (首次使用引导)
-8. Full business journey / VPS / real-device final acceptance
+8. First-use onboarding (首次使用引导)
+9. Close `CQ-CI-001`, `CQ-TEST-001`, `CQ-DEP-001`, and `CQ-HE2-001`, then
+   run the full business journey / VPS / real-device final acceptance
 
 `FINANCE_LOCALIZATION_R0 = AUDIT_ONLY_NON_BLOCKING`: Uganda/UGX and
 multi-currency questions do not block the MVP queue. Each queue entry still
 requires its own CTO-authorized gate before any product code changes, and the
 queue itself is planning truth, not implementation authorization.
+
+New pricing/order/reorder work is also bound by the quality no-growth rules:
+do not enlarge the existing order route monolith, introduce new
+`datetime.utcnow()` calls, or add blanket warning suppression. Full historical
+module and timezone cleanup remains post-MVP.
 
 #### DC-12R1-S3-S3-D - branded workspace and residual UX closure (after J1)
 

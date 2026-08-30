@@ -1,0 +1,7 @@
+{
+  "state_trace": [
+    "INIT->PREFLIGHT",
+    "PREFLIGHT->COLLECT_PROVEN"
+  ],
+  "transitions_enforced": "ALLOWED_TRANSITIONS"
+}

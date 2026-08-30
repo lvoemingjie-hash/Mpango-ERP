@@ -1,6 +1,21 @@
 # REPORT.md — DC-12R1-MVP-L1-J1-H2-C-I2-E2-B1-R4-V2-R2-E1
 ## VOID Environment Preflight Evidence Publication Closure
 
+> **R2-E2-R1 CORRECTION (2026-08-31):**
+> `CURRENT_R2_E2_R1_VERDICT=PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_C_I2_E2_B1_R4_V2_R2_E2_R1_PUBLICATION_SCANNER_COMMAND_AND_EVIDENCE_TRUTH_CLOSURE`
+> Prior attempt E2 is classified
+> `VOID_EXECUTOR_COMMAND_SELECTION_DEFECT__MUTATING_BASELINE_COMMAND_USED`
+> (zero commits, zero pushes; baseline restored byte-identical; superseded
+> counts not carried forward). E2-R1 re-executes the same two closures with
+> the directive-fixed scanner commands: findings.csv is now strict
+> five-column CSV, and the secret-scan evidence uses separated RAW and
+> BASELINE-AWARE executions (see
+> `R2_E2_R1_PUBLICATION_SCANNER_COMMAND_AND_EVIDENCE_TRUTH_CORRECTION.md`).
+> This upgrades NO product, browser, merge, or release claim. RUN_VERDICT,
+> PRODUCT_VERDICT, BROWSER_STATUS, the causal chain, cleanup facts and all
+> VOID facts below are retained unchanged; `evidence/**` blobs are
+> byte-identical to the E1 publication.
+
 **RUN_VERDICT=VOID_ENVIRONMENT_PRECHECK**
 **OVERALL_STATUS=`STOP_AND_REPORT_CTO_WITH_VOID_ENVIRONMENT_PRECHECK`**
 **CONFIRMED_CAUSE=`EXECUTOR_LAUNCHER_MATERIALIZATION_DATA_LOSS__OWNER_EMAIL_LABEL_OVERWRITTEN`**
@@ -99,7 +114,13 @@ Commit parent == `cbe53626…` (exact); delta vs candidate = the single new
 report directory only; `committed-blob-manifest.csv` stably sorted,
 self-excluding: **missing=0 / extra=0 / mismatch=0**; `git diff --check`
 clean; all published text strict UTF-8, no BOM, no NUL, LF-only;
-`detect-secrets`: **0 findings**; `local == remote` after push; all six
+`detect-secrets`: `ORIGINAL_R2_E1_DETECT_SECRETS_STATEMENT=SUPERSEDED_BY_R2_E2_R1`
+— E2-R1 re-executed the scans with the directive-fixed commands (RAW:
+`detect-secrets scan --all-files <4 files>`; BASELINE-AWARE:
+`detect-secrets-hook --json --baseline .secrets.baseline <4 files>`;
+baseline provably byte-unchanged). Execution records (tool version, argv,
+rc, findings, classifications) are external to the scanned files and are
+reported in the closure record; `local == remote` after push; all six
 frozen references unchanged at close; host residue: none
 (`evidence/cleanup-closure.json`, `all_clear=true`).
 

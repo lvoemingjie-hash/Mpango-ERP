@@ -1,0 +1,34 @@
+<testsuites id="" name="" tests="15" failures="0" skipped="0" errors="0" time="32.117997">
+<testsuite name="recovery.spec.ts" timestamp="2026-08-30T11:46:58.266Z" hostname="" tests="15" failures="0" skipped="0" time="27.257" errors="0">
+<testcase name="j1h2c retailer recovery journey › HC01 valid portal shows Forgot password entry" classname="recovery.spec.ts" time="1.936">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC02 invalid portal hides entry with zero POST" classname="recovery.spec.ts" time="1.955">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC03 forgot page renders email form" classname="recovery.spec.ts" time="1.157">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC04 forgot page 390px no overflow (simulated)" classname="recovery.spec.ts" time="1.118">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC05 invalid email blocked with zero POST" classname="recovery.spec.ts" time="1.416">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC06 genuine double click single POST single issuance" classname="recovery.spec.ts" time="1.755">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC07 established retailer correct supplier" classname="recovery.spec.ts" time="1.694">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC08 unknown account neutral result" classname="recovery.spec.ts" time="1.251">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC09 genuine wrong supplier neutral result" classname="recovery.spec.ts" time="1.321">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC10 unverified account neutral result" classname="recovery.spec.ts" time="1.292">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC12 reset POST observed with full leak scan" classname="recovery.spec.ts" time="1.827">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC13 success returns to canonical portal" classname="recovery.spec.ts" time="3.389">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC14 legacy valid-token link neutral guidance" classname="recovery.spec.ts" time="3.316">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC15 forged token neutral failure" classname="recovery.spec.ts" time="1.339">
+</testcase>
+<testcase name="j1h2c retailer recovery journey › HC16 real reset form 390px interactive no overflow" classname="recovery.spec.ts" time="2.491">
+</testcase>
+</testsuite>
+</testsuites>

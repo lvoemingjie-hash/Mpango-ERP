@@ -1,0 +1,112 @@
+{
+  "schema": "j1h2c-reconciliation/1",
+  "preconditionOutcome": "PRECONDITION_PASS",
+  "note": "ids/surfaces/outcomes only; no secrets, emails, tokens, or URLs",
+  "summary": {
+    "browser": {
+      "total": 15,
+      "pass": 15
+    },
+    "static": {
+      "total": 2,
+      "pass": 2
+    },
+    "total": 17,
+    "gap": 0,
+    "incomplete": [],
+    "outcomes": {
+      "pass": 17,
+      "fail": 0,
+      "notRun": 0,
+      "pending": 0
+    },
+    "preconditionOutcome": "PRECONDITION_PASS"
+  },
+  "nodes": [
+    {
+      "nodeId": "HC01",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC02",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC03",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC04",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC05",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC06",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC07",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC08",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC09",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC10",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC12",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC13",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC14",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC15",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC16",
+      "surface": "browser",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC11",
+      "surface": "static",
+      "outcome": "PASS"
+    },
+    {
+      "nodeId": "HC17",
+      "surface": "static",
+      "outcome": "PASS"
+    }
+  ]
+}

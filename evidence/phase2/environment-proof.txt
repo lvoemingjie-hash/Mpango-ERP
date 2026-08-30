@@ -1,0 +1,25 @@
+# DC-12R1-MVP-L1-J1-H2-C-I2-E2-B1-R4-V2 — fresh browser-only runtime proof
+# (labels/categories only; no credential values, no URLs with secrets)
+
+stack:            dc12r1b1r4v2b-* (docker network dc12r1b1r4v2b-net; task-exclusive)
+postgres:         postgres:16-alpine (16.15) @ 127.0.0.1:18545 (loopback only)
+run role:         dc12r1b1r4v2run  rolsuper=f rolcreatedb=t rolcreaterole=t rolreplication=f rolinherit=f
+database:         test_dc12r1b1r4v2_backend (owner = run role)
+redis:            redis:7-alpine (7.4.11) @ 127.0.0.1:16381 (loopback only); PING=PONG
+redis DB15:       DBSIZE=0 before run (fresh)
+sentinel 26379:   UNREACHABLE (connection refused, probed before preflight; runner sentinel_calls=0)
+MPANGO_ENV:       test
+alembic:          upgrade head rc=0 as run role; single head == 037_payment_declarations_schema; heads count=1
+temp-DB:          MPANGO_ALLOW_TEMP_DB_CREATE=1; MPANGO_TEMP_DB_ALLOWED_PORTS=18545; runner temp-DB capability probe PASS; no leftover temp DBs
+backend:          real backend app (MPANGO_ENV=test) on 127.0.0.1:8000; /health=200
+frontend:         Vite dev server pinned 127.0.0.1:5173; /retail/login HTTP 200
+maildir:          task-private, mode 700, EMPTY at run start (retailer mailboxes 0 files)
+ports exclusive:  18545 / 16381 / 8000 / 5173 bound exclusively by this task at run time (verified free before, bound during)
+credentials:      randomly generated per stack; present ONLY in task-private files (mode 600) / process memory; shredded at close
+HE2 runner:       preflight-only PASS state=PREFLIGHT; collect-only PASS count=9/9
+bindings:         child/manifest/profile SHA match=True x3; nonce_match=True; alembic_match=True; redis_module_bound=True; tempdb_match=True; backend-env CWD/MPANGO_ENV/DB binding PASS (see runner-phase2/*.json)
+precedence note:  first fresh stack dc12r1b1r4v2-* was destroyed and shredded after VOID_BROWSER_LAUNCH_1
+                  (launcher-contract precondition defect: public.tenant_registrations not provisioned ->
+                   neutral 401 at precondition w1_established_login_proof; harness correctly failed closed;
+                   17/17 nodes NOT_RUN; zero browser-node executions; no product red, no harness/product byte touched).
+                  The authoritative stack above is a SECOND, fully fresh stack; contaminated DB/Redis/maildir never reused.

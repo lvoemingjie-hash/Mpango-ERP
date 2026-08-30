@@ -1,0 +1,34 @@
+# DC-12R1-MVP-L1-J1-H2-C-I2-E2-B1-R4-V2 — Phase 1 proof gate (labels only)
+
+CANDIDATE:                  cbe5362663128f6b7e6ed551f68b1818e468953b
+  remote match:             origin/zcode/dc12r1-mvp-l1-j1-h2-c-i2-e2-b1-r4-neutrality-runtime-loader-closure-2026-08-30
+KILO_REVIEW:                42d75387f96dcc828e62b5750135d37476dbe2cb
+  remote match:             origin/reports/dc12r1-mvp-l1-j1-h2-c-i2-e2-b1-r4-v1-kilo-bounded-loader-closure-review-2026-08-30
+PRIOR_BACKEND_AUTHORITY:    ef33a8827d4beb6c4eb3ba832c3ba46d440d567a (contained in origin/reports/... and origin/kilo/... remote refs)
+PRODUCT_BASE:               86f41b93a3aa0e3c55724b75fc2e2aa4c6dee35b (contained in origin/zcode/...current-baseline-reintegration...)
+
+CANDIDATE^ == PRODUCT_BASE: 86f41b93a3aa0e3c55724b75fc2e2aa4c6dee35b
+commits PRODUCT_BASE..CANDIDATE: 1
+
+delta files (name-status):
+  A	ai-ledger/product-ai/2026-08-30_dc12r1_mvp_l1_j1_h2_c_i2_e2_b1_r4_neutrality_runtime_loader_closure.md
+  M	j1h2c-retailer-recovery/src/neutrality.ts
+  M	j1h2c-retailer-recovery/tools/check-runtime-contracts.mjs
+  M	j1h2c-retailer-recovery/tools/validate-static.mjs
+
+protected-path byte-identity (changed-file counts vs PRODUCT_BASE):
+  backend: 0
+  frontend: 0
+  harness-governance: 0
+  j1h2b-forgot-reset: 0
+  j1h2c-retailer-recovery/inventory: 0
+  j1h2c-retailer-recovery/tests: 0
+  package.json: 0
+  pnpm-lock.yaml: 0
+  migrations/alembic/lockfile-shaped changes: 0
+
+classification: PRIOR_LUBUNTU_INDEPENDENT_BACKEND_EVIDENCE_REUSED_BY_BYTE_IDENTITY
+  backend/**, frontend/** product code, backend tests, harness-governance/**, migrations, deps and
+  lockfiles are byte-identical between ef33a882's authority base 86f41b93 and this candidate;
+  the ef33a882 3784-node zero-red (3721 passed + 48 skipped + 15 xfailed, failed=0/errors=0) is
+  candidate-scoped by byte identity. Backend full-suite rerun: FORBIDDEN by directive — not executed.

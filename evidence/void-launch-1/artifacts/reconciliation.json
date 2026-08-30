@@ -1,0 +1,130 @@
+{
+  "schema": "j1h2c-reconciliation/1",
+  "preconditionOutcome": "PRECONDITION_FAIL",
+  "note": "ids/surfaces/outcomes only; no secrets, emails, tokens, or URLs",
+  "summary": {
+    "browser": {
+      "total": 15,
+      "pass": 0
+    },
+    "static": {
+      "total": 2,
+      "pass": 0
+    },
+    "total": 17,
+    "gap": 0,
+    "incomplete": [
+      "HC01",
+      "HC02",
+      "HC03",
+      "HC04",
+      "HC05",
+      "HC06",
+      "HC07",
+      "HC08",
+      "HC09",
+      "HC10",
+      "HC12",
+      "HC13",
+      "HC14",
+      "HC15",
+      "HC16",
+      "HC11",
+      "HC17"
+    ],
+    "outcomes": {
+      "pass": 0,
+      "fail": 0,
+      "notRun": 17,
+      "pending": 0
+    },
+    "preconditionOutcome": "PRECONDITION_FAIL"
+  },
+  "nodes": [
+    {
+      "nodeId": "HC01",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC02",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC03",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC04",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC05",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC06",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC07",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC08",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC09",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC10",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC12",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC13",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC14",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC15",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC16",
+      "surface": "browser",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC11",
+      "surface": "static",
+      "outcome": "NOT_RUN"
+    },
+    {
+      "nodeId": "HC17",
+      "surface": "static",
+      "outcome": "NOT_RUN"
+    }
+  ]
+}

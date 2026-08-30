@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
+import sys
 import uuid
 from contextlib import contextmanager
 from decimal import Decimal
@@ -241,7 +243,8 @@ def _sku_m1_schema_contract(connection, schema: str) -> dict[str, list[tuple]]:
     constraints = []
     for row in connection.execute(
         text(
-            "SELECT t.relname AS table_name, c.contype AS constraint_type, "
+            "SELECT t.relname AS table_name, c.conname AS constraint_name, "
+            "c.contype AS constraint_type, "
             "pg_get_constraintdef(c.oid, true) AS definition "
             "FROM pg_constraint c "
             "JOIN pg_class t ON t.oid=c.conrelid "
@@ -268,7 +271,12 @@ def _sku_m1_schema_contract(connection, schema: str) -> dict[str, list[tuple]]:
                 f"{schema}.", "<tenant>."
             )
             constraints.append(
-                (row.table_name, row.constraint_type, re.sub(r"\s+", " ", normalized))
+                (
+                    row.table_name,
+                    row.constraint_name,
+                    row.constraint_type,
+                    re.sub(r"\s+", " ", normalized),
+                )
             )
 
     indexes = []
@@ -482,6 +490,170 @@ def test_real_pg16_preflight_failure_causes_global_zero_tenant_mutation() -> Non
                         ).scalar_one() == 0
             finally:
                 engine.dispose()
+
+
+def test_real_pg16_bootstrap_reconciles_unregistered_pre038_tenant() -> None:
+    source_url = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source_url, "skum1bootstrap") as db_url:
+        config = _alembic_config(db_url)
+        with _database_url_env(db_url):
+            run_alembic_upgrade(config, REV_037)
+            engine = create_engine(_sync_url(db_url), future=True)
+            schema = "t_dev"
+            try:
+                run_coroutine(bootstrap(schema, _async_url(db_url)))
+                with engine.connect() as connection:
+                    _strip_sku_m1_schema(connection, schema)
+                    sku_id = _insert_sku(
+                        connection, schema, code="UNREGISTERED-BOOTSTRAP", with_stock=False
+                    )
+                    connection.commit()
+                    assert connection.execute(
+                        text(
+                            "SELECT count(*) FROM public.tenant_registrations "
+                            "WHERE tenant_schema=:schema"
+                        ),
+                        {"schema": schema},
+                    ).scalar_one() == 0
+
+                run_coroutine(bootstrap(schema, _async_url(db_url)))
+
+                with engine.connect() as connection:
+                    assert connection.execute(
+                        text(f'SELECT catalog_product_id FROM "{schema}".skus WHERE id=:id'),
+                        {"id": sku_id},
+                    ).scalar_one() == sku_id
+                    assert connection.execute(
+                        text(f'SELECT count(*) FROM "{schema}".inventory_stocks WHERE sku_id=:id'),
+                        {"id": sku_id},
+                    ).scalar_one() == 1
+                    constraint_names = set(
+                        connection.execute(
+                            text(
+                                "SELECT c.conname FROM pg_constraint c "
+                                "JOIN pg_class t ON t.oid=c.conrelid "
+                                "JOIN pg_namespace n ON n.oid=t.relnamespace "
+                                "WHERE n.nspname=:schema "
+                                "AND c.conname IN ("
+                                "'fk_skus_catalog_product', "
+                                "'ck_skus_package_quantity_positive', "
+                                "'fk_order_items_sellable_unit', "
+                                "'ck_order_items_identity_status', "
+                                "'ck_order_items_identity_shape')"
+                            ),
+                            {"schema": schema},
+                        ).scalars()
+                    )
+                    assert constraint_names == {
+                        "fk_skus_catalog_product",
+                        "ck_skus_package_quantity_positive",
+                        "fk_order_items_sellable_unit",
+                        "ck_order_items_identity_status",
+                        "ck_order_items_identity_shape",
+                    }
+            finally:
+                engine.dispose()
+
+
+def test_real_pg16_bootstrap_rolls_back_unsafe_missing_stock_reconciliation() -> None:
+    source_url = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source_url, "skum1bootstrapfail") as db_url:
+        config = _alembic_config(db_url)
+        with _database_url_env(db_url):
+            run_alembic_upgrade(config, REV_037)
+            engine = create_engine(_sync_url(db_url), future=True)
+            schema = "t_dev"
+            try:
+                run_coroutine(bootstrap(schema, _async_url(db_url)))
+                with engine.connect() as connection:
+                    _strip_sku_m1_schema(connection, schema)
+                    sku_id = _insert_sku(
+                        connection, schema, code="UNSAFE-MISSING-STOCK", with_stock=False
+                    )
+                    connection.execute(
+                        text(
+                            f'INSERT INTO "{schema}".inventory_movements '
+                            "(sku_id, movement_type, quantity, quantity_before, "
+                            "quantity_after, is_deleted) "
+                            "VALUES (:sku_id, 'adjustment', 4, 0, 4, false)"
+                        ),
+                        {"sku_id": sku_id},
+                    )
+                    connection.commit()
+
+                with pytest.raises(RuntimeError, match="inventory evidence but no stock row"):
+                    run_coroutine(bootstrap(schema, _async_url(db_url)))
+
+                with engine.connect() as connection:
+                    assert connection.execute(
+                        text(
+                            "SELECT count(*) FROM information_schema.tables "
+                            "WHERE table_schema=:schema AND table_name='catalog_products'"
+                        ),
+                        {"schema": schema},
+                    ).scalar_one() == 0
+                    assert connection.execute(
+                        text(
+                            "SELECT count(*) FROM information_schema.columns "
+                            "WHERE table_schema=:schema AND table_name='skus' "
+                            "AND column_name='catalog_product_id'"
+                        ),
+                        {"schema": schema},
+                    ).scalar_one() == 0
+                    assert connection.execute(
+                        text(f'SELECT count(*) FROM "{schema}".inventory_stocks WHERE sku_id=:id'),
+                        {"id": sku_id},
+                    ).scalar_one() == 0
+            finally:
+                engine.dispose()
+
+
+def test_real_pg16_demo_seeder_uses_canonical_catalog_identity() -> None:
+    source_url = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source_url, "skum1demoseed") as db_url:
+        config = _alembic_config(db_url)
+        with _database_url_env(db_url):
+            run_alembic_upgrade(config, REV_038)
+
+        env = os.environ.copy()
+        env["DATABASE_URL"] = db_url
+        env["MPANGO_ENV"] = "test"
+        result = subprocess.run(
+            [sys.executable, "scripts/seed_demo_data.py"],
+            cwd=BACKEND_DIR,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=180,
+            check=False,
+        )
+        assert result.returncode == 0, "demo seeder failed in the throwaway database"
+
+        engine = create_engine(_sync_url(db_url), future=True)
+        schema = "t_a0000000000040008000000000000001"
+        try:
+            with engine.connect() as connection:
+                assert connection.execute(
+                    text(f'SELECT count(*) FROM "{schema}".catalog_products')
+                ).scalar_one() == 10
+                assert connection.execute(
+                    text(
+                        f'SELECT count(*) FROM "{schema}".skus '
+                        "WHERE catalog_product_id IS NOT NULL"
+                    )
+                ).scalar_one() == 10
+                assert connection.execute(
+                    text(f'SELECT count(*) FROM "{schema}".inventory_stocks')
+                ).scalar_one() == 10
+                assert connection.execute(
+                    text(
+                        f'SELECT count(*) FROM "{schema}".order_items '
+                        "WHERE identity_status='stable' "
+                        "AND sellable_unit_id IS NOT NULL AND unit_snapshot IS NOT NULL"
+                    )
+                ).scalar_one() == 10
+        finally:
+            engine.dispose()
 
 
 def test_real_pg16_non_live_registered_tenant_fails_before_any_mutation() -> None:

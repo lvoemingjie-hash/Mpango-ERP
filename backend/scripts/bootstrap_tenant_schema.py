@@ -1444,6 +1444,159 @@ async def _reconcile_s2b_i1(db, ts: str) -> None:
     print(f"[reconcile] {ts}: ensured DC-12R1-S3-S2B-I1 payment_declarations + receipt_sequences + receipt_number")
 
 
+async def _reconcile_catalog_identity(db, ts: str) -> None:
+    """Bring pre-038 bootstrap-only tenants to the SKU-M1 schema contract."""
+    from sqlalchemy import text
+
+    q = f'"{ts}"'
+    required_tables = (
+        "skus",
+        "orders",
+        "order_items",
+        "inventory_stocks",
+        "inventory_movements",
+        "inventory_reservations",
+        "catalog_products",
+    )
+    for table in required_tables:
+        if not await _table_exists(db, ts, table):
+            raise RuntimeError(f"{ts}.{table} is required for catalog identity reconciliation")
+
+    # Fail before changing identity or stock when existing inventory evidence
+    # cannot be represented by one live stock row.
+    unsafe_missing_stock = (await db.execute(text(f"""
+        SELECT s.id
+          FROM {q}.skus s
+          LEFT JOIN {q}.inventory_stocks stock ON stock.sku_id = s.id
+         WHERE s.is_deleted IS FALSE
+           AND stock.id IS NULL
+           AND (
+               EXISTS (
+                   SELECT 1 FROM {q}.inventory_movements movement
+                    WHERE movement.sku_id = s.id AND movement.is_deleted IS FALSE
+               ) OR EXISTS (
+                   SELECT 1 FROM {q}.inventory_reservations reservation
+                    WHERE reservation.sku_id = s.id AND reservation.is_deleted IS FALSE
+               )
+           )
+         LIMIT 1
+    """))).scalar()
+    if unsafe_missing_stock is not None:
+        raise RuntimeError(f"{ts}: active SKU has inventory evidence but no stock row")
+
+    deleted_stock = (await db.execute(text(f"""
+        SELECT s.id
+          FROM {q}.skus s
+          JOIN {q}.inventory_stocks stock ON stock.sku_id = s.id
+         WHERE s.is_deleted IS FALSE AND stock.is_deleted IS TRUE
+         LIMIT 1
+    """))).scalar()
+    if deleted_stock is not None:
+        raise RuntimeError(f"{ts}: active SKU has only a soft-deleted stock row")
+
+    await db.execute(text(f"""
+        ALTER TABLE {q}.skus
+            ADD COLUMN IF NOT EXISTS catalog_product_id UUID,
+            ADD COLUMN IF NOT EXISTS package_quantity NUMERIC(12,3) NOT NULL DEFAULT 1.000
+    """))
+    await db.execute(text(f"""
+        INSERT INTO {q}.catalog_products
+            (id, name, description, category, is_active, created_at, updated_at,
+             is_deleted, deleted_at, created_by, updated_by)
+        SELECT id, name, description, category, is_active, created_at, updated_at,
+               is_deleted, deleted_at, created_by, updated_by
+          FROM {q}.skus
+         WHERE catalog_product_id IS NULL
+        ON CONFLICT (id) DO NOTHING
+    """))
+    await db.execute(text(f"""
+        UPDATE {q}.skus sku
+           SET catalog_product_id = sku.id
+         WHERE sku.catalog_product_id IS NULL
+           AND EXISTS (SELECT 1 FROM {q}.catalog_products product WHERE product.id = sku.id)
+    """))
+    unresolved_identity = (await db.execute(text(
+        f"SELECT id FROM {q}.skus WHERE catalog_product_id IS NULL LIMIT 1"
+    ))).scalar()
+    if unresolved_identity is not None:
+        raise RuntimeError(f"{ts}: existing SKU cannot be mapped by stable UUID")
+
+    await db.execute(text(f"""
+        ALTER TABLE {q}.skus ALTER COLUMN catalog_product_id SET NOT NULL
+    """))
+    await db.execute(text(f"""
+        DO $$ BEGIN
+            ALTER TABLE {q}.skus ADD CONSTRAINT fk_skus_catalog_product
+                FOREIGN KEY (catalog_product_id) REFERENCES {q}.catalog_products(id) ON DELETE RESTRICT;
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    """))
+    await db.execute(text(f"""
+        DO $$ BEGIN
+            ALTER TABLE {q}.skus ADD CONSTRAINT ck_skus_package_quantity_positive
+                CHECK (package_quantity > 0);
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    """))
+    await db.execute(text(
+        f"CREATE INDEX IF NOT EXISTS ix_skus_catalog_product_id ON {q}.skus (catalog_product_id)"
+    ))
+
+    await db.execute(text(f"""
+        INSERT INTO {q}.inventory_stocks (sku_id)
+        SELECT sku.id
+          FROM {q}.skus sku
+          LEFT JOIN {q}.inventory_stocks stock ON stock.sku_id = sku.id
+         WHERE sku.is_deleted IS FALSE AND stock.id IS NULL
+    """))
+
+    await db.execute(text(f"""
+        ALTER TABLE {q}.order_items
+            ADD COLUMN IF NOT EXISTS sellable_unit_id UUID,
+            ADD COLUMN IF NOT EXISTS identity_status VARCHAR(32) NOT NULL DEFAULT 'legacy',
+            ADD COLUMN IF NOT EXISTS unit_snapshot VARCHAR(32)
+    """))
+    await db.execute(text(f"""
+        WITH reservation_proof AS (
+            SELECT order_item_id, min(sku_id::text)::uuid AS sku_id
+              FROM {q}.inventory_reservations
+             WHERE is_deleted IS FALSE
+             GROUP BY order_item_id
+            HAVING count(DISTINCT sku_id) = 1
+        )
+        UPDATE {q}.order_items item
+           SET sellable_unit_id = proof.sku_id,
+               identity_status = 'linked_legacy'
+          FROM reservation_proof proof
+          JOIN {q}.skus sku ON sku.id = proof.sku_id
+         WHERE item.id = proof.order_item_id
+           AND item.sellable_unit_id IS NULL
+           AND item.identity_status = 'legacy'
+    """))
+    await db.execute(text(f"""
+        DO $$ BEGIN
+            ALTER TABLE {q}.order_items ADD CONSTRAINT fk_order_items_sellable_unit
+                FOREIGN KEY (sellable_unit_id) REFERENCES {q}.skus(id) ON DELETE RESTRICT;
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    """))
+    await db.execute(text(f"""
+        DO $$ BEGIN
+            ALTER TABLE {q}.order_items ADD CONSTRAINT ck_order_items_identity_status
+                CHECK (identity_status IN ('legacy', 'linked_legacy', 'stable'));
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    """))
+    await db.execute(text(f"""
+        DO $$ BEGIN
+            ALTER TABLE {q}.order_items ADD CONSTRAINT ck_order_items_identity_shape CHECK (
+                (identity_status = 'legacy' AND sellable_unit_id IS NULL) OR
+                (identity_status = 'linked_legacy' AND sellable_unit_id IS NOT NULL) OR
+                (identity_status = 'stable' AND sellable_unit_id IS NOT NULL AND unit_snapshot IS NOT NULL)
+            );
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    """))
+    await db.execute(text(
+        f"CREATE INDEX IF NOT EXISTS ix_order_items_sellable_unit_id ON {q}.order_items (sellable_unit_id)"
+    ))
+
+
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
     """Create tenant schema and all required tables."""
     from sqlalchemy import text
@@ -1520,15 +1673,16 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
             f'CREATE TABLE IF NOT EXISTS "{ts}".skus ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-            f'catalog_product_id UUID NOT NULL REFERENCES "{ts}".catalog_products(id) ON DELETE RESTRICT,'
+            f'catalog_product_id UUID NOT NULL CONSTRAINT fk_skus_catalog_product '
+            f'REFERENCES "{ts}".catalog_products(id) ON DELETE RESTRICT,'
             "sku_code VARCHAR(64) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL,"
             "description TEXT, unit VARCHAR(32) NOT NULL DEFAULT 'unit',"
-            "package_quantity NUMERIC(12,3) NOT NULL DEFAULT 1.000 CHECK (package_quantity > 0),"
+            "package_quantity NUMERIC(12,3) NOT NULL DEFAULT 1.000 "
+            "CONSTRAINT ck_skus_package_quantity_positive CHECK (package_quantity > 0),"
             "category VARCHAR(64), is_active BOOLEAN NOT NULL DEFAULT true,"
             "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
             "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
             "created_by UUID, updated_by UUID)",
-            f'CREATE INDEX IF NOT EXISTS ix_skus_catalog_product_id ON "{ts}".skus (catalog_product_id)',
 
             f'CREATE TABLE IF NOT EXISTS "{ts}".inventory_stocks ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -1565,7 +1719,8 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             f'CREATE TABLE IF NOT EXISTS "{ts}".order_items ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
             f'order_id UUID NOT NULL REFERENCES "{ts}".orders(id) ON DELETE CASCADE,'
-            f'sellable_unit_id UUID REFERENCES "{ts}".skus(id) ON DELETE RESTRICT,'
+            f'sellable_unit_id UUID CONSTRAINT fk_order_items_sellable_unit '
+            f'REFERENCES "{ts}".skus(id) ON DELETE RESTRICT,'
             "identity_status VARCHAR(32) NOT NULL DEFAULT 'legacy',"
             "product_name TEXT NOT NULL, sku_code VARCHAR(64) NOT NULL,"
             "unit_snapshot VARCHAR(32),"
@@ -1580,7 +1735,6 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             "(identity_status = 'legacy' AND sellable_unit_id IS NULL) OR "
             "(identity_status = 'linked_legacy' AND sellable_unit_id IS NOT NULL) OR "
             "(identity_status = 'stable' AND sellable_unit_id IS NOT NULL AND unit_snapshot IS NOT NULL)))",
-            f'CREATE INDEX IF NOT EXISTS ix_order_items_sellable_unit_id ON "{ts}".order_items (sellable_unit_id)',
 
             f'CREATE TABLE IF NOT EXISTS "{ts}".inventory_reservations ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -1842,6 +1996,9 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # --- DC-12R1-S3-S2B-I1: payment_declarations + receipt_sequences + receipt_number index ---
         await _reconcile_s2b_i1(db, ts)
+
+        # --- SKU-M1: reconcile bootstrap-only tenants that Alembic cannot see ---
+        await _reconcile_catalog_identity(db, ts)
 
         await db.commit()
 

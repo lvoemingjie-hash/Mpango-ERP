@@ -11,7 +11,7 @@ import uuid
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from models.catalog_product import CatalogProduct
 from models.inventory_stock import InventoryStock
 from models.order import Order, OrderItem, OrderStatus
@@ -48,6 +48,52 @@ def test_sellable_unit_update_contract_cannot_change_code() -> None:
 
     assert "sku_code" not in SellableUnitUpdate.model_fields
     assert "sku_code" not in SKUUpdateRequest.model_fields
+
+
+@pytest.mark.asyncio
+async def test_demo_seeder_delegates_to_canonical_bootstrap(monkeypatch) -> None:
+    from database import session as session_module
+    from scripts import bootstrap_tenant_schema, seed_demo_data
+
+    canonical_bootstrap = AsyncMock()
+    monkeypatch.setattr(bootstrap_tenant_schema, "bootstrap", canonical_bootstrap)
+    monkeypatch.setattr(
+        session_module.settings,
+        "DATABASE_URL",
+        "postgresql://localhost/sku_m1_test",
+    )
+    db = AsyncMock()
+
+    await seed_demo_data._bootstrap_tenant_schema(db, "t_demo")
+
+    db.rollback.assert_awaited_once_with()
+    canonical_bootstrap.assert_awaited_once_with(
+        "t_demo",
+        "postgresql://localhost/sku_m1_test",
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_fixture_sku_shape_matches_runtime_contract(async_session) -> None:
+    schema = async_session.info["tenant_schema"]
+    rows = (
+        await async_session.execute(
+            text(
+                "SELECT column_name, data_type, character_maximum_length, column_default "
+                "FROM information_schema.columns "
+                "WHERE table_schema=:schema AND table_name='skus' "
+                "AND column_name IN ('name', 'unit', 'category') "
+                "ORDER BY column_name"
+            ),
+            {"schema": schema},
+        )
+    ).all()
+
+    assert rows == [
+        ("category", "character varying", 64, None),
+        ("name", "character varying", 255, None),
+        ("unit", "character varying", 32, "'unit'::character varying"),
+    ]
 
 
 @pytest.mark.asyncio

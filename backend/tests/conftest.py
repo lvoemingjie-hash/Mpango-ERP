@@ -333,11 +333,11 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             catalog_product_id UUID NOT NULL REFERENCES "{tenant_schema}".catalog_products(id) ON DELETE RESTRICT,
             sku_code VARCHAR(64) NOT NULL UNIQUE,
-            name TEXT NOT NULL,
+            name VARCHAR(255) NOT NULL,
             description TEXT,
-            unit VARCHAR(32) NOT NULL DEFAULT 'piece',
+            unit VARCHAR(32) NOT NULL DEFAULT 'unit',
             package_quantity NUMERIC(12, 3) NOT NULL DEFAULT 1.000,
-            category VARCHAR(128),
+            category VARCHAR(64),
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
             is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
             deleted_at TIMESTAMP WITH TIME ZONE,
@@ -347,6 +347,13 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
             updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """))
+    await session.execute(text(f'''
+        ALTER TABLE "{tenant_schema}".skus
+            ALTER COLUMN name TYPE VARCHAR(255),
+            ALTER COLUMN unit TYPE VARCHAR(32),
+            ALTER COLUMN unit SET DEFAULT 'unit',
+            ALTER COLUMN category TYPE VARCHAR(64)
+    '''))
 
     # Upgrade a pre-existing lightweight test schema without guessing SKU identity.
     await session.execute(text(f'''

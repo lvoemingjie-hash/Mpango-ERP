@@ -8,8 +8,8 @@
  */
 
 import type { Response as PlaywrightResponse } from '@playwright/test';
+import type { CanonicalFingerprint } from './neutrality-core.js';
 import {
-  CanonicalFingerprint,
   NeutralEnvelopeError,
   assertFingerprintsEqual,
   canonicalFingerprint,

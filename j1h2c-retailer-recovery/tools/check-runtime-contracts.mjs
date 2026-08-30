@@ -708,9 +708,95 @@ const CODE = 'WSTEST01';
   expect(specText.includes('clearMemoryState();'), 'H: clearMemoryState called in spec');
 }
 
+// ---------------------------------------------------------------------------
+// B1-R4 — type-only import runtime loader closure
+//
+// Transpiles the REAL three-module neutrality graph (neutrality-core.ts,
+// assertions.ts, neutrality.ts — no copied implementation) with
+// verbatimModuleSyntax=true, which preserves erroneous VALUE imports while
+// eliding only explicit `import type` declarations, then loads the emitted
+// ESM with the real Node loader. A value import of the type-only
+// `CanonicalFingerprint` interface must fail the load; the type-only import
+// must load and expose the existing runtime API.
+// ---------------------------------------------------------------------------
+{
+  const dir = mkdtempSync(join(tmpdir(), 'j1h2c-b1r4-'));
+  try {
+    for (const rel of ['src/neutrality-core.ts', 'src/assertions.ts', 'src/neutrality.ts']) {
+      const source = readFileSync(join(ROOT, rel), 'utf8');
+      const out = ts.transpileModule(source, {
+        compilerOptions: {
+          module: ts.ModuleKind.ES2022,
+          target: ts.ScriptTarget.ES2022,
+          verbatimModuleSyntax: true,
+        },
+      }).outputText;
+      writeFileSync(join(dir, rel.split('/').pop().replace(/[.]ts$/, '.js')), out, 'utf8');
+    }
+
+    let neutrality;
+    try {
+      neutrality = await import(pathToFileURL(join(dir, 'neutrality.js')).href);
+    } catch (error) {
+      expect(
+        false,
+        `B1-R4: neutrality.js failed to load under verbatimModuleSyntax (${String(
+          error && error.message,
+        ).slice(0, 100)})`,
+      );
+    }
+    if (neutrality) {
+      expect(typeof neutrality.fingerprintNeutralResponse === 'function', 'B1-R4: exports fingerprintNeutralResponse');
+      expect(typeof neutrality.assertFourStateCanonicalEquality === 'function', 'B1-R4: exports assertFourStateCanonicalEquality');
+      expect(typeof neutrality.NeutralEnvelopeError === 'function', 'B1-R4: exports NeutralEnvelopeError');
+      expect(!('CanonicalFingerprint' in neutrality), 'B1-R4: CanonicalFingerprint is not a runtime binding');
+
+      // Functional smoke over the REAL loaded module graph: the loaded core
+      // still enforces canonical neutrality semantics unchanged.
+      const core = await import(pathToFileURL(join(dir, 'neutrality-core.js')).href);
+      const envelope = (overrides) => ({
+        success: true,
+        data: {},
+        message: core.NEUTRAL_MESSAGE_CONSTANT,
+        timestamp: '2026-08-30T00:00:00Z',
+        ...overrides,
+      });
+      let semanticsOk = true;
+      try {
+        const fp = core.canonicalFingerprint(envelope());
+        core.assertFingerprintsEqual(fp, core.canonicalFingerprint(envelope({ timestamp: '1999-01-01T00:00:00Z' })));
+        for (const [drift, category] of [
+          [{ message: 'different' }, 'MESSAGE_VALUE'],
+          [{ extra: 1 }, 'KEY_SET'],
+          [{ success: false }, 'SUCCESS_VALUE'],
+          [{ timestamp: 123 }, 'TIMESTAMP_TYPE'],
+        ]) {
+          let threw = null;
+          try {
+            core.canonicalFingerprint(envelope(drift));
+          } catch (error) {
+            threw = error;
+          }
+          if (
+            !(threw instanceof core.NeutralEnvelopeError) ||
+            threw.category !== category
+          ) {
+            semanticsOk = false;
+          }
+        }
+      } catch {
+        semanticsOk = false;
+      }
+      expect(semanticsOk, 'B1-R4: loaded core keeps canonical neutrality semantics');
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 if (failures.length > 0) {
   for (const message of failures) console.error(message);
   console.error(`RUNTIME-CONTRACT CHECK FAILED (${failures.length})`);
   process.exit(1);
 }
-console.log('EXECUTABLE RUNTIME-CONTRACT CHECKS PASSED (A/B/E/C/H/I + B1-R3 truth + B1-R3-R1 ordering/cardinality).');
+console.log('EXECUTABLE RUNTIME-CONTRACT CHECKS PASSED (A/B/E/C/H/I + B1-R3 truth + B1-R3-R1 ordering/cardinality + B1-R4 loader).');

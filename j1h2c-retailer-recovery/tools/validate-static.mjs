@@ -21,11 +21,21 @@
  *  [8] 15 + 2 reconciliation shape: reconciliation.ts encodes exactly
  *      15 browser + 2 static nodes and gap-0 accounting.
  *  [9] HC01-HC17 contract anchors present in the spec/sources.
+ *  [10] B1-R1 A-I runtime-oracle anchors present.
+ *  [11] B1-R2 D/I + B1-R3 truth anchors present.
+ *  [12] B1-R4 type-only import structure: `CanonicalFingerprint` (a
+ *      type-only interface in neutrality-core.ts) may enter any src module
+ *      ONLY through an `import type` declaration; a same-name value import
+ *      is rejected. Parsed with the TypeScript AST, not substring matching.
  */
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, extname } from 'node:path';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const ts = require('typescript');
 
 const ROOT = join(import.meta.dirname, '..');
 let failures = 0;
@@ -358,8 +368,59 @@ for (const [needle, where, label] of [
 }
 if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
 
+// [12] B1-R4 type-only import structure (AST-verified) -----------------------
+// `CanonicalFingerprint` is a type-only `export interface` in
+// neutrality-core.ts. A value import survives Node ESM loading and fails at
+// runtime with "does not provide an export named 'CanonicalFingerprint'".
+// The check parses each src module with the TypeScript AST and:
+//   - REQUIRES a type-only import of CanonicalFingerprint from
+//     './neutrality-core.js' wherever the name is used in a type position
+//     (neutrality.ts);
+//   - REJECTS any same-name value import (named binding that is not
+//     type-only) in ANY src module.
+{
+  const TYPE_ONLY_NAME = 'CanonicalFingerprint';
+  const CORE_MODULE = './neutrality-core.js';
+  const srcDir = join(ROOT, 'src');
+  const srcFiles = readdirSync(srcDir)
+    .filter((f) => extname(f) === '.ts')
+    .sort();
+
+  let sawTypeOnlyImport = false;
+  for (const file of srcFiles) {
+    const source = readFileSync(join(srcDir, file), 'utf8');
+    const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.ES2022, true);
+    for (const statement of parsed.statements) {
+      if (!ts.isImportDeclaration(statement)) continue;
+      const moduleSpecifier = statement.moduleSpecifier.text;
+      const clause = statement.importClause;
+      if (!clause || !clause.namedBindings || !ts.isNamedImports(clause.namedBindings)) continue;
+      for (const element of clause.namedBindings.elements) {
+        const importedName = element.propertyName
+          ? element.propertyName.text
+          : element.name.text;
+        if (importedName !== TYPE_ONLY_NAME) continue;
+        if (moduleSpecifier !== CORE_MODULE) {
+          fail(12, `${TYPE_ONLY_NAME} imported from unexpected module in ${file}`);
+          continue;
+        }
+        const isTypeOnly = clause.isTypeOnly === true || element.isTypeOnly === true;
+        if (isTypeOnly) {
+          sawTypeOnlyImport = true;
+        } else {
+          fail(12, `${TYPE_ONLY_NAME} value import in ${file} (type-only interface)`);
+        }
+      }
+    }
+  }
+  if (!sawTypeOnlyImport) {
+    fail(12, `no type-only import of ${TYPE_ONLY_NAME} from ${CORE_MODULE} found in src/`);
+  }
+  if (failures === 0) ok(12, `${TYPE_ONLY_NAME} enters src modules only via type-only import`);
+}
+
 if (failures > 0) {
   console.error(`STATIC GATE FAILED (${failures} failure(s))`);
   process.exit(1);
 }
-console.log('STATIC GATE PASSED (11/11 steps).');
+console.log('STATIC GATE PASSED (12/12 steps).');

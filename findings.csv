@@ -1,0 +1,47 @@
+id,section,check,result,evidence_class,note
+PG1,Proof Gate,git fetch --all --prune,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,executed in candidate_worktree_pw1r2
+PG2,Proof Gate,detached clean worktree from CANDIDATE,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,worktree clean (status empty)
+PG3,Proof Gate,remote candidate exactly matches local,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,origin/zcode/.../c-i2-current-baseline-reintegration = 86f41b93
+PG4,Proof Gate,parents P1=BASE P2=SOURCE,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,P1=24a28d76 P2=e2274af7
+PG5,Proof Gate,candidate tree = e38c6e2856b27191943386c832e9728a9931613c,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,git log -1 --format=%T
+PG6,Proof Gate,BASE..CANDIDATE = 49 paths (41A+8M),PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,git diff --name-status counts
+PG7a,Proof Gate,bf20e8c9 is SOURCE ancestor,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,merge-base --is-ancestor = true
+PG7b,Proof Gate,product bytes (backend+frontend) == bf20e8c9,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,subtree hashes identical across candidate/SOURCE/bf20e8c9
+PG7c,Proof Gate,harness bytes == SOURCE (verify/scenarios/j1h2b/j1h2c),PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,byte-equal; harness-governance NEW
+PG8,Proof Gate,42c5d328 only DIAGNOSTIC_ONLY (not ancestor),PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,merge-base --is-ancestor = false
+PR1,Product,public /retailer/forgot-password discovery + w normalization,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,RetailerForgotPasswordPage.tsx + ClientLoginPage.tsx read
+PR2,Product,invalid/missing w => zero API calls,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,early-return before form/post
+PR3,Product,canonical neutrality HC07-HC10,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,neutrality-core.ts + check-neutrality G1-G6
+PR4,Product,double-click single POST + canonical DB w in email,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,submitInFlight ref; build_retailer_reset_link; _find_verified_retailer returns canonical code
+PR5,Product,reset fragment / URL scrub / legacy links / portal-return,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,RetailerResetPasswordPage.tsx readFragmentToken
+PR6,Product,anonymous 401 no refresh/logout/navigation,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,authService skipAuthInterceptors:true
+PR7,Product,failure-window cleanup / email sink / override identity / ExceptionGroup,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,backend reset path + additive ai-ledger entries
+PR8,Product,ledger historical STOP/errata preserved truthfully,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,ai-ledger additions only, no prior-entry mutation
+HR1,Harness,inventory 17x15 (15 BROWSER + 2 STATIC),PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,validate-static [1][2]; node-registry.json
+HR2,Harness,single spec / serial / workers=1 / retries=0 / maxFailures=1,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,playwright.config.ts + validate-static [3][4]; playwright --list 15/1
+HR3,Harness,A-I cumulative fixes / dual-mailbox scanner / setup-token cardinality,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,scan-artifacts.mjs fail-closed; M34/M35
+HR4,Harness,reconciliation PRECONDITION_FAIL/PASS/FAIL/NOT_RUN/PENDING truth,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,reconciliation.ts + check-runtime-contracts H/M29-M33
+HR5,Harness,HC12 token/public-w leak boundary + scanner fail-closed,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,leak-scan.ts; scan-artifacts.mjs
+HR6,Harness,M1-M35 classified by evidence tier; not-executed not Kilo evidence,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,node-registry executionClass; see non-claims
+HR7,Harness,I2 uncommitted authority proofs remain SUPERSEDED,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,evidence/superseded_uncommitted_head_bound/i2-runner/
+HR8,Harness,E1 SHA-bound candidate proofs (candidate/manifest/profile match),PASS,CANDIDATE_PROVIDED_EVIDENCE,child_sha_match all true; redis_module_sha recomputed independently (PG-E2-3)
+E2-1,E2 False-Positive,8 JSON CRLF->LF only, JSON semantics unchanged,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,valid JSON; CR present, no NUL/BOM
+E2-2,E2 False-Positive,nonce = one-time destroyed-runtime proof token,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,ee9e4a6e... 32 hex; not in product/harness source
+E2-3,E2 False-Positive,redis_module_sha == committed module digest,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,recomputed sha256(redis_authority.py) = aa9ec312... at E2_REPORT & CANDIDATE
+E2-4,E2 False-Positive,tempdb_binding_sha input has no password/token/SECRET_KEY,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,backend_env_facts extracts only path/host/port
+E2-5,E2 False-Positive,URLs credentials removed; task-local loopback only,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,db_url=postgresql://127.0.0.1:17443/<redacted>
+E2-6,E2 False-Positive,global .secrets.baseline not modified,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,git diff BASE..CANDIDATE -- .secrets.baseline empty
+E2-7,E2 False-Positive,no value leaks into product/harness source,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,grep nonce+shas across repo = 0 matches
+IG1,Independent Gate,pnpm install --frozen-lockfile,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,6 devDeps satisfied
+IG2,Independent Gate,playwright test --list = 15/1 ordered-equal,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,executed
+IG3,Independent Gate,validate-static 11/11,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,STATIC GATE PASSED
+IG4,Independent Gate,check-neutrality G1-G6,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,EXECUTABLE NEUTRALITY CONTRACT CHECK PASSED
+IG5,Independent Gate,check-runtime-contracts (A/B/E/C/H/I + B1-R3),PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,passed incl. scanner fail-closed
+IG6,Independent Gate,tsc --noEmit,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,exit 0
+IG7,Independent Gate,frontend 59-test dual order,OUT_OF_SCOPE,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,not executed (no live app/backend); NOT claimed as PASS
+IG8,Independent Gate,git diff --check / UTF-8-LF / detect-secrets,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,diff --check clean; detect-secrets only pnpm-lock hashes
+IG9,Independent Gate,candidate clean / bytes unchanged,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,status empty; object hash unchanged
+REL1,Release,report branch from CANDIDATE + review.md + findings.csv only,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,candidate commit
+REL2,Release,distinguish KILO vs CANDIDATE evidence,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,this review classifies every line
+REL3,Release,no backend full-suite / browser PASS / merge-ready / deployment-ready claim,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,claim ceiling enforced
+VERDICT,Final,PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_C_I2_E2_V1_KILO_FINAL_CUMULATIVE_CURRENT_BASELINE_SOURCE_AND_HARNESS_REVIEW,PASS,,all proof-gate/product/harness/E2/executable-independent-gate checks satisfied

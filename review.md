@@ -122,3 +122,58 @@ Next gate: **Kilo current-baseline cumulative delta/source/harness review over
 candidate `86f41b93a3aa0e3c55724b75fc2e2aa4c6dee35b` — and nothing else.**
 
 **STOP.**
+
+---
+
+## E2 addendum — Publication EOL and Diff-Check Closure (DC-12R1-MVP-L1-J1-H2-C-I2-E2)
+
+**Disclosure:** the E1 publication tree had `git diff --check CANDIDATE..E1`
+RED: 8 authority JSON blobs were written CRLF by the runner on Windows, and
+every CRLF line was flagged as trailing whitespace (reviewer-measured rc=1;
+locally re-measured rc=2; 420 flag lines). The product candidate was and is
+unaffected. E2 is a pure linear fast-forward publication correction on this
+report branch.
+
+Per-file normalization proof (JSON parse results deep-equal before == after;
+byte diff is CR removal only):
+
+| File | old SHA-256 | new SHA-256 |
+|---|---|---|
+| evidence/runner/authority-preflight.json | `928d479a…985fa856` | `5ae71bbc…ef2dae06` |
+| evidence/runner/authority-trace.json | `5235b610…5b20572` | `64a4411e…a8ef477d` |
+| evidence/runner/et1-collect-proof.json | `c8031e23…56412f5c` | `b5b587c5…1ee101e7` |
+| evidence/runner/et1-sessionstart-proof.json | `5807b365…0ee8b943` | `708992da…d833c40` |
+| evidence/superseded…/i2-runner/authority-preflight.json | `928d479a…985fa856` | `5ae71bbc…ef2dae06` |
+| evidence/superseded…/i2-runner/authority-trace.json | `5235b610…5b20572` | `64a4411e…a8ef477d` |
+| evidence/superseded…/i2-runner/et1-collect-proof.json | `60ce795b…05cc4b05f` | `595b0eab…2069bc4` |
+| evidence/superseded…/i2-runner/et1-sessionstart-proof.json | `5807b365…0ee8b943` | `708992da…d833c40` |
+
+E1..E2 delta is exactly 11 files: the 8 JSON blobs above + this review.md +
+findings.csv + rebuilt `committed-blob-manifest.csv`. CANDIDATE..E2 remains
+exactly the original 13 report paths. No tests, authority runs, PG, Redis,
+Playwright or mutations were executed in E2. Candidate `86f41b93`, SOURCE
+`e2274af7`, E1 history and product branches are untouched.
+
+**VERDICT: `PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_C_I2_E2_PUBLICATION_EOL_AND_DIFF_CHECK_CLOSURE`**
+**CLAIM_CEILING: `PUBLICATION_EOL_AND_DIFF_CHECK_CLOSURE_ONLY`.** Next gate:
+Kilo current-baseline cumulative delta/source/harness review over candidate
+`86f41b93a3aa0e3c55724b75fc2e2aa4c6dee35b`. STOP.
+
+### E2 detect-secrets truth disclosure
+
+`detect-secrets` (1.5.0, `.secrets.baseline`) over the 13 report files: the 11
+E2-introduced/edited non-proof files scan **0**. The two LF-normalized
+`et1-collect-proof.json` files surface **6 "Hex High Entropy String"**
+findings — the E1-committed CRLF bytes masked them (scanning the E1 blobs
+returns 0), so LF normalization changed *visibility*, not content; **zero new
+values were introduced in E2**. Provenance: `nonce` = consumed single-use
+cross-process proof token of the destroyed dc12r1i2e1a stack (committing this
+proof class has direct precedent in I1 `0f6f790b`);
+`redis_module_sha` = the exact SHA-256 of the committed public blob
+`harness-governance/validator/redis_authority.py`; `tempdb_binding_sha` = a
+non-reversible runner binding digest. Zero credentials are present. Literal
+hook rc=0 over these two files is therefore **NOT claimed**; a baseline
+extension would add a 12th file and violate this round's exactly-11-file
+constraint, and is left to Kilo adjudication. All other step-12 gates hold
+(diff-check exit 0, strict UTF-8, no BOM/NUL/CR/U+FFFD, manifest
+missing=0/extra=0/mismatch=0).

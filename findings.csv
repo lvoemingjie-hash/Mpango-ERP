@@ -1,0 +1,2 @@
+id,severity,status,file,line,summary,evidence
+F-000,none,pass,,,,"No findings; bounded harness runtime-loader closure approved only for HARNESS_LOADER_CLOSURE_APPROVAL_ONLY scope."

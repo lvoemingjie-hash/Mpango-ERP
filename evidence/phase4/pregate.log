@@ -1,0 +1,25 @@
+== pnpm install --frozen-lockfile
+install_rc=0
+
+== pnpm run test:list
+Total: 15 tests in 1 file
+list_rc=0
+
+== pnpm run validate:static
+STATIC GATE PASSED (12/12 steps).
+static_rc=0
+
+== pnpm run check:neutrality
+EXECUTABLE NEUTRALITY CONTRACT CHECK PASSED (G1-G6).
+neutrality_rc=0
+
+== pnpm run check:runtime-contracts
+SCANNER FAIL-CLOSED: authoritative scan requires --secrets-from-env (this mode is never optional)
+EXECUTABLE RUNTIME-CONTRACT CHECKS PASSED (A/B/E/C/H/I + B1-R3 truth + B1-R3-R1 ordering/cardinality + B1-R4 loader).
+contracts_rc=0
+
+== pnpm run typecheck
+typecheck_rc=0
+
+== skip/fixme/only census
+0

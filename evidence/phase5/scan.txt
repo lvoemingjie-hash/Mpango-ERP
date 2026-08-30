@@ -1,0 +1,2 @@
+$ node tools/scan-artifacts.mjs --artifacts-dir artifacts --maildir-root $J1H2C_MAILDIR_ROOT --secrets-from-env
+ARTIFACT SCAN PASSED (6 file(s), 8 run secret(s) in memory only; zero findings).

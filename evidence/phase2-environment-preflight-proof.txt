@@ -1,0 +1,32 @@
+# DC-12R1-MVP-L1-J1-H2-C-I2-E2-B1-R4-V2-R1 — Phase 2/3 fresh single-stack proof
+# (labels/categories only; no credential values, no credentialed URLs)
+
+stack:            dc12r1b1r4v2r1-* (docker network dc12r1b1r4v2r1-net) — THE ONLY task stack;
+                  no backup/second stack was created at any point (R1 Phase 2.1)
+postgres:         postgres:16-alpine @ 127.0.0.1:18545 loopback-only
+run role:         dc12r1b1r4v2r1run rolsuper=f rolcreatedb=t rolcreaterole=t rolreplication=f rolinherit=f
+database:         test_dc12r1b1r4v2r1_backend (owner = run role)
+redis:            redis:7-alpine @ 127.0.0.1:16381 loopback-only; DB15 DBSIZE=0 (fresh)
+sentinel 26379:   UNREACHABLE (connection refused; runner sentinel_calls=0)
+MPANGO_ENV:       test
+alembic:          upgrade head rc=0 as run role; single head == 037_payment_declarations_schema
+temp-DB:          MPANGO_ALLOW_TEMP_DB_CREATE=1; MPANGO_TEMP_DB_ALLOWED_PORTS=18545; probe PASS; no leftovers
+four ports:       18545 / 16381 / 8000 / 5173 exclusive to this task
+backend:          real app 127.0.0.1:8000 /health 200
+frontend:         Vite pinned 127.0.0.1:5173 /retail/login 200
+maildir:          task-private mode 700; at Playwright launch contained ONLY the two provisioned
+                  owner provisioning mailboxes; retailer mailboxes empty (see phase5/maildir-snapshot.json)
+credentials:      random per-stack; task-private mode-600 files / memory only; shredded at close
+
+Phase 3 official onboarding (BEFORE any non-list Playwright call):
+  signup -> verify-email -> tenant provisioning -> owner setup-credential for W1 and W2;
+  then fail-closed external verification: 26 checks, ALL PASS -> evidence/phase3/browser-preflight.json
+  (wholesalers presence; registrations status=active x2 with non-null, existing schemas;
+   exactly-one registration each; owner official-API login 200 x2; codes differ;
+   health/frontend/maildir/four-ports/sentinel/role/DB15 proofs)
+
+disclosure: launcher provisioning script's owner-mailbox domain constant retained the prior
+  round's domain (w*.owner@task-mail.dc12r1b1r4v2.dev) — environment consistent; the first
+  preflight execution failed 2 checks solely because the check INPUT used the wrong expected
+  domain; corrected check inputs -> 26/26 PASS. Read-only preflight re-run only; no Playwright
+  invocation, no stack change.

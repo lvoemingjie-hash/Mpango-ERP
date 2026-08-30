@@ -1,0 +1,135 @@
+▲ [WARNING] Duplicate key "jsdom" in object literal [duplicate-object-key]
+
+    package.json:40:4:
+      40 │     "jsdom": "^29.1.1",
+         ╵     ~~~~~~~
+
+  The original key "jsdom" is here:
+
+    package.json:30:4:
+      30 │     "jsdom": "^23.0.0",
+         ╵     ~~~~~~~
+
+
+[7m[1m[36m RUN [39m[22m[27m [36mv1.6.1[39m [90m/home/ivy/Desktop/dc12r1-e2-v2-lubuntu-fresh-runtime/frontend[39m
+
+[90mstderr[2m | src/tests/PublicPasswordRecoveryInterceptor.test.tsx[2m > [22m[2mH2-B-R3 T1: wholesaler reset 401 stays neutral on /reset-password[2m > [22m[2mrenders the fixed neutral error, no refresh/logout/toast/navigation, session untouched[22m[39m
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+[90mstderr[2m | src/tests/Dc12r1S2RetailerPortal.test.tsx[2m > [22m[2mDC-12R1-S2 ClientLoginPage — call isolation[2m > [22m[2mcalls ONLY retailerLogin on a valid portal submit (never owner login/select-tenant)[22m[39m
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+[90mstderr[2m | src/tests/RetailerPasswordRecoveryDiscovery.test.tsx[2m > [22m[2mH2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes)[2m > [22m[2mHC01: valid portal /retail/login?w=VALID shows Forgot password entry carrying the code[22m[39m
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ [32m✓[39m src/tests/Dc12r1S2RetailerPortal.test.tsx [2m ([22m[2m21 tests[22m[2m)[22m[33m 1664[2mms[22m[39m
+[90mstderr[2m | src/tests/PublicPasswordRecoveryInterceptor.test.tsx[2m > [22m[2mH2-B-R3 T1: wholesaler reset 401 stays neutral on /reset-password[2m > [22m[2mrenders the fixed neutral error, no refresh/logout/toast/navigation, session untouched[22m[39m
+<empty line>
+[90mstdout[2m | src/tests/PublicPasswordRecoveryInterceptor.test.tsx[2m > [22m[2mH2-B-R3 T1: wholesaler reset 401 stays neutral on /reset-password[2m > [22m[2mrenders the fixed neutral error, no refresh/logout/toast/navigation, session untouched[22m[39m
+[API →] POST /auth/reset-password {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+
+[90mstdout[2m | src/tests/PublicPasswordRecoveryInterceptor.test.tsx[2m > [22m[2mH2-B-R3 T2: wholesaler reset 200 success panel unchanged[2m > [22m[2mshows the success panel and the Go to login link[22m[39m
+[API →] POST /auth/reset-password {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+
+[90mstdout[2m | src/tests/PublicPasswordRecoveryInterceptor.test.tsx[2m > [22m[2mH2-B-R3 T3: retailer reset 401 stays neutral on /retailer/reset-password[2m > [22m[2mrenders the fixed neutral error, no refresh/logout/toast/navigation[22m[39m
+[API →] POST /client/auth/reset-password {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+
+[90mstdout[2m | src/tests/PublicPasswordRecoveryInterceptor.test.tsx[2m > [22m[2mH2-C-R1 T3.5: retailer reset 200 success returns to the supplier portal[2m > [22m[2msuccess with w shows the /retail/login?w= CTA and stays interceptor-neutral[22m[39m
+[API →] POST /client/auth/reset-password {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+
+[90mstdout[2m | src/tests/PublicPasswordRecoveryInterceptor.test.tsx[2m > [22m[2mH2-B-R3 T4: four public recovery calls send explicit empty Authorization under a stale session[2m > [22m[2mforgotPassword/resetPassword/retailerForgotPassword/retailerResetPassword all send Authorization === "" and reject 401 raw[22m[39m
+[API →] POST /auth/forgot-password {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+[API →] POST /auth/reset-password {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+[API →] POST /client/auth/forgot-password {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+[API →] POST /client/auth/reset-password {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+
+[90mstdout[2m | src/tests/PublicPasswordRecoveryInterceptor.test.tsx[2m > [22m[2mH2-B-R3 T5: protected request 401 still refreshes (legacy contract intact)[2m > [22m[2mfires POST /auth/refresh and retries with the new token[22m[39m
+[API →] GET /dashboards/summary {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+[API →] GET /dashboards/summary {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+
+[90mstdout[2m | src/tests/PublicPasswordRecoveryInterceptor.test.tsx[2m > [22m[2mH2-B-R3 T6: no token/password/Authorization leakage[2m > [22m[2mkeeps request URLs and rendered DOM free of token and password material[22m[39m
+[API →] POST /auth/reset-password {
+  headers: {
+    Accept: [32m'application/json, text/plain, */*'[39m,
+    [32m'Content-Type'[39m: [32m'application/json'[39m,
+    Authorization: [32m'[REDACTED]'[39m
+  }
+}
+
+ [32m✓[39m src/tests/PublicPasswordRecoveryInterceptor.test.tsx [2m ([22m[2m7 tests[22m[2m)[22m[33m 2677[2mms[22m[39m
+ [32m✓[39m src/tests/RetailerPasswordRecoveryDiscovery.test.tsx [2m ([22m[2m20 tests[22m[2m)[22m[33m 4589[2mms[22m[39m
+[90mstderr[2m | src/tests/RetailerCredentialPages.test.tsx[2m > [22m[2mDC-12R1-S1 retailer credential pages[2m > [22m[2msetup page sends fragment setupToken in JSON body only and clears URL[22m[39m
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ [32m✓[39m src/tests/RetailerCredentialPages.test.tsx [2m ([22m[2m11 tests[22m[2m)[22m[33m 1212[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m4 passed[39m[22m[90m (4)[39m
+[2m      Tests [22m [1m[32m59 passed[39m[22m[90m (59)[39m
+[2m   Start at [22m 15:24:43
+[2m   Duration [22m 12.85s[2m (transform 1.31s, setup 685ms, collect 5.32s, tests 10.14s, environment 10.85s, prepare 2.60s)[22m
+
+JUNIT report written to /home/ivy/Desktop/dc12r1-e2-v2-artifacts/phase3/frontend-focused59-natural.xml

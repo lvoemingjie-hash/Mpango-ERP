@@ -1,0 +1,6 @@
+
+SyntaxError: The requested module './neutrality-core.js' does not provide an export named 'CanonicalFingerprint'
+
+Error: No tests found
+Listing tests:
+Total: 0 tests in 0 files

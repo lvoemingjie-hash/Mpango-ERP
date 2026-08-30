@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="59" failures="0" errors="0" time="12.853">
+    <testsuite name="src/tests/Dc12r1S2RetailerPortal.test.tsx" timestamp="2026-08-30T07:24:56.901Z" hostname="ivy-20149" tests="21" failures="0" errors="0" skipped="0" time="1.664">
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 ClientLoginPage — call isolation &gt; calls ONLY retailerLogin on a valid portal submit (never owner login/select-tenant)" time="0.852">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 ClientLoginPage — call isolation &gt; sends the UPPERCASE-normalized portal code even when the URL carries lowercase" time="0.091">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 ClientLoginPage — invalid portal makes ZERO API calls &gt; missing w param shows invalid-portal state and never calls the API" time="0.026">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 ClientLoginPage — invalid portal makes ZERO API calls &gt; malformed w (symbols) shows invalid-portal state and never calls the API" time="0.022">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 ClientLoginPage — invalid portal makes ZERO API calls &gt; submit handler also guards: invalid portal blocks the API call" time="0.025">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="H2-C-R1 ClientLoginPage — recovery discovery entry &gt; valid portal shows the Forgot password entry carrying the normalized code" time="0.087">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="H2-C-R1 ClientLoginPage — recovery discovery entry &gt; invalid portal hides the entry (neutral invalid-portal state only)" time="0.022">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2-R2 ClientLoginPage — fixed neutral 401 message &gt; renders fixed neutral &quot;Invalid credentials&quot; for a production flat 401 envelope" time="0.113">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2-R2 ClientLoginPage — fixed neutral 401 message &gt; renders fixed neutral &quot;Invalid credentials&quot; for a legacy {error:{}} 401 envelope" time="0.106">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2-R2 ClientLoginPage — fixed neutral 401 message &gt; renders fixed neutral &quot;Invalid credentials&quot; for a 401 with NO body (raw axios)" time="0.11">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2-R2 ClientLoginPage — failed login pins the attempted portal &gt; after a failed login on portal B, retailerPortalCode is B (never a prior A)" time="0.079">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 RetailerRoute — only retailer_operator enters /client &gt; admits an authenticated retailer_operator" time="0.006">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 RetailerRoute — only retailer_operator enters /client &gt; rejects an owner (non-retailer) → owner login" time="0.011">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 RetailerRoute — only retailer_operator enters /client &gt; rejects an unauthenticated retailer with a portal code → portal login" time="0.016">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 WholesalerRoute — retailer redirect semantics &gt; authenticated retailer → redirected to /client (NOT logged out)" time="0.022">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 WholesalerRoute — retailer redirect semantics &gt; owner passes through to wholesaler route" time="0.012">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 WholesalerRoute — retailer redirect semantics &gt; stale retailer session (no token) → portal login" time="0.023">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 /client/login alias — preserves w &gt; preserves the w param when redirecting" time="0.019">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 /client/login alias — preserves w &gt; redirects to bare /retail/login when no w is present" time="0.006">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 logout redirect — retailer goes to its portal &gt; logout() preserves retailerPortalCode for refresh-failure redirect" time="0.001">
+        </testcase>
+        <testcase classname="src/tests/Dc12r1S2RetailerPortal.test.tsx" name="DC-12R1-S2 logout redirect — retailer goes to its portal &gt; owner login clears any retailer portal context" time="0.001">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/PublicPasswordRecoveryInterceptor.test.tsx" timestamp="2026-08-30T07:24:56.915Z" hostname="ivy-20149" tests="7" failures="0" errors="0" skipped="0" time="2.677">
+        <testcase classname="src/tests/PublicPasswordRecoveryInterceptor.test.tsx" name="H2-B-R3 T1: wholesaler reset 401 stays neutral on /reset-password &gt; renders the fixed neutral error, no refresh/logout/toast/navigation, session untouched" time="1.273">
+            <system-out>
+[API →] POST /auth/reset-password {
+  headers: {
+    Accept: [32m&apos;application/json, text/plain, */*&apos;[39m,
+    [32m&apos;Content-Type&apos;[39m: [32m&apos;application/json&apos;[39m,
+    Authorization: [32m&apos;[REDACTED]&apos;[39m
+  }
+}
+
+            </system-out>
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+&lt;empty line&gt;
+            </system-err>
+        </testcase>
+        <testcase classname="src/tests/PublicPasswordRecoveryInterceptor.test.tsx" name="H2-B-R3 T2: wholesaler reset 200 success panel unchanged &gt; shows the success panel and the Go to login link" time="0.361">
+            <system-out>
+[API →] POST /auth/reset-password {
+  headers: {
+    Accept: [32m&apos;application/json, text/plain, */*&apos;[39m,
+    [32m&apos;Content-Type&apos;[39m: [32m&apos;application/json&apos;[39m,
+    Authorization: [32m&apos;[REDACTED]&apos;[39m
+  }
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/tests/PublicPasswordRecoveryInterceptor.test.tsx" name="H2-B-R3 T3: retailer reset 401 stays neutral on /retailer/reset-password &gt; renders the fixed neutral error, no refresh/logout/toast/navigation" time="0.35">
+            <system-out>
+[API →] POST /client/auth/reset-password {
+  headers: {
+    Accept: [32m&apos;application/json, text/plain, */*&apos;[39m,
+    [32m&apos;Content-Type&apos;[39m: [32m&apos;application/json&apos;[39m,
+    Authorization: [32m&apos;[REDACTED]&apos;[39m
+  }
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/tests/PublicPasswordRecoveryInterceptor.test.tsx" name="H2-C-R1 T3.5: retailer reset 200 success returns to the supplier portal &gt; success with w shows the /retail/login?w= CTA and stays interceptor-neutral" time="0.321">
+            <system-out>
+[API →] POST /client/auth/reset-password {
+  headers: {
+    Accept: [32m&apos;application/json, text/plain, */*&apos;[39m,
+    [32m&apos;Content-Type&apos;[39m: [32m&apos;application/json&apos;[39m,
+    Authorization: [32m&apos;[REDACTED]&apos;[39m
+  }
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/tests/PublicPasswordRecoveryInterceptor.test.tsx" name="H2-B-R3 T4: four public recovery calls send explicit empty Authorization under a stale session &gt; forgotPassword/resetPassword/retailerForgotPassword/retailerResetPassword all send Authorization === &quot;&quot; and reject 401 raw" time="0.04">
+            <system-out>
+[API →] POST /auth/forgot-password {
+  headers: {
+    Accept: [32m&apos;application/json, text/plain, */*&apos;[39m,
+    [32m&apos;Content-Type&apos;[39m: [32m&apos;application/json&apos;[39m,
+    Authorization: [32m&apos;[REDACTED]&apos;[39m
+  }
+}
+[API →] POST /auth/reset-password {
+  headers: {
+    Accept: [32m&apos;application/json, text/plain, */*&apos;[39m,
+    [32m&apos;Content-Type&apos;[39m: [32m&apos;application/json&apos;[39m,
+    Authorization: [32m&apos;[REDACTED]&apos;[39m
+  }
+}
+[API →] POST /client/auth/forgot-password {
+  headers: {
+    Accept: [32m&apos;application/json, text/plain, */*&apos;[39m,
+    [32m&apos;Content-Type&apos;[39m: [32m&apos;application/json&apos;[39m,
+    Authorization: [32m&apos;[REDACTED]&apos;[39m
+  }
+}
+[API →] POST /client/auth/reset-password {
+  headers: {
+    Accept: [32m&apos;application/json, text/plain, */*&apos;[39m,
+    [32m&apos;Content-Type&apos;[39m: [32m&apos;application/json&apos;[39m,
+    Authorization: [32m&apos;[REDACTED]&apos;[39m
+  }
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/tests/PublicPasswordRecoveryInterceptor.test.tsx" name="H2-B-R3 T5: protected request 401 still refreshes (legacy contract intact) &gt; fires POST /auth/refresh and retries with the new token" time="0.021">
+            <system-out>
+[API →] GET /dashboards/summary {
+  headers: {
+    Accept: [32m&apos;application/json, text/plain, */*&apos;[39m,
+    [32m&apos;Content-Type&apos;[39m: [32m&apos;application/json&apos;[39m,
+    Authorization: [32m&apos;[REDACTED]&apos;[39m
+  }
+}
+[API →] GET /dashboards/summary {
+  headers: {
+    Accept: [32m&apos;application/json, text/plain, */*&apos;[39m,
+    [32m&apos;Content-Type&apos;[39m: [32m&apos;application/json&apos;[39m,
+    Authorization: [32m&apos;[REDACTED]&apos;[39m
+  }
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/tests/PublicPasswordRecoveryInterceptor.test.tsx" name="H2-B-R3 T6: no token/password/Authorization leakage &gt; keeps request URLs and rendered DOM free of token and password material" time="0.301">
+            <system-out>
+[API →] POST /auth/reset-password {
+  headers: {
+    Accept: [32m&apos;application/json, text/plain, */*&apos;[39m,
+    [32m&apos;Content-Type&apos;[39m: [32m&apos;application/json&apos;[39m,
+    Authorization: [32m&apos;[REDACTED]&apos;[39m
+  }
+}
+
+            </system-out>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/RetailerCredentialPages.test.tsx" timestamp="2026-08-30T07:24:56.925Z" hostname="ivy-20149" tests="11" failures="0" errors="0" skipped="0" time="1.212">
+        <testcase classname="src/tests/RetailerCredentialPages.test.tsx" name="DC-12R1-S1 retailer credential pages &gt; setup page sends fragment setupToken in JSON body only and clears URL" time="0.577">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/tests/RetailerCredentialPages.test.tsx" name="DC-12R1-S1 retailer credential pages &gt; reset page sends fragment resetToken in JSON body only and clears URL" time="0.152">
+        </testcase>
+        <testcase classname="src/tests/RetailerCredentialPages.test.tsx" name="DC-12R1-S1 retailer credential pages &gt; setup page rejects query-string token without calling API" time="0.018">
+        </testcase>
+        <testcase classname="src/tests/RetailerCredentialPages.test.tsx" name="DC-12R1-S1 retailer credential pages &gt; reset page rejects query-string token without calling API" time="0.012">
+        </testcase>
+        <testcase classname="src/tests/RetailerCredentialPages.test.tsx" name="DC-12R1-S1 retailer credential pages &gt; setup page rejects mixed query+fragment without calling API" time="0.013">
+        </testcase>
+        <testcase classname="src/tests/RetailerCredentialPages.test.tsx" name="DC-12R1-S1 retailer credential pages &gt; reset page rejects mixed query+fragment without calling API" time="0.019">
+        </testcase>
+        <testcase classname="src/tests/RetailerCredentialPages.test.tsx" name="DC-12R1-S1 retailer credential pages &gt; setup page with no token shows invalid-link state without calling API" time="0.011">
+        </testcase>
+        <testcase classname="src/tests/RetailerCredentialPages.test.tsx" name="DC-12R1-S1 retailer credential pages &gt; reset page with no token shows invalid-link state without calling API" time="0.01">
+        </testcase>
+        <testcase classname="src/tests/RetailerCredentialPages.test.tsx" name="DC-12R1-S1 retailer credential pages &gt; setup page surfaces neutral error and never stores token on failure" time="0.132">
+        </testcase>
+        <testcase classname="src/tests/RetailerCredentialPages.test.tsx" name="DC-12R1-S1 retailer credential pages &gt; reset page with fragment w returns success CTA to /retail/login?w=" time="0.131">
+        </testcase>
+        <testcase classname="src/tests/RetailerCredentialPages.test.tsx" name="DC-12R1-S1 retailer credential pages &gt; reset page legacy link (no w) completes and shows neutral guidance without /login CTA" time="0.131">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" timestamp="2026-08-30T07:24:56.937Z" hostname="ivy-20149" tests="20" failures="0" errors="0" skipped="0" time="4.589">
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC01: valid portal /retail/login?w=VALID shows Forgot password entry carrying the code" time="0.852">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC01: lowercase portal code is normalized to UPPERCASE in the entry href" time="0.106">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC02: missing w shows no entry and the neutral invalid-portal state" time="0.055">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC02: malformed w=BAD%21 shows no entry and the neutral invalid-portal state" time="0.013">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC03: /retailer/forgot-password?w=VALID renders the email form and portal back-link" time="0.098">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC04: forgot page uses the bounded responsive container pattern" time="0.03">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC04b: forgot page with missing/malformed w shows invalid portal and never posts" time="0.033">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC05: empty and malformed emails are blocked client-side with zero recovery POST" time="0.494">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC06: double click submits exactly one POST /client/auth/forgot-password" time="0.367">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC07: existing-verified@example.com renders the identical fixed neutral result" time="0.445">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC08: no-account@example.com renders the identical fixed neutral result" time="0.341">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC09: wrong-supplier@example.com renders the identical fixed neutral result" time="0.329">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC10: unverified@example.com renders the identical fixed neutral result" time="0.256">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; M3: transport failure shows fixed neutral copy and never leaks the raw error" time="0.203">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC12: reset page reads w before scrub, posts body without w, no storage/console leak" time="0.159">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC13: success with w returns CTA to /retail/login?w=VALID and never /login" time="0.198">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC14: legacy valid-token link completes reset and shows neutral guidance without /login CTA" time="0.181">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC14b: malformed w behaves like legacy (guidance only, no portal CTA)" time="0.176">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC15: forged token reset failure shows the neutral invalid/expired message" time="0.225">
+        </testcase>
+        <testcase classname="src/tests/RetailerPasswordRecoveryDiscovery.test.tsx" name="H2-C-R1 retailer recovery discovery (HC01-HC17 frontend nodes) &gt; HC16: reset page uses the bounded responsive container pattern" time="0.02">
+        </testcase>
+    </testsuite>
+</testsuites>

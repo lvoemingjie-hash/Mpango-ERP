@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "/home/ivy/Desktop/dc12r1-e2-v2-lubuntu-fresh-runtime/harness-governance/validator/authority_runner.py", line 1694, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/ivy/Desktop/dc12r1-e2-v2-lubuntu-fresh-runtime/harness-governance/validator/authority_runner.py", line 1652, in main
+    runner.collect_proven(
+  File "/home/ivy/Desktop/dc12r1-e2-v2-lubuntu-fresh-runtime/harness-governance/validator/authority_runner.py", line 1074, in collect_proven
+    result = subprocess.run(cmd, cwd=str(gov_dir), env=child_env,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 548, in run
+    with Popen(*popenargs, **kwargs) as process:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 1026, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "/usr/lib/python3.12/subprocess.py", line 1955, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+OSError: [Errno 7] Argument list too long: '/home/ivy/Desktop/dc12r1-e2-v2-runtime/venv/bin/python'

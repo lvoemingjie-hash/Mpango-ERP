@@ -1,0 +1,44 @@
+{
+  "alembic_actual_head": "037_payment_declarations_schema",
+  "alembic_ok": true,
+  "collected_node_ids": [
+    "tests/_et1_collector_fixtures.py::test_et1_fixture_node_01",
+    "tests/_et1_collector_fixtures.py::test_et1_fixture_node_02",
+    "tests/_et1_collector_fixtures.py::test_et1_fixture_node_03",
+    "tests/_et1_collector_fixtures.py::test_et1_fixture_node_04",
+    "tests/_et1_collector_fixtures.py::test_et1_fixture_node_05",
+    "tests/_et1_collector_fixtures.py::test_et1_fixture_node_06",
+    "tests/_et1_collector_fixtures.py::test_et1_fixture_node_07",
+    "tests/_et1_collector_fixtures.py::test_et1_fixture_node_08",
+    "tests/_et1_collector_fixtures.py::test_et1_fixture_node_09"
+  ],
+  "errors": [],
+  "labels": {
+    "candidate_sha_chars": 40,
+    "collected_unique": true,
+    "db_url": "postgresql://127.0.0.1:18545/<redacted>",
+    "manifest_sha_chars": 64,
+    "nonce_chars": 32,
+    "profile_sha_chars": 64,
+    "required_nodes_total": 9
+  },
+  "nonce": "6823d47ea0b7d56b149f95e8ab7d249d",
+  "phase": "COLLECT",
+  "presence": {
+    "MPANGO_ALLOW_TEMP_DB_CREATE": true,
+    "TEST_DATABASE_URL": true,
+    "nonce_provided": true,
+    "sessionstart_gate": "passed"
+  },
+  "redis_module_ok": true,
+  "redis_module_sha": "aa9ec312972ac89b1e2e794ec686ab37471898779654e602cec60ddab970d561",
+  "schema": "harness-governance/pytest_et1_collector/2",
+  "sessionstart_ok": true,
+  "sha_match": {
+    "candidate": true,
+    "manifest": true,
+    "profile": true
+  },
+  "tempdb_binding_sha": "6631999015d390e97ac79a3699b1b6d6668089498d34bf296c1f6a4bcd9add3a",
+  "tempdb_ok": true
+}

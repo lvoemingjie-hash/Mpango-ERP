@@ -6,6 +6,15 @@ import { z } from 'zod';
 import { authService } from '@/services/authService';
 import { readFragmentToken, type ReadTokenResult } from '@/utils/urlToken';
 
+/**
+ * Wholesaler portal codes follow the DB regex ^[A-Z0-9]+$ (same semantics as
+ * ClientLoginPage). `w` is a PUBLIC code: it may appear in the initial
+ * fragment and, after a successful reset, in the canonical
+ * /retail/login?w=<CODE> URL. It never enters the reset POST body, storage,
+ * or logs.
+ */
+const WHOLESALER_CODE_RE = /^[A-Z0-9]+$/;
+
 const resetSchema = z.object({
   newPassword: z.string().min(8, 'Password must be at least 8 characters'),
 });
@@ -17,14 +26,30 @@ type ResetFormData = z.infer<typeof resetSchema>;
  * Fragment-only token transport, identical strict policy to the setup page:
  * sensitive query param => reject; otherwise read resetToken from the fragment,
  * scrub the URL, submit via JSON body only.
+ *
+ * H2-C-R1: the public `w` code is read from the SAME pre-scrub fragment and
+ * kept in memory only. With a valid `w` the success CTA returns the retailer
+ * to /retail/login?w=<CODE>. A legacy link (no usable `w`) still allows a
+ * valid token to complete the reset; its success state shows only the neutral
+ * "return to the portal link your supplier provided" guidance — never the
+ * wholesaler /login, never a guessed portal.
  */
 export function RetailerResetPasswordPage() {
   const location = useLocation();
   const [state, setState] = useState<ReadTokenResult>({ kind: 'missing' });
+  const [portalCode, setPortalCode] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
 
   useEffect(() => {
+    // Both reads use the same pre-scrub fragment: readFragmentToken scrubs
+    // the URL as a side effect when a token is found, so `w` MUST be parsed
+    // from location.hash before/alongside that call, never after.
+    const fragmentParams = new URLSearchParams(
+      location.hash.startsWith('#') ? location.hash.slice(1) : location.hash,
+    );
+    const rawCode = (fragmentParams.get('w') ?? '').trim().toUpperCase();
+    setPortalCode(WHOLESALER_CODE_RE.test(rawCode) ? rawCode : null);
     setState(readFragmentToken(location.search, location.hash, 'resetToken'));
   }, [location.search, location.hash]);
 
@@ -44,6 +69,8 @@ export function RetailerResetPasswordPage() {
       return;
     }
     try {
+      // Body is reset_token + new_password only; the public `w` code and the
+      // raw token never travel anywhere else.
       await authService.retailerResetPassword({ resetToken: state.token, newPassword });
       setIsComplete(true);
     } catch {
@@ -66,12 +93,27 @@ export function RetailerResetPasswordPage() {
         </div>
         <div className="space-y-5 rounded-xl bg-white p-6 shadow-sm">
           {isComplete ? (
-            <div className="space-y-4 text-center">
-              <p className="text-sm text-gray-700">Your password has been reset successfully.</p>
-              <Link to="/login" className="btn-primary inline-flex justify-center px-4 py-2">
-                Go to login
-              </Link>
-            </div>
+            portalCode ? (
+              <div className="space-y-4 text-center">
+                <p className="text-sm text-gray-700">Your password has been reset successfully.</p>
+                <Link
+                  to={`/retail/login?w=${portalCode}`}
+                  className="btn-primary inline-flex justify-center px-4 py-2"
+                  data-testid="reset-success-portal-link"
+                >
+                  Back to sign in
+                </Link>
+              </div>
+            ) : (
+              // Legacy link (no usable `w`): neutral guidance only. No
+              // wholesaler /login CTA and no portal guessing.
+              <div className="space-y-4 text-center" data-testid="reset-success-legacy">
+                <p className="text-sm text-gray-700">Your password has been reset successfully.</p>
+                <p className="text-sm text-gray-500">
+                  Return to the portal link your supplier provided to sign in.
+                </p>
+              </div>
+            )
           ) : state.kind === 'missing' ? (
             <InvalidLink />
           ) : (

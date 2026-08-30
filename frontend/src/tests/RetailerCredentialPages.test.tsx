@@ -166,4 +166,37 @@ describe('DC-12R1-S1 retailer credential pages', () => {
     });
     expect(storageSetItem).not.toHaveBeenCalled();
   });
+
+  // H2-C-R1: reset link with the public w code — read pre-scrub, memory
+  // only, success returns to the supplier portal.
+  it('reset page with fragment w returns success CTA to /retail/login?w=', async () => {
+    mockPost.mockResolvedValue({ data: { success: true } });
+
+    renderAt('/retailer/reset-password#resetToken=reset-token-789&w=ACME01', <RetailerResetPasswordPage />);
+    await waitFor(() => expect(window.location.hash).toBe(''));
+
+    await userEvent.type(screen.getByLabelText(/new password/i), 'StrongPass123');
+    await userEvent.click(screen.getByRole('button', { name: /reset password/i }));
+
+    const cta = await screen.findByTestId('reset-success-portal-link');
+    expect(cta).toHaveAttribute('href', '/retail/login?w=ACME01');
+    // The public code never enters the reset POST body.
+    expect(JSON.stringify(mockPost.mock.calls[0][1])).not.toContain('ACME01');
+  });
+
+  // H2-C-R1: legacy link without w — reset still completes; success shows
+  // only the neutral supplier-portal guidance (no /login CTA).
+  it('reset page legacy link (no w) completes and shows neutral guidance without /login CTA', async () => {
+    mockPost.mockResolvedValue({ data: { success: true } });
+
+    renderAt('/retailer/reset-password#resetToken=legacy-token-1', <RetailerResetPasswordPage />);
+    await waitFor(() => expect(window.location.hash).toBe(''));
+
+    await userEvent.type(screen.getByLabelText(/new password/i), 'StrongPass123');
+    await userEvent.click(screen.getByRole('button', { name: /reset password/i }));
+
+    const legacy = await screen.findByTestId('reset-success-legacy');
+    expect(legacy.textContent).toContain('Return to the portal link your supplier provided');
+    expect(screen.queryByRole('link', { name: /go to login/i })).toBeNull();
+  });
 });

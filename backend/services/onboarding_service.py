@@ -486,14 +486,29 @@ def build_retailer_setup_link(
     return path
 
 
-def build_retailer_reset_link(token: str, settings: Settings | None = None) -> str:
+def build_retailer_reset_link(
+    token: str,
+    settings: Settings | None = None,
+    wholesaler_code: str | None = None,
+) -> str:
     """Build the retailer password-reset link for email delivery only.
 
     DC-12R1-S1: absolute URL via PUBLIC_FRONTEND_URL, token in the fragment.
+
+    DC-12R1-MVP-L1-J1-H2-C-R1: when ``wholesaler_code`` is provided it is
+    appended to the FRAGMENT as ``w=<code>`` (never a query param), mirroring
+    ``build_retailer_setup_link``. The code MUST be the canonical wholesaler
+    code from the matched DB row — never the caller's raw input casing. It is
+    a public identifier that lets the reset page return the retailer to
+    /retail/login?w=<code> after a successful reset; the resetToken remains
+    the only secret in the link.
     """
     settings = settings or get_settings()
     encoded = quote(token, safe='')
-    path = f"/retailer/reset-password#resetToken={encoded}"
+    fragment = f"resetToken={encoded}"
+    if wholesaler_code:
+        fragment += f"&w={quote(wholesaler_code, safe='')}"
+    path = f"/retailer/reset-password#{fragment}"
     base = getattr(settings, "PUBLIC_FRONTEND_URL", None)
     if base:
         return f"{base}{path}"

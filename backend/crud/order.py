@@ -353,11 +353,14 @@ async def create_order(
         total_amount += subtotal
 
         order_item = OrderItem(
+            sellable_unit_id=UUID(str(item["sellable_unit_id"])),
+            identity_status="stable",
             product_name=item["product_name"],
             sku_code=item["sku_code"],
+            unit_snapshot=item["unit_snapshot"],
             quantity=quantity,
             unit_price=unit_price,
-            subtotal=subtotal
+            subtotal=subtotal,
         )
         order_items.append(order_item)
 

@@ -1,7 +1,8 @@
 export type OrderStatus = 'draft' | 'confirmed' | 'partially_paid' | 'paid' | 'fulfilled' | 'cancelled' | 'voided' | 'returned';
 
 export interface WholesalerOrderItemCreate {
-  sku_code: string;
+  sellable_unit_id: string;
+  sku_code?: string;
   quantity: number;
 }
 
@@ -13,8 +14,11 @@ export interface WholesalerOrderCreateRequest {
 
 export interface OrderItem {
   id: string;
+  sellable_unit_id: string | null;
+  identity_status: 'legacy' | 'linked_legacy' | 'stable';
   product_name: string;
   sku_code: string;
+  unit_snapshot: string | null;
   quantity: number;
   unit_price: number;
   subtotal: number;

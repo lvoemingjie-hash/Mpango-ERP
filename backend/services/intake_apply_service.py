@@ -10,15 +10,22 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.intake import IntakeProductRow, IntakeValidationIssue, IntakeWorkspace
+from models.catalog_product import CatalogProduct
 from models.sku import SKU
+from repositories.inventory_repository import InventoryRepository
 from repositories.sku_repository import SKURepository
 
 
 class IntakeApplyService:
     """Apply validated intake rows atomically within the caller transaction."""
 
-    def __init__(self, sku_repo: SKURepository | None = None) -> None:
+    def __init__(
+        self,
+        sku_repo: SKURepository | None = None,
+        inventory_repo: InventoryRepository | None = None,
+    ) -> None:
         self._sku_repo = sku_repo or SKURepository()
+        self._inventory_repo = inventory_repo or InventoryRepository()
 
     async def apply_workspace(
         self,
@@ -116,7 +123,7 @@ class IntakeApplyService:
             )
 
         existing_result = await db.execute(
-            select(SKU.sku_code).where(SKU.sku_code.in_(staged_codes), SKU.is_deleted.is_(False))
+            select(SKU.sku_code).where(SKU.sku_code.in_(staged_codes))
         )
         existing_codes = sorted(existing_result.scalars().all())
         if existing_codes:
@@ -131,17 +138,30 @@ class IntakeApplyService:
 
         created_sku_ids: list[str] = []
         for prepared in prepared_rows:
+            product = CatalogProduct(
+                name=prepared["name"],
+                description=None,
+                category=prepared["category"],
+                is_active=True,
+                created_by=user_id,
+                updated_by=user_id,
+            )
+            db.add(product)
+            await db.flush()
             sku = SKU(
+                catalog_product_id=product.id,
                 sku_code=prepared["sku_code"],
                 name=prepared["name"],
                 description=None,
                 unit=prepared["unit"] or "unit",
+                package_quantity=1,
                 category=prepared["category"],
                 is_active=True,
                 created_by=user_id,
                 updated_by=user_id,
             )
             sku = await self._sku_repo.create(db, sku=sku)
+            await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
             prepared["row"].target_sku_id = sku.id
             prepared["row"].apply_status = "applied"
             prepared["row"].apply_error_code = None

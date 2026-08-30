@@ -10,6 +10,7 @@ from models.order import Order, OrderItem, OrderStatus
 from models.retailer import Retailer
 from models.invitation import Invitation
 from models.binding import WholesalerRetailerBinding
+from models.catalog_product import CatalogProduct
 from models.sku import SKU
 from models.inventory_stock import InventoryStock
 from models.inventory_reservation import InventoryReservation
@@ -79,6 +80,7 @@ __all__ = [
     "Permission",
     "Order",
     "OrderItem",
+    "CatalogProduct",
     "SKU",
     "InventoryStock",
     "InventoryReservation",

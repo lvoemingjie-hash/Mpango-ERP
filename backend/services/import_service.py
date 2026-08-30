@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.import_run import ImportRun
+from repositories.inventory_repository import InventoryRepository
 from schemas.import_schemas import (
     ImportErrorDetail,
     ImportPreviewResponse,
@@ -49,6 +50,9 @@ MAX_CSV_ROWS = 50_000
 
 class ImportService:
     """Stateless service; instantiate per request."""
+
+    def __init__(self, inventory_repo: InventoryRepository | None = None) -> None:
+        self._inventory_repo = inventory_repo or InventoryRepository()
 
     # ----------------------------------------------------------
     # Phase 1: Preview
@@ -414,6 +418,7 @@ class ImportService:
             HTTPException on precondition failures.
         """
         from datetime import datetime, timezone
+        from models.catalog_product import CatalogProduct
         from models.sku import SKU
 
         # -- Load ImportRun --
@@ -471,7 +476,7 @@ class ImportService:
         # -- Query existing SKU codes if not provided --
         if existing_sku_codes is None:
             code_result = await db.execute(
-                select(SKU.sku_code).where(SKU.is_deleted.is_(False))
+                select(SKU.sku_code)
             )
             existing_sku_codes = set(code_result.scalars().all())
 
@@ -540,15 +545,27 @@ class ImportService:
             if isinstance(is_active_val, str):
                 is_active_val = is_active_val.lower() in ("true", "1", "yes")
 
+            product = CatalogProduct(
+                name=mapped_row.get("name", ""),
+                description=mapped_row.get("description"),
+                category=mapped_row.get("category"),
+                is_active=is_active_val if is_active_val is not None else True,
+            )
+            db.add(product)
+            await db.flush()
             sku = SKU(
+                catalog_product_id=product.id,
                 sku_code=sku_code,
                 name=mapped_row.get("name", ""),
                 description=mapped_row.get("description"),
                 unit=mapped_row.get("unit", "unit"),
+                package_quantity=1,
                 category=mapped_row.get("category"),
                 is_active=is_active_val if is_active_val is not None else True,
             )
             db.add(sku)
+            await db.flush()
+            await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
             existing_sku_codes.add(sku_code)
             created_count += 1
 

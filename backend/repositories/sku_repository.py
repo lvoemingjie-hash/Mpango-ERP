@@ -17,6 +17,11 @@ class SKURepository:
         result = await db.execute(select(SKU).where(SKU.sku_code == sku_code, SKU.is_deleted.is_(False)))
         return result.scalar_one_or_none()
 
+    async def get_any_by_code(self, db: AsyncSession, *, sku_code: str) -> Optional[SKU]:
+        """Include soft-deleted rows so a retired SKU code can never be reused."""
+        result = await db.execute(select(SKU).where(SKU.sku_code == sku_code))
+        return result.scalar_one_or_none()
+
     async def list_paginated(
         self,
         db: AsyncSession,

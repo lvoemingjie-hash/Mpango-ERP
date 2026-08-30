@@ -34,6 +34,15 @@ class InventoryRepository:
             return None
         return row[0], row[1]
 
+    async def get_stock_by_sku_id(self, db: AsyncSession, *, sku_id) -> Optional[tuple[SKU, Optional[InventoryStock]]]:
+        stmt = (
+            select(SKU, InventoryStock)
+            .outerjoin(InventoryStock, (InventoryStock.sku_id == SKU.id) & (InventoryStock.is_deleted.is_(False)))
+            .where(SKU.id == sku_id, SKU.is_deleted.is_(False))
+        )
+        row = (await db.execute(stmt)).first()
+        return (row[0], row[1]) if row else None
+
     async def list_stock_paginated(
         self,
         db: AsyncSession,
@@ -60,9 +69,9 @@ class InventoryRepository:
         result = await db.execute(stmt)
         return result.all(), total
 
-    async def list_sku_codes_for_order(self, db: AsyncSession, *, order_id) -> list[str]:
+    async def list_sellable_identities_for_order(self, db: AsyncSession, *, order_id) -> list[tuple]:
         result = await db.execute(
-            select(OrderItem.sku_code)
+            select(OrderItem.sellable_unit_id, OrderItem.sku_code)
             .where(OrderItem.order_id == order_id, OrderItem.is_deleted.is_(False))
         )
-        return [r[0] for r in result.all()]
+        return list(result.all())

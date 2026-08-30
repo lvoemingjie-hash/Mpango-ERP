@@ -12,8 +12,9 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from typing import List, Optional
+from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -46,10 +47,14 @@ def compute_stock_level(quantity_on_hand: Decimal) -> StockLevel:
 class ClientProductSummary(BaseModel):
     """Product card — used in list view."""
     id: str
+    product_id: str
+    catalog_product_id: str
+    sellable_unit_id: str
     name: str
     sku_code: str
     category: Optional[str] = None
     unit: str
+    package_quantity: Decimal
     price: Optional[Decimal] = Field(None, description="Selling price visible to retailer (null if not priced)")
     in_stock: bool
     stock_level: StockLevel
@@ -61,11 +66,15 @@ class ClientProductSummary(BaseModel):
 class ClientProductDetail(BaseModel):
     """Product detail — full info for single product view."""
     id: str
+    product_id: str
+    catalog_product_id: str
+    sellable_unit_id: str
     name: str
     sku_code: str
     description: Optional[str] = None
     category: Optional[str] = None
     unit: str
+    package_quantity: Decimal
     price: Optional[Decimal] = Field(None, description="Selling price (null if not priced for this retailer)")
     in_stock: bool
     stock_level: StockLevel
@@ -80,8 +89,25 @@ class ClientProductDetail(BaseModel):
 
 class ClientOrderItemRequest(BaseModel):
     """Single line item in an order creation request."""
-    sku_code: str = Field(..., description="SKU code of the product")
+    sellable_unit_id: Optional[str] = Field(None, description="Stable sellable-unit UUID")
+    sku_code: Optional[str] = Field(None, description="Compatibility SKU selector")
     quantity: int = Field(..., gt=0, description="Quantity to order")
+
+    @field_validator("sellable_unit_id")
+    @classmethod
+    def validate_sellable_unit_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return str(UUID(value))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("sellable_unit_id must be a UUID") from exc
+
+    @model_validator(mode="after")
+    def require_selector(self):
+        if not self.sellable_unit_id and not self.sku_code:
+            raise ValueError("sellable_unit_id or sku_code is required")
+        return self
 
 
 class ClientCreateOrderRequest(BaseModel):
@@ -93,7 +119,10 @@ class ClientCreateOrderRequest(BaseModel):
 class ClientOrderItemView(BaseModel):
     """Single line item in an order response."""
     product_name: str
+    sellable_unit_id: Optional[str] = None
+    identity_status: str = "legacy"
     sku_code: str
+    unit_snapshot: Optional[str] = None
     quantity: int
     unit_price: Decimal
     subtotal: Decimal

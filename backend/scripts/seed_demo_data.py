@@ -419,8 +419,8 @@ async def _seed_skus(db, ts: str) -> None:
     for sku_code, name, desc, unit, category in DEMO_SKUS:
         try:
             await svc.create_sku(
-                db, sku_code=sku_code, name=name, description=desc,
-                unit=unit, category=category, is_active=True, created_by=None,
+                db, catalog_product_id=None, sku_code=sku_code, name=name, description=desc,
+                unit=unit, package_quantity=1, category=category, is_active=True, created_by=None,
             )
             created += 1
         except Exception:

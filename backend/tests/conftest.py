@@ -192,6 +192,22 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
     """))
 
     await session.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS "{tenant_schema}".catalog_products (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            name VARCHAR(255) NOT NULL,
+            description TEXT,
+            category VARCHAR(64),
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+            deleted_at TIMESTAMP WITH TIME ZONE,
+            created_by UUID,
+            updated_by UUID,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    await session.execute(text(f"""
         CREATE TABLE IF NOT EXISTS "{tenant_schema}".orders (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             wholesaler_id UUID NOT NULL,
@@ -214,6 +230,9 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
             order_id UUID NOT NULL REFERENCES "{tenant_schema}".orders(id) ON DELETE CASCADE,
             product_name TEXT NOT NULL,
             sku_code VARCHAR(64) NOT NULL,
+            sellable_unit_id UUID,
+            identity_status VARCHAR(32) NOT NULL DEFAULT 'legacy',
+            unit_snapshot VARCHAR(32),
             quantity INTEGER NOT NULL,
             unit_price NUMERIC(12, 2) NOT NULL,
             subtotal NUMERIC(12, 2) NOT NULL,
@@ -312,10 +331,12 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
     await session.execute(text(f"""
         CREATE TABLE IF NOT EXISTS "{tenant_schema}".skus (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            catalog_product_id UUID NOT NULL REFERENCES "{tenant_schema}".catalog_products(id) ON DELETE RESTRICT,
             sku_code VARCHAR(64) NOT NULL UNIQUE,
             name TEXT NOT NULL,
             description TEXT,
             unit VARCHAR(32) NOT NULL DEFAULT 'piece',
+            package_quantity NUMERIC(12, 3) NOT NULL DEFAULT 1.000,
             category VARCHAR(128),
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
             is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
@@ -326,6 +347,85 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
             updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """))
+
+    # Upgrade a pre-existing lightweight test schema without guessing SKU identity.
+    await session.execute(text(f'''
+        ALTER TABLE "{tenant_schema}".skus
+            ADD COLUMN IF NOT EXISTS catalog_product_id UUID,
+            ADD COLUMN IF NOT EXISTS package_quantity NUMERIC(12, 3) NOT NULL DEFAULT 1.000
+    '''))
+    await session.execute(text(f'''
+        INSERT INTO "{tenant_schema}".catalog_products
+            (id, name, description, category, is_active, is_deleted, deleted_at,
+             created_by, updated_by, created_at, updated_at)
+        SELECT id, name, description, category, is_active, is_deleted, deleted_at,
+               created_by, updated_by, created_at, updated_at
+          FROM "{tenant_schema}".skus
+         WHERE catalog_product_id IS NULL
+        ON CONFLICT (id) DO NOTHING
+    '''))
+    await session.execute(text(f'''
+        UPDATE "{tenant_schema}".skus
+           SET catalog_product_id = id
+         WHERE catalog_product_id IS NULL
+    '''))
+    await session.execute(text(f'''
+        ALTER TABLE "{tenant_schema}".skus
+            ALTER COLUMN catalog_product_id SET NOT NULL
+    '''))
+    await session.execute(text(f'''
+        ALTER TABLE "{tenant_schema}".order_items
+            ADD COLUMN IF NOT EXISTS sellable_unit_id UUID,
+            ADD COLUMN IF NOT EXISTS identity_status VARCHAR(32) NOT NULL DEFAULT 'legacy',
+            ADD COLUMN IF NOT EXISTS unit_snapshot VARCHAR(32)
+    '''))
+    await session.execute(text(f'''
+        DO $$ BEGIN
+            ALTER TABLE "{tenant_schema}".skus
+                ADD CONSTRAINT fk_skus_catalog_product
+                FOREIGN KEY (catalog_product_id)
+                REFERENCES "{tenant_schema}".catalog_products(id) ON DELETE RESTRICT;
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    '''))
+    await session.execute(text(f'''
+        DO $$ BEGIN
+            ALTER TABLE "{tenant_schema}".skus
+                ADD CONSTRAINT ck_skus_package_quantity_positive CHECK (package_quantity > 0);
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    '''))
+    await session.execute(text(f'''
+        DO $$ BEGIN
+            ALTER TABLE "{tenant_schema}".order_items
+                ADD CONSTRAINT fk_order_items_sellable_unit
+                FOREIGN KEY (sellable_unit_id)
+                REFERENCES "{tenant_schema}".skus(id) ON DELETE RESTRICT;
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    '''))
+    await session.execute(text(f'''
+        DO $$ BEGIN
+            ALTER TABLE "{tenant_schema}".order_items
+                ADD CONSTRAINT ck_order_items_identity_status
+                CHECK (identity_status IN ('legacy', 'linked_legacy', 'stable'));
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    '''))
+    await session.execute(text(f'''
+        DO $$ BEGIN
+            ALTER TABLE "{tenant_schema}".order_items
+                ADD CONSTRAINT ck_order_items_identity_shape CHECK (
+                    (identity_status = 'legacy' AND sellable_unit_id IS NULL) OR
+                    (identity_status = 'linked_legacy' AND sellable_unit_id IS NOT NULL) OR
+                    (identity_status = 'stable' AND sellable_unit_id IS NOT NULL AND unit_snapshot IS NOT NULL)
+                );
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    '''))
+    await session.execute(text(f'''
+        CREATE INDEX IF NOT EXISTS ix_skus_catalog_product_id
+        ON "{tenant_schema}".skus(catalog_product_id)
+    '''))
+    await session.execute(text(f'''
+        CREATE INDEX IF NOT EXISTS ix_order_items_sellable_unit_id
+        ON "{tenant_schema}".order_items(sellable_unit_id)
+    '''))
 
     await session.execute(text(f"""
         CREATE TABLE IF NOT EXISTS "{tenant_schema}".inventory_stocks (

@@ -17,11 +17,16 @@ from tests.test_u4c_intake_api_contract import (
 
 APPLY_PATH = "/api/v1/intake/workspaces/{workspace_id}/apply"
 TEST_USER_ID = "00000000-0000-0000-0000-0000000000aa"
+CONTRACT_MIGRATION = (
+    "SUPERSEDED_BY_SKU_R0_M1_CATALOG_AND_INVENTORY_INITIALIZATION_CONTRACT"
+)
 
 
 async def _reset_apply_tables(session) -> None:
     await _ensure_intake_schema(session)
+    await session.execute(text(f'DELETE FROM "{TEST_TENANT_SCHEMA}".inventory_stocks'))
     await session.execute(text(f'DELETE FROM "{TEST_TENANT_SCHEMA}".skus'))
+    await session.execute(text(f'DELETE FROM "{TEST_TENANT_SCHEMA}".catalog_products'))
     await session.commit()
 
 
@@ -112,6 +117,23 @@ async def _sku_codes(session) -> list[str]:
     return list(result.scalars().all())
 
 
+async def _catalog_stock_state(session) -> dict[str, int]:
+    result = await session.execute(
+        text(
+            f'SELECT '
+            f'(SELECT COUNT(*) FROM "{TEST_TENANT_SCHEMA}".catalog_products) AS products, '
+            f'(SELECT COUNT(*) FROM "{TEST_TENANT_SCHEMA}".skus) AS units, '
+            f'(SELECT COUNT(*) FROM "{TEST_TENANT_SCHEMA}".inventory_stocks) AS stocks, '
+            f'(SELECT COUNT(*) FROM "{TEST_TENANT_SCHEMA}".skus s '
+            f' LEFT JOIN "{TEST_TENANT_SCHEMA}".catalog_products p ON p.id = s.catalog_product_id '
+            f' WHERE p.id IS NULL) AS orphan_units, '
+            f'(SELECT COUNT(*) FROM "{TEST_TENANT_SCHEMA}".inventory_stocks i '
+            f' WHERE i.quantity_on_hand <> 0 OR i.quantity_reserved <> 0) AS nonzero_stocks'
+        )
+    )
+    return dict(result.mappings().one())
+
+
 async def _workspace_audit(session, workspace_id: uuid.UUID) -> dict:
     result = await session.execute(
         text(
@@ -146,6 +168,10 @@ async def test_apply_requires_intake_update(async_session):
     assert response.status_code == 403
     assert _error_code(response) == "PERMISSION_DENIED"
     assert await _sku_codes(async_session) == []
+    assert await _catalog_stock_state(async_session) == {
+        "products": 0, "units": 0, "stocks": 0,
+        "orphan_units": 0, "nonzero_stocks": 0,
+    }
 
 
 @pytest.mark.asyncio
@@ -159,6 +185,10 @@ async def test_apply_requires_skus_import(async_session):
     assert response.status_code == 403
     assert _error_code(response) == "PERMISSION_DENIED"
     assert await _sku_codes(async_session) == []
+    assert await _catalog_stock_state(async_session) == {
+        "products": 0, "units": 0, "stocks": 0,
+        "orphan_units": 0, "nonzero_stocks": 0,
+    }
 
 
 @pytest.mark.asyncio
@@ -176,6 +206,10 @@ async def test_successful_apply_creates_skus_and_updates_audit(async_session):
     assert data["created_count"] == 2
     assert len(data["created_sku_ids"]) == 2
     assert await _sku_codes(async_session) == ["U4IB2-001", "U4IB2-002"]
+    assert await _catalog_stock_state(async_session) == {
+        "products": 2, "units": 2, "stocks": 2,
+        "orphan_units": 0, "nonzero_stocks": 0,
+    }
 
     workspace = await _workspace_audit(async_session, workspace_id)
     assert workspace["apply_status"] == "applied"
@@ -214,11 +248,30 @@ async def test_duplicate_staged_sku_code_fails_before_any_sku_write(async_sessio
 async def test_existing_official_sku_code_fails_before_any_sku_write(async_session):
     await _reset_apply_tables(async_session)
     workspace_id = await _create_ready_workspace(async_session)
+    product_id = uuid.uuid4()
+    sku_id = uuid.uuid4()
     await async_session.execute(
         text(
-            f'INSERT INTO "{TEST_TENANT_SCHEMA}".skus (sku_code, name, unit, is_active) '
-            "VALUES ('U4IB2-001', 'Existing', 'piece', true)"
-        )
+            f'INSERT INTO "{TEST_TENANT_SCHEMA}".catalog_products (id, name, is_active) '
+            "VALUES (:product_id, 'Existing', true)"
+        ),
+        {"product_id": product_id},
+    )
+    await async_session.execute(
+        text(
+            f'INSERT INTO "{TEST_TENANT_SCHEMA}".skus '
+            "(id, catalog_product_id, sku_code, name, unit, is_active) "
+            "VALUES (:sku_id, :product_id, 'U4IB2-001', 'Existing', 'piece', true)"
+        ),
+        {"sku_id": sku_id, "product_id": product_id},
+    )
+    await async_session.execute(
+        text(
+            f'INSERT INTO "{TEST_TENANT_SCHEMA}".inventory_stocks '
+            "(id, sku_id, quantity_on_hand, quantity_reserved) "
+            "VALUES (:stock_id, :sku_id, 0, 0)"
+        ),
+        {"stock_id": uuid.uuid4(), "sku_id": sku_id},
     )
     await async_session.commit()
 
@@ -228,7 +281,55 @@ async def test_existing_official_sku_code_fails_before_any_sku_write(async_sessi
     assert response.status_code == 409
     assert _error_code(response) == "SKU_CODE_EXISTS"
     assert await _sku_codes(async_session) == ["U4IB2-001"]
+    assert await _catalog_stock_state(async_session) == {
+        "products": 1, "units": 1, "stocks": 1,
+        "orphan_units": 0, "nonzero_stocks": 0,
+    }
     assert (await _workspace_audit(async_session, workspace_id))["apply_status"] == "not_applied"
+
+
+@pytest.mark.asyncio
+async def test_soft_deleted_sku_code_remains_reserved(async_session):
+    await _reset_apply_tables(async_session)
+    workspace_id = await _create_ready_workspace(
+        async_session,
+        rows=[{"sku_code": "U4IB2-RETIRED", "name": "Replacement", "unit": "piece", "category": None}],
+    )
+    product_id = uuid.uuid4()
+    sku_id = uuid.uuid4()
+    await async_session.execute(
+        text(
+            f'INSERT INTO "{TEST_TENANT_SCHEMA}".catalog_products (id, name, is_active) '
+            "VALUES (:product_id, 'Retired', true)"
+        ),
+        {"product_id": product_id},
+    )
+    await async_session.execute(
+        text(
+            f'INSERT INTO "{TEST_TENANT_SCHEMA}".skus '
+            "(id, catalog_product_id, sku_code, name, unit, is_active, is_deleted) "
+            "VALUES (:sku_id, :product_id, 'U4IB2-RETIRED', 'Retired', 'piece', false, true)"
+        ),
+        {"sku_id": sku_id, "product_id": product_id},
+    )
+    await async_session.execute(
+        text(
+            f'INSERT INTO "{TEST_TENANT_SCHEMA}".inventory_stocks '
+            "(id, sku_id, quantity_on_hand, quantity_reserved) VALUES (:stock_id, :sku_id, 0, 0)"
+        ),
+        {"stock_id": uuid.uuid4(), "sku_id": sku_id},
+    )
+    await async_session.commit()
+
+    async with _client_for(permissions=["intake:update", "skus:import"]) as client:
+        response = await client.post(APPLY_PATH.format(workspace_id=workspace_id))
+
+    assert response.status_code == 409
+    assert _error_code(response) == "SKU_CODE_EXISTS"
+    assert await _catalog_stock_state(async_session) == {
+        "products": 1, "units": 1, "stocks": 1,
+        "orphan_units": 0, "nonzero_stocks": 0,
+    }
 
 
 @pytest.mark.asyncio
@@ -289,6 +390,10 @@ async def test_repeated_apply_returns_already_applied_without_duplicate_skus(asy
     assert second.status_code == 409
     assert _error_code(second) == "ALREADY_APPLIED"
     assert await _sku_codes(async_session) == ["U4IB2-001", "U4IB2-002"]
+    assert await _catalog_stock_state(async_session) == {
+        "products": 2, "units": 2, "stocks": 2,
+        "orphan_units": 0, "nonzero_stocks": 0,
+    }
 
 
 @pytest.mark.asyncio
@@ -311,6 +416,10 @@ async def test_mid_apply_failure_rolls_back_sku_writes_and_audit(async_session, 
 
     assert response.status_code == 500
     assert await _sku_codes(async_session) == []
+    assert await _catalog_stock_state(async_session) == {
+        "products": 0, "units": 0, "stocks": 0,
+        "orphan_units": 0, "nonzero_stocks": 0,
+    }
     assert (await _workspace_audit(async_session, workspace_id))["apply_status"] == "not_applied"
     assert [row["apply_status"] for row in await _row_audit(async_session, workspace_id)] == [
         "not_applied",

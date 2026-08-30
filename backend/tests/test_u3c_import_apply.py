@@ -6,7 +6,8 @@ Tests cover all 10 CTO-specified requirements:
   c. fail strategy: existing sku_code causes 409, no SKU created
   d. import_run status set to applied after apply
   e. created_rows/skipped_rows/updated_rows/applied_at/applied_by correct
-  f. apply does NOT write inventory/stocks/pricing/payments/orders
+  f. apply creates one zero stock row per new sellable unit, while
+     pricing/payments/orders remain untouched
   g. No skus:import permission returns 403 (AST guard)
   h. Duplicate apply does not duplicate SKUs (idempotent)
   i. custom_attributes.* triggers STOP_AND_REPORT_CTO
@@ -64,7 +65,15 @@ def _make_mock_db_for_apply(
     # _get_run returns our run
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = run
-    mock_db.execute = AsyncMock(return_value=mock_result)
+    stock_result = MagicMock()
+    stock_result.scalar_one_or_none.return_value = None
+
+    async def mock_execute(stmt):
+        if "import_runs" in str(stmt):
+            return mock_result
+        return stock_result
+
+    mock_db.execute = AsyncMock(side_effect=mock_execute)
     mock_db.flush = AsyncMock()
     mock_db.add = MagicMock()
 
@@ -229,6 +238,8 @@ class TestSkipStrategy:
         )
         assert result.created == 3
         assert result.skipped == 0
+        # CatalogProduct + SKU + InventoryStock for every new row.
+        assert db.add.call_count == 9
 
     @pytest.mark.asyncio
     async def test_all_existing_all_skipped(self):
@@ -393,16 +404,21 @@ class TestCountersAndAudit:
 
 
 # ====================================================================
-# f. apply does NOT write inventory/stocks/pricing/payments/orders
+# f. catalog + sellable unit + zero-stock initialization boundary
 # ====================================================================
 
-class TestNoSideEffects:
+class TestWriteBoundaries:
 
-    def test_service_no_inventory_imports(self):
-        """import_service.py must not import inventory/stock/pricing modules."""
+    CONTRACT_MIGRATION = (
+        "SUPERSEDED_BY_SKU_R0_M1_CATALOG_AND_INVENTORY_INITIALIZATION_CONTRACT"
+    )
+
+    def test_service_uses_inventory_only_for_safe_initialization(self):
+        """Import owns zero-stock initialization, not inventory movement."""
         source = IMPORT_SERVICE_PY.read_text(encoding="utf-8")
+        assert "inventory_repository" in source
+        assert "ensure_stock_row" in source
         forbidden = [
-            "inventory_repository",
             "stock_movement",
             "retailer_price",
             "order_repository",
@@ -428,16 +444,18 @@ class TestNoSideEffects:
                 f"Forbidden import/reference found: {keyword}"
             )
 
-    def test_apply_only_creates_sku_objects(self):
-        """AST check: apply method only adds SKU objects, nothing else."""
+    def test_apply_creates_catalog_unit_and_zero_stock_only(self):
+        """AST check freezes the authorized catalog initialization boundary."""
         source = IMPORT_SERVICE_PY.read_text(encoding="utf-8")
         tree = ast.parse(source)
         for node in ast.walk(tree):
             if isinstance(node, ast.AsyncFunctionDef) and node.name == "apply":
-                # Within apply, db.add should only receive SKU(...)
                 body_source = ast.get_source_segment(source, node)
                 assert body_source is not None
+                assert "CatalogProduct(" in body_source
                 assert "SKU(" in body_source
+                assert "catalog_product_id=product.id" in body_source
+                assert "ensure_stock_row" in body_source
                 assert "InventoryStock" not in body_source
                 assert "RetailerPrice" not in body_source
                 assert "Order" not in body_source
@@ -594,7 +612,8 @@ class TestCustomAttributesGuard:
 class TestCorruptedValidatedRows:
     """R1: When validated import_run rows have corruption (missing/invalid
     sku_code), the apply method MUST raise 422 WITHOUT marking the run as
-    applied and WITHOUT adding any SKU (all db.add calls rolled back).
+    applied. Mock tests cover pre-write rejection; the live-DB suite proves
+    caller-transaction rollback after partial catalog/unit/stock writes.
     """
 
     @pytest.mark.asyncio

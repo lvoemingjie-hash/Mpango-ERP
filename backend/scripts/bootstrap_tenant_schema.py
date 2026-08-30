@@ -1508,14 +1508,27 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             f'permission_id UUID NOT NULL REFERENCES "{ts}".permissions(id) ON DELETE CASCADE,'
             "PRIMARY KEY (role_id, permission_id))",
 
+            f'CREATE TABLE IF NOT EXISTS "{ts}".catalog_products ('
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "name VARCHAR(255) NOT NULL, description TEXT, category VARCHAR(64),"
+            "is_active BOOLEAN NOT NULL DEFAULT true,"
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "is_deleted BOOLEAN NOT NULL DEFAULT false, deleted_at TIMESTAMPTZ,"
+            "created_by UUID, updated_by UUID)",
+            f'CREATE INDEX IF NOT EXISTS ix_catalog_products_name ON "{ts}".catalog_products (name)',
+            f'CREATE INDEX IF NOT EXISTS ix_catalog_products_is_active ON "{ts}".catalog_products (is_active)',
+
             f'CREATE TABLE IF NOT EXISTS "{ts}".skus ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            f'catalog_product_id UUID NOT NULL REFERENCES "{ts}".catalog_products(id) ON DELETE RESTRICT,'
             "sku_code VARCHAR(64) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL,"
             "description TEXT, unit VARCHAR(32) NOT NULL DEFAULT 'unit',"
+            "package_quantity NUMERIC(12,3) NOT NULL DEFAULT 1.000 CHECK (package_quantity > 0),"
             "category VARCHAR(64), is_active BOOLEAN NOT NULL DEFAULT true,"
             "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
             "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
             "created_by UUID, updated_by UUID)",
+            f'CREATE INDEX IF NOT EXISTS ix_skus_catalog_product_id ON "{ts}".skus (catalog_product_id)',
 
             f'CREATE TABLE IF NOT EXISTS "{ts}".inventory_stocks ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -1552,12 +1565,22 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             f'CREATE TABLE IF NOT EXISTS "{ts}".order_items ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
             f'order_id UUID NOT NULL REFERENCES "{ts}".orders(id) ON DELETE CASCADE,'
+            f'sellable_unit_id UUID REFERENCES "{ts}".skus(id) ON DELETE RESTRICT,'
+            "identity_status VARCHAR(32) NOT NULL DEFAULT 'legacy',"
             "product_name TEXT NOT NULL, sku_code VARCHAR(64) NOT NULL,"
+            "unit_snapshot VARCHAR(32),"
             "quantity INTEGER NOT NULL, unit_price NUMERIC(12,2) NOT NULL,"
             "subtotal NUMERIC(12,2) NOT NULL,"
             "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
             "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
-            "created_by UUID, updated_by UUID)",
+            "created_by UUID, updated_by UUID,"
+            "CONSTRAINT ck_order_items_identity_status CHECK "
+            "(identity_status IN ('legacy', 'linked_legacy', 'stable')) ,"
+            "CONSTRAINT ck_order_items_identity_shape CHECK ("
+            "(identity_status = 'legacy' AND sellable_unit_id IS NULL) OR "
+            "(identity_status = 'linked_legacy' AND sellable_unit_id IS NOT NULL) OR "
+            "(identity_status = 'stable' AND sellable_unit_id IS NOT NULL AND unit_snapshot IS NOT NULL)))",
+            f'CREATE INDEX IF NOT EXISTS ix_order_items_sellable_unit_id ON "{ts}".order_items (sellable_unit_id)',
 
             f'CREATE TABLE IF NOT EXISTS "{ts}".inventory_reservations ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"

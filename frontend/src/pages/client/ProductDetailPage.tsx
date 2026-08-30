@@ -42,6 +42,7 @@ export function ProductDetailPage() {
     navigate('/client/orders/new', {
       state: {
         items: [{
+          sellable_unit_id: product.sellable_unit_id,
           sku_code: product.sku_code,
           name: product.name,
           quantity,

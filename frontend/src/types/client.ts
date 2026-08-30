@@ -9,10 +9,13 @@ export type StockLevel = 'OUT_OF_STOCK' | 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface ClientProduct {
   id: string;
+  catalog_product_id: string;
+  sellable_unit_id: string;
   name: string;
   sku_code: string;
   category: string | null;
   unit: string;
+  package_quantity: number;
   price: number | null;
   in_stock: boolean;
   stock_level: StockLevel;
@@ -24,8 +27,11 @@ export interface ClientProductDetail extends ClientProduct {
 }
 
 export interface ClientOrderItem {
+  sellable_unit_id: string | null;
+  identity_status: 'legacy' | 'linked_legacy' | 'stable';
   product_name: string;
   sku_code: string;
+  unit_snapshot: string | null;
   quantity: number;
   unit_price: number;
   subtotal: number;
@@ -44,7 +50,8 @@ export interface ClientOrder {
 }
 
 export interface CreateOrderItem {
-  sku_code: string;
+  sellable_unit_id: string;
+  sku_code?: string;
   quantity: number;
 }
 

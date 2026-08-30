@@ -150,18 +150,18 @@ def probe_env_override_wired(mod_runner, ctx):
 
 
 def probe_child_alembic_recheck_deleted(mod_plugin, ctx):
-    """The child sessionstart must surface alembic:* problems when the
-    declared lineage is violated; deleting the recheck hides them."""
+    """A5: against the REAL 038 candidate tree, a child still bound to the
+    H2C/037 expected head deterministically reports the alembic mismatch;
+    deleting the child recheck (A107) hides it."""
     import json as _json
 
     with tempfile.TemporaryDirectory() as tmp:
         env = {
-            "ET1_RUNNER_ALEMBIC_EXPECTED": SKU,
-            "ET1_RUNNER_ALEMBIC_PARENT": H2C,
+            "ET1_RUNNER_ALEMBIC_EXPECTED": H2C,
         }
         gate = mod_plugin.sessionstart_gate(env)
         problems = gate.get("problems", [])
-        return any(p.startswith("alembic:") for p in problems)
+        return any(p == "alembic:alembic_head_mismatch" for p in problems)
 
 
 def probe_actual_head_drift_accepted(mod_runner, ctx):

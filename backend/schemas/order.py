@@ -8,8 +8,9 @@ Phase 5: Added PayOrderRequest for structured payment recording on order pay.
 from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
+from uuid import UUID
 from enum import Enum
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import re
 from schemas.base import CamelModel
 from schemas.payment import PaymentMethod
@@ -88,8 +89,11 @@ class OrderItem(CamelModel):
     v0.1.9: CamelModel adapter (accepts camelCase input)
     """
     id: str = Field(..., description="Order item UUID")
+    sellable_unit_id: Optional[str] = Field(None, description="Stable sellable-unit UUID")
+    identity_status: str = Field("legacy", description="legacy, linked_legacy, or stable")
     product_name: str = Field(..., description="Product name snapshot")
     sku_code: str = Field(..., description="SKU code snapshot")
+    unit_snapshot: Optional[str] = Field(None, description="Unit at order time")
     quantity: int = Field(..., description="Item quantity")
     unit_price: Decimal = Field(..., description="Unit price")
     subtotal: Decimal = Field(..., description="Line item subtotal")
@@ -137,20 +141,40 @@ class WholesalerOrderItemCreate(BaseModel):
     """
     Wholesaler order item -- pricing-safe.
 
-    Phase 4: The frontend sends ONLY sku_code + quantity.
+    The frontend sends stable sellable_unit_id + quantity and may include the
+    immutable sku_code selector for compatibility and mismatch detection.
     product_name and unit_price are resolved server-side from
     the SKU catalog and retailer_prices table respectively.
     Any client-supplied price is structurally impossible.
     """
-    sku_code: str = Field(..., min_length=1, max_length=64, description="SKU code")
+    sellable_unit_id: Optional[str] = Field(default=None, min_length=36, max_length=36)
+    sku_code: Optional[str] = Field(default=None, min_length=1, max_length=64, description="Compatibility SKU selector")
     quantity: int = Field(..., ge=1, le=10000, description="Item quantity")
 
     @field_validator("sku_code")
     @classmethod
-    def validate_sku_code(cls, v: str) -> str:
+    def validate_sku_code(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
         if not SAFE_CODE_PATTERN.match(v):
             raise ValueError("SKU code contains invalid characters")
         return v
+
+    @field_validator("sellable_unit_id")
+    @classmethod
+    def validate_sellable_unit_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return str(UUID(value))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("sellable_unit_id must be a UUID") from exc
+
+    @model_validator(mode="after")
+    def require_selector(self):
+        if not self.sellable_unit_id and not self.sku_code:
+            raise ValueError("sellable_unit_id or sku_code is required")
+        return self
 
     model_config = {"from_attributes": True}
 
@@ -160,7 +184,7 @@ class WholesalerOrderCreateRequest(BaseModel):
     Wholesaler order creation request -- pricing-safe.
 
     Phase 4: Price authority lives in the backend.
-    The request contains retailer_id, items (sku_code + quantity), and notes.
+    The request contains retailer_id, stable item selectors, and notes.
     No unit_price or product_name accepted from the client.
     """
     retailer_id: str = Field(..., min_length=36, max_length=36, description="Retailer UUID")
@@ -168,7 +192,7 @@ class WholesalerOrderCreateRequest(BaseModel):
         ...,
         min_length=1,
         max_length=100,
-        description="Order line items (sku_code + quantity only)"
+        description="Order line items with stable sellable-unit identity"
     )
     notes: str | None = Field(None, max_length=1000, description="Order notes")
 

@@ -24,10 +24,12 @@ router = APIRouter()
 def _sku_to_read(sku) -> SKURead:
     return SKURead(
         id=str(sku.id),
+        catalog_product_id=str(sku.catalog_product_id),
         sku_code=sku.sku_code,
         name=sku.name,
         description=sku.description,
         unit=sku.unit,
+        package_quantity=sku.package_quantity,
         category=sku.category,
         is_active=sku.is_active,
         created_at=sku.created_at,
@@ -64,10 +66,12 @@ async def _list_skus_cached(
         "items": [
             {
                 "id": str(s.id),
+                "catalog_product_id": str(s.catalog_product_id),
                 "sku_code": s.sku_code,
                 "name": s.name,
                 "description": s.description,
                 "unit": s.unit,
+                "package_quantity": str(s.package_quantity),
                 "category": s.category,
                 "is_active": s.is_active,
                 "created_at": s.created_at.isoformat() if hasattr(s.created_at, 'isoformat') else s.created_at,
@@ -117,10 +121,12 @@ async def list_skus(
         items = [
             SKURead(
                 id=item["id"],
+                catalog_product_id=item["catalog_product_id"],
                 sku_code=item["sku_code"],
                 name=item["name"],
                 description=item["description"],
                 unit=item["unit"],
+                package_quantity=item["package_quantity"],
                 category=item["category"],
                 is_active=item["is_active"],
                 created_at=item["created_at"],
@@ -188,10 +194,12 @@ async def create_sku(
         service = SKUService()
         sku = await service.create_sku(
             db,
+            catalog_product_id=request.catalog_product_id,
             sku_code=request.sku_code,
             name=request.name,
             description=request.description,
             unit=request.unit,
+            package_quantity=request.package_quantity,
             category=request.category,
             is_active=request.is_active,
             created_by=token.user_id,
@@ -328,6 +336,7 @@ async def update_sku(
             name=request.name,
             description=request.description,
             unit=request.unit,
+            package_quantity=request.package_quantity,
             category=request.category,
             is_active=request.is_active,
             updated_by=token.user_id,

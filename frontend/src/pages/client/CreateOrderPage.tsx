@@ -7,6 +7,7 @@ import { normalizeApiError } from '@/utils/errorHandling';
 import type { ClientProduct, CreateOrderItem } from '@/types/client';
 
 interface OrderLineItem {
+  sellable_unit_id: string;
   sku_code: string;
   name: string;
   quantity: number;
@@ -56,15 +57,16 @@ export function CreateOrderPage() {
   }, [showPicker, loadProducts]);
 
   const addProduct = (product: ClientProduct) => {
-    const existing = items.find((i) => i.sku_code === product.sku_code);
+    const existing = items.find((i) => i.sellable_unit_id === product.sellable_unit_id);
     if (existing) {
       setItems(items.map((i) =>
-        i.sku_code === product.sku_code
+        i.sellable_unit_id === product.sellable_unit_id
           ? { ...i, quantity: i.quantity + 1 }
           : i
       ));
     } else {
       setItems([...items, {
+        sellable_unit_id: product.sellable_unit_id,
         sku_code: product.sku_code,
         name: product.name,
         quantity: 1,
@@ -74,18 +76,18 @@ export function CreateOrderPage() {
     setShowPicker(false);
   };
 
-  const updateQuantity = (sku_code: string, quantity: number) => {
+  const updateQuantity = (sellableUnitId: string, quantity: number) => {
     if (quantity <= 0) {
-      setItems(items.filter((i) => i.sku_code !== sku_code));
+      setItems(items.filter((i) => i.sellable_unit_id !== sellableUnitId));
     } else {
       setItems(items.map((i) =>
-        i.sku_code === sku_code ? { ...i, quantity } : i
+        i.sellable_unit_id === sellableUnitId ? { ...i, quantity } : i
       ));
     }
   };
 
-  const removeItem = (sku_code: string) => {
-    setItems(items.filter((i) => i.sku_code !== sku_code));
+  const removeItem = (sellableUnitId: string) => {
+    setItems(items.filter((i) => i.sellable_unit_id !== sellableUnitId));
   };
 
   const handleSubmit = async () => {
@@ -94,6 +96,7 @@ export function CreateOrderPage() {
     setError(null);
     try {
       const orderItems: CreateOrderItem[] = items.map((i) => ({
+        sellable_unit_id: i.sellable_unit_id,
         sku_code: i.sku_code,
         quantity: i.quantity,
       }));
@@ -148,7 +151,7 @@ export function CreateOrderPage() {
         <div className="space-y-2">
           {items.map((item) => (
             <div
-              key={item.sku_code}
+              key={item.sellable_unit_id}
               className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
             >
               <div className="flex-1 min-w-0">
@@ -165,14 +168,14 @@ export function CreateOrderPage() {
 
               <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => updateQuantity(item.sku_code, item.quantity - 1)}
+                  onClick={() => updateQuantity(item.sellable_unit_id, item.quantity - 1)}
                   className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 text-xs text-gray-600 hover:bg-gray-50"
                 >
                   -
                 </button>
                 <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
                 <button
-                  onClick={() => updateQuantity(item.sku_code, item.quantity + 1)}
+                  onClick={() => updateQuantity(item.sellable_unit_id, item.quantity + 1)}
                   className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 text-xs text-gray-600 hover:bg-gray-50"
                 >
                   +
@@ -180,7 +183,7 @@ export function CreateOrderPage() {
               </div>
 
               <button
-                onClick={() => removeItem(item.sku_code)}
+                onClick={() => removeItem(item.sellable_unit_id)}
                 className="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-500 transition"
               >
                 <TrashIcon className="h-4 w-4" />
@@ -239,7 +242,7 @@ export function CreateOrderPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
-                    <p className="text-xs text-gray-400">{p.sku_code}</p>
+                    <p className="text-xs text-gray-400">{p.sku_code} - {p.package_quantity} {p.unit}</p>
                   </div>
                   <span className={`text-xs font-medium ${
                     p.stock_level === 'HIGH' ? 'text-green-600' :

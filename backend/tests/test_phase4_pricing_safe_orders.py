@@ -25,7 +25,7 @@ import pytest
 from fastapi import HTTPException, status
 from pydantic import BaseModel
 
-os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test_db")
+os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test_db")  # pragma: allowlist secret
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-testing-only-minimum-32-characters-long")
 os.environ.setdefault("MPANGO_ENV", "test")
 
@@ -57,8 +57,8 @@ def make_token(tenant_id=None, user_id=None):
 BindingRow = namedtuple("BindingRow", ["id"])
 
 SkuRow = namedtuple("SkuRow", [
-    "sku_id", "sku_code", "name", "is_active", "quantity_on_hand", "sell_price",
-])
+    "sku_id", "sku_code", "name", "is_active", "quantity_on_hand", "sell_price", "unit",
+], defaults=["unit"])
 
 PriceRow = namedtuple("PriceRow", [
     "sku_id", "sku_code", "sku_name", "retailer_id", "price", "updated_at",
@@ -106,8 +106,11 @@ def _ordered_execute(call_results: list):
 class MockOrderItem:
     def __init__(self, product_name, sku_code, quantity, unit_price):
         self.id = uuid.uuid4()
+        self.sellable_unit_id = uuid.uuid4()
+        self.identity_status = "stable"
         self.product_name = product_name
         self.sku_code = sku_code
+        self.unit_snapshot = "case"
         self.quantity = quantity
         self.unit_price = unit_price
         self.subtotal = Decimal(str(quantity)) * unit_price
@@ -148,10 +151,10 @@ class TestSchemaRejectsPrice:
         assert "unit_price" not in fields, "unit_price must NOT be in wholesaler item schema"
         assert "product_name" not in fields, "product_name must NOT be in wholesaler item schema"
 
-    def test_schema_accepts_only_sku_and_quantity(self):
+    def test_schema_accepts_stable_identity_selector_and_quantity(self):
         from schemas.order import WholesalerOrderItemCreate
         fields = set(WholesalerOrderItemCreate.model_fields.keys())
-        assert fields == {"sku_code", "quantity"}
+        assert fields == {"sellable_unit_id", "sku_code", "quantity"}
 
     def test_extra_fields_ignored_or_rejected(self):
         from schemas.order import WholesalerOrderItemCreate
@@ -199,7 +202,7 @@ class TestWholesalerOrderCreationAPI:
         sku_result = _mock_result(rows=[
             SkuRow(
                 sku_id=SKU_ID, sku_code="SKU-001", name="Widget A",
-                is_active=True, quantity_on_hand=100, sell_price=Decimal("25.50"),
+                unit="case", is_active=True, quantity_on_hand=100, sell_price=Decimal("25.50"),
             )
         ])
 
@@ -220,6 +223,164 @@ class TestWholesalerOrderCreationAPI:
         assert len(result.data.items) == 1
         assert result.data.items[0].unit_price == Decimal("25.50")
         assert result.data.items[0].product_name == "Widget A"
+
+    @pytest.mark.asyncio
+    async def test_matching_stable_id_and_code_create_stable_snapshot(self):
+        from schemas.order import WholesalerOrderCreateRequest, WholesalerOrderItemCreate
+
+        request = WholesalerOrderCreateRequest(
+            retailer_id=RETAILER_ID,
+            items=[
+                WholesalerOrderItemCreate(
+                    sellable_unit_id=SKU_ID,
+                    sku_code="SKU-001",
+                    quantity=3,
+                )
+            ],
+        )
+        token = make_token(tenant_id=TENANT_ID, user_id=USER_ID)
+        binding_result = _mock_result(fetchone_val=BindingRow(id=uuid.uuid4()))
+        sku_result = _mock_result(rows=[
+            SkuRow(
+                sku_id=SKU_ID,
+                sku_code="SKU-001",
+                name="Widget A",
+                unit="case",
+                is_active=True,
+                quantity_on_hand=100,
+                sell_price=Decimal("25.50"),
+            )
+        ])
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(side_effect=_ordered_execute([binding_result, sku_result]))
+        mock_order = MockOrder(
+            TENANT_ID,
+            RETAILER_ID,
+            [MockOrderItem("Widget A", "SKU-001", 3, Decimal("25.50"))],
+        )
+
+        with patch(
+            "api.v1.orders.crud_create_order",
+            new_callable=AsyncMock,
+            return_value=mock_order,
+        ) as create_mock:
+            from api.v1.orders import create_order
+
+            await create_order(request=request, token=token, db=mock_db)
+
+        item = create_mock.await_args.kwargs["items"][0]
+        assert item == {
+            "sellable_unit_id": SKU_ID,
+            "product_name": "Widget A",
+            "sku_code": "SKU-001",
+            "unit_snapshot": "case",
+            "quantity": 3,
+            "unit_price": Decimal("25.50"),
+        }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("include_code_row", [True, False])
+    async def test_stable_id_and_code_mismatch_fails_closed(self, include_code_row):
+        from schemas.order import WholesalerOrderCreateRequest, WholesalerOrderItemCreate
+
+        stable_id = str(uuid.uuid4())
+        request = WholesalerOrderCreateRequest(
+            retailer_id=RETAILER_ID,
+            items=[
+                WholesalerOrderItemCreate(
+                    sellable_unit_id=stable_id,
+                    sku_code="SKU-OTHER",
+                    quantity=1,
+                )
+            ],
+        )
+        rows = [
+            SkuRow(
+                sku_id=stable_id,
+                sku_code="SKU-BY-ID",
+                name="By ID",
+                is_active=True,
+                quantity_on_hand=10,
+                sell_price=Decimal("10.00"),
+            )
+        ]
+        if include_code_row:
+            rows.append(
+                SkuRow(
+                    sku_id=str(uuid.uuid4()),
+                    sku_code="SKU-OTHER",
+                    name="By Code",
+                    is_active=True,
+                    quantity_on_hand=10,
+                    sell_price=Decimal("10.00"),
+                )
+            )
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(
+            side_effect=_ordered_execute(
+                [_mock_result(fetchone_val=BindingRow(id=uuid.uuid4())), _mock_result(rows=rows)]
+            )
+        )
+
+        with pytest.raises(HTTPException) as error:
+            from api.v1.orders import create_order
+
+            await create_order(
+                request=request,
+                token=make_token(tenant_id=TENANT_ID, user_id=USER_ID),
+                db=mock_db,
+            )
+
+        assert error.value.detail["code"] == "ORDER_VALIDATION_FAILED"
+        assert error.value.detail["errors"] == [
+            "Sellable unit ID does not match SKU code"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_retailer_order_stable_id_and_code_mismatch_fails_closed(self):
+        from api.v1.client.dependencies import ClientIdentity
+        from api.v1.client.orders import create_order as create_client_order
+        from schemas.client import ClientCreateOrderRequest, ClientOrderItemRequest
+
+        stable_id = str(uuid.uuid4())
+        request = ClientCreateOrderRequest(
+            items=[
+                ClientOrderItemRequest(
+                    sellable_unit_id=stable_id,
+                    sku_code="SKU-OTHER",
+                    quantity=1,
+                )
+            ]
+        )
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(
+            return_value=_mock_result(
+                rows=[
+                    SkuRow(
+                        sku_id=stable_id,
+                        sku_code="SKU-BY-ID",
+                        name="By ID",
+                        is_active=True,
+                        quantity_on_hand=10,
+                        sell_price=Decimal("10.00"),
+                    )
+                ]
+            )
+        )
+        client = ClientIdentity(
+            user_id=USER_ID,
+            retailer_id=RETAILER_ID,
+            tenant_id=TENANT_ID,
+            token=MagicMock(),
+        )
+
+        with pytest.raises(HTTPException) as error:
+            await create_client_order(request=request, client=client, db=mock_db)
+
+        assert error.value.detail["code"] == "ORDER_VALIDATION_FAILED"
+        assert error.value.detail["errors"] == [
+            "Sellable unit ID does not match SKU code"
+        ]
 
     @pytest.mark.asyncio
     async def test_missing_price_returns_order_validation_failed(self):

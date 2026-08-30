@@ -1,30 +1,38 @@
-import { useEffect, useState, useCallback } from 'react';
-import { skuService, type SKU } from '@/services/skuService';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ArrowUpTrayIcon,
+  CameraIcon,
+  ClipboardDocumentListIcon,
+  CubeIcon,
+  PlusIcon,
+} from '@heroicons/react/24/outline';
+
 import { PageHeader } from '@/components/layout/PageHeader';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
-import { useAuthStore } from '@/stores/authStore';
-import { PlusIcon, CubeIcon, ArrowUpTrayIcon, ClipboardDocumentListIcon, CameraIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
+import {
+  catalogProductService,
+  type CatalogProduct,
+  type SellableUnit,
+} from '@/services/catalogProductService';
+import { useAuthStore } from '@/stores/authStore';
+import { can, canAny, INTAKE_PERMISSIONS, SKU_PERMISSIONS } from '@/utils/permissions';
+
+import { AddSellableUnitModal } from './AddSellableUnitModal';
 import { SKUFormModal } from './SKUFormModal';
 import { SKUImportModal } from './SKUImportModal';
-import { can, canAny, INTAKE_PERMISSIONS } from '@/utils/permissions';
-import { SKU_PERMISSIONS } from '@/utils/permissions';
 
 export function SKUListPage() {
-  const [skus, setSkus] = useState<SKU[]>([]);
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Modal state
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
-  const [selectedSku, setSelectedSku] = useState<SKU | null>(null);
+  const [isPackagingOpen, setIsPackagingOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
+  const [selectedUnit, setSelectedUnit] = useState<SellableUnit | null>(null);
 
-  const user = useAuthStore((s) => s.user);
-
-  // U4-A: Fixed product gates -- previously checked 'inventory:write' (wrong
-  // domain). Products require 'skus:create' (Add) and 'skus:update' (Edit).
-  // Import requires 'skus:import'. Admin role bypasses all checks via can().
+  const user = useAuthStore((state) => state.user);
   const canCreate = can(user, SKU_PERMISSIONS.CREATE);
   const canUpdate = can(user, SKU_PERMISSIONS.UPDATE);
   const canImport = can(user, SKU_PERMISSIONS.IMPORT);
@@ -34,8 +42,8 @@ export function SKUListPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await skuService.getAll(1, 100);
-      setSkus(res.data.data.items);
+      const response = await catalogProductService.getAll(1, 100);
+      setProducts(response.data.data.items);
     } catch {
       setError('Could not load your product catalog. Check your connection and try again. If the problem persists, contact support.');
     } finally {
@@ -47,35 +55,44 @@ export function SKUListPage() {
     load();
   }, [load]);
 
-  const handleEdit = (sku: SKU) => {
-    setSelectedSku(sku);
-    setIsModalOpen(true);
+  const createProduct = () => {
+    setSelectedProduct(null);
+    setIsProductModalOpen(true);
   };
 
-  const handleCreate = () => {
-    setSelectedSku(null);
-    setIsModalOpen(true);
+  const editProduct = (product: CatalogProduct) => {
+    setSelectedProduct(product);
+    setIsProductModalOpen(true);
+  };
+
+  const addPackaging = (product: CatalogProduct) => {
+    setSelectedProduct(product);
+    setSelectedUnit(null);
+    setIsPackagingOpen(true);
+  };
+
+  const editPackaging = (product: CatalogProduct, unit: SellableUnit) => {
+    setSelectedProduct(product);
+    setSelectedUnit(unit);
+    setIsPackagingOpen(true);
   };
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Products (SKUs)"
-        description="Manage your product catalog and SKU codes."
+        description="Manage customer-facing products and their independently stocked packaging options."
         action={
           (canCreate || canImport || canUseIntake) && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {canCreate && (
-                <button onClick={handleCreate} className="btn-primary flex items-center gap-2">
+                <button onClick={createProduct} className="btn-primary flex items-center gap-2">
                   <PlusIcon className="h-5 w-5" />
                   Add Product
                 </button>
               )}
               {canImport && (
-                <button
-                  onClick={() => setIsImportOpen(true)}
-                  className="btn-secondary flex items-center gap-2"
-                >
+                <button onClick={() => setIsImportOpen(true)} className="btn-secondary flex items-center gap-2">
                   <ArrowUpTrayIcon className="h-5 w-5" />
                   Import Catalog SKUs
                 </button>
@@ -101,126 +118,92 @@ export function SKUListPage() {
 
       {error && (
         <div className="mt-6 rounded-md bg-red-50 p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-red-700">{error}</div>
-            <button
-              onClick={load}
-              className="rounded-md bg-red-100 px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-200"
-            >
+            <button onClick={load} className="rounded-md bg-red-100 px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-200">
               Retry
             </button>
           </div>
         </div>
       )}
 
-      {!loading && !error && skus.length === 0 && (
+      {!loading && !error && products.length === 0 && (
         <EmptyState
           icon={CubeIcon}
           title="No products yet"
-          description="Your catalog is empty. Add a catalog SKU manually, or import catalog SKU records from a spreadsheet. Configure stock and retailer pricing before selling."
-          action={
-            <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row">
-              {canCreate && (
-                <button onClick={handleCreate} className="btn-primary">
-                  Add Product
-                </button>
-              )}
-              {canImport && (
-                <button
-                  onClick={() => setIsImportOpen(true)}
-                  className="btn-secondary flex items-center gap-2"
-                >
-                  <ArrowUpTrayIcon className="h-4 w-4" />
-                  Import Catalog SKUs
-                </button>
-              )}
-              {canUseIntake && (
-                <a href="/skus/intake" className="btn-secondary flex items-center gap-2">
-                  <ClipboardDocumentListIcon className="h-4 w-4" />
-                  Data Intake
-                </a>
-              )}
-            </div>
-          }
+          description="Add a product with at least one packaging option, or import catalog records from a spreadsheet."
         />
       )}
 
-      {!loading && !error && skus.length > 0 && (
-        <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  SKU Code
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Product Name
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Category
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Unit
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Status
-                </th>
-                {canUpdate && (
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Actions
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
-              {skus.map((sku) => (
-                <tr key={sku.id} className="hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
-                    {sku.sku_code}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                    {sku.name}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {sku.category || '--'}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {sku.unit}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm">
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      sku.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {sku.is_active ? 'Active' : 'Inactive'}
+      {!loading && !error && products.length > 0 && (
+        <div className="mt-6 space-y-4" data-testid="catalog-product-list">
+          {products.map((product) => (
+            <article key={product.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+              <div className="flex flex-col gap-4 border-b border-gray-100 bg-gray-50/70 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="break-words text-base font-semibold text-gray-900">{product.name}</h2>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${product.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-700'}`}>
+                      {product.is_active ? 'Active product' : 'Inactive product'}
                     </span>
-                  </td>
-                  {canUpdate && (
-                    <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
-                      <button
-                        onClick={() => handleEdit(sku)}
-                        className="text-primary-600 hover:text-primary-900"
-                      >
-                        Edit
-                      </button>
-                    </td>
+                  </div>
+                  <p className="mt-1 text-sm text-gray-500">{product.category || 'Uncategorized'}</p>
+                  {product.description && <p className="mt-2 break-words text-sm text-gray-600">{product.description}</p>}
+                </div>
+                <div className="flex flex-wrap gap-3 text-sm font-medium">
+                  {canUpdate && <button onClick={() => editProduct(product)} className="text-primary-700">Edit product</button>}
+                  {canCreate && <button onClick={() => addPackaging(product)} className="text-primary-700">Add packaging</button>}
+                </div>
+              </div>
+
+              <div className="p-4 sm:p-5">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500">Packaging options</h3>
+                <div className="mt-3 divide-y divide-gray-100 rounded-lg border border-gray-200">
+                  {(product.sellable_units ?? []).map((unit) => (
+                    <div key={unit.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+                      <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-3 sm:gap-6">
+                        <div className="min-w-0">
+                          <p className="text-xs text-gray-500">SKU code</p>
+                          <p className="break-all font-mono text-sm font-medium text-gray-900">{unit.sku_code}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Pack size</p>
+                          <p className="text-sm text-gray-900">{unit.package_quantity} {unit.unit}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Availability</p>
+                          <p className="text-sm text-gray-900">{unit.is_active ? 'Active' : 'Inactive'}</p>
+                        </div>
+                      </div>
+                      {canUpdate && (
+                        <button onClick={() => editPackaging(product, unit)} className="self-start text-sm font-medium text-primary-700 sm:self-center">
+                          Edit packaging
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {(product.sellable_units ?? []).length === 0 && (
+                    <p className="p-4 text-sm text-gray-500">No packaging options are available for this product.</p>
                   )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                </div>
+              </div>
+            </article>
+          ))}
         </div>
       )}
 
       <SKUFormModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        isOpen={isProductModalOpen}
+        onClose={() => setIsProductModalOpen(false)}
         onSuccess={load}
-        sku={selectedSku}
+        product={selectedProduct}
       />
-
-      <SKUImportModal
-        isOpen={isImportOpen}
-        onClose={() => setIsImportOpen(false)}
+      <SKUImportModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} onSuccess={load} />
+      <AddSellableUnitModal
+        isOpen={isPackagingOpen}
+        product={selectedProduct}
+        sellableUnit={selectedUnit}
+        onClose={() => setIsPackagingOpen(false)}
         onSuccess={load}
       />
     </div>

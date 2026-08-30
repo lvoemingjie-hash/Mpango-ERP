@@ -238,5 +238,35 @@
     "owner": "cto",
     "reason": "DC-12R1-MVP-L1-HE2-ET1-R3 backend CWD and temporary-database authority preflight closure (V3_MERGE_CRITICAL; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY) plus R3-A1 profile-bound alembic successor amendment: shared stdlib modules (backend_env_authority.py) provide CWD/MPANGO_ENV/DB-name/port-allowlist/host checks AND profile-bound alembic successor verification (single head byte-equal to profile expected head, declared parent lineage); runner preflight AND child sessionstart independently enforce; drift after preflight/collect/launch VOID; evidence fixed categories only; global EXPECTED_ALEMBIC_HEAD retired (no CLI/env override); profile schema gains required expected_alembic_head + optional expected_alembic_parent; AUTHORITY_SKU_M1_BACKEND profile added (038 successor of 037); +15 R3 truth tests, +13 R3-A1 truth tests (186/186); +17 mutations (T221-T228 + A101-A109) gate 102 RED / 9 GREEN.",
     "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R3 + R3-A1 task directives (BASE cdb39e96a50b308aff91d4e94fd8526e7540d921; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
+  },
+  {
+    "delta_id": "PD-2026-08-30-SKU-R0-M1-R1-A4",
+    "kind": "governance",
+    "affected_ids": [],
+    "affected_paths": [
+      "harness-governance/inventory/inventory.json",
+      "harness-governance/inventory/protocol-deltas.json",
+      "harness-governance/tests/test_harness_governance_validator.py"
+    ],
+    "base_sha": "24a28d76d6d9483d8101f8e0f537c148dc262859",
+    "date": "2026-08-30",
+    "owner": "cto",
+    "reason": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A4 governance closure: the protected validator test now binds the exact 15-node seed inventory (replacing the stale hardcoded 13) and binds both SKU catalog nodes (CATALOG-ID-001 and CATALOG-HIST-001) by exact ID with full node contracts (capability+layer category semantics, risk, status, owner, all five oracle fields, exact source_anchors, exact mutation_id) at exact final-two positions so silent deletion or reorder stays fail-closed. This delta is not a product-range authorization: it enumerates every governance file changed by the candidate precisely; inventory.json carries the product-sync truth while only the protected test requires governance authorization.",
+    "approval_ref": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A4"
+  },
+  {
+    "delta_id": "PD-2026-08-30-SKU-R0-M1-R1-A5",
+    "kind": "governance",
+    "affected_ids": [],
+    "affected_paths": [
+      "harness-governance/inventory/protocol-deltas.json",
+      "harness-governance/tests/et1_r3a1_mutations.py",
+      "harness-governance/tests/test_authority_runner_r3a1.py"
+    ],
+    "base_sha": "24a28d76d6d9483d8101f8e0f537c148dc262859",
+    "date": "2026-08-30",
+    "owner": "cto",
+    "reason": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A5 governance closure: the R3-A1 truth suite is retargeted to the real repository migration tree (exact single head 038_catalog_identity_vertical_slice, exact parent 037_payment_declarations_schema) — AUTHORITY_SKU_M1_BACKEND semantics (expected 038, parent 037) pass real preflight enforcement and bind actual/expected/parent exactly, while an H2-C profile expecting 037 with no successor parent fails closed with alembic_head_mismatch against the same tree; mutation probe child_alembic_recheck_deleted is retargeted so a pristine child expecting H2C/037 deterministically reports the alembic mismatch and only the A107 recheck deletion escapes; this test binds the complete A5 delta so deletion, duplication, base drift, or affected_paths expansion stays RED. This delta is not a runtime PASS claim and not a product-range authorization; the authority implementation, profiles, and product paths are untouched.",
+    "approval_ref": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A5 task A5"
   }
 ]

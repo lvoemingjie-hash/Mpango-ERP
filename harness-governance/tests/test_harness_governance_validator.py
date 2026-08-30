@@ -311,7 +311,7 @@ class GreenWorkspaceTests(WorkspaceTestCase):
         self.workspace()
         report = self.validate()
         self.assertTrue(report["green"], report["violations"])
-        self.assertEqual(report["coverage"]["total_nodes"], 13)
+        self.assertEqual(report["coverage"]["total_nodes"], 15)
         self.assertEqual(report["gates"]["structural_gate"], "PASS")
 
     def test_pristine_tree_is_green_against_pristine_baseline(self):
@@ -325,6 +325,124 @@ class GreenWorkspaceTests(WorkspaceTestCase):
         _, nodes = self.nodes()
         self.assertTrue(all(node["status"] != "PASS" for node in nodes))
         self.assertTrue(all(node["evidence_sha"] == "" for node in nodes))
+
+    def test_sku_catalog_nodes_bound_exactly_as_final_two(self):
+        """SKU-M1 catalog identity closure: bind both SKU nodes by exact ID,
+        full contract (capability + layer category semantics, risk, status,
+        owner, all five oracle fields, exact source_anchors, exact
+        mutation_id) and their exact positions as the final two nodes, so
+        silent deletion or reorder of the fixture stays fail-closed."""
+        self.workspace()
+        _, nodes = self.nodes()
+        self.assertEqual(len(nodes), 15)
+        self.assertEqual(nodes[13]["id"], "CATALOG-ID-001")
+        self.assertEqual(nodes[14]["id"], "CATALOG-HIST-001")
+
+        identity = nodes[13]
+        self.assertEqual(identity["id"], "CATALOG-ID-001")
+        self.assertEqual(identity["capability"], "tenant-local catalog product and stable sellable-unit identity")
+        self.assertEqual(identity["layer"], "full_stack")
+        self.assertEqual(identity["risk"], "P0")
+        self.assertEqual(identity["status"], "NOT_RUN")
+        self.assertEqual(identity["owner"], "codex-l")
+        self.assertEqual(identity["ui_oracle"], "each packaging option is independently selectable and unavailable products are hidden from the retailer")
+        self.assertEqual(identity["navigation_oracle"], "desktop and 390px catalog journeys complete through supported routes without manual URL entry")
+        self.assertEqual(identity["network_oracle"], "order request carries sellable_unit_id; a mismatched ID and SKU code or a cross-tenant ID is rejected")
+        self.assertEqual(identity["session_oracle"], "tenant and actor context remain unchanged throughout product and order mutations")
+        self.assertEqual(identity["persistence_security_oracle"], "CatalogProduct owns shared presentation; each SKU UUID owns inventory; reservation and movement rows retain that UUID without code lookup")
+        self.assertEqual(identity["source_anchors"], [
+            "backend/models/catalog_product.py:1",
+            "backend/models/sku.py:1",
+            "backend/models/order.py:104",
+            "backend/alembic/versions/038_catalog_identity_vertical_slice.py:1",
+            "backend/scripts/bootstrap_tenant_schema.py:1530",
+            "backend/api/v1/catalog_products.py:1",
+            "backend/api/v1/skus.py:1",
+            "backend/api/v1/orders.py:404",
+            "backend/api/v1/client/orders.py:126",
+            "backend/api/v1/client/products.py:90",
+            "backend/services/catalog_product_service.py:1",
+            "backend/services/sku_service.py:1",
+            "backend/services/inventory_service.py:100",
+            "backend/repositories/inventory_repository.py:1",
+            "backend/repositories/sku_repository.py:1",
+            "backend/crud/order.py:340",
+            "backend/services/import_service.py:1",
+            "backend/services/intake_apply_service.py:1",
+            "backend/scripts/seed_demo_data.py:1",
+            "backend/schemas/catalog.py:1",
+            "backend/schemas/sku.py:1",
+            "backend/schemas/order.py:80",
+            "backend/schemas/client.py:40",
+            "backend/tests/test_sku_m1_catalog_identity.py:1",
+            "backend/tests/catalog_identity_helpers.py:1",
+            "frontend/src/pages/skus/SKUFormModal.tsx:1",
+            "frontend/src/pages/skus/AddSellableUnitModal.tsx:1",
+            "frontend/src/pages/skus/SKUListPage.tsx:1",
+            "frontend/src/pages/orders/CreateOrderPage.tsx:1",
+            "frontend/src/pages/client/CreateOrderPage.tsx:1",
+            "frontend/src/pages/client/ProductDetailPage.tsx:1",
+            "frontend/src/services/catalogProductService.ts:1",
+            "frontend/src/services/skuService.ts:1",
+            "frontend/src/types/order.ts:1",
+            "frontend/src/types/client.ts:1",
+            "frontend/src/tests/SKUCatalogIdentity.test.tsx:1",
+            "docs/contracts/openapi.yaml:1",
+        ])
+        self.assertEqual(identity["mutation_id"], "MUT-CATALOG-ID-001")
+
+        history = nodes[14]
+        self.assertEqual(history["id"], "CATALOG-HIST-001")
+        self.assertEqual(history["capability"], "immutable order snapshots across catalog rename and deactivation")
+        self.assertEqual(history["layer"], "full_stack")
+        self.assertEqual(history["risk"], "P1")
+        self.assertEqual(history["status"], "NOT_RUN")
+        self.assertEqual(history["owner"], "codex-l")
+        self.assertEqual(history["ui_oracle"], "historical name, SKU code, unit, quantity, price, and amount remain the captured transaction values")
+        self.assertEqual(history["navigation_oracle"], "historical order remains reachable after the source sellable unit is unavailable")
+        self.assertEqual(history["network_oracle"], "order response returns snapshots and stable source ID without replacing snapshots through a live catalog join")
+        self.assertEqual(history["session_oracle"], "session unchanged")
+        self.assertEqual(history["persistence_security_oracle"], "catalog writes do not update order_items snapshots; legacy null identities remain null unless unique reservation evidence exists")
+        self.assertEqual(history["source_anchors"], [
+            "backend/models/order.py:104",
+            "backend/alembic/versions/038_catalog_identity_vertical_slice.py:140",
+            "backend/services/catalog_product_service.py:90",
+            "backend/api/v1/orders.py:260",
+            "backend/api/v1/client/orders.py:65",
+            "backend/tests/test_sku_m1_catalog_identity.py:40",
+        ])
+        self.assertEqual(history["mutation_id"], "MUT-CATALOG-HIST-001")
+
+    def test_a4_protocol_delta_bound_exactly(self):
+        """A4 governance closure: bind the shipped A4 protocol delta itself,
+        so deletion, duplication, base drift, or any affected_paths expansion
+        in protocol-deltas.json stays deterministic RED."""
+        self.workspace()
+        deltas = self.load("inventory/protocol-deltas.json")
+        matches = [d for d in deltas if d["delta_id"] == "PD-2026-08-30-SKU-R0-M1-R1-A4"]
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(
+            matches[0],
+            {
+                "delta_id": "PD-2026-08-30-SKU-R0-M1-R1-A4",
+                "kind": "governance",
+                "affected_ids": [],
+                "affected_paths": [
+                    "harness-governance/inventory/inventory.json",
+                    "harness-governance/inventory/protocol-deltas.json",
+                    "harness-governance/tests/test_harness_governance_validator.py",
+                ],
+                "base_sha": "24a28d76"
+                + "d6d9483d"
+                + "8101f8e0"
+                + "f537c148"
+                + "dc262859",
+                "date": "2026-08-30",
+                "owner": "cto",
+                "reason": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A4 governance closure: the protected validator test now binds the exact 15-node seed inventory (replacing the stale hardcoded 13) and binds both SKU catalog nodes (CATALOG-ID-001 and CATALOG-HIST-001) by exact ID with full node contracts (capability+layer category semantics, risk, status, owner, all five oracle fields, exact source_anchors, exact mutation_id) at exact final-two positions so silent deletion or reorder stays fail-closed. This delta is not a product-range authorization: it enumerates every governance file changed by the candidate precisely; inventory.json carries the product-sync truth while only the protected test requires governance authorization.",
+                "approval_ref": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A4",
+            },
+        )
 
     def test_release_gate_blocked_on_seed_debt(self):
         self.workspace()

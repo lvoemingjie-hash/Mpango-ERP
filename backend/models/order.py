@@ -6,7 +6,7 @@ from typing import Optional, List
 from enum import Enum as PyEnum
 from decimal import Decimal
 
-from sqlalchemy import String, Text, Enum, Numeric, Integer, ForeignKey, Index
+from sqlalchemy import CheckConstraint, String, Text, Enum, Numeric, Integer, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
@@ -105,6 +105,17 @@ class OrderItem(BaseModel):
     __table_args__ = (
         Index('ix_order_items_order_id', 'order_id'),
         Index('ix_order_items_sku_code', 'sku_code'),
+        Index('ix_order_items_sellable_unit_id', 'sellable_unit_id'),
+        CheckConstraint(
+            "identity_status IN ('legacy', 'linked_legacy', 'stable')",
+            name="ck_order_items_identity_status",
+        ),
+        CheckConstraint(
+            "(identity_status = 'legacy' AND sellable_unit_id IS NULL) OR "
+            "(identity_status = 'linked_legacy' AND sellable_unit_id IS NOT NULL) OR "
+            "(identity_status = 'stable' AND sellable_unit_id IS NOT NULL AND unit_snapshot IS NOT NULL)",
+            name="ck_order_items_identity_shape",
+        ),
     )
 
     order_id: Mapped[uuid.UUID] = mapped_column(
@@ -112,6 +123,16 @@ class OrderItem(BaseModel):
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False,
         index=True
+    )
+
+    sellable_unit_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("skus.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    identity_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="legacy"
     )
 
     product_name: Mapped[str] = mapped_column(
@@ -123,6 +144,7 @@ class OrderItem(BaseModel):
         nullable=False,
         index=True
     )
+    unit_snapshot: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     quantity: Mapped[int] = mapped_column(
         Integer,
         nullable=False
@@ -141,3 +163,4 @@ class OrderItem(BaseModel):
         "Order",
         back_populates="items"
     )
+    sellable_unit = relationship("SKU", lazy="selectin")

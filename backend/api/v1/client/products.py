@@ -54,21 +54,26 @@ async def list_products(
     inventory numbers. Only active products are shown.
     """
     # Build dynamic WHERE clauses
-    conditions = ["s.is_active = true", "s.is_deleted IS NOT TRUE"]
+    conditions = [
+        "s.is_active = true",
+        "s.is_deleted IS NOT TRUE",
+        "p.is_active = true",
+        "p.is_deleted IS NOT TRUE",
+    ]
     params: dict = {}
 
     if category:
-        conditions.append("s.category = :category")
+        conditions.append("p.category = :category")
         params["category"] = category
 
     if search:
-        conditions.append("(s.name ILIKE :search OR s.sku_code ILIKE :search)")
+        conditions.append("(p.name ILIKE :search OR s.sku_code ILIKE :search)")
         params["search"] = f"%{search}%"
 
     where_clause = " AND ".join(conditions)
 
     # Count
-    count_sql = f"SELECT COUNT(*) FROM skus s WHERE {where_clause}"
+    count_sql = f"SELECT COUNT(*) FROM skus s JOIN catalog_products p ON p.id = s.catalog_product_id WHERE {where_clause}"
     count_result = await db.execute(text(count_sql), params)
     total = count_result.scalar_one()
 
@@ -77,21 +82,24 @@ async def list_products(
     data_sql = f"""
         SELECT
             s.id,
-            s.name,
+            p.id AS product_id,
+            p.name,
             s.sku_code,
-            s.category,
+            p.category,
             s.unit,
-            s.description,
+            s.package_quantity,
+            p.description,
             COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand,
             rp.price AS sell_price
         FROM skus s
+        JOIN catalog_products p ON p.id = s.catalog_product_id
         LEFT JOIN inventory_stocks i ON i.sku_id = s.id AND i.is_deleted IS NOT TRUE
         LEFT JOIN retailer_prices rp
             ON rp.sku_id = s.id
             AND rp.retailer_id = :retailer_id
             AND rp.is_deleted IS NOT TRUE
         WHERE {where_clause}
-        ORDER BY COALESCE(i.quantity_on_hand, 0) DESC, s.name ASC
+        ORDER BY COALESCE(i.quantity_on_hand, 0) DESC, p.name ASC, s.sku_code ASC
         OFFSET :offset LIMIT :limit
     """
     params["retailer_id"] = client.retailer_id
@@ -112,10 +120,14 @@ async def list_products(
         items.append(
             ClientProductSummary(
                 id=str(row.id),
+                product_id=str(row.product_id),
+                catalog_product_id=str(row.product_id),
+                sellable_unit_id=str(row.id),
                 name=row.name,
                 sku_code=row.sku_code,
                 category=row.category,
                 unit=row.unit,
+                package_quantity=row.package_quantity,
                 price=sell_price,
                 in_stock=in_stock,
                 stock_level=stock_level,
@@ -161,15 +173,18 @@ async def get_product(
     sql = """
         SELECT
             s.id,
-            s.name,
+            p.id AS product_id,
+            p.name,
             s.sku_code,
-            s.description,
-            s.category,
+            p.description,
+            p.category,
             s.unit,
-            s.is_active,
+            s.package_quantity,
+            (s.is_active AND p.is_active) AS is_active,
             COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand,
             rp.price AS sell_price
         FROM skus s
+        JOIN catalog_products p ON p.id = s.catalog_product_id AND p.is_deleted IS NOT TRUE
         LEFT JOIN inventory_stocks i ON i.sku_id = s.id AND i.is_deleted IS NOT TRUE
         LEFT JOIN retailer_prices rp
             ON rp.sku_id = s.id
@@ -202,11 +217,15 @@ async def get_product(
 
     detail = ClientProductDetail(
         id=str(row.id),
+        product_id=str(row.product_id),
+        catalog_product_id=str(row.product_id),
+        sellable_unit_id=str(row.id),
         name=row.name,
         sku_code=row.sku_code,
         description=row.description,
         category=row.category,
         unit=row.unit,
+        package_quantity=row.package_quantity,
         price=sell_price,
         in_stock=in_stock,
         stock_level=stock_level,

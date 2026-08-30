@@ -1,0 +1,42 @@
+{
+ "contract_sha256_at_materialization": "636757163ebfcb8afd3bd919111018bc17a2692d4ef56b7683a84f6db65835fd",
+ "defect_note": "CONFIRMED_CAUSE evidence: w1/w2 objects lack owner_email_label (onboarding output originally contained it; out.update(got) overwrote the per-side dicts with codes/schema-only results; preflight login checks KeyError->false)",
+ "invitation_statuses": [
+  "active",
+  "active"
+ ],
+ "sanitization": {
+  "original_sha256_recorded_in": "materialized-runtime-input.sha256",
+  "redacted": [
+   "wholesaler_id",
+   "tenant_schema",
+   "canonical_code suffixes",
+   "invitation codes"
+  ]
+ },
+ "schema": "dc12r1-r2-materialized-identity/1",
+ "w1": {
+  "canonical_code": "TR3A427B...",
+  "keys_present": [
+   "canonical_code",
+   "tenant_schema",
+   "wholesaler_id"
+  ],
+  "owner_email_label_present": false,
+  "tenant_schema": "<redacted-derived-schema>",
+  "wholesaler_id": "<redacted-uuid>"
+ },
+ "w1_unverified_invitation_code": "<redacted-consumed-invitation-code>",
+ "w1_verified_invitation_code": "<redacted-consumed-invitation-code>",
+ "w2": {
+  "canonical_code": "TR560E2C...",
+  "keys_present": [
+   "canonical_code",
+   "tenant_schema",
+   "wholesaler_id"
+  ],
+  "owner_email_label_present": false,
+  "tenant_schema": "<redacted-derived-schema>",
+  "wholesaler_id": "<redacted-uuid>"
+ }
+}

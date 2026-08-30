@@ -1,0 +1,23 @@
+# dc12r1-r2-e1 — post-VOID wrapper refusal record
+#
+# TRANSCRIPTION DISCLOSURE: the state machine's guard() prints refusals to
+# stdout WITHOUT appending them to the append-only ledger (that capture gap
+# is F2 / SECONDARY_CONTROL_PLANE_DEFECT). The three refusal events below
+# occurred exactly once each, immediately after fail-stop, and are
+# transcribed verbatim from the execution session; no probe was re-run to
+# produce this file.
+
+$ state_machine.py transition PREFLIGHT_PASS
+REFUSED transition: terminal_stop
+rc=50
+
+$ state_machine.py bump playwright
+REFUSED bump: task terminal
+rc=50
+
+$ state_machine.py transition STACK_READY
+REFUSED transition: terminal_stop
+rc=50
+
+# Consequence: playwright_invocation_count remained 0 for the whole task;
+# no Playwright invocation, no preflight rerun, no second stack.

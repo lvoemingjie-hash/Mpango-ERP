@@ -1,0 +1,7 @@
+{"event": "INIT", "playwright_invocation_count": 0, "preflight_invocation_count": 0, "state": "INIT", "terminal_stop": false, "ts": "2026-08-30T22:17:32+0800"}
+{"event": "MATERIALIZED", "note": "materialized-identity.json sha256=3f37aa2bd271a123803883fd107a396d28ad5db5c27a2d27ad966eb23f0597fa; contract sha256=636757163ebfcb8afd3bd919111018bc17a2692d4ef56b7683a84f6db65835fd unchanged; product-assigned codes frozen pre-preflight", "ts": "2026-08-30T22:26:07+0800"}
+{"event": "TRANSITION", "from": "STACK_READY", "to": "STACK_READY", "ts": "2026-08-30T22:26:08+0800"}
+{"event": "SHA_POINTERS_FROZEN", "note": "frozen-sha-pointers.json written (contract + materialized); preflight will fail-closed on any drift", "ts": "2026-08-30T22:26:38+0800"}
+{"event": "TRANSITION", "from": "PREFLIGHT_RUNNING", "to": "PREFLIGHT_RUNNING", "ts": "2026-08-30T22:27:27+0800"}
+{"counter": "preflight_invocation_count", "event": "ATOMIC_INCREMENT", "ts": "2026-08-30T22:27:28+0800", "value": 1}
+{"event": "VOID", "reason": "VOID_ENVIRONMENT_PRECHECK: first-time preflight 2/29 red (per R2 Phase 5: any single failure -> VOID -> cleanup -> STOP; no input modification, no rerun, no stack swap)", "terminal_stop": true, "ts": "2026-08-30T22:27:53+0800"}

@@ -1,0 +1,21 @@
+{
+ "all_clear": true,
+ "note": "labels/booleans only; verified at publication time (integrity gate), no product or preflight checks re-executed",
+ "residue": {
+  "containers_from_r2_stack": [],
+  "credentials_env_file_present": false,
+  "maildir_present": false,
+  "product_ports": {
+   "16381": "free",
+   "18545": "free",
+   "5173": "free",
+   "8000": "free"
+  },
+  "r2_candidate_worktree_registered": false,
+  "r2_dangling_volumes_matching": [],
+  "r2_networks": [],
+  "sentinel_26379": "unreachable",
+  "venv_present": false
+ },
+ "schema": "dc12r1-r2e1-cleanup-closure/1"
+}

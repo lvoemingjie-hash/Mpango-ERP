@@ -19,7 +19,12 @@
  *        are never trusted (candidate_sha_drift);
  *      - the working-tree profile bytes must EQUAL the committed blob at
  *        the owning repository's live HEAD (B1-R5-R3: a dirty profile can
- *        never be the binding source — profile_dirty_vs_head).
+ *        never be the binding source — profile_dirty_vs_head);
+ *      - ONE canonical repository root is derived from the profile's own
+ *        location; the caller repoRoot must realpath-match it and every git
+ *        subprocess runs with all GIT_* variables stripped (B1-R5-R4:
+ *        cross-repo candidate substitution and GIT_* hijacking are refused
+ *        — repo_root_mismatch).
  *      The B1-R5 self-comparison helper is gone; every binding is a live
  *      byte re-read plus a committed-byte proof.
  *
@@ -56,7 +61,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, fsyncSync, openSync, readFileSync, realpathSync, writeSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -91,13 +96,55 @@ function deepFreeze(value) {
 }
 
 /**
+ * Git subprocess environment: every GIT_* variable is STRIPPED. Repository
+ * hijacking via GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE / GIT_OBJECT_DIRECTORY
+ * injections can never redirect a git subprocess away from the canonical
+ * repository (B1-R5-R4, R24).
+ */
+export function gitEnv() {
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key.startsWith('GIT_')) env[key] = value;
+  }
+  return env;
+}
+
+function gitOutput(args, cwd) {
+  return execFileSync('git', args, {
+    cwd,
+    stdio: ['ignore', 'pipe', 'ignore'],
+    env: gitEnv(),
+  })
+    .toString('utf8')
+    .trim();
+}
+
+function sameRealDirectory(a, b) {
+  try {
+    return realpathSync(a).toLowerCase() === realpathSync(b).toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The SINGLE canonical repository root, derived from the module/profile
+ * location itself (never from a caller).
+ */
+export function canonicalRepoRoot(profilePath = canonicalProfilePath()) {
+  return gitOutput(['rev-parse', '--show-toplevel'], dirname(profilePath));
+}
+
+/**
  * LIVE candidate resolution: `git -C <repoRoot> rev-parse HEAD` via an argv
- * array. No caller string is ever trusted as the candidate.
+ * array with a GIT_*-stripped environment. No caller string is ever trusted
+ * as the candidate.
  */
 export function resolveLiveHead(repoRoot) {
   try {
     const out = execFileSync('git', ['-C', repoRoot, 'rev-parse', 'HEAD'], {
       stdio: ['ignore', 'pipe', 'ignore'],
+      env: gitEnv(),
     });
     const sha = out.toString('utf8').trim();
     if (!/^[0-9a-f]{40}$/.test(sha)) {
@@ -126,14 +173,11 @@ function readRawSha256(path) {
  */
 export function readProfileCommittedBytes(profilePath) {
   try {
-    const toplevel = execFileSync('git', ['-C', dirname(profilePath), 'rev-parse', '--show-toplevel'], {
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-      .toString('utf8')
-      .trim();
+    const toplevel = gitOutput(['rev-parse', '--show-toplevel'], dirname(profilePath));
     const rel = relative(toplevel, profilePath).split(sep).join('/');
     return execFileSync('git', ['-C', toplevel, 'cat-file', 'blob', `HEAD:${rel}`], {
       stdio: ['ignore', 'pipe', 'ignore'],
+      env: gitEnv(),
     });
   } catch {
     throw new BrowserAuthorityError('profile_dirty_vs_head');
@@ -436,11 +480,16 @@ export class ControlPlane {
   /**
    * @param {object} options
    *   contractPath  task-private contract JSON file (live byte source)
-   *   repoRoot      task repository root for the live git candidate
+   *   repoRoot      MUST resolve (realpath) to the SINGLE canonical
+   *                 repository root derived from the profile's own location;
+   *                 any other repository is refused (repo_root_mismatch,
+   *                 B1-R5-R4 cross-repo candidate substitution closure)
    *   ledger        DurableJsonlLedger
    * The protected profile is ALWAYS the canonical module-relative
    * browser-authority-profile.json — there is no profilePath override: a
-   * caller-supplied weaker profile cannot exist by construction.
+   * caller-supplied weaker profile cannot exist by construction. Profile
+   * committed-blob verification and candidate HEAD resolution share the ONE
+   * canonical toplevel.
    */
   constructor({ contractPath, repoRoot, ledger }) {
     if (typeof contractPath !== 'string' || contractPath.length === 0) {
@@ -452,8 +501,14 @@ export class ControlPlane {
     if (!(ledger instanceof DurableJsonlLedger)) {
       throw new BrowserAuthorityError('ledger_required');
     }
+    const canonicalRoot = canonicalRepoRoot(canonicalProfilePath());
+    if (!sameRealDirectory(repoRoot, canonicalRoot)) {
+      // Cross-repo candidate substitution: a foreign repository (whatever
+      // its HEAD) can never become the candidate source.
+      throw new BrowserAuthorityError('repo_root_mismatch');
+    }
     this.#contractPath = contractPath;
-    this.#repoRoot = repoRoot;
+    this.#repoRoot = canonicalRoot;
     this.#ledger = ledger;
     this.#profilePath = canonicalProfilePath();
 

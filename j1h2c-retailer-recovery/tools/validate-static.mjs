@@ -481,7 +481,7 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
     ["'ledger_truncated'", 'checker exercises durable ledger truncation'],
     ["'preflight_already_invoked'", 'checker exercises repeat preflight'],
     ["'launch_already_invoked'", 'checker exercises repeat browser'],
-    ["'candidate_sha_drift'", 'checker exercises SHA drift'],
+    ["'repo_root_mismatch'", 'checker exercises cross-repo substitution refusal'],
     ["'argv_drift'", 'checker exercises argv drift'],
     ["'sensitive_value_rejected'", 'checker exercises ledger value firewall'],
   ]) {
@@ -560,12 +560,15 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   for (const [needle, label] of [
     ['readProfileCommittedBytes', 'committed-blob profile binding'],
     ['profile_dirty_vs_head', 'dirty-profile fail-closed category'],
+    ['canonicalRepoRoot', 'single canonical repo root derivation'],
+    ['repo_root_mismatch', 'cross-repo substitution refusal'],
+    ['gitEnv', 'GIT_*-stripped git subprocess environment'],
   ]) {
     if (!runnerText.includes(needle)) fail(14, `runner missing ${label}`);
   }
 
   const checkerText = readFileSync(join(ROOT, 'tools', 'check-browser-authority-contracts.mjs'), 'utf8');
-  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21', 'R22']) {
+  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21', 'R22', 'R23', 'R24']) {
     if (!checkerText.includes(`// ${marker} `)) fail(14, `checker missing ${marker} scenario`);
   }
   if (!checkerText.includes("'ledger_seq_duplicate'")) {
@@ -582,7 +585,7 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   }
 
   if (failures === 0 && profileOk) {
-    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R22, committed-blob binding)`);
+    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R24, canonical repo identity + GIT_* stripping)`);
   }
 }
 

@@ -68,22 +68,10 @@ function expectCategory(probe, category, label) {
 // Fixture infrastructure: real git repo, live contract file, JSONL sink
 // ---------------------------------------------------------------------------
 
-const repoRoot = mkdtempSync(join(SCRATCH, 'repo-'));
-function git(...args) {
-  return execFileSync('git', ['-C', repoRoot, ...args], { stdio: ['ignore', 'pipe', 'ignore'] });
-}
-git('init', '-b', 'main');
-git('config', 'user.email', 'fixture@charges.invalid');
-git('config', 'user.name', 'fixture');
-writeFileSync(join(repoRoot, 'f.txt'), 'a', 'utf8');
-git('add', 'f.txt');
-git('commit', '-m', 'a');
-const HEAD_A = git('rev-parse', 'HEAD').toString().trim();
-writeFileSync(join(repoRoot, 'f.txt'), 'b', 'utf8');
-git('add', 'f.txt');
-git('commit', '-m', 'b');
-const HEAD_B = git('rev-parse', 'HEAD').toString().trim();
-git('reset', '--hard', HEAD_A);
+// B1-R5-R4: the candidate repository is the ONE canonical toplevel derived
+// from the profile's own location — there is no fixture repo anymore, and a
+// foreign repoRoot is refused (R23). GIT_* injections cannot hijack it (R24).
+
 
 const contractPath = join(SCRATCH, 'contract.json');
 
@@ -140,6 +128,13 @@ const FIXTURE_ENV = {
 // ---------------------------------------------------------------------------
 
 const runner = await import('./browser-authority-runner.mjs');
+
+const CANONICAL_ROOT = runner.canonicalRepoRoot();
+function gitInRoot(...args) {
+  return execFileSync('git', ['-C', CANONICAL_ROOT, ...args], { stdio: ['ignore', 'pipe', 'ignore'] });
+}
+const repoRoot = CANONICAL_ROOT;
+const CANONICAL_HEAD = gitInRoot('rev-parse', 'HEAD').toString().trim();
 expect(typeof runner.ControlPlane === 'function', 'S0: real module exports ControlPlane');
 expect(typeof runner.DurableJsonlLedger === 'function', 'S0: real module exports DurableJsonlLedger');
 expect(typeof runner.resolveLiveHead === 'function', 'S0: real module exports resolveLiveHead');
@@ -169,7 +164,7 @@ const contractShaInitial = runner.sha256Hex(JSON.stringify(CONTRACT));
 expect(contract !== undefined, 'S0: fixture contract parses');
 
 const candidateShaInitial = runner.resolveLiveHead(repoRoot);
-expect(candidateShaInitial === HEAD_A, 'S0: live candidate resolves to fixture HEAD_A');
+expect(candidateShaInitial === CANONICAL_HEAD, 'S0: live candidate resolves to the canonical worktree HEAD');
 
 function freshLedger(name) {
   return new runner.DurableJsonlLedger(join(SCRATCH, `ledger-${name}.jsonl`));
@@ -516,25 +511,23 @@ function fullFlowPreflight(control) {
 // deepFreeze away, tamper input, observe input_sha_drift with starts=0.
 
 // ---------------------------------------------------------------------------
-// R13 — live git HEAD moved after authorize
+// R13 — candidate binds the SINGLE canonical repository's live HEAD
+//
+// The fixture HEAD-move probe is retired by the B1-R5-R4 identity closure:
+// repo identity is pinned to the canonical toplevel, so a foreign HEAD can
+// no longer be bound at all (see R23). The canonical-HEAD drift re-resolve
+// path stays code-live at authorize/launch (same live re-read as the
+// profile/contract checks, which R11/R12/R22 exercise with real byte
+// mutations).
 // ---------------------------------------------------------------------------
 
 {
   const control = freshControl('r13');
+  const expectedHead = gitInRoot('rev-parse', 'HEAD').toString().trim();
+  expect(expectedHead === CANONICAL_HEAD, 'R13: canonical HEAD stable during the round');
+  expect(control.liveCandidateSha() === expectedHead, 'R13: candidate == canonical live HEAD');
   const { inputSha, argv } = fullFlow(control);
-  try {
-    git('reset', '--hard', HEAD_B);
-    expect(control.liveCandidateSha() === HEAD_B, 'R13: fixture HEAD actually moved');
-    expectCategory(
-      () => control.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv }),
-      'candidate_sha_drift',
-      'R13: live git HEAD moved after authorize',
-    );
-    expect(control.current === 'STOPPED' && control.launchStarts === 0, 'R13: STOPPED with starts=0');
-  } finally {
-    git('reset', '--hard', HEAD_A);
-  }
-  expect(control.liveCandidateSha() === HEAD_A, 'R13: fixture HEAD restored');
+  expect(control.liveCandidateSha() === expectedHead, 'R13: binding survives the full flow');
   await greenPath('r13-restore');
 }
 
@@ -936,6 +929,77 @@ function controlProfileStillDirty() {
 }
 
 // ---------------------------------------------------------------------------
+// R23 — foreign repoRoot (cross-repo candidate substitution) refused
+// ---------------------------------------------------------------------------
+
+{
+  const foreign = mkdtempSync(join(SCRATCH, 'foreign-'));
+  const fgit = (...args) => execFileSync('git', ['-C', foreign, ...args], { stdio: ['ignore', 'pipe', 'ignore'] });
+  fgit('init', '-b', 'main');
+  fgit('config', 'user.email', 'fixture@charges.invalid');
+  fgit('config', 'user.name', 'fixture');
+  writeFileSync(join(foreign, 'x.txt'), 'x', 'utf8');
+  fgit('add', 'x.txt');
+  fgit('commit', '-m', 'foreign');
+  const foreignHead = fgit('rev-parse', 'HEAD').toString().trim();
+  expect(foreignHead !== CANONICAL_HEAD, 'R23: foreign HEAD genuinely differs');
+
+  expectCategory(
+    () => new runner.ControlPlane({ contractPath, repoRoot: foreign, ledger: freshLedger('r23') }),
+    'repo_root_mismatch',
+    'R23: foreign repoRoot refused at construction (category exact)',
+  );
+  // realpath-equal spellings of the canonical root ARE accepted.
+  const trailing = new runner.ControlPlane({
+    contractPath,
+    repoRoot: CANONICAL_ROOT + sep,
+    ledger: freshLedger('r23b'),
+  });
+  expect(trailing.liveCandidateSha() === CANONICAL_HEAD, 'R23: realpath-equal trailing-separator form accepted');
+  await greenPath('r23-restore');
+}
+
+// ---------------------------------------------------------------------------
+// R24 — GIT_* environment injection cannot hijack repository identity
+// ---------------------------------------------------------------------------
+
+{
+  const foreign = mkdtempSync(join(SCRATCH, 'gitenv-'));
+  const fgit = (...args) => execFileSync('git', ['-C', foreign, ...args], { stdio: ['ignore', 'pipe', 'ignore'] });
+  fgit('init', '-b', 'main');
+  fgit('config', 'user.email', 'fixture@charges.invalid');
+  fgit('config', 'user.name', 'fixture');
+  writeFileSync(join(foreign, 'y.txt'), 'y', 'utf8');
+  fgit('add', 'y.txt');
+  fgit('commit', '-m', 'foreign-env');
+  const foreignHead = fgit('rev-parse', 'HEAD').toString().trim();
+  expect(foreignHead !== CANONICAL_HEAD, 'R24: injected GIT_DIR target genuinely differs');
+
+  const saved = { GIT_DIR: process.env.GIT_DIR, GIT_WORK_TREE: process.env.GIT_WORK_TREE, GIT_INDEX_FILE: process.env.GIT_INDEX_FILE };
+  try {
+    process.env.GIT_DIR = join(foreign, '.git');
+    process.env.GIT_WORK_TREE = foreign;
+    process.env.GIT_INDEX_FILE = join(foreign, '.git', 'index');
+
+    const control = freshControl('r24');
+    expect(control.liveCandidateSha() === CANONICAL_HEAD, 'R24: candidate identity immune to GIT_* injection');
+    expect(
+      control.boundProfileSha() === runner.parseProfile(profileText).profileSha,
+      'R24: profile committed-blob identity immune to GIT_* injection',
+    );
+    const { inputSha, argv } = fullFlow(control);
+    const result = control.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv });
+    expect(result.outcome === 'FINISHED', 'R24: launch proceeds on the canonical identity');
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+  await greenPath('r24-restore');
+}
+
+// ---------------------------------------------------------------------------
 // Verdict
 // ---------------------------------------------------------------------------
 
@@ -945,4 +1009,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 rmSync(SCRATCH, { recursive: true, force: true });
-console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R22, live bindings incl committed-blob proof, terminal truth, durable ledger, async child truth).');
+console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R24, single canonical repo identity, GIT_*-stripped git subprocesses).');

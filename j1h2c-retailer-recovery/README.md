@@ -180,3 +180,13 @@ proven at construction and re-proven at every preflight/authorize/launch
 checkpoint; a dirty profile — even paired with a weak contract while HEAD is
 unchanged — refuses construction and VOIDs checkpoints with
 `profile_dirty_vs_head` (R22).
+
+### B1-R5-R4 — single canonical repository identity (cross-repo closure)
+
+The profile's committed-blob proof and the candidate HEAD resolution share
+ONE canonical repository root, derived from the profile's own location. The
+caller `repoRoot` must realpath-match that root — a foreign repository
+(whatever its HEAD) is refused at construction with `repo_root_mismatch`
+(R23) — and every git subprocess runs with all `GIT_*` variables stripped, so
+`GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` injections cannot hijack the
+profile or candidate identity (R24).

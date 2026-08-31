@@ -1,272 +1,307 @@
 [
-  {
-    "delta_id": "PD-2026-08-25-HE2-R1-GOV",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      ".github/workflows/harness-governance-gate.yml",
-      "harness-governance/governed-paths.json",
-      "harness-governance/validator/",
-      "harness-governance/schemas/",
-      "harness-governance/tests/"
-    ],
-    "base_sha": "94b0c30034d04d1bad87f926a4b09e3dbbe3c6db",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-HE2-R1 bypass closure: harden the governance core itself (fail-closed schemas, semantic sync, waiver scoping, evidence binding, delta anti-replay, structural/release gate split)",
-    "approval_ref": "DC-12R1-MVP-L1-HE2-R1",
-    "date": "2026-08-25"
-  },
-  {
-    "delta_id": "PD-2026-08-25-HE2-R2-HOP",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      ".github/workflows/harness-governance-gate.yml",
-      ".secrets.baseline",
-      "harness-governance/validator/",
-      "harness-governance/tests/"
-    ],
-    "base_sha": "5a380586caab4f662d7e1dfbc7899cf5bd3bc300",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-HE2-R2 evidence raw-blob integrity + scanner scope closure: raw-byte _git_raw, anchored scanner rule, .secrets.baseline in PROTECTED_PATHS, PR baseline pinning",
-    "approval_ref": "DC-12R1-MVP-L1-HE2-R2",
-    "date": "2026-08-25"
-  },
-  {
-    "delta_id": "PD-2026-08-25-HE2-CUMULATIVE",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      ".github/workflows/harness-governance-gate.yml",
-      ".secrets.baseline",
-      "harness-governance/governed-paths.json",
-      "harness-governance/validator/",
-      "harness-governance/schemas/",
-      "harness-governance/tests/"
-    ],
-    "base_sha": "94b0c30034d04d1bad87f926a4b09e3dbbe3c6db",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-HE2-R3 cumulative review governance delta: authorizes all governance-core path changes from HE2_PARENT (94b0c300) through R1, R2, and R3",
-    "approval_ref": "DC-12R1-MVP-L1-HE2-R3",
-    "date": "2026-08-25"
-  },
-  {
-    "delta_id": "PD-2026-08-25-HE2-R3-R1-ALL-FILE-SCOPE",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      "harness-governance/validator/",
-      "harness-governance/tests/"
-    ],
-    "base_sha": "d7ea8027bf7d4ba5ec0a8d2f92965e5061680f34",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-HE2-R3-R1 scanner all-file scope + evidence truth closure: extension whitelist removed, git ls-files --cached --others --exclude-standard with os.walk fallback for non-git trees, ASCII bytes per-line matching (no errors=replace decode), fixed-dir/gitignore-only exclusions, N20/N21 validator-scope mutations with byte-identical restore",
-    "approval_ref": "DC-12R1-MVP-L1-HE2-R3-R1",
-    "date": "2026-08-25"
-  },
-  {
-    "delta_id": "PD-2026-08-25-HE2-R3-R2-MUTATION-EOL-PORTABILITY",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      "harness-governance/tests/"
-    ],
-    "base_sha": "68a68027e6b2d57ab35a77142b187c6301762de5",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-HE2-R3-R2 mutation EOL portability closure: validator-mutation patches convert to the validator file's native checkout EOL (pure LF / pure CRLF; mixed EOL fails closed with a fixed category), unique-anchor enforcement, unconditional byte-exact restore with full SHA-256 + bytes comparison; dual-checkout gate proof (autocrlf=false and true)",
-    "approval_ref": "DC-12R1-MVP-L1-HE2-R3-R2",
-    "date": "2026-08-25"
-  },
-  {
-    "delta_id": "PD-2026-08-28-HE2-ET1",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      ".github/workflows/harness-governance-gate.yml",
-      ".secrets.baseline",
-      "harness-governance/governed-paths.json",
-      "harness-governance/validator/",
-      "harness-governance/schemas/",
-      "harness-governance/inventory/execution-traps.json",
-      "harness-governance/inventory/authority-profiles.json",
-      "harness-governance/tests/"
-    ],
-    "base_sha": "246eb190fc07866f098a380e61ebdc5bd9428a04",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-HE2-ET1 execution traps and authority runner: 15 machine-verifiable traps (schema/2 + additionalProperties=false, hardcoded evaluator whitelist, fail-closed token cardinality); authority profile references; fail-stop runner (in-process evaluators, nonce-bound proof binding); +20 unit tests, +14 RED mutations, +4 GREEN controls; structural/release split preserved (release=BLOCKED for open P0/P1 debt). Validator ET1 checker integrated with PROTECTED_PATHS gating governance-core changes through protocol-delta authorization.",
-    "approval_ref": "DC-12R1-MVP-L1-HE2-ET1",
-    "date": "2026-08-28"
-  },
-  {
-    "delta_id": "PD-2026-08-28-HE2-ET1-R1",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      "harness-governance/validator/",
-      "harness-governance/tests/",
-      "harness-governance/inventory/et1-node-manifest.txt",
-      "harness-governance/inventory/authority-profiles.json",
-      "harness-governance/README.md"
-    ],
-    "base_sha": "aaff330e395a1ae555672bd86f183d2fd89cae54",
-    "date": "2026-08-28",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-HE2-ET1-R1 end-to-end authority execution and child-process proof closure: runner v2 on the ET1 API with explicit ALLOWED_TRANSITIONS state machine (trap lands VOID, terminal states enforced), real argv --command via argparse REMAINDER launched exactly once (counter-guarded; non-zero exit = real test RED on FINISHED, never VOID), real pytest --collect-only child via the runner-owned plugin (child sessionstart re-verifies live PG role/URL/capability/nonce/bindings; collection_finish recomputes live HEAD + file-byte SHAs and writes real node IDs), cross-process nonce compare vs the runner-minted original (self-compare removed), candidate_sha=live rev-parse HEAD, profile/manifest sha256 over actual file bytes (frozen et1-node-manifest.txt), explicit-path schema-validated authority profile (hardcoded cli-mode rejected), live-git lineage, sanitized publish (presence/labels/counts only), +15 behavioral E2E mutations (X01-X15) with pristine/restore controls (66 RED / 9 GREEN total), 8-case E2E core-chain gate (GREEN sentinel==1; 7 RED sentinel==0); 116 unittest baseline preserved.",
-    "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R1 task directive (BASE aaff330e395a1ae555672bd86f183d2fd89cae54; SOURCE_GATE_PASS_BUT_REMOTE_ENFORCEMENT_NOT_VERIFIED)"
-  },
-  {
-    "delta_id": "PD-2026-08-28-HE2-ET1-R1-E1",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      "harness-governance/inventory/protocol-deltas.json",
-      "ai-ledger/product-ai/2026-08-28_dc12r1_mvp_l1_he2_et1_r1_e2e_authority_execution_closure.md"
-    ],
-    "base_sha": "18abc7a256f451ad7fa013e9d34c87e5442d852d",
-    "date": "2026-08-28",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-HE2-ET1-R1-E1 cross-task evidence reference and reviewer independence closure (PROVENANCE_CORRECTION_ONLY, V1_METADATA_AND_GOVERNANCE_STRUCTURE): the 26ed3fac KILO_STOP reference is marked INVALID_CROSS_TASK_REFERENCE (26ed3fac belongs to the H2-C browser harness Kilo STOP, not HE2-ET1; no citable prior HE2-ET1 Kilo review exists); PRIOR_HE2_ET1_KILO_REVIEW=NONE and NEXT_GATE=KILO_FINAL_CUMULATIVE_BOUNDED_REVIEW recorded; the R1 delta approval_ref now cites only the DC-12R1-MVP-L1-HE2-ET1-R1 task directive; functional bytes and verification conclusions of 18abc7a2 are unchanged and no functional gate was re-run or claim upgraded; author-owned gate container he2et1r1_pg16 removed (container + anonymous volumes; port 15445 freed) so any reviewer creates its own fresh throwaway PG.",
-    "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R1-E1 task directive (BASE 18abc7a256f451ad7fa013e9d34c87e5442d852d; PROVENANCE_CORRECTION_ONLY)"
-  },
-  {
-    "delta_id": "PD-2026-08-28-HE2-ET1-R2",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      "harness-governance/validator/authority_runner.py",
-      "harness-governance/validator/harness_governance_validator.py",
-      "harness-governance/tests/pytest_et1_collector.py",
-      "harness-governance/tests/test_authority_runner_r2.py",
-      "harness-governance/tests/et1_r2_mutations.py",
-      "harness-governance/tests/run_e2e_redis_cases.py",
-      "harness-governance/tests/run_red_mutations.py",
-      "harness-governance/inventory/execution-traps.json",
-      "harness-governance/README.md"
-    ],
-    "base_sha": "2582750dedfb591e801703ff57bea69fbe91c605",
-    "date": "2026-08-28",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-HE2-ET1-R2 live Redis authority and child recheck closure (V3_GOVERNANCE_AUTHORITY_SECURITY, CANDIDATE_READY_FOR_KILO_REVIEW_ONLY): the Redis gate becomes a live stdlib-RESP probe on the URL's own host/port (connect; optional AUTH with credentials never in evidence/proofs/logs; PING==PONG; SELECT 15==OK; DBSIZE==0; sentinel 26379 unreachable; wrong-DB traps pre-connect) executed BOTH in runner preflight and in the child plugin's pytest_sessionstart, so Redis disappearing after preflight fails the child closed and the authority command is never launched; published artifacts carry fixed boolean categories only. TRAP_REDIS_WRONG_DB extended to evaluator EVAL_REDIS_LIVE (P1 ACTIVE exit 14, applies to runner.preflight + child.sessionstart) with live-probe required evidence; EVAL_REDIS_LIVE whitelisted in the runner and the mirrored validator whitelist (validator change is the single whitelist line; schema unchanged because the extension stays within the existing draft-07 contract). +15 unit tests over a threaded real-socket fake RESP server incl. credential-redaction proofs; +5 RED mutations R201-R205 (connect deleted, PING skipped, DBSIZE skipped, connection errors swallowed, child recheck deleted) with pristine + byte-exact-restore controls, total gate 71 RED / 9 GREEN; live E2E run_e2e_redis_cases.py 6/6 on fresh throwaway redis7 (GREEN fresh DB15, wrong db, unreachable, DB15 non-empty, post-preflight disappearance child-fail-closed sentinel 0, sentinel-26379-reachable) plus the 8-case core chain green on fresh PG16+redis7; PRIOR_M0 report tip 58b8e2ac marked SUPERSEDED_BY_HE2_ET1_R2_REDIS_AUTHORITY_DEFECT.",
-    "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R2 task directive (BASE 2582750dedfb591e801703ff57bea69fbe91c605; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
-  },
-  {
-    "delta_id": "PD-2026-08-28-HE2-ET1-R2-R1",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      "harness-governance/validator/redis_authority.py",
-      "harness-governance/validator/authority_runner.py",
-      "harness-governance/validator/harness_governance_validator.py",
-      "harness-governance/tests/pytest_et1_collector.py",
-      "harness-governance/tests/test_authority_runner_r2.py",
-      "harness-governance/tests/test_authority_runner_r2r1.py",
-      "harness-governance/tests/et1_r2_mutations.py",
-      "harness-governance/tests/run_e2e_redis_cases.py",
-      "harness-governance/inventory/execution-traps.json",
-      "harness-governance/README.md"
-    ],
-    "base_sha": "30e3e48f9ebc707223e43734a0c4357346b6e2da",
-    "date": "2026-08-28",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-HE2-ET1-R2-R1 malformed Redis URL, RESP AUTH and shared-probe closure (V3_GOVERNANCE_AUTHORITY_SECURITY, CANDIDATE_READY_FOR_KILO_REVIEW_ONLY). Six confirmed defects closed: (A) invalid port/malformed IPv6/URL parse failures now map to the sanitized url_malformed VOID, never a raw ValueError or traceback; (B) username/password percent-decoded exactly (empty-string credentials normalized to absent); (C) ACL username+password AUTHs as a proper two-argument RESP command, username-without-password fails closed auth_misconfigured; (D) formal RESP array/bulk-string encoding replaces the injectable space-joined inline encoder — credentials with spaces/CR/LF/non-ASCII travel as one binary-safe argument; (E) one shared stdlib module validator/redis_authority.py serves BOTH the runner preflight and the child sessionstart recheck (fixed sys.modules key; same module object asserted), protocol code no longer duplicated; (F) execution-traps.json restored to its original compact format with an 8-line surgical edit confined to the Redis trap block. rediss rejected fail-closed (tls_unsupported_fail_closed) — no unverified TLS support claimed. Legacy EVAL_REDIS evaluator name removed from the runner and validator whitelists (no config rollback to pre-live semantics). +14 truth tests (ports, IPv6, decode precision, ACL array, injection resistance, protocol breaks, sanitized surfaces, same-module proof); mutations R211-R215 (inline encoder restored, decode deleted, username ignored, invalid-port escape, child shared-probe bypass) join retargeted R201-R205, gate 76 RED / 9 GREEN; live RL7 invalid-port case added.",
-    "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R2-R1 task directive (BASE 30e3e48f9ebc707223e43734a0c4357346b6e2da; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
-  },
-  {
-    "delta_id": "PD-2026-08-28-HE2-ET1-R2-R2",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      "harness-governance/validator/authority_runner.py",
-      "harness-governance/tests/pytest_et1_collector.py",
-      "harness-governance/tests/test_authority_runner_r2.py",
-      "harness-governance/tests/test_authority_runner_r2r1.py",
-      "harness-governance/tests/test_authority_runner_r2r2.py",
-      "harness-governance/tests/et1_e2e_mutations.py",
-      "harness-governance/tests/et1_r2r2_mutations.py",
-      "harness-governance/tests/run_red_mutations.py",
-      "harness-governance/README.md"
-    ],
-    "base_sha": "16ea089b5633b031cf5b133815454f41035223f9",
-    "date": "2026-08-29",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-HE2-ET1-R2-R2 shared Redis probe module-origin and cross-process byte-binding closure (V3_MERGE_CRITICAL_GOVERNANCE_AUTHORITY, CANDIDATE_READY_FOR_KILO_REVIEW_ONLY). P1 defect SHARED_PROBE_MODULE_PRELOAD_INJECTION__AUTHORITY_BYPASS closed: the R2-R1 loaders trusted a fixed sys.modules key, so a preloaded fake module was executed by the real runner and an unreachable Redis was accepted (PROBE_RC=0). Binding chain: (1) a preloaded entry under the fixed key is never returned or trusted; a foreign origin is tamper evidence (module_preload_detected) and the cache is evicted with the module freshly executed from the canonical file on every load; (2) post-execution, __spec__.origin AND __file__ must both resolve to the exact canonical path; missing spec/loader = module_origin_untrusted; (3) the runner binds SHA-256 over the shared module's RAW FILE BYTES at preflight as the ORIGINAL; (4) the ORIGINAL travels to the child via ET1_RUNNER_REDIS_MODULE_SHA and the child independently recomputes and compares in pytest_sessionstart (never self-compared); drift = redis_module:bytes_drift, child fail-closed, no proof; (5) the child's independently recomputed digest is written into the collect proof and the runner cross-compares against its own ORIGINAL (module_digest_mismatch); (6) just-in-time raw-byte rechecks run at authorize (drift_at_authorize) and immediately before the authority launch (drift_at_launch); (7) any origin/path/byte inconsistency lands VOID with the authority command launched zero times; (8) evidence carries only the fixed categories module_preload_detected / module_origin_untrusted / module_bytes_drift / module_digest_missing / module_digest_mismatch / drift_at_authorize / drift_at_launch - never paths, URLs, credentials, or environment values. The R2-R1 'same module object' cross-process claim is RETRACTED and replaced by independently loaded from the same canonical path and bound to the same raw-byte SHA-256. Truth counterexamples A-H in test_authority_runner_r2r2.py (10 tests, 155/155 total); mutations S221-S228 with pristine + byte-exact-restore controls, gate 84 RED / 9 GREEN; R2-R1 candidate marked SUPERSEDED_BY_HE2_ET1_R2_R2_MODULE_ORIGIN_BINDING.",
-    "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R2-R2 task directive (BASE 16ea089b5633b031cf5b133815454f41035223f9; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
-  },
-  {
-    "delta_id": "PD-2026-08-29-HE2-ET1-R2-R2-R1",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      "harness-governance/validator/authority_runner.py",
-      "harness-governance/tests/test_authority_runner_r2r2.py",
-      "harness-governance/tests/et1_r2r2_mutations.py",
-      "harness-governance/tests/run_red_mutations.py",
-      "harness-governance/inventory/protocol-deltas.json"
-    ],
-    "base_sha": "3e2457ca71c6d47ef45429cd32f8d5c30c402921",
-    "date": "2026-08-29",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-HE2-ET1-R2-R2-R1 baseline integrity and child-proof evidence-truth closure (V3_MERGE_CRITICAL_GOVERNANCE_AUTHORITY, CANDIDATE_READY_FOR_KILO_REVIEW_ONLY). Erratum round, no runtime behavior change: (1) .secrets.baseline restored byte-exact to the 16ea089b version (17 files / 484 findings / 3567 lines; the R2-R2 round had wrongly overwritten it to 1 file / 1 finding via a baseline-rewriting scan invocation); proven by git diff --quiet 16ea089b..HEAD -- .secrets.baseline; the public chain-base commit SHA false positive is now suppressed by a per-line pragma: allowlist secret in the test file instead of any baseline edit, and baseline-rewriting commands are banned for this and future rounds. (2) The R2-R2 delta's affected_paths no longer lists .secrets.baseline and its inaccurate 'gains one allowlist entry' reason sentence is removed. (3) The prior 'B' sitecustomize test is renamed/reclassified as the runner-preflight proof it actually is, and a TRUE child-only subprocess test is added: parent env stays clean, only the pytest child's env receives the injected PYTHONPATH, the child sessionstart fails closed with redis_module:preload_detected recorded in its proof, no collect proof exists, and the authority command count stays 0. (4) drift_at_authorize joins the fixed MODULE_BINDING_CATEGORIES set with a set-integrity test asserting the exact documented label set and that every emitted module label is a member. (5) New RED mutation S229 (child preload detection deleted) with byte-exact restore; gate 85 RED / 9 GREEN. Redis protocol implementation, product code, and protected branches untouched.",
-    "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R2-R2-R1 task directive (BASE 3e2457ca71c6d47ef45429cd32f8d5c30c402921; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
-  },
-  {
-    "delta_id": "PD-2026-08-29-HE2-ET1-R3",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      "harness-governance/validator/authority_runner.py",
-      "harness-governance/validator/backend_env_authority.py",
-      "harness-governance/tests/pytest_et1_collector.py",
-      "harness-governance/tests/test_authority_runner_r3.py",
-      "harness-governance/tests/test_authority_runner_r3a1.py",
-      "harness-governance/tests/et1_r3_mutations.py",
-      "harness-governance/tests/et1_r3a1_mutations.py",
-      "harness-governance/tests/et1_e2e_mutations.py",
-      "harness-governance/tests/et1_r2r2_mutations.py",
-      "harness-governance/tests/et1_mutations.py",
-      "harness-governance/tests/run_red_mutations.py",
-      "harness-governance/tests/run_e2e_core_chain.py",
-      "harness-governance/tests/run_e2e_redis_cases.py",
-      "harness-governance/et1_collect_entry.py",
-      "harness-governance/schemas/authority-profiles.schema.json",
-      "harness-governance/inventory/authority-profiles.json",
-      "harness-governance/inventory/protocol-deltas.json",
-      "harness-governance/README.md"
-    ],
-    "base_sha": "cdb39e96a50b308aff91d4e94fd8526e7540d921",
-    "date": "2026-08-29",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-HE2-ET1-R3 backend CWD and temporary-database authority preflight closure (V3_MERGE_CRITICAL; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY) plus R3-A1 profile-bound alembic successor amendment: shared stdlib modules (backend_env_authority.py) provide CWD/MPANGO_ENV/DB-name/port-allowlist/host checks AND profile-bound alembic successor verification (single head byte-equal to profile expected head, declared parent lineage); runner preflight AND child sessionstart independently enforce; drift after preflight/collect/launch VOID; evidence fixed categories only; global EXPECTED_ALEMBIC_HEAD retired (no CLI/env override); profile schema gains required expected_alembic_head + optional expected_alembic_parent; AUTHORITY_SKU_M1_BACKEND profile added (038 successor of 037); +15 R3 truth tests, +13 R3-A1 truth tests (186/186); +17 mutations (T221-T228 + A101-A109) gate 102 RED / 9 GREEN.",
-    "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R3 + R3-A1 task directives (BASE cdb39e96a50b308aff91d4e94fd8526e7540d921; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
-  },
-  {
-    "delta_id": "PD-2026-08-30-SKU-R0-M1-R1-A4",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      "harness-governance/inventory/inventory.json",
-      "harness-governance/inventory/protocol-deltas.json",
-      "harness-governance/tests/test_harness_governance_validator.py"
-    ],
-    "base_sha": "24a28d76d6d9483d8101f8e0f537c148dc262859",
-    "date": "2026-08-30",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A4 governance closure: the protected validator test now binds the exact 15-node seed inventory (replacing the stale hardcoded 13) and binds both SKU catalog nodes (CATALOG-ID-001 and CATALOG-HIST-001) by exact ID with full node contracts (capability+layer category semantics, risk, status, owner, all five oracle fields, exact source_anchors, exact mutation_id) at exact final-two positions so silent deletion or reorder stays fail-closed. This delta is not a product-range authorization: it enumerates every governance file changed by the candidate precisely; inventory.json carries the product-sync truth while only the protected test requires governance authorization.",
-    "approval_ref": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A4"
-  },
-  {
-    "delta_id": "PD-2026-08-30-SKU-R0-M1-R1-A5",
-    "kind": "governance",
-    "affected_ids": [],
-    "affected_paths": [
-      "harness-governance/inventory/protocol-deltas.json",
-      "harness-governance/tests/et1_r3a1_mutations.py",
-      "harness-governance/tests/test_authority_runner_r3a1.py"
-    ],
-    "base_sha": "24a28d76d6d9483d8101f8e0f537c148dc262859",
-    "date": "2026-08-30",
-    "owner": "cto",
-    "reason": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A5 governance closure: the R3-A1 truth suite is retargeted to the real repository migration tree (exact single head 038_catalog_identity_vertical_slice, exact parent 037_payment_declarations_schema) — AUTHORITY_SKU_M1_BACKEND semantics (expected 038, parent 037) pass real preflight enforcement and bind actual/expected/parent exactly, while an H2-C profile expecting 037 with no successor parent fails closed with alembic_head_mismatch against the same tree; mutation probe child_alembic_recheck_deleted is retargeted so a pristine child expecting H2C/037 deterministically reports the alembic mismatch and only the A107 recheck deletion escapes; this test binds the complete A5 delta so deletion, duplication, base drift, or affected_paths expansion stays RED. This delta is not a runtime PASS claim and not a product-range authorization; the authority implementation, profiles, and product paths are untouched.",
-    "approval_ref": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A5 task A5"
-  }
+ {
+  "delta_id": "PD-2026-08-25-HE2-R1-GOV",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   ".github/workflows/harness-governance-gate.yml",
+   "harness-governance/governed-paths.json",
+   "harness-governance/validator/",
+   "harness-governance/schemas/",
+   "harness-governance/tests/"
+  ],
+  "base_sha": "94b0c30034d04d1bad87f926a4b09e3dbbe3c6db",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-HE2-R1 bypass closure: harden the governance core itself (fail-closed schemas, semantic sync, waiver scoping, evidence binding, delta anti-replay, structural/release gate split)",
+  "approval_ref": "DC-12R1-MVP-L1-HE2-R1",
+  "date": "2026-08-25"
+ },
+ {
+  "delta_id": "PD-2026-08-25-HE2-R2-HOP",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   ".github/workflows/harness-governance-gate.yml",
+   ".secrets.baseline",
+   "harness-governance/validator/",
+   "harness-governance/tests/"
+  ],
+  "base_sha": "5a380586caab4f662d7e1dfbc7899cf5bd3bc300",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-HE2-R2 evidence raw-blob integrity + scanner scope closure: raw-byte _git_raw, anchored scanner rule, .secrets.baseline in PROTECTED_PATHS, PR baseline pinning",
+  "approval_ref": "DC-12R1-MVP-L1-HE2-R2",
+  "date": "2026-08-25"
+ },
+ {
+  "delta_id": "PD-2026-08-25-HE2-CUMULATIVE",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   ".github/workflows/harness-governance-gate.yml",
+   ".secrets.baseline",
+   "harness-governance/governed-paths.json",
+   "harness-governance/validator/",
+   "harness-governance/schemas/",
+   "harness-governance/tests/"
+  ],
+  "base_sha": "94b0c30034d04d1bad87f926a4b09e3dbbe3c6db",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-HE2-R3 cumulative review governance delta: authorizes all governance-core path changes from HE2_PARENT (94b0c300) through R1, R2, and R3",
+  "approval_ref": "DC-12R1-MVP-L1-HE2-R3",
+  "date": "2026-08-25"
+ },
+ {
+  "delta_id": "PD-2026-08-25-HE2-R3-R1-ALL-FILE-SCOPE",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   "harness-governance/validator/",
+   "harness-governance/tests/"
+  ],
+  "base_sha": "d7ea8027bf7d4ba5ec0a8d2f92965e5061680f34",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-HE2-R3-R1 scanner all-file scope + evidence truth closure: extension whitelist removed, git ls-files --cached --others --exclude-standard with os.walk fallback for non-git trees, ASCII bytes per-line matching (no errors=replace decode), fixed-dir/gitignore-only exclusions, N20/N21 validator-scope mutations with byte-identical restore",
+  "approval_ref": "DC-12R1-MVP-L1-HE2-R3-R1",
+  "date": "2026-08-25"
+ },
+ {
+  "delta_id": "PD-2026-08-25-HE2-R3-R2-MUTATION-EOL-PORTABILITY",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   "harness-governance/tests/"
+  ],
+  "base_sha": "68a68027e6b2d57ab35a77142b187c6301762de5",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-HE2-R3-R2 mutation EOL portability closure: validator-mutation patches convert to the validator file's native checkout EOL (pure LF / pure CRLF; mixed EOL fails closed with a fixed category), unique-anchor enforcement, unconditional byte-exact restore with full SHA-256 + bytes comparison; dual-checkout gate proof (autocrlf=false and true)",
+  "approval_ref": "DC-12R1-MVP-L1-HE2-R3-R2",
+  "date": "2026-08-25"
+ },
+ {
+  "delta_id": "PD-2026-08-28-HE2-ET1",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   ".github/workflows/harness-governance-gate.yml",
+   ".secrets.baseline",
+   "harness-governance/governed-paths.json",
+   "harness-governance/validator/",
+   "harness-governance/schemas/",
+   "harness-governance/inventory/execution-traps.json",
+   "harness-governance/inventory/authority-profiles.json",
+   "harness-governance/tests/"
+  ],
+  "base_sha": "246eb190fc07866f098a380e61ebdc5bd9428a04",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-HE2-ET1 execution traps and authority runner: 15 machine-verifiable traps (schema/2 + additionalProperties=false, hardcoded evaluator whitelist, fail-closed token cardinality); authority profile references; fail-stop runner (in-process evaluators, nonce-bound proof binding); +20 unit tests, +14 RED mutations, +4 GREEN controls; structural/release split preserved (release=BLOCKED for open P0/P1 debt). Validator ET1 checker integrated with PROTECTED_PATHS gating governance-core changes through protocol-delta authorization.",
+  "approval_ref": "DC-12R1-MVP-L1-HE2-ET1",
+  "date": "2026-08-28"
+ },
+ {
+  "delta_id": "PD-2026-08-28-HE2-ET1-R1",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   "harness-governance/validator/",
+   "harness-governance/tests/",
+   "harness-governance/inventory/et1-node-manifest.txt",
+   "harness-governance/inventory/authority-profiles.json",
+   "harness-governance/README.md"
+  ],
+  "base_sha": "aaff330e395a1ae555672bd86f183d2fd89cae54",
+  "date": "2026-08-28",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-HE2-ET1-R1 end-to-end authority execution and child-process proof closure: runner v2 on the ET1 API with explicit ALLOWED_TRANSITIONS state machine (trap lands VOID, terminal states enforced), real argv --command via argparse REMAINDER launched exactly once (counter-guarded; non-zero exit = real test RED on FINISHED, never VOID), real pytest --collect-only child via the runner-owned plugin (child sessionstart re-verifies live PG role/URL/capability/nonce/bindings; collection_finish recomputes live HEAD + file-byte SHAs and writes real node IDs), cross-process nonce compare vs the runner-minted original (self-compare removed), candidate_sha=live rev-parse HEAD, profile/manifest sha256 over actual file bytes (frozen et1-node-manifest.txt), explicit-path schema-validated authority profile (hardcoded cli-mode rejected), live-git lineage, sanitized publish (presence/labels/counts only), +15 behavioral E2E mutations (X01-X15) with pristine/restore controls (66 RED / 9 GREEN total), 8-case E2E core-chain gate (GREEN sentinel==1; 7 RED sentinel==0); 116 unittest baseline preserved.",
+  "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R1 task directive (BASE aaff330e395a1ae555672bd86f183d2fd89cae54; SOURCE_GATE_PASS_BUT_REMOTE_ENFORCEMENT_NOT_VERIFIED)"
+ },
+ {
+  "delta_id": "PD-2026-08-28-HE2-ET1-R1-E1",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   "harness-governance/inventory/protocol-deltas.json",
+   "ai-ledger/product-ai/2026-08-28_dc12r1_mvp_l1_he2_et1_r1_e2e_authority_execution_closure.md"
+  ],
+  "base_sha": "18abc7a256f451ad7fa013e9d34c87e5442d852d",
+  "date": "2026-08-28",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-HE2-ET1-R1-E1 cross-task evidence reference and reviewer independence closure (PROVENANCE_CORRECTION_ONLY, V1_METADATA_AND_GOVERNANCE_STRUCTURE): the 26ed3fac KILO_STOP reference is marked INVALID_CROSS_TASK_REFERENCE (26ed3fac belongs to the H2-C browser harness Kilo STOP, not HE2-ET1; no citable prior HE2-ET1 Kilo review exists); PRIOR_HE2_ET1_KILO_REVIEW=NONE and NEXT_GATE=KILO_FINAL_CUMULATIVE_BOUNDED_REVIEW recorded; the R1 delta approval_ref now cites only the DC-12R1-MVP-L1-HE2-ET1-R1 task directive; functional bytes and verification conclusions of 18abc7a2 are unchanged and no functional gate was re-run or claim upgraded; author-owned gate container he2et1r1_pg16 removed (container + anonymous volumes; port 15445 freed) so any reviewer creates its own fresh throwaway PG.",
+  "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R1-E1 task directive (BASE 18abc7a256f451ad7fa013e9d34c87e5442d852d; PROVENANCE_CORRECTION_ONLY)"
+ },
+ {
+  "delta_id": "PD-2026-08-28-HE2-ET1-R2",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   "harness-governance/validator/authority_runner.py",
+   "harness-governance/validator/harness_governance_validator.py",
+   "harness-governance/tests/pytest_et1_collector.py",
+   "harness-governance/tests/test_authority_runner_r2.py",
+   "harness-governance/tests/et1_r2_mutations.py",
+   "harness-governance/tests/run_e2e_redis_cases.py",
+   "harness-governance/tests/run_red_mutations.py",
+   "harness-governance/inventory/execution-traps.json",
+   "harness-governance/README.md"
+  ],
+  "base_sha": "2582750dedfb591e801703ff57bea69fbe91c605",
+  "date": "2026-08-28",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-HE2-ET1-R2 live Redis authority and child recheck closure (V3_GOVERNANCE_AUTHORITY_SECURITY, CANDIDATE_READY_FOR_KILO_REVIEW_ONLY): the Redis gate becomes a live stdlib-RESP probe on the URL's own host/port (connect; optional AUTH with credentials never in evidence/proofs/logs; PING==PONG; SELECT 15==OK; DBSIZE==0; sentinel 26379 unreachable; wrong-DB traps pre-connect) executed BOTH in runner preflight and in the child plugin's pytest_sessionstart, so Redis disappearing after preflight fails the child closed and the authority command is never launched; published artifacts carry fixed boolean categories only. TRAP_REDIS_WRONG_DB extended to evaluator EVAL_REDIS_LIVE (P1 ACTIVE exit 14, applies to runner.preflight + child.sessionstart) with live-probe required evidence; EVAL_REDIS_LIVE whitelisted in the runner and the mirrored validator whitelist (validator change is the single whitelist line; schema unchanged because the extension stays within the existing draft-07 contract). +15 unit tests over a threaded real-socket fake RESP server incl. credential-redaction proofs; +5 RED mutations R201-R205 (connect deleted, PING skipped, DBSIZE skipped, connection errors swallowed, child recheck deleted) with pristine + byte-exact-restore controls, total gate 71 RED / 9 GREEN; live E2E run_e2e_redis_cases.py 6/6 on fresh throwaway redis7 (GREEN fresh DB15, wrong db, unreachable, DB15 non-empty, post-preflight disappearance child-fail-closed sentinel 0, sentinel-26379-reachable) plus the 8-case core chain green on fresh PG16+redis7; PRIOR_M0 report tip 58b8e2ac marked SUPERSEDED_BY_HE2_ET1_R2_REDIS_AUTHORITY_DEFECT.",
+  "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R2 task directive (BASE 2582750dedfb591e801703ff57bea69fbe91c605; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
+ },
+ {
+  "delta_id": "PD-2026-08-28-HE2-ET1-R2-R1",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   "harness-governance/validator/redis_authority.py",
+   "harness-governance/validator/authority_runner.py",
+   "harness-governance/validator/harness_governance_validator.py",
+   "harness-governance/tests/pytest_et1_collector.py",
+   "harness-governance/tests/test_authority_runner_r2.py",
+   "harness-governance/tests/test_authority_runner_r2r1.py",
+   "harness-governance/tests/et1_r2_mutations.py",
+   "harness-governance/tests/run_e2e_redis_cases.py",
+   "harness-governance/inventory/execution-traps.json",
+   "harness-governance/README.md"
+  ],
+  "base_sha": "30e3e48f9ebc707223e43734a0c4357346b6e2da",
+  "date": "2026-08-28",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-HE2-ET1-R2-R1 malformed Redis URL, RESP AUTH and shared-probe closure (V3_GOVERNANCE_AUTHORITY_SECURITY, CANDIDATE_READY_FOR_KILO_REVIEW_ONLY). Six confirmed defects closed: (A) invalid port/malformed IPv6/URL parse failures now map to the sanitized url_malformed VOID, never a raw ValueError or traceback; (B) username/password percent-decoded exactly (empty-string credentials normalized to absent); (C) ACL username+password AUTHs as a proper two-argument RESP command, username-without-password fails closed auth_misconfigured; (D) formal RESP array/bulk-string encoding replaces the injectable space-joined inline encoder — credentials with spaces/CR/LF/non-ASCII travel as one binary-safe argument; (E) one shared stdlib module validator/redis_authority.py serves BOTH the runner preflight and the child sessionstart recheck (fixed sys.modules key; same module object asserted), protocol code no longer duplicated; (F) execution-traps.json restored to its original compact format with an 8-line surgical edit confined to the Redis trap block. rediss rejected fail-closed (tls_unsupported_fail_closed) — no unverified TLS support claimed. Legacy EVAL_REDIS evaluator name removed from the runner and validator whitelists (no config rollback to pre-live semantics). +14 truth tests (ports, IPv6, decode precision, ACL array, injection resistance, protocol breaks, sanitized surfaces, same-module proof); mutations R211-R215 (inline encoder restored, decode deleted, username ignored, invalid-port escape, child shared-probe bypass) join retargeted R201-R205, gate 76 RED / 9 GREEN; live RL7 invalid-port case added.",
+  "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R2-R1 task directive (BASE 30e3e48f9ebc707223e43734a0c4357346b6e2da; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
+ },
+ {
+  "delta_id": "PD-2026-08-28-HE2-ET1-R2-R2",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   "harness-governance/validator/authority_runner.py",
+   "harness-governance/tests/pytest_et1_collector.py",
+   "harness-governance/tests/test_authority_runner_r2.py",
+   "harness-governance/tests/test_authority_runner_r2r1.py",
+   "harness-governance/tests/test_authority_runner_r2r2.py",
+   "harness-governance/tests/et1_e2e_mutations.py",
+   "harness-governance/tests/et1_r2r2_mutations.py",
+   "harness-governance/tests/run_red_mutations.py",
+   "harness-governance/README.md"
+  ],
+  "base_sha": "16ea089b5633b031cf5b133815454f41035223f9",
+  "date": "2026-08-29",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-HE2-ET1-R2-R2 shared Redis probe module-origin and cross-process byte-binding closure (V3_MERGE_CRITICAL_GOVERNANCE_AUTHORITY, CANDIDATE_READY_FOR_KILO_REVIEW_ONLY). P1 defect SHARED_PROBE_MODULE_PRELOAD_INJECTION__AUTHORITY_BYPASS closed: the R2-R1 loaders trusted a fixed sys.modules key, so a preloaded fake module was executed by the real runner and an unreachable Redis was accepted (PROBE_RC=0). Binding chain: (1) a preloaded entry under the fixed key is never returned or trusted; a foreign origin is tamper evidence (module_preload_detected) and the cache is evicted with the module freshly executed from the canonical file on every load; (2) post-execution, __spec__.origin AND __file__ must both resolve to the exact canonical path; missing spec/loader = module_origin_untrusted; (3) the runner binds SHA-256 over the shared module's RAW FILE BYTES at preflight as the ORIGINAL; (4) the ORIGINAL travels to the child via ET1_RUNNER_REDIS_MODULE_SHA and the child independently recomputes and compares in pytest_sessionstart (never self-compared); drift = redis_module:bytes_drift, child fail-closed, no proof; (5) the child's independently recomputed digest is written into the collect proof and the runner cross-compares against its own ORIGINAL (module_digest_mismatch); (6) just-in-time raw-byte rechecks run at authorize (drift_at_authorize) and immediately before the authority launch (drift_at_launch); (7) any origin/path/byte inconsistency lands VOID with the authority command launched zero times; (8) evidence carries only the fixed categories module_preload_detected / module_origin_untrusted / module_bytes_drift / module_digest_missing / module_digest_mismatch / drift_at_authorize / drift_at_launch - never paths, URLs, credentials, or environment values. The R2-R1 'same module object' cross-process claim is RETRACTED and replaced by independently loaded from the same canonical path and bound to the same raw-byte SHA-256. Truth counterexamples A-H in test_authority_runner_r2r2.py (10 tests, 155/155 total); mutations S221-S228 with pristine + byte-exact-restore controls, gate 84 RED / 9 GREEN; R2-R1 candidate marked SUPERSEDED_BY_HE2_ET1_R2_R2_MODULE_ORIGIN_BINDING.",
+  "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R2-R2 task directive (BASE 16ea089b5633b031cf5b133815454f41035223f9; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
+ },
+ {
+  "delta_id": "PD-2026-08-29-HE2-ET1-R2-R2-R1",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   "harness-governance/validator/authority_runner.py",
+   "harness-governance/tests/test_authority_runner_r2r2.py",
+   "harness-governance/tests/et1_r2r2_mutations.py",
+   "harness-governance/tests/run_red_mutations.py",
+   "harness-governance/inventory/protocol-deltas.json"
+  ],
+  "base_sha": "3e2457ca71c6d47ef45429cd32f8d5c30c402921",
+  "date": "2026-08-29",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-HE2-ET1-R2-R2-R1 baseline integrity and child-proof evidence-truth closure (V3_MERGE_CRITICAL_GOVERNANCE_AUTHORITY, CANDIDATE_READY_FOR_KILO_REVIEW_ONLY). Erratum round, no runtime behavior change: (1) .secrets.baseline restored byte-exact to the 16ea089b version (17 files / 484 findings / 3567 lines; the R2-R2 round had wrongly overwritten it to 1 file / 1 finding via a baseline-rewriting scan invocation); proven by git diff --quiet 16ea089b..HEAD -- .secrets.baseline; the public chain-base commit SHA false positive is now suppressed by a per-line pragma: allowlist secret in the test file instead of any baseline edit, and baseline-rewriting commands are banned for this and future rounds. (2) The R2-R2 delta's affected_paths no longer lists .secrets.baseline and its inaccurate 'gains one allowlist entry' reason sentence is removed. (3) The prior 'B' sitecustomize test is renamed/reclassified as the runner-preflight proof it actually is, and a TRUE child-only subprocess test is added: parent env stays clean, only the pytest child's env receives the injected PYTHONPATH, the child sessionstart fails closed with redis_module:preload_detected recorded in its proof, no collect proof exists, and the authority command count stays 0. (4) drift_at_authorize joins the fixed MODULE_BINDING_CATEGORIES set with a set-integrity test asserting the exact documented label set and that every emitted module label is a member. (5) New RED mutation S229 (child preload detection deleted) with byte-exact restore; gate 85 RED / 9 GREEN. Redis protocol implementation, product code, and protected branches untouched.",
+  "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R2-R2-R1 task directive (BASE 3e2457ca71c6d47ef45429cd32f8d5c30c402921; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
+ },
+ {
+  "delta_id": "PD-2026-08-29-HE2-ET1-R3",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   "harness-governance/validator/authority_runner.py",
+   "harness-governance/validator/backend_env_authority.py",
+   "harness-governance/tests/pytest_et1_collector.py",
+   "harness-governance/tests/test_authority_runner_r3.py",
+   "harness-governance/tests/test_authority_runner_r3a1.py",
+   "harness-governance/tests/et1_r3_mutations.py",
+   "harness-governance/tests/et1_r3a1_mutations.py",
+   "harness-governance/tests/et1_e2e_mutations.py",
+   "harness-governance/tests/et1_r2r2_mutations.py",
+   "harness-governance/tests/et1_mutations.py",
+   "harness-governance/tests/run_red_mutations.py",
+   "harness-governance/tests/run_e2e_core_chain.py",
+   "harness-governance/tests/run_e2e_redis_cases.py",
+   "harness-governance/et1_collect_entry.py",
+   "harness-governance/schemas/authority-profiles.schema.json",
+   "harness-governance/inventory/authority-profiles.json",
+   "harness-governance/inventory/protocol-deltas.json",
+   "harness-governance/README.md"
+  ],
+  "base_sha": "cdb39e96a50b308aff91d4e94fd8526e7540d921",
+  "date": "2026-08-29",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-HE2-ET1-R3 backend CWD and temporary-database authority preflight closure (V3_MERGE_CRITICAL; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY) plus R3-A1 profile-bound alembic successor amendment: shared stdlib modules (backend_env_authority.py) provide CWD/MPANGO_ENV/DB-name/port-allowlist/host checks AND profile-bound alembic successor verification (single head byte-equal to profile expected head, declared parent lineage); runner preflight AND child sessionstart independently enforce; drift after preflight/collect/launch VOID; evidence fixed categories only; global EXPECTED_ALEMBIC_HEAD retired (no CLI/env override); profile schema gains required expected_alembic_head + optional expected_alembic_parent; AUTHORITY_SKU_M1_BACKEND profile added (038 successor of 037); +15 R3 truth tests, +13 R3-A1 truth tests (186/186); +17 mutations (T221-T228 + A101-A109) gate 102 RED / 9 GREEN.",
+  "approval_ref": "DC-12R1-MVP-L1-HE2-ET1-R3 + R3-A1 task directives (BASE cdb39e96a50b308aff91d4e94fd8526e7540d921; CANDIDATE_READY_FOR_KILO_REVIEW_ONLY)"
+ },
+ {
+  "delta_id": "PD-2026-08-30-SKU-R0-M1-R1-A4",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   "harness-governance/inventory/inventory.json",
+   "harness-governance/inventory/protocol-deltas.json",
+   "harness-governance/tests/test_harness_governance_validator.py"
+  ],
+  "base_sha": "24a28d76d6d9483d8101f8e0f537c148dc262859",
+  "date": "2026-08-30",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A4 governance closure: the protected validator test now binds the exact 15-node seed inventory (replacing the stale hardcoded 13) and binds both SKU catalog nodes (CATALOG-ID-001 and CATALOG-HIST-001) by exact ID with full node contracts (capability+layer category semantics, risk, status, owner, all five oracle fields, exact source_anchors, exact mutation_id) at exact final-two positions so silent deletion or reorder stays fail-closed. This delta is not a product-range authorization: it enumerates every governance file changed by the candidate precisely; inventory.json carries the product-sync truth while only the protected test requires governance authorization.",
+  "approval_ref": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A4"
+ },
+ {
+  "delta_id": "PD-2026-08-30-SKU-R0-M1-R1-A5",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   "harness-governance/inventory/protocol-deltas.json",
+   "harness-governance/tests/et1_r3a1_mutations.py",
+   "harness-governance/tests/test_authority_runner_r3a1.py"
+  ],
+  "base_sha": "24a28d76d6d9483d8101f8e0f537c148dc262859",
+  "date": "2026-08-30",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A5 governance closure: the R3-A1 truth suite is retargeted to the real repository migration tree (exact single head 038_catalog_identity_vertical_slice, exact parent 037_payment_declarations_schema) — AUTHORITY_SKU_M1_BACKEND semantics (expected 038, parent 037) pass real preflight enforcement and bind actual/expected/parent exactly, while an H2-C profile expecting 037 with no successor parent fails closed with alembic_head_mismatch against the same tree; mutation probe child_alembic_recheck_deleted is retargeted so a pristine child expecting H2C/037 deterministically reports the alembic mismatch and only the A107 recheck deletion escapes; this test binds the complete A5 delta so deletion, duplication, base drift, or affected_paths expansion stays RED. This delta is not a runtime PASS claim and not a product-range authorization; the authority implementation, profiles, and product paths are untouched.",
+  "approval_ref": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A5 task A5"
+ },
+ {
+  "delta_id": "PD-2026-08-31-SKU-R0-M1-R1-A3",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   "harness-governance/inventory/protocol-deltas.json",
+   "harness-governance/validator/authority_runner.py",
+   "harness-governance/tests/pytest_et1_collector.py",
+   "harness-governance/tests/et1_r4_mutations.py",
+   "harness-governance/tests/test_authority_runner_r4_transport.py",
+   "harness-governance/tests/et1_e2e_mutations.py",
+   "harness-governance/tests/et1_r2r2_mutations.py",
+   "harness-governance/tests/et1_r3_mutations.py",
+   "harness-governance/tests/et1_r3a1_mutations.py",
+   "harness-governance/tests/run_red_mutations.py",
+   "harness-governance/tests/test_authority_runner_r2.py",
+   "harness-governance/tests/test_authority_runner_r2r2.py",
+   "backend/tests/test_dc11d_payment_replay_concurrency_integrity.py",
+   "backend/tests/test_dc12r1_s3_s1_catalog_order_hardening.py",
+   "backend/tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py",
+   "backend/tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py",
+   "backend/tests/test_phase3_pricing.py",
+   "backend/tests/test_s5a_fresh_tenant_real_user_journey_gate.py",
+   "backend/tests/test_u3b2_preview_validate.py",
+   "backend/tests/test_u4d_intake_parser_preview.py",
+   "backend/tests/test_u6f_onboarding_auth_chain_closeout.py",
+   "backend/tests/test_u6i1_owner_credential_setup_schema.py",
+   "backend/tests/test_u6i3_owner_credential_setup_consume.py"
+  ],
+  "base_sha": "24a28d76d6d9483d8101f8e0f537c148dc262859",
+  "date": "2026-08-31",
+  "owner": "cto",
+  "reason": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A3 test-contract and backend-authority closure: (1) bounded digest-bound manifest transport replaces the single ET1_RUNNER_REQUIRED_NODES env string (460KB full manifests failed execve E2BIG at MAX_ARG_STRLEN 131072) — runner writes one canonical LF-terminated sorted transport file, binds its raw-byte SHA-256, child independently re-derives the digest and enforces canonical form (missing/substituted/truncated/duplicate/reordered fail closed), runner JIT re-verifies bytes at collect/authorize/launch and removes the file on every exit path; truth tests + 6 R4 mutations (+6, gate 108 RED / 9 GREEN) added, pristine seed helpers of prior rounds transport-bound; manifest parse switched to LF-only splitting so node IDs carrying embedded CR bytes survive; (2) 61 STALE_TEST_CONTRACT nodes from the V2 authority run reconciled test-only (038 head assertions, genuine pre-038 migration fixtures, catalog-identity SKU/order-item seeds, AST guards accepting exactly the InventoryRepository.ensure_stock_row apply-phase delegation); (3) two volatile parametrized node IDs stabilized (xlsx-bytes and uuid params) so frozen manifests can bind at all; zero product behavior change; no skip/deselect/xfail; H2-C/PRICING/ORDER-PRICE/REORDER untouched.",
+  "approval_ref": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A3 task directive (BASE 24a28d76; candidate 8cef1fff)"
+ }
 ]

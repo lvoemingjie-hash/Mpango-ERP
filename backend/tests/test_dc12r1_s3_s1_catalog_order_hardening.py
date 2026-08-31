@@ -126,10 +126,17 @@ async def _resolve_binding(db, ws_id: str, uid: str) -> str:
 async def _seed_sku(db, schema: str, retailer_id: str) -> str:
     from sqlalchemy import text
     code = f"S3{uuid.uuid4().hex[:8]}"
+    # Stable catalog identity: the sellable unit owns a CatalogProduct row
+    # (skus.catalog_product_id is NOT NULL since migration 038).
+    product = (await db.execute(
+        text(f'INSERT INTO "{schema}".catalog_products (name, is_active, is_deleted) '
+             "VALUES ('S3', true, false) RETURNING id"),
+    )).fetchone()
     row = (await db.execute(
-        text(f'INSERT INTO "{schema}".skus (sku_code, name, is_active, is_deleted) '
-             "VALUES (:c, 'S3', true, false) RETURNING id"),
-        {"c": code},
+        text(f'INSERT INTO "{schema}".skus '
+             "(sku_code, name, is_active, is_deleted, catalog_product_id, package_quantity) "
+             "VALUES (:c, 'S3', true, false, :p, 1.000) RETURNING id"),
+        {"c": code, "p": product.id},
     )).fetchone()
     sid = str(row.id)
     await db.execute(text(

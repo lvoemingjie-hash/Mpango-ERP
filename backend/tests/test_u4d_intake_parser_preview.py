@@ -115,7 +115,10 @@ def test_parser_rejects_csv_and_xlsx_row_limit(file_ext: str):
     ("filename", "file_bytes"),
     [
         ("too_many_columns.csv", (",".join(f"H{index}" for index in range(101)) + "\n").encode("utf-8")),
-        ("too_many_columns.xlsx", _xlsx_bytes([f"H{index}" for index in range(101)], [])),
+        pytest.param(
+            "too_many_columns.xlsx", _xlsx_bytes([f"H{index}" for index in range(101)], []),
+            id="too_many_columns.xlsx",
+        ),
     ],
 )
 def test_parser_rejects_csv_and_xlsx_column_limit(filename: str, file_bytes: bytes):
@@ -126,7 +129,10 @@ def test_parser_rejects_csv_and_xlsx_column_limit(filename: str, file_bytes: byt
     ("filename", "file_bytes"),
     [
         ("header_too_large.csv", (("H" * 256) + "\nvalue\n").encode("utf-8")),
-        ("header_too_large.xlsx", _xlsx_bytes(["H" * 256], [["value"]])),
+        pytest.param(
+            "header_too_large.xlsx", _xlsx_bytes(["H" * 256], [["value"]]),
+            id="header_too_large.xlsx",
+        ),
     ],
 )
 def test_parser_rejects_csv_and_xlsx_header_length(filename: str, file_bytes: bytes):
@@ -137,7 +143,10 @@ def test_parser_rejects_csv_and_xlsx_header_length(filename: str, file_bytes: by
     ("filename", "file_bytes"),
     [
         ("cell_too_large.csv", ("Name\n" + ("X" * 2001) + "\n").encode("utf-8")),
-        ("cell_too_large.xlsx", _xlsx_bytes(["Name"], [["X" * 2001]])),
+        pytest.param(
+            "cell_too_large.xlsx", _xlsx_bytes(["Name"], [["X" * 2001]]),
+            id="cell_too_large.xlsx",
+        ),
     ],
 )
 def test_parser_rejects_csv_and_xlsx_cell_length(filename: str, file_bytes: bytes):

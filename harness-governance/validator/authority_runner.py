@@ -128,6 +128,36 @@ BACKEND_ENV_KEY = "et1_backend_env_authority"
 BACKEND_ENV_TRAP = ("TRAP_TEMP_DB_CAPABILITY", 12, "PREFLIGHT")
 BACKEND_ENV_ALLOWED = ("test", "testing")
 TEMPDB_PORTS_VAR = "MPANGO_TEMP_DB_ALLOWED_PORTS"
+
+# R4: bounded manifest transport. The frozen node manifest NEVER travels in a
+# single argv/env string (kernel MAX_ARG_STRLEN is 128KB per string; a
+# full-suite manifest of ~3800 nodes is ~460KB and exec fails E2BIG before
+# any launch). The runner writes ONE canonical transport file (UTF-8, sorted,
+# unique, LF-terminated lines), binds its raw-byte SHA-256 into the child's
+# environment, and the child independently re-derives that digest from the
+# bytes it actually read. Missing file, substituted file, byte drift, digest
+# mismatch, duplicate node, non-canonical order, a missing trailing newline
+# (truncation) and post-preflight mutation all fail closed. The transport
+# file is runner-owned temporary state and is removed during cleanup.
+TRANSPORT_PATH_VAR = "ET1_RUNNER_MANIFEST_TRANSPORT_PATH"
+TRANSPORT_DIGEST_VAR = "ET1_RUNNER_MANIFEST_TRANSPORT_DIGEST"
+
+
+def canonical_transport_bytes(nodes: list) -> bytes:
+    """Canonical transport encoding: sorted, unique, non-empty node IDs, one
+    per line, LF-terminated. Raises (sanitized ValueError) on duplicates or
+    an empty set — never a silently weakened manifest."""
+    cleaned = [str(n).strip() for n in nodes if str(n) and str(n).strip()]
+    if not cleaned:
+        raise ValueError("manifest_transport:empty")
+    if len(cleaned) != len(set(cleaned)):
+        raise ValueError("manifest_transport:duplicate_nodes")
+    return ("\n".join(sorted(cleaned)) + "\n").encode("utf-8")
+
+
+def manifest_transport_digest(transport_bytes: bytes) -> str:
+    return hashlib.sha256(transport_bytes).hexdigest()
+
 TEMPDB_HOSTS_VAR = "MPANGO_TEMP_DB_ALLOWED_HOSTS"
 
 
@@ -701,7 +731,8 @@ def ensure_plugin_available(gov_dir) -> dict:
 def verify_child_proof(child, original_nonce: str, expected_nodes: list,
                        *, redis_module_sha: str,
                        tempdb_binding_sha: str = "",
-                       alembic_actual_head: str = "") -> dict:
+                       alembic_actual_head: str = "",
+                       transport_digest: str = "") -> dict:
     """Cross-process verification of the child's proof against the ORIGINAL
     runner-side values. Every comparison is against an independently held
     value; the child's own values are never trusted as their own reference.
@@ -775,6 +806,23 @@ def verify_child_proof(child, original_nonce: str, expected_nodes: list,
     if len(collected) != len(set(collected)):
         raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
                         {"reason": "duplicate_node_ids"})
+    # R4: cross-process transport binding — the child INDEPENDENTLY re-derived
+    # the transport digest from the bytes it read; compare against THIS
+    # runner's ORIGINAL (never the child's value against itself).
+    child_transport_sha = child.get("manifest_transport_sha", "")
+    if not transport_digest:
+        raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                        {"manifest_transport": "runner_digest_missing"})
+    if not isinstance(child_transport_sha, str) or not child_transport_sha:
+        raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                        {"manifest_transport": "child_digest_missing"})
+    if not secrets.compare_digest(child_transport_sha, transport_digest):
+        raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                        {"manifest_transport": "child_digest_mismatch"})
+    child_transport_total = child.get("manifest_transport_nodes_total")
+    if child_transport_total != len(expected_nodes):
+        raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                        {"manifest_transport": "child_total_mismatch"})
     eval_collect_manifest(collected, expected_nodes)
     return {
         "nonce_match": True,
@@ -783,6 +831,7 @@ def verify_child_proof(child, original_nonce: str, expected_nodes: list,
         "redis_module_match": True,
         "tempdb_match": True,
         "alembic_match": True,
+        "manifest_transport_match": True,
     }
 
 
@@ -1000,6 +1049,27 @@ class AuthorityRunner:
             return "alembic_parent_drift"
         return None
 
+    def _current_transport_digest(self) -> str:
+        """Recompute the transport file's raw-byte digest from CURRENT state;
+        empty string when the file is missing/unreadable."""
+        path = getattr(self, "transport_path", None)
+        if path is None:
+            return ""
+        try:
+            return manifest_transport_digest(Path(path).read_bytes())
+        except OSError:
+            return ""
+
+    def _transport_drift(self) -> str | None:
+        """Fixed drift category when the transport bytes moved after the
+        binding was minted (post-preflight mutation fails closed)."""
+        digest = getattr(self, "transport_digest", "")
+        if not digest:
+            return "transport_unbound"
+        if self._current_transport_digest() != digest:
+            return "manifest_transport_drift"
+        return None
+
     def _current_alembic_actual(self) -> str:
         """Recompute the actual alembic head from the CURRENT repo tree."""
         module, _tampered = load_backend_env_module()
@@ -1038,13 +1108,22 @@ class AuthorityRunner:
                 stale.unlink()
             except OSError:
                 pass
+        # R4: bounded transport replaces the single giant env string. The
+        # full node manifest travels only through this digest-bound file.
+        transport_bytes = canonical_transport_bytes(self.expected_nodes)
+        self.transport_digest = manifest_transport_digest(transport_bytes)
+        transport_path = proof_out.parent / "et1-manifest.transport"
+        transport_path.write_bytes(transport_bytes)
+        self.transport_path = transport_path
+
         child_env = {
             **os.environ,
             "ET1_RUNNER_NONCE": self.original_nonce,
             "ET1_RUNNER_CANDIDATE_SHA": candidate,
             "ET1_RUNNER_PROFILE_SHA": self.profile_sha,
             "ET1_RUNNER_MANIFEST_SHA": self.manifest_sha,
-            "ET1_RUNNER_REQUIRED_NODES": ",".join(self.expected_nodes),
+            TRANSPORT_PATH_VAR: str(transport_path),
+            TRANSPORT_DIGEST_VAR: self.transport_digest,
             "ET1_RUNNER_PROOF_OUT": str(proof_out),
             "ET1_RUNNER_SESSIONSTART_OUT": str(sessionstart_out),
             "ET1_RUNNER_PROFILE_PATH": str(Path(profile_path).resolve()),
@@ -1087,11 +1166,20 @@ class AuthorityRunner:
             redis_module_sha=self.redis_module_sha,
             tempdb_binding_sha=self.tempdb_binding_sha or "",
             alembic_actual_head=self.alembic_actual or "",
+            transport_digest=self.transport_digest,
         )
+        # R4: the transport bytes must not have drifted while the child ran.
+        if self._current_transport_digest() != self.transport_digest:
+            raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
+                            {"manifest_transport": "drift_after_collect"})
 
     def authorize(self, db_url: str, allow_flag: str) -> None:
         self._to("AUTHORIZED")
         eval_phase_fail_stop([s.split("->")[1] for s in self.trace] + [self.state])
+        drift = self._transport_drift()
+        if drift:
+            raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "AUTHORIZED", True,
+                            {"manifest_transport": drift})
         if not self.proof:
             self.proof = {"nonce": self.original_nonce or "", "issued_at": time.time(),
                           "expires_at": time.time() + PROOF_TTL_SECONDS}
@@ -1217,6 +1305,12 @@ class AuthorityRunner:
             if drift:
                 raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "RUNNING", True,
                                 {"alembic": drift})
+        # R4: manifest transport JIT recheck before launch — byte drift after
+        # the child proof blocks the authority command.
+        drift = self._transport_drift()
+        if drift:
+            raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "RUNNING", True,
+                            {"manifest_transport": drift})
         if self.tempdb_binding_sha is not None:
             if self._current_tempdb_binding() != self.tempdb_binding_sha:
                 raise TrapFired("TRAP_SESSIONSTART_DRIFT", 18, "RUNNING", True,
@@ -1275,6 +1369,8 @@ class AuthorityRunner:
             "tempdb_match": child.get("tempdb_match", False),
             "alembic_expected_bound": bool(self.alembic_expected),
             "alembic_match": child.get("alembic_match", False),
+            "manifest_transport_bound": bool(getattr(self, "transport_digest", "")),
+            "manifest_transport_match": child.get("manifest_transport_match", False),
             "collect_child_spawns": self.collect_spawns,
             "sentinel_calls": self.sentinel_calls,
             "command_exit_code": self.command_exit_code,
@@ -1497,13 +1593,17 @@ def self_test() -> int:
         check("foreign proof origin traps", False)
     except TrapFired as fired:
         check("foreign proof origin traps", fired.evidence.get("reason") == "foreign_proof_origin")
-    # Matching nonce over the real plugin schema passes.
-    honest = dict(tampered, nonce="R" * 32)
+    # Matching nonce over the real plugin schema passes (with the R4 bounded
+    # transport binding: the child's re-derived digest matches the original).
+    honest = dict(tampered, nonce="R" * 32,
+                  manifest_transport_sha="K" * 64,
+                  manifest_transport_nodes_total=1)
     check("honest child proof verifies",
           verify_child_proof(honest, "R" * 32, ["N1"],
                              redis_module_sha="M" * 64,
                              tempdb_binding_sha="T" * 64,
-                             alembic_actual_head="037_payment_declarations_schema")["nonce_match"] is True)
+                             alembic_actual_head="037_payment_declarations_schema",
+                             transport_digest="K" * 64)["nonce_match"] is True)
 
     # Duplicate node ids must be named, not folded into set comparison.
     dup = dict(honest, collected_node_ids=["N1", "N1"])
@@ -1576,7 +1676,11 @@ def _read_manifest_nodes(manifest_path) -> list:
     lone_lf = data.replace(b"\r\n", b"").count(b"\n") > 0
     if crlf and lone_lf:
         raise TrapFired("TRAP_MIXED_EOF", 22, "COLLECT_PROVEN", True, {"eol": "manifest_mixed"})
-    nodes = [line.strip() for line in data.decode("utf-8").splitlines() if line.strip()]
+    # R4: split on LF only — `str.splitlines()` would also cut node IDs on
+    # embedded CR bytes (parametrized IDs may carry binary fixture params).
+    # Pure CRLF files are still handled by the CR/LF normalization; only a
+    # MIXED blob fails closed above.
+    nodes = [line.strip() for line in data.decode("utf-8").replace("\r\n", "\n").split("\n") if line.strip()]
     if not nodes or len(nodes) != len(set(nodes)):
         raise TrapFired("TRAP_COLLECT_NODE_SET_DRIFT", 15, "COLLECT_PROVEN", True,
                         {"reason": "manifest_empty_or_duplicate"})
@@ -1688,6 +1792,15 @@ def main(argv=None) -> int:
             f"evidence={json.dumps(fired.evidence, sort_keys=True)}"
         )
         return fired.exit_code
+    finally:
+        # R4: the transport file is runner-owned temporary state; it is
+        # removed on EVERY exit path after the run attempt completes.
+        transport_path = getattr(runner, "transport_path", None) if runner else None
+        if transport_path is not None:
+            try:
+                Path(transport_path).unlink()
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":

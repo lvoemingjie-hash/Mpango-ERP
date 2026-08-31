@@ -9,9 +9,11 @@ AUTH flow. Credential redaction is asserted over evidence and exception text.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import socket
+import tempfile
 import threading
 import unittest
 from pathlib import Path
@@ -307,16 +309,27 @@ class ChildRecheckTests(unittest.TestCase):
             url = f"redis://:{SECRET}@127.0.0.1:{server.port}/15"
             self.assertEqual(self.plugin._redis_recheck_problems(
                 {"PW1R3_TEST_REDIS_URL": url}), [])
-            gate = self.plugin.sessionstart_gate({
-                "PW1R3_TEST_REDIS_URL": url,
-                "ET1_RUNNER_PROOF_OUT": "x", "ET1_RUNNER_NONCE": "n" * 32,
-                "ET1_RUNNER_CANDIDATE_SHA": "c" * 40, "ET1_RUNNER_PROFILE_SHA": "p" * 64,
-                "ET1_RUNNER_MANIFEST_SHA": "m" * 64, "ET1_RUNNER_REQUIRED_NODES": "a",
-                "ET1_RUNNER_PROFILE_PATH": "p", "ET1_RUNNER_MANIFEST_PATH": "m",
-                "ET1_RUNNER_REPO_ROOT": ".",
-            })
-            self.assertNotIn("redis:url_absent", gate["problems"])
-            self.assertFalse(any(p.startswith("redis:") for p in gate["problems"]))
+            # R4: the gate binds the node manifest through the bounded
+            # digest-verified transport file, never an env string.
+            with tempfile.TemporaryDirectory(prefix="et1r2transport-") as case_dir:
+                transport_bytes = b"a\nb\n"
+                transport_path = Path(case_dir) / "et1-manifest.transport"
+                transport_path.write_bytes(transport_bytes)
+                gate = self.plugin.sessionstart_gate({
+                    "PW1R3_TEST_REDIS_URL": url,
+                    "ET1_RUNNER_PROOF_OUT": "x", "ET1_RUNNER_NONCE": "n" * 32,
+                    "ET1_RUNNER_CANDIDATE_SHA": "c" * 40, "ET1_RUNNER_PROFILE_SHA": "p" * 64,
+                    "ET1_RUNNER_MANIFEST_SHA": "m" * 64,
+                    "ET1_RUNNER_MANIFEST_TRANSPORT_PATH": str(transport_path),
+                    "ET1_RUNNER_MANIFEST_TRANSPORT_DIGEST":
+                        hashlib.sha256(transport_bytes).hexdigest(),
+                    "ET1_RUNNER_PROFILE_PATH": "p", "ET1_RUNNER_MANIFEST_PATH": "m",
+                    "ET1_RUNNER_REPO_ROOT": ".",
+                })
+                self.assertNotIn("redis:url_absent", gate["problems"])
+                self.assertFalse(any(p.startswith("redis:") for p in gate["problems"]))
+                self.assertFalse(
+                    any(p.startswith("manifest_transport:") for p in gate["problems"]))
         finally:
             self.plugin.SENTINEL_PROBE_ENDPOINT = original_endpoint
             server.close()

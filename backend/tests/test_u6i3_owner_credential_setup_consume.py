@@ -244,7 +244,9 @@ async def test_consume_valid_owner_setup_token_returns_admin_creation_inputs_wit
 
 @pytest.mark.parametrize(
     "raw_token",
-    [None, "", "   ", f"u6i3-missing-{uuid.uuid4().hex}"],
+    # Stable literal: a random uuid4 here made the parametrized node ID
+    # volatile per collection, which breaks frozen manifest binding.
+    [None, "", "   ", "u6i3-missing-0f1e2d3c4b5a69788796a5b4c3d2e1f0"],
 )
 async def test_invalid_or_missing_raw_token_fails_neutrally(raw_token: str | None):
     await _assert_neutral_failure(raw_token)

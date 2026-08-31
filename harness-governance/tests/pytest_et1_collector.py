@@ -21,6 +21,7 @@ THIS plugin can never authorize a launch.
 """
 
 import hashlib
+import hmac
 import json
 import os
 import socket
@@ -252,6 +253,47 @@ def _alembic_recheck_problems(env) -> tuple:
     return [], facts["alembic_head"]
 
 
+def _manifest_transport_problems(env) -> tuple:
+    """R4 CHILD-side bounded manifest transport verification.
+
+    The frozen node manifest never travels in a single argv/env string. The
+    runner writes ONE canonical transport file (UTF-8, sorted, unique,
+    LF-terminated lines) and binds its raw-byte SHA-256. The child loads the
+    canonical bytes itself and re-derives the digest: missing file,
+    substituted file, byte drift, digest mismatch, duplicate node,
+    non-canonical order, blank lines, or a missing trailing newline
+    (truncation) each fail closed with a fixed `manifest_transport:` label.
+    Returns (problems, (nodes, digest)); nodes is empty on any problem.
+    """
+    path = (env.get("ET1_RUNNER_MANIFEST_TRANSPORT_PATH", "") or "").strip()
+    expected_digest = (env.get("ET1_RUNNER_MANIFEST_TRANSPORT_DIGEST", "") or "").strip()
+    if not path:
+        return ["manifest_transport:path_missing"], ([], "")
+    if len(expected_digest) != 64:
+        return ["manifest_transport:digest_missing"], ([], "")
+    try:
+        raw = Path(path).read_bytes()
+    except OSError:
+        return ["manifest_transport:unreadable"], ([], "")
+    digest = hashlib.sha256(raw).hexdigest()
+    if not hmac.compare_digest(digest, expected_digest):
+        return ["manifest_transport:digest_mismatch"], ([], "")
+    if not raw.endswith(b"\n"):
+        return ["manifest_transport:non_canonical_eof"], ([], "")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return ["manifest_transport:undecodable"], ([], "")
+    lines = text.split("\n")[:-1]
+    if any(not line.strip() for line in lines):
+        return ["manifest_transport:blank_line"], ([], "")
+    if len(lines) != len(set(lines)):
+        return ["manifest_transport:duplicate_nodes"], ([], "")
+    if lines != sorted(lines):
+        return ["manifest_transport:non_canonical_order"], ([], "")
+    return [], (lines, digest)
+
+
 def _redis_recheck_problems(env) -> list:
     """R2-R1 CHILD-side live Redis recheck via the SHARED authority module.
 
@@ -317,10 +359,14 @@ def sessionstart_gate(env) -> dict:
     need(len(candidate) in (40, 64), "candidate_sha:missing")  # sha1 / sha256 git
     need(len(profile_sha) == 64, "profile_sha:missing")
     need(len(manifest_sha) == 64, "manifest_sha:missing")
-    need(bool(env.get("ET1_RUNNER_REQUIRED_NODES", "").strip()), "required_nodes:missing")
     need(bool(env.get("ET1_RUNNER_PROFILE_PATH", "")), "profile_path:missing")
     need(bool(env.get("ET1_RUNNER_MANIFEST_PATH", "")), "manifest_path:missing")
     need(bool(env.get("ET1_RUNNER_REPO_ROOT", "")), "repo_root:missing")
+
+    # R4: the frozen node manifest travels ONLY through the bounded,
+    # digest-bound transport file — never in a single argv/env string.
+    transport_problems, _transport_loaded = _manifest_transport_problems(env)
+    problems.extend(transport_problems)
 
     db_url = env.get("TEST_DATABASE_URL", "")
     need(bool(db_url.strip()), "test_db_url:missing")
@@ -434,9 +480,9 @@ def pytest_collection_finish(session):
     candidate_expected = os.environ.get("ET1_RUNNER_CANDIDATE_SHA", "")
     profile_expected = os.environ.get("ET1_RUNNER_PROFILE_SHA", "")
     manifest_expected = os.environ.get("ET1_RUNNER_MANIFEST_SHA", "")
-    required_nodes = [
-        n for n in os.environ.get("ET1_RUNNER_REQUIRED_NODES", "").split(",") if n.strip()
-    ]
+    transport_problems, transport_loaded = _manifest_transport_problems(os.environ)
+    required_nodes = list(transport_loaded[0]) if transport_loaded[0] else []
+    transport_digest_seen = transport_loaded[1] if transport_loaded[0] else ""
     proof_out = os.environ.get("ET1_RUNNER_PROOF_OUT", "")
     repo_root = os.environ.get("ET1_RUNNER_REPO_ROOT", "")
     profile_path = os.environ.get("ET1_RUNNER_PROFILE_PATH", "")
@@ -474,6 +520,7 @@ def pytest_collection_finish(session):
         errors.append("backend_env:drift")
     if not alembic_ok:
         errors.append("alembic:drift")
+    errors.extend(transport_problems)
 
     collected = []
     try:
@@ -513,6 +560,8 @@ def pytest_collection_finish(session):
         "tempdb_ok": tempdb_ok,
         "alembic_actual_head": alembic_actual,
         "alembic_ok": alembic_ok,
+        "manifest_transport_sha": transport_digest_seen,
+        "manifest_transport_nodes_total": len(required_nodes),
         "nonce": nonce,
         "collected_node_ids": sorted(collected),
     }

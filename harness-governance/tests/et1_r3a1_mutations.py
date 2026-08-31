@@ -269,6 +269,14 @@ def probe_profile_sha_binding_deleted(mod, ctx):
                    "issued_at": _time.time(),
                    "expires_at": _time.time() + 900,
                    "state_trace": list(r.trace)}
+        # R4: bind a real canonical transport file so the transport JIT gate
+        # sees pristine bytes (the probe targets profile drift, not transport).
+        _fd, _transport_name = tempfile.mkstemp(prefix="et1r3a1-transport-")
+        with os.fdopen(_fd, "wb") as _fh:
+            _fh.write(mod.canonical_transport_bytes(["tests/m.py::test_a"]))
+        r.transport_path = Path(_transport_name)
+        r.transport_digest = mod.manifest_transport_digest(
+            mod.canonical_transport_bytes(["tests/m.py::test_a"]))
         # drift the profile bytes AFTER binding, BEFORE the single authorize
         profile_path.write_text(
             _json.dumps({"schema_version": "1", "profiles": []}) + "\n",

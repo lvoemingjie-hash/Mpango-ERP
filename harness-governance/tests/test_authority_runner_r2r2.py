@@ -69,6 +69,16 @@ def _seed_authorized(mod, module_sha):
         "state_trace": list(r.trace),
     }
     r.original_nonce = "P" * 32
+    # R4: an AUTHORIZED runner is transport-bound. Bind a real canonical
+    # transport file so the JIT drift gate sees pristine bytes.
+    import hashlib as _hashlib
+    _transport_bytes = mod.canonical_transport_bytes(["x"])
+    _fd, _transport_name = tempfile.mkstemp(prefix="et1r2r2-transport-")
+    _transport_path = Path(_transport_name)
+    with open(_fd, "wb") as _fh:
+        _fh.write(_transport_bytes)
+    r.transport_path = _transport_path
+    r.transport_digest = mod.manifest_transport_digest(_transport_bytes)
     return r
 
 

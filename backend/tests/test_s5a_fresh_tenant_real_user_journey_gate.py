@@ -554,12 +554,23 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
 
         await bootstrap(isolation_schema, get_settings().DATABASE_URL)
         async with _tenant_session(isolation_schema, isolation_tenant_id) as other_session:
+            # Stable catalog identity: skus.catalog_product_id is NOT NULL
+            # since migration 038, so the raw seed owns a CatalogProduct row.
+            other_product_id = (
+                await other_session.execute(
+                    text(
+                        "INSERT INTO catalog_products (name, is_active) "
+                        "VALUES ('Other Tenant SKU', true) RETURNING id"
+                    )
+                )
+            ).scalar_one()
             other_sku_id = (
                 await other_session.execute(
                     text(
-                        "INSERT INTO skus (sku_code, name, unit, is_active) "
-                        "VALUES ('S5A-SKU-001', 'Other Tenant SKU', 'piece', true) RETURNING id"
-                    )
+                        "INSERT INTO skus (sku_code, name, unit, is_active, catalog_product_id, package_quantity) "
+                        "VALUES ('S5A-SKU-001', 'Other Tenant SKU', 'piece', true, :product_id, 1.000) RETURNING id"
+                    ),
+                    {"product_id": other_product_id},
                 )
             ).scalar_one()
             await other_session.execute(
@@ -580,10 +591,12 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
             ).scalar_one()
             await other_session.execute(
                 text(
-                    "INSERT INTO order_items (order_id, product_name, sku_code, quantity, unit_price, subtotal) "
-                    "VALUES (:order_id, 'Other Tenant SKU', 'S5A-SKU-001', 4, 25.00, 100.00)"
+                    "INSERT INTO order_items (order_id, product_name, sku_code, quantity, unit_price, subtotal, "
+                    "sellable_unit_id, identity_status, unit_snapshot) "
+                    "VALUES (:order_id, 'Other Tenant SKU', 'S5A-SKU-001', 4, 25.00, 100.00, "
+                    ":sku_id, 'stable', 'piece')"
                 ),
-                {"order_id": other_order_id},
+                {"order_id": other_order_id, "sku_id": other_sku_id},
             )
             await other_session.commit()
             other_token = TokenPayload(

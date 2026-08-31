@@ -251,17 +251,125 @@ class TestApplyMapping:
 # ====================================================================
 
 class TestNoSkuInventoryWrites:
+    """The import path must never write inventory or pricing state directly.
+
+    Since SKU-M1 (DC-12R1-MVP-L1-SKU-R0-M1-R1), the ONE sanctioned exception is
+    the apply-phase delegation ``InventoryRepository.ensure_stock_row`` inside
+    ``services/import_service.py`` (idempotent stock-row existence for a newly
+    imported sellable unit). The guards below enforce exactly that delegation:
+    no other repository usage, no direct class usage, and no inventory or
+    pricing write anywhere in the router or the service.
+    """
+
+    @staticmethod
+    def _dotted_name(node):
+        """Return 'a.b.c' for nested Attribute/Name chains, else None."""
+        parts = []
+        while isinstance(node, ast.Attribute):
+            parts.append(node.attr)
+            node = node.value
+        if isinstance(node, ast.Name):
+            parts.append(node.id)
+            return ".".join(reversed(parts))
+        return None
+
+    def _inventory_repository_usage(self, source: str) -> tuple[set[str], set[str], set[str], list[str]]:
+        """Parse the AST and return (imported names, repo instance dotted
+        names, methods invoked on repo instances, any other
+        InventoryRepository references)."""
+        tree = ast.parse(source)
+        imported: set[str] = set()
+        instances: set[str] = set()
+        called: set[str] = set()
+        other: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "repositories.inventory_repository":
+                for alias in node.names:
+                    imported.add(alias.asname or alias.name)
+        if not imported:
+            return imported, instances, called, other
+        constructor_calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id in imported
+        ]
+        bound_calls = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                value = node.value
+                if value is None:
+                    continue
+                calls_in_value = [c for c in constructor_calls if c in ast.walk(value)]
+                if not calls_in_value:
+                    continue
+                bound_calls.update(calls_in_value)
+                if isinstance(node, ast.Assign):
+                    targets = [self._dotted_name(t) for t in node.targets]
+                else:
+                    targets = [self._dotted_name(node.target)]
+                instances.update(t for t in targets if t)
+        for call in constructor_calls:
+            if call not in bound_calls:
+                other.append(f"constructor-result-used-directly:line{call.lineno}")
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id in imported
+            ):
+                other.append(f"class-attribute-access:{node.attr}:line{node.lineno}")
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                base = self._dotted_name(node.func.value)
+                if base is not None and base in instances:
+                    called.add(node.func.attr)
+        return imported, instances, called, other
 
     @pytest.mark.parametrize("filepath", [SKU_IMPORTS_PY, IMPORT_SERVICE_PY])
     def test_no_inventory_import(self, filepath: Path):
         source = filepath.read_text(encoding="utf-8")
-        assert "inventory_repository" not in source
+        if filepath == SKU_IMPORTS_PY:
+            # The router may not touch the inventory repository at all.
+            assert "inventory_repository" not in source
+            return
+        imported, instances, called, other = self._inventory_repository_usage(source)
+        assert imported == {"InventoryRepository"} or not imported
+        if imported:
+            assert other == [], f"non-delegation InventoryRepository usage: {other}"
+            assert instances, "repository imported but never instantiated"
+            assert called == {"ensure_stock_row"}, (
+                f"only ensure_stock_row delegation is sanctioned; found {sorted(called)}"
+            )
 
     def test_service_sku_import_only_in_apply(self):
         """Service may import SKU only inside the apply method."""
         source = IMPORT_SERVICE_PY.read_text(encoding="utf-8")
         if "from models.sku import" in source:
             assert "async def apply" in source
+
+    def test_ensure_stock_row_delegation_is_apply_phase_only(self):
+        """ensure_stock_row may only be reached from the apply phase."""
+        source = IMPORT_SERVICE_PY.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        apply_funcs = [
+            node for node in ast.walk(tree)
+            if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef))
+            and node.name.startswith("apply")
+        ]
+        assert apply_funcs, "apply entry point missing"
+        non_apply_calls = []
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)):
+                if node.name.startswith("apply"):
+                    continue
+                for sub in ast.walk(node):
+                    if (
+                        isinstance(sub, ast.Call)
+                        and isinstance(sub.func, ast.Attribute)
+                        and sub.func.attr == "ensure_stock_row"
+                    ):
+                        non_apply_calls.append(f"{node.name}:line{sub.lineno}")
+        assert non_apply_calls == [], f"ensure_stock_row outside apply: {non_apply_calls}"
 
     def test_no_inventory_or_pricing_writes(self):
         """Neither router nor service write to inventory/stocks/pricing."""
@@ -270,7 +378,8 @@ class TestNoSkuInventoryWrites:
             assert "stock_movement" not in source
             assert "retailer_price" not in source
             assert "inventory_stock" not in source
-            assert "inventory_repository" not in source
+            if filepath == SKU_IMPORTS_PY:
+                assert "inventory_repository" not in source
 
 
 # ====================================================================

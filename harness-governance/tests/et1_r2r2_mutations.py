@@ -12,7 +12,9 @@ False == weakness ESCAPED (patched candidate misbehaves).
 
 import hashlib
 import importlib.util
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -89,6 +91,14 @@ def _seed_authorized(mod, module_sha):
         "state_trace": list(r.trace),
     }
     r.original_nonce = "P" * 32
+    # R4: bind a real canonical transport file so the transport JIT gates
+    # see pristine bytes (these probes target module drift, not transport).
+    _fd, _transport_name = tempfile.mkstemp(prefix="et1r2r2mut-transport-")
+    with os.fdopen(_fd, "wb") as _fh:
+        _fh.write(mod.canonical_transport_bytes(["tests/m.py::test_a"]))
+    r.transport_path = Path(_transport_name)
+    r.transport_digest = mod.manifest_transport_digest(
+        mod.canonical_transport_bytes(["tests/m.py::test_a"]))
 
     class FakeConn:
         def execute(self, *a, **k):

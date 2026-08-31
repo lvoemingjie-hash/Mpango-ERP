@@ -39,8 +39,9 @@
  * never reach output.
  */
 
+import http from 'node:http';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -56,6 +57,17 @@ function expect(condition, label) {
 function expectCategory(probe, category, label) {
   try {
     probe();
+    expect(false, `${label} did NOT throw (control plane accepted a defect)`);
+  } catch (error) {
+    const thrownCategory =
+      error && error.name === 'BrowserAuthorityError' ? error.category : `<${error && error.name}>`;
+    expect(thrownCategory === category, `${label} threw "${thrownCategory}" instead of "${category}"`);
+  }
+}
+
+async function expectCategoryAsync(probe, category, label) {
+  try {
+    await probe();
     expect(false, `${label} did NOT throw (control plane accepted a defect)`);
   } catch (error) {
     const thrownCategory =
@@ -105,12 +117,38 @@ const CONTRACT = {
 };
 writeFileSync(contractPath, JSON.stringify(CONTRACT), 'utf8');
 
+// Local CORS fixture server: modes ok / wrong / missing / 400 / 500 / timeout.
+let corsMode = 'ok';
+const corsRequests = [];
+const corsServer = http.createServer((req, res) => {
+  corsRequests.push({
+    method: req.method,
+    url: req.url,
+    origin: req.headers.origin ?? null,
+    acrm: req.headers['access-control-request-method'] ?? null,
+    acrh: req.headers['access-control-request-headers'] ?? null,
+  });
+  if (corsMode === 'timeout') return; // hold the request open
+  if (corsMode === '400') { res.writeHead(400); res.end(); return; }
+  if (corsMode === '500') { res.writeHead(500); res.end(); return; }
+  if (corsMode === 'wrong') {
+    res.writeHead(200, { 'Access-Control-Allow-Origin': 'https://wrong-origin.invalid' });
+    res.end();
+    return;
+  }
+  if (corsMode === 'missing') { res.writeHead(200); res.end(); return; }
+  res.writeHead(200, { 'Access-Control-Allow-Origin': req.headers.origin ?? '' });
+  res.end();
+});
+await new Promise((resolve) => corsServer.listen(0, '127.0.0.1', resolve));
+const corsPort = corsServer.address().port;
+
 const FIXTURE_ENV = {
   J1H2C_RETAILER_EMAIL: 'fixture-owner-email-value',
   J1H2C_RETAILER_CURRENT_PASSWORD: 'fixture-current-password-value', // pragma: allowlist secret
   J1H2C_RETAILER_NEW_PASSWORD: 'fixture-new-password-value', // pragma: allowlist secret
-  J1H2C_BASE_URL: 'fixture-base-url-value',
-  J1H2C_API_BASE_URL: 'fixture-api-base-url-value',
+  J1H2C_BASE_URL: `http://127.0.0.1:${corsPort}/portal`,
+  J1H2C_API_BASE_URL: `http://127.0.0.1:${corsPort}`,
   J1H2C_MAILDIR_ROOT: 'fixture-maildir-root-value',
   J1H2C_W1_CANONICAL_CODE: 'FIXW1CODE',
   J1H2C_W2_CANONICAL_CODE: 'FIXW2CODE',
@@ -178,8 +216,9 @@ function freshControl(name) {
   });
 }
 
-function fullFlow(control) {
+async function fullFlow(control) {
   const { inputSha } = control.materialize(FIXTURE_ENV);
+  await control.corsPreflightProbe();
   control.preflight([{ ok: true, label: 'probe' }]);
   const argv = ['node', 'tools', 'fixture-launch'];
   control.authorize({ inputSha, argv });
@@ -189,7 +228,7 @@ function fullFlow(control) {
 /** Canonical GREEN path on a brand-new instance; returns binding facts. */
 async function greenPath(name = 'green') {
   const control = freshControl(name);
-  const { inputSha, argv } = fullFlow(control);
+  const { inputSha, argv } = await fullFlow(control);
   const calls = [];
   const result = control.launch(
     (file, args) => {
@@ -215,6 +254,22 @@ async function greenPath(name = 'green') {
     `${name}: evidence carries no fixture values`,
   );
   return { control, inputSha, argv, evidence };
+}
+
+/** Materialize + (no probe yet): for CORS refusal scenarios. */
+function fullFlowProbeOnly(control) {
+  const { inputSha } = control.materialize(FIXTURE_ENV);
+  return { inputSha };
+}
+
+/** Runs the runner-owned CORS probe; returns the refusal category or null. */
+async function runCorsProbe(control) {
+  try {
+    await control.corsPreflightProbe();
+    return null;
+  } catch (error) {
+    return error && error.name === 'BrowserAuthorityError' ? error.category : `<${error && error.name}>`;
+  }
 }
 
 // Deterministic projection: same env -> same input SHA on fresh instances.
@@ -347,21 +402,22 @@ async function greenPath(name = 'green') {
 // R6 — second preflight (also C: rejection persisted, then STOPPED)
 {
   const control = freshControl('r6');
-  fullFlowPreflight(control);
+  await fullFlowPreflight(control);
   expectCategory(() => control.preflight([{ ok: true, label: 'probe' }]), 'preflight_already_invoked', 'R6: preflight twice');
   expect(control.current === 'STOPPED', 'R6: repeat preflight lands STOPPED (C)');
   await greenPath('r6-restore');
 }
 
-function fullFlowPreflight(control) {
+async function fullFlowPreflight(control) {
   control.materialize(FIXTURE_ENV);
+  await control.corsPreflightProbe();
   control.preflight([{ ok: true, label: 'probe' }]);
 }
 
 // R7 — second browser launch (double called exactly once)
 {
   const control = freshControl('r7');
-  const { inputSha, argv } = fullFlow(control);
+  const { inputSha, argv } = await fullFlow(control);
   let calls = 0;
   const impl = () => {
     calls += 1;
@@ -377,6 +433,7 @@ function fullFlowPreflight(control) {
 {
   const control = freshControl('r8a');
   const { inputSha } = control.materialize(FIXTURE_ENV);
+  await control.corsPreflightProbe();
   control.preflight([{ ok: true, label: 'probe' }]);
   expectCategory(
     () => control.authorize({ inputSha: runner.sha256Hex('drifted-input'), argv: ['node', 'x'] }),
@@ -389,34 +446,35 @@ function fullFlowPreflight(control) {
 
 // R9 — argv drift + non-array argv (shell strings refused)
 {
-  const preFlow = (control) => {
+  const preFlow = async (control) => {
     const { inputSha } = control.materialize(FIXTURE_ENV);
+    await control.corsPreflightProbe();
     control.preflight([{ ok: true, label: 'probe' }]);
     return { inputSha };
   };
   const control = freshControl('r9');
-  const { inputSha, argv } = fullFlow(control);
+  const { inputSha, argv } = await fullFlow(control);
   expectCategory(
     () => control.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv: ['node', 'DIFFERENT'] }),
     'argv_drift',
     'R9: argv drift at launch',
   );
   const controlB = freshControl('r9b');
-  const flowB = preFlow(controlB);
+  const flowB = await preFlow(controlB);
   expectCategory(
     () => controlB.authorize({ inputSha: flowB.inputSha, argv: 'node tools fixture-launch' }),
     'argv_not_array',
     'R9: shell-style string argv refused at authorize',
   );
   const controlC = freshControl('r9c');
-  const flowC = fullFlow(controlC);
+  const flowC = await fullFlow(controlC);
   expectCategory(
     () => controlC.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv: 'node x' }),
     'argv_not_array',
     'R9: shell-style string argv refused at launch',
   );
   const controlD = freshControl('r9d');
-  const flowD = preFlow(controlD);
+  const flowD = await preFlow(controlD);
   expectCategory(() => controlD.authorize({ inputSha: flowD.inputSha, argv: [] }), 'argv_not_array', 'R9: empty argv refused');
   expect(control.current === 'STOPPED', 'R9: argv-drifted plane is terminal');
   await greenPath('r9-restore');
@@ -455,7 +513,7 @@ function fullFlowPreflight(control) {
 
 {
   const control = freshControl('r11');
-  const { inputSha, argv } = fullFlow(control);
+  const { inputSha, argv } = await fullFlow(control);
   const original = readFileSync(contractPath, 'utf8');
   try {
     writeFileSync(contractPath, original.replace('"base_url"', '"base_url_tampered"'), 'utf8');
@@ -480,7 +538,7 @@ function fullFlowPreflight(control) {
   // Scenario level: the deep-frozen input refuses mutation; the canonical
   // SHA stays stable and no false drift is reported.
   const control = freshControl('r12');
-  const { inputSha, argv } = fullFlow(control);
+  const { inputSha, argv } = await fullFlow(control);
   const input = control.materializedInput();
   const attempted = { ...input.values, w1_canonical_code: 'TAMPERED' };
   const reassigned = (() => {
@@ -526,7 +584,7 @@ function fullFlowPreflight(control) {
   const expectedHead = gitInRoot('rev-parse', 'HEAD').toString().trim();
   expect(expectedHead === CANONICAL_HEAD, 'R13: canonical HEAD stable during the round');
   expect(control.liveCandidateSha() === expectedHead, 'R13: candidate == canonical live HEAD');
-  const { inputSha, argv } = fullFlow(control);
+  const { inputSha, argv } = await fullFlow(control);
   expect(control.liveCandidateSha() === expectedHead, 'R13: binding survives the full flow');
   await greenPath('r13-restore');
 }
@@ -537,7 +595,7 @@ function fullFlowPreflight(control) {
 
 {
   const control = freshControl('r14a');
-  const { inputSha, argv } = fullFlow(control);
+  const { inputSha, argv } = await fullFlow(control);
   const red = control.launch(() => ({ rc: 1, reconciliation: { complete: true } }), { argv });
   expect(red.outcome === 'TEST_RED', 'R14: rc!=0 lands TEST_RED');
   expect(control.current === 'TEST_RED' && control.launchStarts === 1, 'R14: state TEST_RED with true starts=1');
@@ -546,7 +604,7 @@ function fullFlowPreflight(control) {
   expect(evidence.state === 'TEST_RED', 'R14: sealed TEST_RED evidence');
 
   const controlB = freshControl('r14b');
-  const flowB = fullFlow(controlB);
+  const flowB = await fullFlow(controlB);
   const incomplete = controlB.launch(() => ({ rc: 0, reconciliation: { complete: false } }), { argv: flowB.argv });
   expect(incomplete.outcome === 'TEST_RED', 'R14: incomplete reconciliation lands TEST_RED');
   expect(controlB.current === 'TEST_RED', 'R14: never FINISHED without complete reconciliation');
@@ -559,7 +617,7 @@ function fullFlowPreflight(control) {
 
 {
   const control = freshControl('r15');
-  const { inputSha, argv } = fullFlow(control);
+  const { inputSha, argv } = await fullFlow(control);
   let caught = null;
   try {
     control.preflight([{ ok: true, label: 'probe' }]);
@@ -765,7 +823,7 @@ function fullFlowPreflight(control) {
   // (a) Promise-returning successful child: must reach FINISHED after the
   // promise settles — never an immediate TEST_RED.
   const control = freshControl('r20');
-  const { inputSha, argv } = fullFlow(control);
+  const { inputSha, argv } = await fullFlow(control);
   let calls = 0;
   const result = await control.launch(
     () => {
@@ -780,7 +838,7 @@ function fullFlowPreflight(control) {
 
   // (b) Promise-rejecting child: DID start -> TEST_RED with true starts.
   const controlB = freshControl('r20b');
-  const flowB = fullFlow(controlB);
+  const flowB = await fullFlow(controlB);
   let caught = null;
   try {
     await controlB.launch(() => Promise.reject(new Error('child boom')), { argv: flowB.argv });
@@ -793,7 +851,7 @@ function fullFlowPreflight(control) {
   // (c) Synchronous executor exception BEFORE an actual start: STOPPED with
   // starts reverted to 0.
   const controlC = freshControl('r20c');
-  const flowC = fullFlow(controlC);
+  const flowC = await fullFlow(controlC);
   let threw = false;
   try {
     controlC.launch(
@@ -818,7 +876,7 @@ function fullFlowPreflight(control) {
   const sinkPath = join(SCRATCH, 'ledger-r21.jsonl');
   const ledger = new runner.DurableJsonlLedger(sinkPath);
   const control = new runner.ControlPlane({ contractPath, repoRoot, ledger });
-  const { inputSha, argv } = fullFlow(control);
+  const { inputSha, argv } = await fullFlow(control);
   control.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv });
   control.seal();
   expect(control.evidence().state === 'FINISHED', 'R21: intact sealed evidence reads');
@@ -987,7 +1045,7 @@ function controlProfileStillDirty() {
       control.boundProfileSha() === runner.parseProfile(profileText).profileSha,
       'R24: profile committed-blob identity immune to GIT_* injection',
     );
-    const { inputSha, argv } = fullFlow(control);
+    const { inputSha, argv } = await fullFlow(control);
     const result = control.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv });
     expect(result.outcome === 'FINISHED', 'R24: launch proceeds on the canonical identity');
   } finally {
@@ -1096,7 +1154,7 @@ function controlProfileStillDirty() {
         control.boundProfileSha() === runner.parseProfile(profileText).profileSha,
         'R25: canonical profile identity stays canonical under injection',
       );
-      const { inputSha, argv } = fullFlow(control);
+      const { inputSha, argv } = await fullFlow(control);
       const result = control.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv });
       expect(result.outcome === 'FINISHED', 'R25: canonical launch completes under injection');
     }
@@ -1113,10 +1171,93 @@ function controlProfileStillDirty() {
 // Verdict
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// R26 — mandatory runner-owned CORS preflight probe (matrix, B1-R6)
+// ---------------------------------------------------------------------------
+
+{
+  // R26-POS positive: exact derivation, side-effect-free OPTIONS declaring
+  // POST + content-type, exact allow-origin echo, then the full flow.
+  const control = freshControl('r26-pos');
+  const { inputSha, argv } = await fullFlow(control);
+  const last = corsRequests[corsRequests.length - 1];
+  expect(last.method === 'OPTIONS', 'R26-POS: side-effect-free OPTIONS');
+  expect(last.url === '/client/auth/forgot-password', 'R26-POS: target derived from bound api_base_url exactly');
+  expect(last.acrm === 'POST' && last.acrh === 'content-type', 'R26-POS: declares POST + content-type');
+  const derivedOrigin = new URL(FIXTURE_ENV.J1H2C_BASE_URL).origin;
+  expect(last.origin === derivedOrigin, 'R26-POS: Origin derived from bound base_url');
+  await expectCategoryAsync(
+    () => control.corsPreflightProbe(),
+    'cors_probe_already_invoked',
+    'R26-REP: repeat probe refused',
+  );
+  expect(control.launchStarts === 0, 'R26: probe+preflight+authorize start nothing (starts=0)');
+  await greenPath('r26-pos-restore');
+
+  // R26-OMIT: omitting the probe can never reach preflight.
+  const controlOmit = freshControl('r26-omit');
+  controlOmit.materialize(FIXTURE_ENV);
+  expectCategory(
+    () => controlOmit.preflight([{ ok: true, label: 'probe' }]),
+    'cors_probe_missing',
+    'R26-OMIT: preflight without the runner-owned probe',
+  );
+  expect(controlOmit.current === 'STOPPED' && controlOmit.launchStarts === 0, 'R26-OMIT: STOPPED, starts=0');
+
+  // R26-FAKE: a caller ok=true check (however labeled) cannot substitute.
+  const controlFake = freshControl('r26-fake');
+  controlFake.materialize(FIXTURE_ENV);
+  expectCategory(
+    () =>
+      controlFake.preflight([
+        { ok: true, label: 'caller_cors', category: 'caller_cors_ok' },
+        { ok: true, label: 'anything' },
+      ]),
+    'cors_probe_missing',
+    'R26-FAKE: caller ok=true boolean refused',
+  );
+  expect(controlFake.launchStarts === 0, 'R26-FAKE: starts=0');
+  await greenPath('r26-ab-restore');
+
+  // R26-MATRIX: per-mode refusals, each STOPPED before authorize, starts=0.
+  for (const [mode, wantCategory] of [
+    ['wrong', 'cors_allow_origin_mismatch'],
+    ['missing', 'cors_allow_origin_mismatch'],
+    ['400', 'cors_probe_http_error'],
+    ['500', 'cors_probe_http_error'],
+    ['timeout', 'cors_probe_timeout'],
+  ]) {
+    corsMode = mode;
+    const controlM = freshControl(`r26-${mode}`);
+    const flowM = await fullFlowProbeOnly(controlM);
+    const category = await runCorsProbe(controlM);
+    expect(category === wantCategory, `R26-${mode}: category ${category} != ${wantCategory}`);
+    expect(controlM.current === 'STOPPED', `R26-${mode}: STOPPED before authorize`);
+    expect(controlM.launchStarts === 0, `R26-${mode}: launchStarts=0`);
+    corsMode = 'ok'; // restore BEFORE any greenPath inside the loop
+    await greenPath(`r26-${mode}-restore`);
+  }
+  corsMode = 'ok';
+
+  // Evidence hygiene: no URL fragments in the durable ledger or evidence.
+  const r26Sink = join(SCRATCH, 'ledger-r26-wrong.jsonl');
+  const sinkText = existsSync(r26Sink) ? readFileSync(r26Sink, 'utf8') : '';
+  expect(
+    !sinkText.includes('http://127.0.0.1') && !sinkText.includes('/client/auth/forgot-password'),
+    'R26: ledger carries no URLs (categories/booleans/counts only)',
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Verdict
+// ---------------------------------------------------------------------------
+rmSync(SCRATCH, { recursive: true, force: true });
 if (failures.length > 0) {
   for (const message of failures) console.error(message);
   console.error(`BROWSER-AUTHORITY CONTRACT CHECK FAILED (${failures.length})`);
   process.exit(1);
 }
-rmSync(SCRATCH, { recursive: true, force: true });
-console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R25, single canonical repo identity, case-insensitive GIT_* sanitization).');
+console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R25 + R26 CORS matrix, single canonical repo identity, case-insensitive GIT_* sanitization).');
+// The fixture HTTP server and undici keep-alive sockets hold the event loop;
+// the verdict above is final, so exit explicitly.
+process.exit(0);

@@ -564,8 +564,15 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
     ['repo_root_mismatch', 'cross-repo substitution refusal'],
     ['gitEnv', 'GIT_*-stripped git subprocess environment'],
     ["toUpperCase().startsWith('GIT_')", 'case-insensitive GIT_* filter'],
+    ['CORS_PREFLIGHT_PATH', 'runner-owned CORS preflight path'],
+    ['cors_probe_missing', 'mandatory CORS probe enforcement'],
+    ['cors_allow_origin_mismatch', 'exact allow-origin criterion'],
+    ['AbortSignal.timeout', 'probe timeout'],
   ]) {
     if (!runnerText.includes(needle)) fail(14, `runner missing ${label}`);
+  }
+  if (!/Access-Control-Request-Method/.test(runnerText) || !/Access-Control-Request-Headers/.test(runnerText)) {
+    fail(14, 'CORS probe does not declare POST + content-type');
   }
   const gitCallSites = (runnerText.match(/execFileSync\('git'/g) || []).length;
   const sanitizedCallSites = (runnerText.match(/env: gitEnv\(\)/g) || []).length;
@@ -574,7 +581,7 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   }
 
   const checkerText = readFileSync(join(ROOT, 'tools', 'check-browser-authority-contracts.mjs'), 'utf8');
-  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21', 'R22', 'R23', 'R24', 'R25']) {
+  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21', 'R22', 'R23', 'R24', 'R25', 'R26']) {
     if (!checkerText.includes(`// ${marker} `)) fail(14, `checker missing ${marker} scenario`);
   }
   if (!checkerText.includes("'ledger_seq_duplicate'")) {
@@ -591,7 +598,7 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   }
 
   if (failures === 0 && profileOk) {
-    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R25, canonical repo identity + case-insensitive GIT_* sanitization, git subprocess env coverage ${sanitizedCallSites}/${gitCallSites})`);
+    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R26, canonical repo identity + case-insensitive GIT_* sanitization + mandatory CORS preflight probe, git subprocess env coverage ${sanitizedCallSites}/${gitCallSites})`);
   }
 }
 

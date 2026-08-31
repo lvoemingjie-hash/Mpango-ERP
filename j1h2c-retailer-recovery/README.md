@@ -202,3 +202,17 @@ that mixed-case injections produce ZERO GIT_* keys in the environment handed
 to every git subprocess and cannot substitute the candidate or profile
 identity. A case-SENSITIVE filter mutation yields a REAL identity substitution
 (the foreign HEAD gets bound, no crash), which R25 reports explicitly.
+
+### B1-R6 — mandatory runner-owned CORS preflight probe
+
+CORS compatibility is now enforced BY the control plane, not by any launcher
+check: before preflight is accepted, the runner itself derives the browser
+Origin from the BOUND base_url and the target from the BOUND api_base_url,
+sends a side-effect-free OPTIONS to `/client/auth/forgot-password` declaring
+`POST` + `content-type`, and passes only when the response is 2xx with
+`Access-Control-Allow-Origin` EXACTLY equal to the derived Origin. Any
+host/scheme/port drift, 4xx/5xx, missing response, timeout, or
+missing/wrong allow-origin lands STOPPED before authorize with
+launchStarts=0. Omitting the probe, faking a caller `ok=true` check, or
+repeating the probe can never bypass it (R26 matrix; evidence carries
+categories/booleans/counts only — never URLs or credentials).

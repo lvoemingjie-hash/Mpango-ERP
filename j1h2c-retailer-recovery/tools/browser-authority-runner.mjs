@@ -70,6 +70,43 @@ export const CONTROL_PLANE_SCHEMA = 'j1h2c/browser-authority-contract/1';
 export const PROFILE_SCHEMA = 'j1h2c/browser-authority-profile/1';
 const GENESIS_SHA = '0'.repeat(64);
 
+/**
+ * Mandatory CORS preflight probe (B1-R6): the browser Origin is derived
+ * EXCLUSIVELY from the bound base_url, the preflight target EXCLUSIVELY
+ * from the bound api_base_url, and a side-effect-free OPTIONS declaring the
+ * POST + content-type must be answered 2xx with
+ * Access-Control-Allow-Origin EXACTLY equal to that Origin. Launchers can
+ * neither skip the probe nor substitute an arbitrary ok=true check.
+ */
+export const CORS_PREFLIGHT_PATH = '/client/auth/forgot-password';
+export const CORS_PROBE_TIMEOUT_MS = 10000;
+
+export function deriveBrowserOrigin(baseUrl) {
+  let parsed;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new BrowserAuthorityError('cors_origin_invalid');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new BrowserAuthorityError('cors_origin_invalid');
+  }
+  return parsed.origin;
+}
+
+export function deriveCorsTarget(apiBaseUrl) {
+  let target;
+  try {
+    target = new URL(CORS_PREFLIGHT_PATH, apiBaseUrl);
+  } catch {
+    throw new BrowserAuthorityError('cors_target_invalid');
+  }
+  if (target.pathname !== CORS_PREFLIGHT_PATH) {
+    throw new BrowserAuthorityError('cors_target_invalid');
+  }
+  return target.toString();
+}
+
 /** Canonical profile path, resolved relative to THIS module (never cwd). */
 export function canonicalProfilePath(moduleFile = fileURLToPath(import.meta.url)) {
   return join(dirname(moduleFile), '..', 'inventory', 'browser-authority-profile.json');
@@ -551,6 +588,8 @@ export class ControlPlane {
   #candidateSha;
   #materialized;
   #authorized;
+  #corsProbeInvocations = 0;
+  #corsProbePassed = false;
 
   // -- live byte sources ----------------------------------------------------
 
@@ -672,6 +711,80 @@ export class ControlPlane {
     return { inputSha };
   }
 
+  /**
+   * B1-R6: the runner-OWNED CORS preflight probe. Exactly once, before
+   * preflight; the Origin/target are derived from the BOUND materialized
+   * input and a side-effect-free OPTIONS declaring POST + content-type must
+   * be answered 2xx with Access-Control-Allow-Origin EXACTLY equal to the
+   * derived Origin. Any failure lands STOPPED before authorize with
+   * launchStarts untouched (0). The caller cannot skip it, cannot fake it
+   * with an ok=true boolean, and cannot point it anywhere but the bound
+   * origins — the request construction and pass criteria live HERE.
+   */
+  async corsPreflightProbe() {
+    this.#guardLive('cors_preflight_probe');
+    if (this.#corsProbeInvocations > 0) {
+      this.#appendRejection('rejection', { attempted: 'cors_probe_repeat', state: this.current });
+      this.stop('cors_probe_already_invoked');
+      throw new BrowserAuthorityError('cors_probe_already_invoked');
+    }
+    this.#corsProbeInvocations += 1;
+    if (!this.#materialized) {
+      throw new BrowserAuthorityError('input_not_materialized');
+    }
+    this.#assertLiveBindings();
+    const origin = deriveBrowserOrigin(this.#materialized.input.values.base_url);
+    const target = deriveCorsTarget(this.#materialized.input.values.api_base_url);
+    let response;
+    try {
+      response = await fetch(target, {
+        method: 'OPTIONS',
+        headers: {
+          Origin: origin,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'content-type',
+        },
+        redirect: 'error',
+        signal: AbortSignal.timeout(CORS_PROBE_TIMEOUT_MS),
+      });
+    } catch (error) {
+      const timedOut = error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+      this.stop(timedOut ? 'cors_probe_timeout' : 'cors_probe_no_response');
+      throw new BrowserAuthorityError(timedOut ? 'cors_probe_timeout' : 'cors_probe_no_response');
+    }
+    const status2xx = response.status >= 200 && response.status < 300;
+    const allowOrigin = response.headers.get('access-control-allow-origin');
+    const allowOriginExact = allowOrigin !== null && allowOrigin === origin;
+    if (!(status2xx && allowOriginExact)) {
+      const category =
+        status2xx || response.status === 0 ? 'cors_allow_origin_mismatch' : 'cors_probe_http_error';
+      this.stop(category);
+      this.#ledger.append(
+        {
+          kind: 'cors_preflight',
+          ok: false,
+          status_2xx: status2xx,
+          allow_origin_present: allowOrigin !== null,
+          allow_origin_exact: false,
+        },
+        this.#sensitiveValues(),
+      );
+      throw new BrowserAuthorityError(category);
+    }
+    this.#corsProbePassed = true;
+    this.#ledger.append(
+      {
+        kind: 'cors_preflight',
+        ok: true,
+        status_2xx: true,
+        allow_origin_present: true,
+        allow_origin_exact: true,
+      },
+      this.#sensitiveValues(),
+    );
+    return { state: this.current, allow_origin_exact: true };
+  }
+
   /** Exactly one preflight; live profile/contract/candidate re-check. */
   preflight(checks) {
     this.#guardLive('preflight');
@@ -680,6 +793,13 @@ export class ControlPlane {
       this.#appendRejection('rejection', { attempted: 'preflight_repeat', state: this.current });
       this.stop('preflight_already_invoked');
       throw new BrowserAuthorityError('preflight_already_invoked');
+    }
+    if (!this.#corsProbePassed) {
+      // B1-R6: a caller ok=true check can never stand in for the runner-owned
+      // probe — omitting or faking it stops the plane before authorize.
+      this.#appendRejection('rejection', { attempted: 'preflight_without_cors_probe' });
+      this.stop('cors_probe_missing');
+      throw new BrowserAuthorityError('cors_probe_missing');
     }
     this.preflightInvocations += 1;
     this.#assertLiveBindings();
@@ -888,6 +1008,8 @@ export class ControlPlane {
       contract_sha_bound: typeof this.#contractSha === 'string' && this.#contractSha.length === 64,
       candidate_sha_live_resolved: /^[0-9a-f]{40}$/.test(this.#candidateSha),
       argv_authorized: this.#authorized !== null,
+      cors_probe_invocations: this.#corsProbeInvocations,
+      cors_probe_passed: this.#corsProbePassed,
       ledger_sealed: true,
     };
   }

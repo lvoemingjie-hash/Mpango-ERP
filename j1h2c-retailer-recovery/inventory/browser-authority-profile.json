@@ -1,0 +1,105 @@
+{
+  "schema": "j1h2c/browser-authority-profile/1",
+  "description": "Protected browser-authority field set. Machine-reconciled against the J1H2C_* variables actually consumed by the harness (src/env.ts required contract; consumed by src/preconditions.ts, tests/recovery.spec.ts, src/leak-scan.ts). Labels and env variable NAMES only — never values. A caller contract weaker than this profile is refused (contract_weaker_than_profile); no CLI/env/caller override exists.",
+  "source_of_truth": {
+    "env_contract": "src/env.ts (required())",
+    "consumers": [
+      "src/preconditions.ts",
+      "tests/recovery.spec.ts",
+      "src/leak-scan.ts"
+    ]
+  },
+  "owner_field": "owner",
+  "fields": {
+    "owner": {
+      "env": "J1H2C_RETAILER_EMAIL",
+      "role": "HC07 established-retailer protagonist identity (journey owner)",
+      "required": true,
+      "sensitive": true
+    },
+    "owner_current_password": {
+      "env": "J1H2C_RETAILER_CURRENT_PASSWORD",
+      "role": "HC07 established credential",
+      "required": true,
+      "sensitive": true
+    },
+    "owner_new_password": {
+      "env": "J1H2C_RETAILER_NEW_PASSWORD",
+      "role": "HC07 rotation target credential",
+      "required": true,
+      "sensitive": true
+    },
+    "base_url": {
+      "env": "J1H2C_BASE_URL",
+      "role": "retailer frontend origin (task loopback)",
+      "required": true,
+      "sensitive": true
+    },
+    "api_base_url": {
+      "env": "J1H2C_API_BASE_URL",
+      "role": "backend origin (task loopback)",
+      "required": true,
+      "sensitive": true
+    },
+    "maildir_root": {
+      "env": "J1H2C_MAILDIR_ROOT",
+      "role": "task-private maildir root for email deliveries",
+      "required": true,
+      "sensitive": true
+    },
+    "w1_canonical_code": {
+      "env": "J1H2C_W1_CANONICAL_CODE",
+      "role": "W1 canonical supplier code (DB uppercase)",
+      "required": true,
+      "sensitive": false
+    },
+    "w2_canonical_code": {
+      "env": "J1H2C_W2_CANONICAL_CODE",
+      "role": "W2 real second-supplier canonical code (wrong-supplier neutrality)",
+      "required": true,
+      "sensitive": false
+    },
+    "unknown_identity": {
+      "env": "J1H2C_UNKNOWN_EMAIL",
+      "role": "HC08 never-registered identity",
+      "required": true,
+      "sensitive": true
+    },
+    "unverified_identity": {
+      "env": "J1H2C_UNVERIFIED_EMAIL",
+      "role": "HC10 registered-but-unverified identity",
+      "required": true,
+      "sensitive": true
+    },
+    "forged_reset_token": {
+      "env": "J1H2C_FORGED_RESET_TOKEN",
+      "role": "HC15 runtime-forged token",
+      "required": true,
+      "sensitive": true
+    },
+    "w1_verified_invitation_code": {
+      "env": "J1H2C_W1_VERIFIED_INVITATION_CODE",
+      "role": "W1 verified-invitation provisioning code",
+      "required": true,
+      "sensitive": true
+    },
+    "w1_verified_invitation_phone": {
+      "env": "J1H2C_W1_VERIFIED_INVITATION_PHONE",
+      "role": "W1 verified-invitation provisioning phone",
+      "required": true,
+      "sensitive": true
+    },
+    "w1_unverified_invitation_code": {
+      "env": "J1H2C_W1_UNVERIFIED_INVITATION_CODE",
+      "role": "W1 unverified-invitation provisioning code",
+      "required": true,
+      "sensitive": true
+    },
+    "w1_unverified_invitation_phone": {
+      "env": "J1H2C_W1_UNVERIFIED_INVITATION_PHONE",
+      "role": "W1 unverified-invitation provisioning phone",
+      "required": true,
+      "sensitive": true
+    }
+  }
+}

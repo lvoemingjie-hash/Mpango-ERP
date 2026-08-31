@@ -34,6 +34,13 @@
  *      overwrite guard and the sensitive-value ledger firewall; the
  *      checker REALLY imports the runner and exercises the exact defect
  *      categories.
+ *  [14] B1-R5-R1 authority truth closure: the protected
+ *      browser-authority-profile.json reconciles EXACTLY with the
+ *      J1H2C_* variables consumed by src/env.ts; the runner carries live
+ *      byte bindings (git rev-parse candidate, profile/contract re-reads),
+ *      terminal-state truth (RUNNING/TEST_RED/seal) and the durable
+ *      hash-chained JSONL ledger categories; the checker exercises
+ *      R11-R18.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -470,7 +477,7 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   for (const [needle, label] of [
     ["await import('./browser-authority-runner.mjs')", 'checker REALLY imports the runner'],
     ["'owner_label_overwrite_forbidden'", 'checker exercises owner-label overwrite'],
-    ["'rejection_unledgered'", 'checker exercises unledgered rejection'],
+    ["'ledger_truncated'", 'checker exercises durable ledger truncation'],
     ["'preflight_already_invoked'", 'checker exercises repeat preflight'],
     ["'launch_already_invoked'", 'checker exercises repeat browser'],
     ["'candidate_sha_drift'", 'checker exercises SHA drift'],
@@ -488,8 +495,83 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   if (failures === 0 && schemaOk) ok(13, 'browser authority control plane anchored (schema + runner + checker + script)');
 }
 
+// [14] B1-R5-R1 authority truth closure --------------------------------------
+{
+  const profileText = readFileSync(join(ROOT, 'inventory', 'browser-authority-profile.json'), 'utf8');
+  let profileOk = true;
+  let profileNames = new Set();
+  try {
+    const profile = JSON.parse(profileText);
+    if (profile.schema !== 'j1h2c/browser-authority-profile/1') {
+      profileOk = false;
+      fail(14, 'profile schema mismatch');
+    }
+    if (typeof profile.owner_field !== 'string' || !(profile.owner_field in profile.fields)) {
+      profileOk = false;
+      fail(14, 'profile owner field unknown');
+    }
+    profileNames = new Set(Object.values(profile.fields).map((field) => field.env));
+    for (const field of Object.values(profile.fields)) {
+      if (field.required !== true || typeof field.sensitive !== 'boolean' || typeof field.role !== 'string') {
+        profileOk = false;
+        fail(14, 'profile field shape');
+      }
+    }
+  } catch {
+    profileOk = false;
+    fail(14, 'profile unparsable');
+  }
+
+  // Machine reconciliation with the REAL consumed env contract.
+  const envTsText = readFileSync(join(ROOT, 'src', 'env.ts'), 'utf8');
+  const envTsNames = new Set(
+    [...envTsText.matchAll(/required\('(J1H2C_[A-Z0-9_]+)'\)/g)].map((match) => match[1]),
+  );
+  if (envTsNames.size === 0) {
+    profileOk = false;
+    fail(14, 'env.ts required set empty');
+  }
+  if (
+    profileOk &&
+    (envTsNames.size !== profileNames.size || ![...envTsNames].every((name) => profileNames.has(name)))
+  ) {
+    profileOk = false;
+    fail(14, 'profile env set does not reconcile with src/env.ts required set');
+  }
+
+  const runnerText = readFileSync(join(ROOT, 'tools', 'browser-authority-runner.mjs'), 'utf8');
+  for (const [needle, label] of [
+    ['resolveLiveHead', 'live git candidate resolver'],
+    ['profile_sha_drift', 'profile live re-binding'],
+    ['input_sha_drift', 'input live re-binding'],
+    ['deepFreeze', 'private deep-frozen input'],
+    ['TEST_RED', 'terminal-state truth'],
+    ['terminal_seal', 'terminal seal requirement'],
+    ['ledger_truncated', 'durable ledger truncation guard'],
+    ['ledger_chain_broken', 'durable ledger chain guard'],
+    ['contract_weaker_than_profile', 'non-weakenable profile'],
+  ]) {
+    if (!runnerText.includes(needle)) fail(14, `runner missing ${label}`);
+  }
+  if (runnerText.includes('contractShaOf')) {
+    fail(14, 'runner still references the removed self-comparison helper');
+  }
+
+  const checkerText = readFileSync(join(ROOT, 'tools', 'check-browser-authority-contracts.mjs'), 'utf8');
+  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18']) {
+    if (!checkerText.includes(`// ${marker} `)) fail(14, `checker missing ${marker} scenario`);
+  }
+  if (!checkerText.includes("'ledger_seq_duplicate'")) {
+    fail(14, 'checker missing duplicate-seq probe');
+  }
+
+  if (failures === 0 && profileOk) {
+    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R18)`);
+  }
+}
+
 if (failures > 0) {
   console.error(`STATIC GATE FAILED (${failures} failure(s))`);
   process.exit(1);
 }
-console.log('STATIC GATE PASSED (13/13 steps).');
+console.log('STATIC GATE PASSED (14/14 steps).');

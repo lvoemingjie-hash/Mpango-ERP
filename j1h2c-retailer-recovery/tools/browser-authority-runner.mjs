@@ -1,47 +1,70 @@
 #!/usr/bin/env node
 /**
- * Browser authority control plane (B1-R5) — the in-repository execution
- * state machine that any future authorized browser-authority launcher MUST
- * drive. It exists so the launcher defects exposed by R2 (destructive
- * merges over the owner label, unprojected materialized input, transition
- * `from` captured after the fact, unledgered rejections, repeatable
- * preflights and launches, unbound SHAs, leaky evidence, shell-built
- * commands) are structurally impossible instead of procedurally forbidden.
+ * Browser authority control plane (B1-R5-R1) — live-binding, terminal-state
+ * and audit-ledger truth closure over the B1-R5 state machine.
  *
- * Closures implemented (all machine-checked by
- * tools/check-browser-authority-contracts.mjs):
- *   1. destructive merges can never overwrite `owner_email_label`
- *      (owner_label_overwrite_forbidden);
- *   2. materialized input is a field-by-field projection of the contract
- *      with strict required-field validation (W1/W2 owner/second-supplier
- *      codes included) and a SHA-256 binding over the exact projection;
- *   3. every state transition captures its `from` BEFORE the state changes
- *      (transition_from_mismatch otherwise);
- *   4. every rejection after terminal STOP is appended to an append-only
- *      ledger (terminal_stop + ledger entry);
- *   5. preflight runs at most once; any RED or exception immediately VOIDs
- *      (stop()) — never a retry;
- *   6. after VOID every further control-plane call is rejected and
- *      ledgered — inputs are frozen, no rerun, no stack swap, no browser;
- *   7. the browser authority command starts at most once
- *      (launch_already_invoked, sentinel count enforced);
- *   8. contract SHA, materialized-input SHA, argv SHA and candidate SHA are
- *      bound at authorize and re-verified at launch (drift = VOID);
- *   9. evidence() publishes names, booleans, categories and counts ONLY —
- *      values are never accepted into the ledger
- *      (sensitive_value_rejected);
- *  10. subprocess execution is delegated to an injected execFile-style
- *      implementation called with an argv ARRAY; non-array argv is
- *      rejected (argv_not_array) and no shell ever enters this module.
+ * R1 closures implemented (machine-checked by
+ * tools/check-browser-authority-contracts.mjs, scenarios R1-R18):
  *
- * This module performs NO I/O of its own (no product runtime, no browser,
- * no network, no filesystem). The authoritative browser run itself remains
- * a later, separately authorized gate.
+ *   A. LIVE BYTE BINDING — no caller self-attestation survives:
+ *      - the protected profile is re-read from its canonical path and its
+ *        SHA-256 recomputed at preflight, authorize and launch
+ *        (profile_sha_drift -> STOPPED, starts preserved truthfully);
+ *      - the task-private contract file is re-read and re-hashed at
+ *        authorize and launch (contract_sha_drift);
+ *      - the materialized input is PRIVATE and deep-frozen; authorize and
+ *        launch recompute its canonical SHA (input_sha_drift);
+ *      - the candidate is resolved through a LIVE `git rev-parse HEAD`
+ *        argv-array subprocess against the task repo root — caller strings
+ *        are never trusted (candidate_sha_drift).
+ *      The B1-R5 self-comparison helper is gone; every binding is a live
+ *      byte re-read.
+ *
+ *   B. TERMINAL STATE TRUTH — INIT, PREFLIGHTED, AUTHORIZED, RUNNING,
+ *      FINISHED, TEST_RED, STOPPED. launch writes the start sentinel and
+ *      enters RUNNING; only child rc==0 AND a complete reconciliation reach
+ *      FINISHED; a started child with rc!=0 or an incomplete reconciliation
+ *      lands TEST_RED (never FINISHED, never VOID); an executor exception
+ *      before an actual start lands STOPPED with the TRUE starts count.
+ *
+ *   C. ONCE-ONLY FAIL-STOP — a second preflight/authorize/launch first
+ *      persists the rejection into the durable ledger, then STOPPED; after
+ *      catching, every further surface is terminal_stop with starts intact.
+ *
+ *   D. NON-WEAKENABLE PROFILE — inventory/browser-authority-profile.json is
+ *      the protected field set, machine-reconciled against the J1H2C_*
+ *      variables the harness actually consumes (env.ts contract);
+ *      contract.fields must cover every profile field (weaker caller
+ *      contract -> contract_weaker_than_profile); unknown contract fields
+ *      are refused; no CLI/env/caller override exists.
+ *
+ *   E. DURABLE AUDIT LEDGER — entries are private; records go to a
+ *      task-private JSONL sink as {seq, prev_sha, entry, event_sha}; every
+ *      append re-reads the file and verifies the count and hash chain BEFORE
+ *      writing, then flushes+fsyncs before returning; truncation, tail
+ *      rewrite and duplicate seq fail closed. Terminal evidence requires a
+ *      terminal_seal record — no seal, no PASS. Values never enter the
+ *      ledger (sensitive_value_rejected).
+ *
+ * Subprocesses use argv arrays exclusively (git rev-parse; the injected
+ * execFile-style launch implementation). The authoritative browser journey
+ * itself remains a later, separately authorized gate.
  */
 
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { closeSync, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const CONTROL_PLANE_SCHEMA = 'j1h2c/browser-authority-contract/1';
+export const PROFILE_SCHEMA = 'j1h2c/browser-authority-profile/1';
+const GENESIS_SHA = '0'.repeat(64);
+
+/** Canonical profile path, resolved relative to THIS module (never cwd). */
+export function canonicalProfilePath(moduleFile = fileURLToPath(import.meta.url)) {
+  return join(dirname(moduleFile), '..', 'inventory', 'browser-authority-profile.json');
+}
 
 /** Fixed categories only — never values. */
 export class BrowserAuthorityError extends Error {
@@ -56,9 +79,88 @@ export function sha256Hex(data) {
   return createHash('sha256').update(data, 'utf8').digest('hex');
 }
 
+function deepFreeze(value) {
+  if (value !== null && typeof value === 'object') {
+    for (const key of Object.keys(value)) deepFreeze(value[key]);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+/**
+ * LIVE candidate resolution: `git -C <repoRoot> rev-parse HEAD` via an argv
+ * array. No caller string is ever trusted as the candidate.
+ */
+export function resolveLiveHead(repoRoot) {
+  try {
+    const out = execFileSync('git', ['-C', repoRoot, 'rev-parse', 'HEAD'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const sha = out.toString('utf8').trim();
+    if (!/^[0-9a-f]{40}$/.test(sha)) {
+      throw new BrowserAuthorityError('live_head_unresolvable');
+    }
+    return sha;
+  } catch (error) {
+    if (error instanceof BrowserAuthorityError) throw error;
+    throw new BrowserAuthorityError('live_head_unresolvable');
+  }
+}
+
+function readRawSha256(path) {
+  try {
+    return sha256Hex(readFileSync(path));
+  } catch {
+    throw new BrowserAuthorityError('live_binding_read_failed');
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Contract parsing + binding
+// Profile (protected, non-weakenable) and contract parsing
 // ---------------------------------------------------------------------------
+
+export function parseProfile(rawText) {
+  let doc;
+  try {
+    doc = JSON.parse(rawText);
+  } catch {
+    throw new BrowserAuthorityError('profile_unparsable');
+  }
+  if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) {
+    throw new BrowserAuthorityError('profile_shape');
+  }
+  if (doc.schema !== PROFILE_SCHEMA) {
+    throw new BrowserAuthorityError('profile_schema_unknown');
+  }
+  if (doc.fields === null || typeof doc.fields !== 'object' || Array.isArray(doc.fields)) {
+    throw new BrowserAuthorityError('profile_fields_shape');
+  }
+  const keys = Object.keys(doc.fields);
+  if (keys.length === 0) {
+    throw new BrowserAuthorityError('profile_fields_empty');
+  }
+  for (const [key, field] of Object.entries(doc.fields)) {
+    if (field === null || typeof field !== 'object') {
+      throw new BrowserAuthorityError('profile_field_shape');
+    }
+    if (typeof field.env !== 'string' || !/^J1H2C_[A-Z0-9_]+$/.test(field.env)) {
+      throw new BrowserAuthorityError('profile_field_env');
+    }
+    if (field.required !== true) {
+      throw new BrowserAuthorityError('profile_field_required');
+    }
+    if (typeof field.sensitive !== 'boolean' || typeof field.role !== 'string') {
+      throw new BrowserAuthorityError('profile_field_shape');
+    }
+  }
+  if (typeof doc.owner_field !== 'string' || !(doc.owner_field in doc.fields)) {
+    throw new BrowserAuthorityError('profile_owner_field_unknown');
+  }
+  if (doc.fields[doc.owner_field].sensitive !== true) {
+    throw new BrowserAuthorityError('profile_owner_not_sensitive');
+  }
+  return { profile: doc, profileSha: sha256Hex(rawText) };
+}
 
 export function parseContract(rawText) {
   let doc;
@@ -73,16 +175,10 @@ export function parseContract(rawText) {
   if (doc.schema !== CONTROL_PLANE_SCHEMA) {
     throw new BrowserAuthorityError('contract_schema_unknown');
   }
-  const fields = doc.fields;
-  if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+  if (doc.fields === null || typeof doc.fields !== 'object' || Array.isArray(doc.fields)) {
     throw new BrowserAuthorityError('contract_fields_shape');
   }
-  const fieldKeys = Object.keys(fields);
-  if (fieldKeys.length === 0) {
-    throw new BrowserAuthorityError('contract_fields_empty');
-  }
-  for (const key of fieldKeys) {
-    const field = fields[key];
+  for (const field of Object.values(doc.fields)) {
     if (field === null || typeof field !== 'object' || Array.isArray(field)) {
       throw new BrowserAuthorityError('contract_field_shape');
     }
@@ -96,37 +192,59 @@ export function parseContract(rawText) {
       throw new BrowserAuthorityError('contract_field_sensitive');
     }
   }
-  if (typeof doc.owner_field !== 'string' || !(doc.owner_field in fields)) {
+  if (typeof doc.owner_field !== 'string' || !(doc.owner_field in doc.fields)) {
     throw new BrowserAuthorityError('contract_owner_field_unknown');
   }
-  if (fields[doc.owner_field].required !== true || fields[doc.owner_field].sensitive !== true) {
-    throw new BrowserAuthorityError('contract_owner_field_not_required_sensitive');
-  }
-  if (!Array.isArray(doc.transitions) || doc.transitions.length === 0) {
+  if (
+    !Array.isArray(doc.transitions) ||
+    doc.transitions.length === 0 ||
+    doc.transitions.some(
+      (edge) =>
+        edge === null ||
+        typeof edge !== 'object' ||
+        typeof edge.from !== 'string' ||
+        typeof edge.to !== 'string',
+    )
+  ) {
     throw new BrowserAuthorityError('contract_transitions_shape');
   }
-  for (const transition of doc.transitions) {
-    if (
-      transition === null ||
-      typeof transition !== 'object' ||
-      typeof transition.from !== 'string' ||
-      typeof transition.to !== 'string'
-    ) {
-      throw new BrowserAuthorityError('contract_transition_shape');
-    }
-  }
-  if (
-    doc.launch === null ||
-    typeof doc.launch !== 'object' ||
-    doc.launch.max_starts !== 1
-  ) {
+  if (doc.launch === null || typeof doc.launch !== 'object' || doc.launch.max_starts !== 1) {
     throw new BrowserAuthorityError('contract_launch_max_starts');
   }
-  return { contract: doc, contractSha: sha256Hex(rawText) };
+  return doc;
+}
+
+/**
+ * Profile reconciliation: a caller contract may never be weaker than the
+ * protected profile (every profile field must be covered by the contract,
+ * by env variable name), and may never invent fields the profile does not
+ * know (no side doors).
+ */
+export function reconcileContractWithProfile(contract, profile) {
+  const contractEnvs = new Set(Object.values(contract.fields).map((field) => field.env));
+  const profileEnvs = new Set(Object.values(profile.fields).map((field) => field.env));
+  for (const env of profileEnvs) {
+    if (!contractEnvs.has(env)) {
+      throw new BrowserAuthorityError('contract_weaker_than_profile');
+    }
+  }
+  for (const env of contractEnvs) {
+    if (!profileEnvs.has(env)) {
+      throw new BrowserAuthorityError('contract_field_unknown_to_profile');
+    }
+  }
+  const profileOwnerEnv = profile.fields[profile.owner_field].env;
+  const ownerEntry = Object.entries(contract.fields).find(
+    ([, field]) => field.env === profileOwnerEnv,
+  );
+  if (!ownerEntry || ownerEntry[1].sensitive !== true) {
+    throw new BrowserAuthorityError('contract_weaker_than_profile');
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
-// Materialized input: field-by-field projection, strictly bound
+// Materialized input: private, deep-frozen, strictly projected
 // ---------------------------------------------------------------------------
 
 export function materializeInput(contract, env) {
@@ -137,23 +255,14 @@ export function materializeInput(contract, env) {
   for (const [key, field] of Object.entries(contract.fields)) {
     const raw = env[field.env];
     if (field.required && (raw === undefined || raw === null || String(raw).length === 0)) {
-      // Field LABEL only — never the missing or present value.
       throw new BrowserAuthorityError('required_field_missing');
     }
     values[key] = String(raw);
   }
-  // The owner label is a projection of the contract designation, never a
-  // freely assignable string.
-  const input = { owner_email_label: contract.owner_field, values };
+  const input = deepFreeze({ owner_email_label: contract.owner_field, values });
   return { input, inputSha: sha256Hex(JSON.stringify(input)) };
 }
 
-/**
- * Field-by-field merge. A destructive patch that touches the owner label —
- * by key or by targeting the owner field's value binding — is refused
- * outright; undeclared fields are refused; everything else merges one
- * declared field at a time and re-binds the SHA.
- */
 export function mergeMaterialized(contract, input, patch) {
   if (input === null || typeof input !== 'object' || input.owner_email_label === undefined) {
     throw new BrowserAuthorityError('input_not_materialized');
@@ -177,144 +286,303 @@ export function mergeMaterialized(contract, input, patch) {
     }
     values[key] = String(value);
   }
-  const merged = { owner_email_label: input.owner_email_label, values };
+  const merged = deepFreeze({ owner_email_label: input.owner_email_label, values });
   return { input: merged, inputSha: sha256Hex(JSON.stringify(merged)) };
 }
 
 // ---------------------------------------------------------------------------
-// Append-only ledger with a value firewall
+// Durable append-only JSONL ledger (private entries, hash chain, fsync)
 // ---------------------------------------------------------------------------
 
-export class AppendOnlyLedger {
-  constructor() {
-    this.entries = [];
+export class DurableJsonlLedger {
+  constructor(sinkPath) {
+    if (typeof sinkPath !== 'string' || sinkPath.length === 0) {
+      throw new BrowserAuthorityError('ledger_sink_required');
+    }
+    this.#sinkPath = sinkPath;
+  }
+
+  #sinkPath;
+  #lastSeq = null;
+  #lastTail = GENESIS_SHA;
+
+  #readRecords() {
+    if (!existsSync(this.#sinkPath)) return [];
+    const text = readFileSync(this.#sinkPath, 'utf8');
+    const lines = text.split('\n').filter((line) => line.length > 0);
+    return lines.map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        throw new BrowserAuthorityError('ledger_line_unparsable');
+      }
+    });
   }
 
   /**
-   * Appends `entry` unless it carries a sensitive VALUE. `sensitiveValues`
-   * is the caller-held list of materialized values; the ledger itself only
-   * ever stores labels/categories/booleans/counts.
+   * Re-reads the sink from disk and verifies: line count, strict seq
+   * ordering (no duplicates, no gaps), and the prev_sha/event_sha chain.
+   * Tail deletion, tail rewrite and duplicate seq all fail closed here. An
+   * instance that has appended before also holds its own private expected
+   * tail, so a silent truncation of records it wrote is detected even
+   * though the remaining prefix chain would still be valid.
    */
+  verifyChain() {
+    const records = this.#readRecords();
+    let prev = GENESIS_SHA;
+    for (const [index, record] of records.entries()) {
+      if (record.seq !== index) {
+        throw new BrowserAuthorityError('ledger_seq_duplicate');
+      }
+      if (record.prev_sha !== prev) {
+        throw new BrowserAuthorityError('ledger_chain_broken');
+      }
+      const expected = sha256Hex(
+        JSON.stringify({ seq: record.seq, prev_sha: prev, entry: record.entry }),
+      );
+      if (record.event_sha !== expected) {
+        throw new BrowserAuthorityError('ledger_chain_broken');
+      }
+      prev = record.event_sha;
+    }
+    if (this.#lastSeq !== null) {
+      const last = records[records.length - 1];
+      if (records.length < this.#lastSeq + 1 || !last || last.event_sha !== this.#lastTail) {
+        throw new BrowserAuthorityError('ledger_truncated');
+      }
+    }
+    return { count: records.length, tail: prev };
+  }
+
   append(entry, sensitiveValues = []) {
-    const serialized = JSON.stringify(entry);
+    // Verify the on-disk chain BEFORE every write.
+    const { count, tail } = this.verifyChain();
+    const serializedCheck = JSON.stringify(entry);
     for (const value of sensitiveValues) {
-      if (typeof value === 'string' && value.length > 0 && serialized.includes(value)) {
+      if (typeof value === 'string' && value.length > 0 && serializedCheck.includes(value)) {
         throw new BrowserAuthorityError('sensitive_value_rejected');
       }
     }
-    const sealed = Object.freeze({
-      seq: this.entries.length,
-      at: 'monotonic-sequence-only',
-      entry: Object.freeze({ ...entry }),
-    });
-    this.entries.push(sealed);
-    return sealed;
+    const record = {
+      seq: count,
+      prev_sha: tail,
+      entry,
+      event_sha: sha256Hex(JSON.stringify({ seq: count, prev_sha: tail, entry })),
+    };
+    const line = JSON.stringify(record) + '\n';
+    // Append + flush + fsync BEFORE returning (or throwing).
+    const fd = openSync(this.#sinkPath, 'a');
+    try {
+      writeSync(fd, line);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    this.#lastSeq = record.seq;
+    this.#lastTail = record.event_sha;
+    return record;
   }
 
-  /** Entries are sealed; any mutation attempt is a programming error. */
-  verifyAppendOnly() {
-    return this.entries.every((entry, index) => entry.seq === index);
+  hasTerminalSeal() {
+    return this.#readRecords().some(
+      (record) => record.entry && record.entry.kind === 'terminal_seal',
+    );
   }
 }
 
-/** True when every post-STOP rejection was appended to the ledger. */
-export function verifyRejectionsLedgered(ledger, rejectionCount) {
-  if (!ledger || !Array.isArray(ledger.entries)) {
-    throw new BrowserAuthorityError('ledger_not_append_only');
-  }
-  const rejections = ledger.entries.filter(
-    (sealed) => sealed.entry && sealed.entry.kind === 'rejection_after_stop',
-  );
-  if (rejections.length !== rejectionCount) {
-    throw new BrowserAuthorityError('rejection_unledgered');
-  }
-  if (!ledger.verifyAppendOnly()) {
-    throw new BrowserAuthorityError('ledger_not_append_only');
-  }
-  return true;
-}
+/** Retained for surface compatibility with the B1-R5 checker. */
+export class AppendOnlyLedger extends DurableJsonlLedger {}
 
 // ---------------------------------------------------------------------------
-// Control plane state machine
+// Control plane
 // ---------------------------------------------------------------------------
 
-const LIVE_STATES = new Set(['INIT', 'PREFLIGHTED', 'AUTHORIZED', 'FINISHED']);
+export const LIVE_STATES = [
+  'INIT',
+  'PREFLIGHTED',
+  'AUTHORIZED',
+  'RUNNING',
+  'FINISHED',
+  'TEST_RED',
+  'STOPPED',
+];
 
 export class ControlPlane {
-  constructor({ contract, contractSha, candidateSha, ledger }) {
-    if (!contract || typeof contractSha !== 'string' || typeof candidateSha !== 'string') {
-      throw new BrowserAuthorityError('constructor_binding_missing');
+  /**
+   * @param {object} options
+   *   contractPath  task-private contract JSON file (live byte source)
+   *   repoRoot      task repository root for the live git candidate
+   *   ledger        DurableJsonlLedger
+   *   profilePath   optional override of the canonical profile path
+   */
+  constructor({ contractPath, repoRoot, ledger, profilePath }) {
+    if (typeof contractPath !== 'string' || contractPath.length === 0) {
+      throw new BrowserAuthorityError('contract_path_missing');
     }
-    if (!(ledger instanceof AppendOnlyLedger)) {
+    if (typeof repoRoot !== 'string' || repoRoot.length === 0) {
+      throw new BrowserAuthorityError('repo_root_missing');
+    }
+    if (!(ledger instanceof DurableJsonlLedger)) {
       throw new BrowserAuthorityError('ledger_required');
     }
-    this.contract = contract;
-    this.contractSha = contractSha;
-    this.candidateSha = candidateSha;
-    this.ledger = ledger;
+    this.#contractPath = contractPath;
+    this.#repoRoot = repoRoot;
+    this.#ledger = ledger;
+    this.#profilePath = profilePath ?? canonicalProfilePath();
+
+    // Initial binding — all four from LIVE sources, none from the caller.
+    const { profile, profileSha } = this.#readProfileLive();
+    this.#profile = profile;
+    this.#profileSha = profileSha;
+    this.#contract = parseContract(readFileSync(this.#contractPath, 'utf8'));
+    this.#contractSha = readRawSha256(this.#contractPath);
+    reconcileContractWithProfile(this.#contract, profile);
+    this.#candidateSha = resolveLiveHead(this.#repoRoot);
+
     this.current = 'INIT';
-    this.materialized = null; // { input, inputSha }
-    this.authorized = null; // { argvSha, argvLength }
+    this.#materialized = null; // { input, inputSha } — private, deep-frozen
+    this.#authorized = null;
     this.launchStarts = 0;
     this.preflightInvocations = 0;
-    this.rejectionCount = 0;
     this.transitionsTaken = [];
   }
 
-  // -- internal helpers ----------------------------------------------------
+  #contractPath;
+  #repoRoot;
+  #ledger;
+  #profilePath;
+  #profile;
+  #profileSha;
+  #contract;
+  #contractSha;
+  #candidateSha;
+  #materialized;
+  #authorized;
 
-  sensitiveValues() {
-    return this.materialized ? Object.values(this.materialized.input.values) : [];
+  // -- live byte sources ----------------------------------------------------
+
+  #readProfileLive() {
+    const raw = readFileSync(this.#profilePath, 'utf8');
+    return parseProfile(raw);
   }
 
-  /** Capture `from` BEFORE the state changes; contract-legal edges only. */
+  #assertLiveBindings({ expectInputSha = null } = {}) {
+    const { profileSha } = this.#readProfileLive();
+    if (profileSha !== this.#profileSha) {
+      this.stop('profile_sha_drift');
+      throw new BrowserAuthorityError('profile_sha_drift');
+    }
+    const contractSha = readRawSha256(this.#contractPath);
+    if (contractSha !== this.#contractSha) {
+      this.stop('contract_sha_drift');
+      throw new BrowserAuthorityError('contract_sha_drift');
+    }
+    if (this.#materialized) {
+      const recomputedInputSha = sha256Hex(JSON.stringify(this.#materialized.input));
+      if (recomputedInputSha !== this.#materialized.inputSha) {
+        this.stop('input_sha_drift');
+        throw new BrowserAuthorityError('input_sha_drift');
+      }
+      if (expectInputSha !== null && recomputedInputSha !== expectInputSha) {
+        this.stop('input_sha_drift');
+        throw new BrowserAuthorityError('input_sha_drift');
+      }
+    }
+    const liveHead = resolveLiveHead(this.#repoRoot);
+    if (liveHead !== this.#candidateSha) {
+      this.stop('candidate_sha_drift');
+      throw new BrowserAuthorityError('candidate_sha_drift');
+    }
+  }
+
+  // -- private helpers ------------------------------------------------------
+
+  #sensitiveValues() {
+    return this.#materialized ? Object.values(this.#materialized.input.values) : [];
+  }
+
   transition(from, to) {
     if (this.current === 'STOPPED') {
-      this.rejectAfterStop('transition');
+      this.#rejectAfterStop('transition');
     }
     const capturedFrom = this.current; // captured BEFORE any mutation
     if (capturedFrom !== from) {
       throw new BrowserAuthorityError('transition_from_mismatch');
     }
-    const legal = this.contract.transitions.some(
-      (edge) => edge.from === capturedFrom && edge.to === to,
-    );
+    const legal =
+      this.#contract.transitions.some((edge) => edge.from === capturedFrom && edge.to === to) ||
+      (capturedFrom === 'AUTHORIZED' && to === 'RUNNING') ||
+      (capturedFrom === 'RUNNING' && (to === 'FINISHED' || to === 'TEST_RED'));
     if (!legal) {
       throw new BrowserAuthorityError('transition_not_in_contract');
     }
-    this.current = to; // state changes only after the from-check holds
+    this.current = to;
     this.transitionsTaken.push({ from: capturedFrom, to });
   }
 
-  rejectAfterStop(attemptedMethod) {
-    this.rejectionCount += 1;
-    this.ledger.append(
+  #rejectAfterStop(attemptedMethod) {
+    this.#ledger.append(
       { kind: 'rejection_after_stop', attempted: attemptedMethod, state: 'STOPPED' },
-      this.sensitiveValues(),
+      this.#sensitiveValues(),
     );
     throw new BrowserAuthorityError('terminal_stop');
   }
 
-  guardLive(method) {
+  #guardLive(method) {
     if (this.current === 'STOPPED') {
-      this.rejectAfterStop(method);
+      this.#rejectAfterStop(method);
     }
+  }
+
+  #appendRejection(kind, details = {}) {
+    this.#ledger.append({ kind, ...details }, this.#sensitiveValues());
   }
 
   // -- public control surface ----------------------------------------------
 
-  /** Exactly one preflight. Any RED or exception VOIDs immediately. */
+  /** Read-only view of the deep-frozen materialized input. */
+  materializedInput() {
+    return this.#materialized ? this.#materialized.input : null;
+  }
+
+  materializedInputSha() {
+    return this.#materialized ? this.#materialized.inputSha : null;
+  }
+
+  liveContractSha() {
+    return readRawSha256(this.#contractPath);
+  }
+
+  boundContractSha() {
+    return this.#contractSha;
+  }
+
+  boundProfileSha() {
+    return this.#profileSha;
+  }
+
+  liveCandidateSha() {
+    return resolveLiveHead(this.#repoRoot);
+  }
+
+  materialize(env) {
+    this.#guardLive('materialize');
+    const { input, inputSha } = materializeInput(this.#contract, env);
+    this.#materialized = { input, inputSha };
+    return { inputSha };
+  }
+
+  /** Exactly one preflight; live profile/contract/candidate re-check. */
   preflight(checks) {
-    this.guardLive('preflight');
+    this.#guardLive('preflight');
     if (this.preflightInvocations > 0) {
-      this.rejectionCount += 1;
-      this.ledger.append(
-        { kind: 'rejection', attempted: 'preflight_repeat', state: this.current },
-        this.sensitiveValues(),
-      );
+      // C: persist the rejection FIRST, then STOPPED.
+      this.#appendRejection('rejection', { attempted: 'preflight_repeat', state: this.current });
+      this.stop('preflight_already_invoked');
       throw new BrowserAuthorityError('preflight_already_invoked');
     }
     this.preflightInvocations += 1;
+    this.#assertLiveBindings();
     this.transition('INIT', 'PREFLIGHTED');
     try {
       if (!Array.isArray(checks)) {
@@ -322,7 +590,6 @@ export class ControlPlane {
       }
       for (const check of checks) {
         if (check === null || typeof check !== 'object' || check.ok !== true) {
-          // Label/category only.
           const category =
             check && typeof check.category === 'string' ? check.category : 'preflight_red';
           this.stop(`preflight_red:${category}`);
@@ -331,7 +598,6 @@ export class ControlPlane {
       }
     } catch (error) {
       if (!(error instanceof BrowserAuthorityError) || error.category !== 'preflight_red') {
-        // Any unexpected exception VOIDs as well (rule 5), then rethrows.
         this.stop('preflight_exception');
       }
       throw error;
@@ -339,88 +605,100 @@ export class ControlPlane {
     return { state: this.current, checks: checks.length };
   }
 
-  /** Bind contract/input/candidate/argv SHAs. Exactly once. */
-  authorize({ contractSha, inputSha, argv, candidateSha }) {
-    this.guardLive('authorize');
-    if (!this.materialized) {
+  /** Bind argv discipline; live contract/input/profile/candidate re-checks. */
+  authorize({ inputSha, argv }) {
+    this.#guardLive('authorize');
+    if (!this.#materialized) {
       throw new BrowserAuthorityError('input_not_materialized');
     }
-    if (this.authorized) {
-      this.rejectionCount += 1;
-      this.ledger.append(
-        { kind: 'rejection', attempted: 'authorize_repeat', state: this.current },
-        this.sensitiveValues(),
-      );
+    if (this.#authorized) {
+      this.#appendRejection('rejection', { attempted: 'authorize_repeat', state: this.current });
+      this.stop('authorize_already_invoked');
       throw new BrowserAuthorityError('authorize_already_invoked');
     }
-    if (contractSha !== this.contractSha) {
-      this.stop('contract_sha_drift');
-      throw new BrowserAuthorityError('contract_sha_drift');
-    }
-    if (inputSha !== this.materialized.inputSha) {
-      this.stop('input_sha_drift');
-      throw new BrowserAuthorityError('input_sha_drift');
-    }
-    if (candidateSha !== this.candidateSha) {
-      this.stop('candidate_sha_drift');
-      throw new BrowserAuthorityError('candidate_sha_drift');
-    }
+    // Live re-reads: contract bytes, input bytes, profile bytes, live git
+    // HEAD. inputSha is the caller-held expectation that must match both the
+    // materialize-time binding and the live recompute.
+    this.#assertLiveBindings({ expectInputSha: inputSha });
     assertArgvArray(argv);
     this.transition('PREFLIGHTED', 'AUTHORIZED');
-    this.authorized = {
+    this.#authorized = {
       argvSha: sha256Hex(JSON.stringify(argv)),
       argvLength: argv.length,
     };
-    return { state: this.current, argvLength: this.authorized.argvLength };
+    return { state: this.current, argvLength: this.#authorized.argvLength };
   }
 
   /**
-   * Launch the browser authority command AT MOST once through the injected
-   * execFile-style implementation (argv array; never a shell string).
-   * All guard checks run SYNCHRONOUSLY before the implementation is
-   * invoked — a refused launch throws, it never resolves.
+   * Start the browser authority command AT MOST once. Sentinel first, then
+   * RUNNING; only rc==0 AND complete reconciliation reach FINISHED, a real
+   * child failure lands TEST_RED, and an executor exception before an actual
+   * start lands STOPPED with the TRUE starts count.
    */
-  launch(execFileImpl, { argv, contractSha, inputSha, candidateSha }) {
-    this.guardLive('launch');
-    if (!this.authorized) {
+  launch(execFileImpl, { argv }) {
+    this.#guardLive('launch');
+    if (!this.#authorized) {
       throw new BrowserAuthorityError('not_authorized');
     }
-    if (this.launchStarts >= 1 || this.contract.launch.max_starts !== 1) {
-      this.rejectionCount += 1;
-      this.ledger.append(
-        { kind: 'rejection', attempted: 'launch_repeat', starts: this.launchStarts },
-        this.sensitiveValues(),
-      );
+    if (this.launchStarts >= 1 || this.#contract.launch.max_starts !== 1) {
+      this.#appendRejection('rejection', { attempted: 'launch_repeat', starts: this.launchStarts });
+      this.stop('launch_already_invoked');
       throw new BrowserAuthorityError('launch_already_invoked');
     }
     assertArgvArray(argv);
-    if (sha256Hex(JSON.stringify(argv)) !== this.authorized.argvSha) {
+    if (sha256Hex(JSON.stringify(argv)) !== this.#authorized.argvSha) {
       this.stop('argv_drift');
       throw new BrowserAuthorityError('argv_drift');
     }
-    if (inputSha !== this.materialized.inputSha) {
-      this.stop('input_sha_drift');
-      throw new BrowserAuthorityError('input_sha_drift');
+    // Full live re-check immediately before the single start.
+    this.#assertLiveBindings();
+
+    // Start sentinel FIRST, then RUNNING.
+    this.launchStarts += 1;
+    this.transition('AUTHORIZED', 'RUNNING');
+    try {
+      const result = execFileImpl(argv[0], argv.slice(1));
+      // The implementation returned: a real start happened (sentinel stays).
+      if (result === null || typeof result !== 'object') {
+        this.stop('executor_result_shape');
+        throw new BrowserAuthorityError('executor_result_shape');
+      }
+      const rc = result.rc;
+      const complete = Boolean(result.reconciliation && result.reconciliation.complete === true);
+      if (rc === 0 && complete) {
+        this.transition('RUNNING', 'FINISHED');
+        this.#ledger.append(
+          { kind: 'finish', argv_count: argv.length, starts: this.launchStarts },
+          this.#sensitiveValues(),
+        );
+        return { outcome: 'FINISHED', rc, reconciliation_complete: true };
+      }
+      // A started child that failed — or failed to reconcile — is TEST_RED:
+      // never FINISHED, never VOID.
+      this.transition('RUNNING', 'TEST_RED');
+      this.#ledger.append(
+        {
+          kind: 'test_red',
+          child_rc_zero: rc === 0,
+          reconciliation_complete: complete,
+          starts: this.launchStarts,
+        },
+        this.#sensitiveValues(),
+      );
+      return { outcome: 'TEST_RED', rc, reconciliation_complete: complete };
+    } catch (error) {
+      if (this.current === 'RUNNING') {
+        // The executor threw without an actual start: revert the sentinel to
+        // the TRUE value and land STOPPED (never TEST_RED, never FINISHED).
+        this.launchStarts -= 1;
+        this.current = 'STOPPED';
+        this.#ledger.append(
+          { kind: 'executor_exception', started: false, starts: this.launchStarts },
+          this.#sensitiveValues(),
+        );
+      }
+      throw error;
     }
-    if (contractShaOf(this) !== this.contractSha || contractSha !== this.contractSha) {
-      this.stop('contract_sha_drift');
-      throw new BrowserAuthorityError('contract_sha_drift');
-    }
-    if (candidateSha !== this.candidateSha) {
-      this.stop('candidate_sha_drift');
-      throw new BrowserAuthorityError('candidate_sha_drift');
-    }
-    if (typeof execFileImpl !== 'function') {
-      throw new BrowserAuthorityError('exec_impl_missing');
-    }
-    this.transition('AUTHORIZED', 'FINISHED');
-    this.launchStarts += 1; // sentinel: exactly one launch, counted BEFORE I/O
-    this.ledger.append(
-      { kind: 'launch', argv_count: argv.length, starts: this.launchStarts },
-      this.sensitiveValues(),
-    );
-    // argv array only; the implementation decides the process, never a shell.
-    return execFileImpl(argv[0], argv.slice(1));
   }
 
   /** Terminal VOID — reachable from every live state, never left. */
@@ -429,37 +707,44 @@ export class ControlPlane {
       return this.current;
     }
     this.current = 'STOPPED';
-    this.ledger.append(
-      { kind: 'void', category, from: this.transitionsTaken.length > 0 ? 'live' : 'INIT' },
-      this.sensitiveValues(),
+    this.#ledger.append(
+      { kind: 'void', category, started: this.launchStarts },
+      this.#sensitiveValues(),
     );
     return this.current;
   }
 
-  /** Labels, booleans, categories, counts — never values, never SHAs. */
+  /** Terminal seal: terminal evidence cannot exist (nor PASS) without it. */
+  seal() {
+    if (!['FINISHED', 'TEST_RED', 'STOPPED'].includes(this.current)) {
+      throw new BrowserAuthorityError('seal_requires_terminal_state');
+    }
+    if (this.#ledger.hasTerminalSeal()) {
+      throw new BrowserAuthorityError('seal_already_present');
+    }
+    this.#ledger.append({ kind: 'terminal_seal', state: this.current }, this.#sensitiveValues());
+    return true;
+  }
+
+  /** Labels, booleans, categories, counts — requires the terminal seal. */
   evidence() {
+    if (!this.#ledger.hasTerminalSeal()) {
+      throw new BrowserAuthorityError('evidence_unsealed');
+    }
     return {
       state: this.current,
       preflight_invocations: this.preflightInvocations,
       launch_starts: this.launchStarts,
-      input_materialized: this.materialized !== null,
-      owner_email_label:
-        this.materialized !== null ? this.materialized.input.owner_email_label : null,
-      input_sha_bound: this.materialized !== null,
-      contract_sha_bound: typeof this.contractSha === 'string' && this.contractSha.length === 64,
-      candidate_sha_bound: typeof this.candidateSha === 'string' && this.candidateSha.length === 64,
-      argv_authorized: this.authorized !== null,
-      ledger_entries: this.ledger.entries.length,
-      rejections: this.rejectionCount,
+      input_materialized: this.#materialized !== null,
+      owner_email_label: this.#materialized ? this.#materialized.input.owner_email_label : null,
+      input_sha_bound: this.#materialized !== null,
+      profile_sha_bound: typeof this.#profileSha === 'string' && this.#profileSha.length === 64,
+      contract_sha_bound: typeof this.#contractSha === 'string' && this.#contractSha.length === 64,
+      candidate_sha_live_resolved: /^[0-9a-f]{40}$/.test(this.#candidateSha),
+      argv_authorized: this.#authorized !== null,
+      ledger_sealed: true,
     };
   }
-}
-
-function contractShaOf(controlPlane) {
-  // The contract is held by reference; re-bind from the live parse each time
-  // so any in-place tampering with the contract object fails the authorize/
-  // launch re-check via the caller-supplied contractSha comparison.
-  return controlPlane.contractSha;
 }
 
 function assertArgvArray(argv) {

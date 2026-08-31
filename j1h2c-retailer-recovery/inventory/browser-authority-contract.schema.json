@@ -75,11 +75,11 @@
       "properties": {
         "from": {
           "type": "string",
-          "enum": ["INIT", "PREFLIGHTED", "AUTHORIZED", "FINISHED"]
+          "enum": ["INIT", "PREFLIGHTED", "AUTHORIZED", "RUNNING", "FINISHED", "TEST_RED"]
         },
         "to": {
           "type": "string",
-          "enum": ["INIT", "PREFLIGHTED", "AUTHORIZED", "FINISHED"]
+          "enum": ["INIT", "PREFLIGHTED", "AUTHORIZED", "RUNNING", "FINISHED", "TEST_RED"]
         }
       }
     }

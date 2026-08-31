@@ -125,3 +125,35 @@ launcher MUST drive:
 environment rerun, no product runtime was executed in B1-R5. The
 authoritative browser journey remains a later, separately authorized gate
 driven THROUGH this control plane.
+
+### B1-R5-R1 — live-binding, terminal-state and audit-ledger truth closure
+
+Over the same control plane, R1 removes every caller self-attestation:
+
+- **Live byte binding** — the protected profile
+  (`inventory/browser-authority-profile.json`, reconciled 1:1 with the
+  J1H2C_* variables consumed by `src/env.ts`), the task-private contract
+  file, the deep-frozen private materialized input and the LIVE
+  `git rev-parse HEAD` candidate are all re-read/re-hashed at preflight,
+  authorize and launch; any drift lands STOPPED with the true starts count.
+- **Terminal-state truth** — INIT, PREFLIGHTED, AUTHORIZED, RUNNING,
+  FINISHED, TEST_RED, STOPPED: start sentinel before RUNNING; only
+  rc==0 AND complete reconciliation reach FINISHED; a real child failure
+  lands TEST_RED (never FINISHED, never VOID); an executor exception
+  before an actual start lands STOPPED with starts reverted to truth.
+- **Once-only fail-stop** — repeat preflight/authorize/launch persists the
+  rejection FIRST, then STOPPED; catching the exception still leaves every
+  further surface terminal with starts=0 preserved.
+- **Durable audit ledger** — a task-private JSONL sink with
+  seq/prev_sha/event_sha hash chain, fsync-per-append, pre-write chain
+  re-verification, truncation/tail-rewrite/duplicate-seq fail-closed, a
+  mandatory terminal_seal (no seal, no evidence, no PASS), and the same
+  values-never firewall.
+- **Non-weakenable profile** — caller contracts weaker than the profile are
+  refused (`contract_weaker_than_profile`); invented fields are refused
+  (`contract_field_unknown_to_profile`); no override path exists.
+- Falsification surface extended to R11-R18 (live contract/input/candidate
+  drift after authorize, TEST_RED truth, repeat-preflight-then-launch,
+  ledger truncation/rewrite/duplicate-seq, per-field profile deletion,
+  weakened caller contract), each with exact categories, fresh-instance
+  restore re-GREEN and byte-identical file restores.

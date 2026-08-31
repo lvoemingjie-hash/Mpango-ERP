@@ -120,7 +120,11 @@ clean; all published text strict UTF-8, no BOM, no NUL, LF-only;
 `detect-secrets-hook --json --baseline .secrets.baseline <4 files>`;
 baseline provably byte-unchanged). Execution records (tool version, argv,
 rc, findings, classifications) are external to the scanned files and are
-reported in the closure record; `local == remote` after push; all six
+reported in the closure record; `E2_R1_REMOTE_PUBLICATION_STATUS=EXTERNAL_POST_PUSH_EVIDENCE_ONLY`
+(the remote-equality fact for this publication is asserted exclusively in
+the external post-push closure record, never pre-declared inside a commit);
+`ORIGINAL_R2_E1_LOCAL_REMOTE=PASS` is retained solely as a prior-round
+(E1) historical fact verified externally after the E1 push; all six
 frozen references unchanged at close; host residue: none
 (`evidence/cleanup-closure.json`, `all_clear=true`).
 

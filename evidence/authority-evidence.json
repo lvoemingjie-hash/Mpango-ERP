@@ -1,0 +1,13 @@
+{
+  "state": "[REDACTED]",
+  "preflight_invocations": 1,
+  "launch_starts": 1,
+  "input_materialized": true,
+  "owner_email_label": "[REDACTED]",
+  "input_sha_bound": true,
+  "profile_sha_bound": true,
+  "contract_sha_bound": true,
+  "candidate_sha_live_resolved": true,
+  "argv_authorized": true,
+  "ledger_sealed": true
+}

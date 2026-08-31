@@ -563,12 +563,18 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
     ['canonicalRepoRoot', 'single canonical repo root derivation'],
     ['repo_root_mismatch', 'cross-repo substitution refusal'],
     ['gitEnv', 'GIT_*-stripped git subprocess environment'],
+    ["toUpperCase().startsWith('GIT_')", 'case-insensitive GIT_* filter'],
   ]) {
     if (!runnerText.includes(needle)) fail(14, `runner missing ${label}`);
   }
+  const gitCallSites = (runnerText.match(/execFileSync\('git'/g) || []).length;
+  const sanitizedCallSites = (runnerText.match(/env: gitEnv\(\)/g) || []).length;
+  if (gitCallSites === 0 || gitCallSites !== sanitizedCallSites) {
+    fail(14, `git subprocess env coverage ${sanitizedCallSites}/${gitCallSites}`);
+  }
 
   const checkerText = readFileSync(join(ROOT, 'tools', 'check-browser-authority-contracts.mjs'), 'utf8');
-  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21', 'R22', 'R23', 'R24']) {
+  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21', 'R22', 'R23', 'R24', 'R25']) {
     if (!checkerText.includes(`// ${marker} `)) fail(14, `checker missing ${marker} scenario`);
   }
   if (!checkerText.includes("'ledger_seq_duplicate'")) {
@@ -585,7 +591,7 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   }
 
   if (failures === 0 && profileOk) {
-    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R24, canonical repo identity + GIT_* stripping)`);
+    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R25, canonical repo identity + case-insensitive GIT_* sanitization, git subprocess env coverage ${sanitizedCallSites}/${gitCallSites})`);
   }
 }
 

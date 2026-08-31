@@ -22,9 +22,10 @@
  *        never be the binding source — profile_dirty_vs_head);
  *      - ONE canonical repository root is derived from the profile's own
  *        location; the caller repoRoot must realpath-match it and every git
- *        subprocess runs with all GIT_* variables stripped (B1-R5-R4:
- *        cross-repo candidate substitution and GIT_* hijacking are refused
- *        — repo_root_mismatch).
+ *        subprocess runs with all GIT_* variables stripped
+ *        CASE-INSENSITIVELY (B1-R5-R4/R4-R1: cross-repo candidate
+ *        substitution and GIT_* hijacking in ANY letter case are refused —
+ *        repo_root_mismatch).
  *      The B1-R5 self-comparison helper is gone; every binding is a live
  *      byte re-read plus a committed-byte proof.
  *
@@ -104,7 +105,10 @@ function deepFreeze(value) {
 export function gitEnv() {
   const env = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (!key.startsWith('GIT_')) env[key] = value;
+    // Case-INSENSITIVE: on Windows the environment block is case-insensitive,
+    // so a lowercase `git_dir` would still hijack git.exe if only the exact
+    // `GIT_` spelling were filtered.
+    if (!key.toUpperCase().startsWith('GIT_')) env[key] = value;
   }
   return env;
 }

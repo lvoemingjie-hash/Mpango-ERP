@@ -40,7 +40,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1000,6 +1000,116 @@ function controlProfileStillDirty() {
 }
 
 // ---------------------------------------------------------------------------
+// R25 — mixed/lowercase GIT_* injection (case-insensitive sanitization,
+// B1-R5-R4-R1). The foreign repository is VALID and carries a COPY of the
+// canonical profile bytes committed at the same relative path, with a
+// different HEAD. The attack pair is (foreign repoRoot + lowercase
+// injections): under a weakened case-sensitive filter this produces a REAL
+// identity substitution — the control plane constructs, binds the foreign
+// HEAD and the foreign committed profile copy, and can launch — never a
+// mere git crash. Under the fixed filter the pair is refused with the exact
+// category and the canonical identity keeps working.
+// ---------------------------------------------------------------------------
+
+{
+  const foreign = mkdtempSync(join(SCRATCH, 'foreign-case-'));
+  const fgit = (...args) => execFileSync('git', ['-C', foreign, ...args], { stdio: ['ignore', 'pipe', 'ignore'] });
+  fgit('init', '-b', 'main');
+  fgit('config', 'user.email', 'fixture@charges.invalid');
+  fgit('config', 'user.name', 'fixture');
+  // Identical COPY of the canonical profile committed at the same relative
+  // path, so a hijacked committed-blob read RESOLVES and MATCHES (no crash,
+  // full substitution reachability).
+  mkdirSync(join(foreign, 'inventory'), { recursive: true });
+  writeFileSync(join(foreign, 'inventory', 'browser-authority-profile.json'), profileText, 'utf8');
+  fgit('add', 'inventory/browser-authority-profile.json');
+  fgit('commit', '-m', 'profile copy');
+  const foreignHead = fgit('rev-parse', 'HEAD').toString().trim();
+  expect(foreignHead !== CANONICAL_HEAD, 'R25: foreign HEAD genuinely differs');
+
+  const saved = {};
+  for (const key of ['git_dir', 'Git_Work_Tree', 'git_index_file', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']) {
+    saved[key] = process.env[key];
+    delete process.env[key];
+  }
+  try {
+    // MIXED/lowercase spellings (Windows env is case-insensitive: git honors
+    // every case form).
+    process.env.git_dir = join(foreign, '.git');
+    process.env.Git_Work_Tree = foreign;
+    process.env.git_index_file = join(foreign, '.git', 'index');
+
+    // Layer 1 — the sanitizer output handed to EVERY git subprocess contains
+    // no GIT_* spelling in ANY case.
+    const sanitized = runner.gitEnv();
+    expect(
+      Object.keys(sanitized).every((key) => !key.toUpperCase().startsWith('GIT_')),
+      'R25: sanitized environment has zero GIT_* keys in any case',
+    );
+    expect(Object.keys(sanitized).length > 0, 'R25: sanitized environment is non-empty');
+
+    // Layer 2 — REAL SUBSTITUTION at the candidate source (the exact value
+    // the control plane binds): under mixed/lowercase GIT_* injection with a
+    // weakened case-sensitive filter, resolveLiveHead(canonical root)
+    // returns the FOREIGN HEAD. The fixed filter returns the canonical HEAD.
+    const resolved = runner.resolveLiveHead(CANONICAL_ROOT);
+    if (resolved === foreignHead) {
+      console.error(
+        'R25 REAL_IDENTITY_SUBSTITUTION (candidate source): resolveLiveHead returned the injected foreign HEAD under mixed/lowercase GIT_* injection (case-sensitive filter defect live)',
+      );
+      process.exit(1); // decisive falsification verdict; nothing may mask it
+    }
+    expect(resolved === CANONICAL_HEAD, 'R25: candidate source stays canonical under injection');
+
+    // Layer 3 — end-to-end backstop (defense in depth): the attack pair
+    // (foreign repoRoot + lowercase injections) is still refused at
+    // construction by the independent committed-blob guard.
+    let ctorCategory = null;
+    try {
+      new runner.ControlPlane({
+        contractPath,
+        repoRoot: foreign,
+        ledger: freshLedger('r25'),
+      });
+    } catch (error) {
+      ctorCategory = error && error.name === 'BrowserAuthorityError' ? error.category : `<${error && error.name}>`;
+    }
+    expect(ctorCategory !== null, 'R25: attack pair must not construct');
+    expect(
+      ctorCategory === 'profile_dirty_vs_head' || ctorCategory === 'repo_root_mismatch',
+      `R25: attack pair refused, got ${ctorCategory}`,
+    );
+
+    // Layer 4 — positive control: the CANONICAL repoRoot still constructs,
+    // binds canonical identity, and finishes under the same injection.
+    let control = null;
+    try {
+      control = freshControl('r25c');
+    } catch (error) {
+      const category = error && error.name === 'BrowserAuthorityError' ? error.category : `<${error && error.name}>`;
+      failures.push(`R25: canonical construction refused under injection (${category}) — canonical identity must keep working`);
+      control = null;
+    }
+    if (control) {
+      expect(control.liveCandidateSha() === CANONICAL_HEAD, 'R25: canonical candidate stays canonical under injection');
+      expect(
+        control.boundProfileSha() === runner.parseProfile(profileText).profileSha,
+        'R25: canonical profile identity stays canonical under injection',
+      );
+      const { inputSha, argv } = fullFlow(control);
+      const result = control.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv });
+      expect(result.outcome === 'FINISHED', 'R25: canonical launch completes under injection');
+    }
+  } finally {
+    for (const key of Object.keys(saved)) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  }
+  await greenPath('r25-restore');
+}
+
+// ---------------------------------------------------------------------------
 // Verdict
 // ---------------------------------------------------------------------------
 
@@ -1009,4 +1119,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 rmSync(SCRATCH, { recursive: true, force: true });
-console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R24, single canonical repo identity, GIT_*-stripped git subprocesses).');
+console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R25, single canonical repo identity, case-insensitive GIT_* sanitization).');

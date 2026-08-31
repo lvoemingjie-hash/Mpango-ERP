@@ -190,3 +190,15 @@ caller `repoRoot` must realpath-match that root — a foreign repository
 (R23) — and every git subprocess runs with all `GIT_*` variables stripped, so
 `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` injections cannot hijack the
 profile or candidate identity (R24).
+
+### B1-R5-R4-R1 — case-insensitive GIT_* sanitization
+
+Windows environment blocks are case-insensitive, so filtering only the exact
+`GIT_` spelling left `git_dir`/`Git_Work_Tree`-style injections live. The
+sanitizer is now case-insensitive (`key.toUpperCase().startsWith('GIT_')`);
+R25 proves with a VALID foreign repository — different HEAD, carrying an
+identical committed copy of the canonical profile at the same relative path —
+that mixed-case injections produce ZERO GIT_* keys in the environment handed
+to every git subprocess and cannot substitute the candidate or profile
+identity. A case-SENSITIVE filter mutation yields a REAL identity substitution
+(the foreign HEAD gets bound, no crash), which R25 reports explicitly.

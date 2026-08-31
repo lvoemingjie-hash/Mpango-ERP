@@ -4,6 +4,8 @@ Verdict: PASS_FOR_CTO_DC12R1_MVP_L1_J1_H2_C_I2_E2_B1_R5_R4_R1_V1_KILO_BOUNDED_RU
 
 Scope: BOUNDED_SOURCE_AND_TEST_AUTHENTICITY_APPROVAL_ONLY. No product runtime, PostgreSQL, Redis, Playwright browser journey, backend full-suite, merge, or deployment was started.
 
+> Publication integrity correction (E1): the prior report commit `6e14ebc4` accidentally omitted the candidate blob `.claude/skills/generated/mpango-platform-handoff/SKILL.md` from the publication tree. This E1 restores that blob and supersedes the prior report scope wording. The Kilo bounded execution results remain valid and unchanged.
+
 ## Phase 1 - Proof Gate
 
 - `git fetch --all --prune`: completed before detached review worktree creation.
@@ -18,7 +20,7 @@ Scope: BOUNDED_SOURCE_AND_TEST_AUTHENTICITY_APPROVAL_ONLY. No product runtime, P
   - `j1h2c-retailer-recovery/tools/browser-authority-runner.mjs`
   - `j1h2c-retailer-recovery/tools/check-browser-authority-contracts.mjs`
   - `j1h2c-retailer-recovery/tools/validate-static.mjs`
-- Cumulative `BASE_B1_R4..CANDIDATE` delta: 13 files (B1-R5-R2 through R4-R1 cumulative).
+- Cumulative `BASE_B1_R4..CANDIDATE` delta: 13 files (B1-R5, R1, R2, R3, R4, R4-R1 cumulative).
 - Product/backend/frontend/tests/harness-governance/package/lockfile/inventory/spec/config/frozen evidence paths: zero changes in candidate own delta; cumulative delta remains within harness/tools/ledger/inventory boundaries.
 
 ## Phase 2 - Bounded Source and Test Authenticity Review
@@ -75,6 +77,7 @@ Mutation applied temporarily: changed `key.toUpperCase().startsWith('GIT_')` bac
 - Kilo bounded harness gates in this review: KILO_INDEPENDENTLY_EXECUTED_EVIDENCE.
 - Prior B1-R4 evidence (`42d75387`): PRIOR_KILO_B1_R4_INDEPENDENT_EVIDENCE.
 - Prior Lubuntu V2 `ef33a882` backend 3784 zero-red: PRIOR_LUBUNTU_INDEPENDENT_EVIDENCE only.
+- Prior report commit `6e14ebc4` (B1-R5-R4-R1): SUPERSEDED by this E1 publication-integrity correction; Kilo execution results and conclusions remain valid.
 - This review does not claim new candidate backend full-suite execution or browser journey execution.
 
 ## Final Determination

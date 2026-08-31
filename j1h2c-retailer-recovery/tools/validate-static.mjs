@@ -557,9 +557,15 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   if (runnerText.includes('contractShaOf')) {
     fail(14, 'runner still references the removed self-comparison helper');
   }
+  for (const [needle, label] of [
+    ['readProfileCommittedBytes', 'committed-blob profile binding'],
+    ['profile_dirty_vs_head', 'dirty-profile fail-closed category'],
+  ]) {
+    if (!runnerText.includes(needle)) fail(14, `runner missing ${label}`);
+  }
 
   const checkerText = readFileSync(join(ROOT, 'tools', 'check-browser-authority-contracts.mjs'), 'utf8');
-  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21']) {
+  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21', 'R22']) {
     if (!checkerText.includes(`// ${marker} `)) fail(14, `checker missing ${marker} scenario`);
   }
   if (!checkerText.includes("'ledger_seq_duplicate'")) {
@@ -576,7 +582,7 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   }
 
   if (failures === 0 && profileOk) {
-    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R21)`);
+    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R22, committed-blob binding)`);
   }
 }
 

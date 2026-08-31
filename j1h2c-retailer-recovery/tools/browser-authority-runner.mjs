@@ -16,9 +16,12 @@
  *        launch recompute its canonical SHA (input_sha_drift);
  *      - the candidate is resolved through a LIVE `git rev-parse HEAD`
  *        argv-array subprocess against the task repo root — caller strings
- *        are never trusted (candidate_sha_drift).
+ *        are never trusted (candidate_sha_drift);
+ *      - the working-tree profile bytes must EQUAL the committed blob at
+ *        the owning repository's live HEAD (B1-R5-R3: a dirty profile can
+ *        never be the binding source — profile_dirty_vs_head).
  *      The B1-R5 self-comparison helper is gone; every binding is a live
- *      byte re-read.
+ *      byte re-read plus a committed-byte proof.
  *
  *   B. TERMINAL STATE TRUTH — INIT, PREFLIGHTED, AUTHORIZED, RUNNING,
  *      FINISHED, TEST_RED, STOPPED. launch writes the start sentinel and
@@ -54,7 +57,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const CONTROL_PLANE_SCHEMA = 'j1h2c/browser-authority-contract/1';
@@ -112,6 +115,28 @@ function readRawSha256(path) {
     return sha256Hex(readFileSync(path));
   } catch {
     throw new BrowserAuthorityError('live_binding_read_failed');
+  }
+}
+
+/**
+ * Committed-blob binding: reads the profile's bytes AS COMMITTED at the
+ * owning repository's live HEAD (`git cat-file blob HEAD:<relpath>`, argv
+ * array). A working-tree profile that differs from its HEAD blob — or that
+ * is not tracked at HEAD — is a dirty profile and fails closed.
+ */
+export function readProfileCommittedBytes(profilePath) {
+  try {
+    const toplevel = execFileSync('git', ['-C', dirname(profilePath), 'rev-parse', '--show-toplevel'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString('utf8')
+      .trim();
+    const rel = relative(toplevel, profilePath).split(sep).join('/');
+    return execFileSync('git', ['-C', toplevel, 'cat-file', 'blob', `HEAD:${rel}`], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch {
+    throw new BrowserAuthorityError('profile_dirty_vs_head');
   }
 }
 
@@ -433,7 +458,14 @@ export class ControlPlane {
     this.#profilePath = canonicalProfilePath();
 
     // Initial binding — all four from LIVE sources, none from the caller.
+    // The profile must additionally prove it equals its committed blob at
+    // the owning repository's live HEAD: a dirty working tree can never be
+    // the binding source (B1-R5-R3).
     const { profile, profileSha } = this.#readProfileLive();
+    const committed = readProfileCommittedBytes(this.#profilePath);
+    if (sha256Hex(committed) !== profileSha) {
+      throw new BrowserAuthorityError('profile_dirty_vs_head');
+    }
     this.#profile = profile;
     this.#profileSha = profileSha;
     this.#contract = parseContract(readFileSync(this.#contractPath, 'utf8'));
@@ -473,6 +505,13 @@ export class ControlPlane {
     if (profileSha !== this.#profileSha) {
       this.stop('profile_sha_drift');
       throw new BrowserAuthorityError('profile_sha_drift');
+    }
+    // The working-tree profile must still equal its committed blob at the
+    // owning repository's live HEAD (dirty profile => VOID, always).
+    const committed = readProfileCommittedBytes(this.#profilePath);
+    if (sha256Hex(committed) !== profileSha) {
+      this.stop('profile_dirty_vs_head');
+      throw new BrowserAuthorityError('profile_dirty_vs_head');
     }
     const contractSha = readRawSha256(this.#contractPath);
     if (contractSha !== this.#contractSha) {

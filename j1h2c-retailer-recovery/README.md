@@ -170,3 +170,13 @@ Over the same control plane, R1 removes every caller self-attestation:
 - `seal()` and `evidence()` force a full on-disk ledger chain
   re-verification FIRST: a record tampered after sealing fails
   `ledger_chain_broken` and can never yield evidence (R21).
+
+### B1-R5-R3 — committed-blob profile binding (dirty-tree closure)
+
+The working-tree profile is only a valid binding source when it EQUALS the
+committed blob at the owning repository's live HEAD
+(`git cat-file blob HEAD:<relpath>`, argv-array subprocess). The equality is
+proven at construction and re-proven at every preflight/authorize/launch
+checkpoint; a dirty profile — even paired with a weak contract while HEAD is
+unchanged — refuses construction and VOIDs checkpoints with
+`profile_dirty_vs_head` (R22).

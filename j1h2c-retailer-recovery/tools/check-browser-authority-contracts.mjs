@@ -42,7 +42,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -860,6 +860,82 @@ function fullFlowPreflight(control) {
 }
 
 // ---------------------------------------------------------------------------
+// R22 — dirty working-tree profile (HEAD unchanged) can never construct
+// (B1-R5-R3 committed-blob binding; the CTO counterexample shape)
+// ---------------------------------------------------------------------------
+
+{
+  const profileShaClean = runner.parseProfile(profileText).profileSha;
+  const originalBytes = readFileSync(profilePath);
+
+  // The CTO counterexample: weaken the canonical profile AND pair it with a
+  // weak contract, all while HEAD stays unchanged. The constructor must
+  // refuse because the working-tree profile bytes no longer equal the
+  // committed blob at the owning repository's live HEAD.
+  const weakened = JSON.parse(profileText);
+  weakened.fields = { owner: profile.fields.owner };
+  const weakContractPath = join(SCRATCH, 'contract-weak22.json');
+  writeFileSync(
+    weakContractPath,
+    JSON.stringify({
+      schema: 'j1h2c/browser-authority-contract/1',
+      owner_field: 'owner',
+      fields: { owner: { env: 'J1H2C_RETAILER_EMAIL', required: true, sensitive: true } },
+      transitions: CONTRACT.transitions,
+      launch: { max_starts: 1 },
+    }),
+    'utf8',
+  );
+  try {
+    writeFileSync(profilePath, weakenedText(weakened), 'utf8');
+    expect(controlProfileStillDirty() === true, 'R22: (precondition) working profile differs from HEAD blob');
+    expectCategory(
+      () =>
+        new runner.ControlPlane({
+          contractPath: weakContractPath,
+          repoRoot,
+          ledger: freshLedger('r22'),
+        }),
+      'profile_dirty_vs_head',
+      'R22: dirty profile + weak contract refused (HEAD unchanged)',
+    );
+    // Even the FULL contract pairing is refused while the tree is dirty.
+    expectCategory(
+      () => new runner.ControlPlane({ contractPath, repoRoot, ledger: freshLedger('r22b') }),
+      'profile_dirty_vs_head',
+      'R22: dirty profile refuses any construction',
+    );
+  } finally {
+    writeFileSync(profilePath, originalBytes, 'utf8');
+  }
+  expect(runner.parseProfile(profileText).profileSha === profileShaClean, 'R22: profile bytes restored');
+  await greenPath('r22-restore');
+}
+
+function weakenedText(doc) {
+  return JSON.stringify(doc);
+}
+
+function controlProfileStillDirty() {
+  const working = readFileSync(profilePath);
+  let committed;
+  try {
+    const toplevel = execFileSync('git', ['-C', dirname(profilePath), 'rev-parse', '--show-toplevel'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .toString()
+      .trim();
+    const rel = relative(toplevel, profilePath).split(sep).join('/');
+    committed = execFileSync('git', ['-C', toplevel, 'cat-file', 'blob', `HEAD:${rel}`], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch {
+    return false;
+  }
+  return !working.equals(committed);
+}
+
+// ---------------------------------------------------------------------------
 // Verdict
 // ---------------------------------------------------------------------------
 
@@ -869,4 +945,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 rmSync(SCRATCH, { recursive: true, force: true });
-console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R21, live bindings, terminal truth, durable ledger, async child truth).');
+console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R22, live bindings incl committed-blob proof, terminal truth, durable ledger, async child truth).');

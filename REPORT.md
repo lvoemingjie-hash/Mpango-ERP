@@ -173,12 +173,20 @@ unadjudicated by this round.
 
 ## 7. Files in this publication (delta vs CANDIDATE)
 
+D1-E1 metadata correction (publication-path accounting only): the D1 commit's
+Git delta is exactly **9 new files**; the `evidence/` directory contributes
+exactly **6** of them (the backend log extract remained a task-private
+evidence import and is accounted by the published raw-evidence manifest, not
+as a committed file). Root cause, evidence content, findings and verdict are
+unchanged.
+
 | Path | Kind |
 |---|---|
 | `REPORT.md` | this report |
 | `findings.csv` | findings register (5-column schema, F-001…F-003) |
-| `evidence/…` | sanitized, values-free evidence (7 files) |
+| `evidence/…` | sanitized, values-free evidence (**6 files**: reconciliation.json, reconciliation.csv, authority-evidence.json, env-names-only.json, ledger-shapes.jsonl, raw-evidence-manifest.sha256) |
 | `committed-blob-manifest.csv` | committed-blob SHA-256 manifest of this tree, self-excluding |
+| **Total** | **9 new files** |
 
 Sanitization: every published evidence file carries labels/categories/counts/
 hashes only. A values-scan (emails, password labels, canonical-code prefixes,

@@ -10,7 +10,8 @@
     "validate:static": "node tools/validate-static.mjs",
     "check:neutrality": "node tools/check-neutrality.mjs",
     "scan:artifacts": "node tools/scan-artifacts.mjs --artifacts-dir artifacts --maildir-root $J1H2C_MAILDIR_ROOT --secrets-from-env",
-    "check:runtime-contracts": "node tools/check-runtime-contracts.mjs"
+    "check:runtime-contracts": "node tools/check-runtime-contracts.mjs",
+    "check:browser-authority": "node tools/check-browser-authority-contracts.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.49.1",

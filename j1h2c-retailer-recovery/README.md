@@ -88,3 +88,40 @@ pnpm run scan:artifacts               # post-run evidence scan (after a run)
 This harness references the j1h2b-forgot-reset harness as a design
 precedent only; it shares no runtime dependency with it and modifies
 nothing outside `j1h2c-retailer-recovery/`.
+
+## Browser authority control plane (B1-R5 — implemented, NOT run)
+
+The R2 independent round exposed external launcher defects (destructive
+merge over `owner_email_label`, unprojected materialized input, unbound
+SHAs, repeatable preflights/launches, leaky evidence, shell-built commands).
+B1-R5 turns those findings into an in-repository, reviewable, falsifiable
+execution control plane that any future authorized browser-authority
+launcher MUST drive:
+
+- `inventory/browser-authority-contract.schema.json` — frozen contract
+  structure (field labels + env variable names only, never values;
+  `launch.max_starts` pinned to 1).
+- `tools/browser-authority-runner.mjs` — the state machine: field-by-field
+  materialization with strict required-field validation (W1/W2 included),
+  owner-label overwrite guard, `from`-captured-before-mutation transitions,
+  append-only ledger with a value firewall, once-only preflight (any RED or
+  exception = immediate VOID, no rerun/no stack swap/no browser after VOID),
+  at-most-once browser launch sentinel, contract/input/argv/candidate SHA
+  bindings re-verified at launch, argv-array-only subprocess delegation via
+  an injected execFile implementation, and labels/booleans/categories/counts
+  evidence.
+- `tools/check-browser-authority-contracts.mjs`
+  (`pnpm run check:browser-authority`) — REALLY imports the runner and proves
+  the canonical GREEN path plus 10 defect classes as exact-category RED
+  counterexamples (field overwrite, missing owner label, wrong transition
+  `from`, unledgered rejection, continue-after-VOID, second preflight,
+  second browser, candidate/input/contract SHA drift, argv drift and
+  shell-string argv, sensitive value into the ledger), each followed by a
+  fresh-instance restore re-GREEN with identical SHA bindings.
+- `tools/validate-static.mjs` step [13] anchors the schema, the runner's
+  discipline (no shell, argv arrays) and the checker wiring.
+
+**Status: source closure only.** No browser authority run, no launcher
+environment rerun, no product runtime was executed in B1-R5. The
+authoritative browser journey remains a later, separately authorized gate
+driven THROUGH this control plane.

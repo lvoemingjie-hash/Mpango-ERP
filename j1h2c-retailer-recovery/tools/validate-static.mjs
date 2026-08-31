@@ -27,6 +27,13 @@
  *      type-only interface in neutrality-core.ts) may enter any src module
  *      ONLY through an `import type` declaration; a same-name value import
  *      is rejected. Parsed with the TypeScript AST, not substring matching.
+ *  [13] B1-R5 browser authority control plane: the contract schema parses
+ *      and pins launch.max_starts=1 with required+sensitive fields; the
+ *      runner keeps argv-array discipline (injected execFile impl, no
+ *      shell), the at-most-once/once-only categories, the owner-label
+ *      overwrite guard and the sensitive-value ledger firewall; the
+ *      checker REALLY imports the runner and exercises the exact defect
+ *      categories.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -419,8 +426,70 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   if (failures === 0) ok(12, `${TYPE_ONLY_NAME} enters src modules only via type-only import`);
 }
 
+// [13] B1-R5 browser authority control plane ---------------------------------
+{
+  const schemaText = readFileSync(join(ROOT, 'inventory', 'browser-authority-contract.schema.json'), 'utf8');
+  let schemaOk = true;
+  try {
+    const schema = JSON.parse(schemaText);
+    if (schema.$id !== 'j1h2c-retailer-recovery/browser-authority-contract.schema/1') {
+      schemaOk = false;
+      fail(13, 'schema $id mismatch');
+    }
+    if (schema.properties?.launch?.properties?.max_starts?.const !== 1) {
+      schemaOk = false;
+      fail(13, 'schema does not pin launch.max_starts=1');
+    }
+    if (schema.$defs?.field?.properties?.required?.const !== true) {
+      schemaOk = false;
+      fail(13, 'schema does not pin fields.required=true');
+    }
+  } catch {
+    schemaOk = false;
+    fail(13, 'contract schema unparsable');
+  }
+
+  const runnerText = readFileSync(join(ROOT, 'tools', 'browser-authority-runner.mjs'), 'utf8');
+  for (const [needle, label] of [
+    ['owner_label_overwrite_forbidden', 'owner-label overwrite guard'],
+    ['preflight_already_invoked', 'preflight once-only'],
+    ['launch_already_invoked', 'browser at-most-once'],
+    ['terminal_stop', 'post-VOID rejection surface'],
+    ['sensitive_value_rejected', 'ledger value firewall'],
+    ['transition_from_mismatch', 'from-captured-before-mutation'],
+    ['assertArgvArray', 'argv array discipline'],
+    ['execFileImpl', 'injected execFile implementation'],
+  ]) {
+    if (!runnerText.includes(needle)) fail(13, `runner missing ${label}`);
+  }
+  if (/\bspawn\s*\(/.test(runnerText) || /shell\s*\:\s*true/.test(runnerText)) {
+    fail(13, 'runner contains shell-oriented subprocess call');
+  }
+
+  const checkerText = readFileSync(join(ROOT, 'tools', 'check-browser-authority-contracts.mjs'), 'utf8');
+  for (const [needle, label] of [
+    ["await import('./browser-authority-runner.mjs')", 'checker REALLY imports the runner'],
+    ["'owner_label_overwrite_forbidden'", 'checker exercises owner-label overwrite'],
+    ["'rejection_unledgered'", 'checker exercises unledgered rejection'],
+    ["'preflight_already_invoked'", 'checker exercises repeat preflight'],
+    ["'launch_already_invoked'", 'checker exercises repeat browser'],
+    ["'candidate_sha_drift'", 'checker exercises SHA drift'],
+    ["'argv_drift'", 'checker exercises argv drift'],
+    ["'sensitive_value_rejected'", 'checker exercises ledger value firewall'],
+  ]) {
+    if (!checkerText.includes(needle)) fail(13, `checker missing ${label}`);
+  }
+
+  const pkgText = readFileSync(join(ROOT, 'package.json'), 'utf8');
+  if (!pkgText.includes('"check:browser-authority"')) {
+    fail(13, 'package.json missing check:browser-authority script');
+  }
+
+  if (failures === 0 && schemaOk) ok(13, 'browser authority control plane anchored (schema + runner + checker + script)');
+}
+
 if (failures > 0) {
   console.error(`STATIC GATE FAILED (${failures} failure(s))`);
   process.exit(1);
 }
-console.log('STATIC GATE PASSED (12/12 steps).');
+console.log('STATIC GATE PASSED (13/13 steps).');

@@ -83,3 +83,24 @@ force-push。
 下一门仅为 Kilo bounded source/test authenticity review。
 
 **STOP。**
+
+
+## ERRATUM（E1，2026-08-31）— detect_changes 数字勘误
+
+本台账 §5 与 R4 提交信息原写"0 产品流程"沿用了前几轮的措辞，但本轮
+`detect_changes(scope=staged)` 的**实测结果**为：5 files / 48 symbols /
+**Affected processes: 2 / Risk level: medium**（此前轮次的 0/low 不再适用）。
+
+两个受影响执行流均为控制面自身（harness 内部，非产品流程）：
+
+1. `#assertLiveBindings → BrowserAuthorityError`（5 steps）
+2. `#assertLiveBindings → Sha256Hex`（5 steps）
+
+成因：B1-R5-R4 使构造器与检查点新增/改动了 `verifyChain`/`append`/
+`#assertLiveBindings` 的调用形态，被索引器计入这两个 live-binding 流。
+复现方式：worktree 检出 BASE `18d71fd1` → 重建索引 → 以 R4 内容暂存 5 文件
+→ `detect_changes(scope=staged)`。
+
+过程披露：R4 提交信息中的"0 processes"系提交时数字尚未捕获、沿用了旧轮
+措辞所致，属发布顺序缺陷而非产品缺陷；本勘误以实测数字取代之。风险级别
+medium 由索引器按 touched flows 判定，未改变本轮任何结论。

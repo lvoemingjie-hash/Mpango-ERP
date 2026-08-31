@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import uuid
 from decimal import Decimal
 
@@ -9,12 +8,10 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from api.v1.orders import pay_order
 from database.session import AsyncSessionLocal
 from schemas.order import PayOrderRequest
-from tests.async_test_utils import temporary_database_url
 
 
 class _Token:
@@ -37,157 +34,7 @@ async def _set_search_path(session, schema: str) -> None:
     await session.execute(text(f'SET search_path TO "{schema}", public'))
 
 
-async def _extension_exists(session, name: str) -> bool:
-    return bool((await session.execute(
-        text("SELECT 1 FROM pg_extension WHERE extname = :name"),
-        {"name": name},
-    )).scalar())
-
-
-async def _table_exists(session, schema: str, table: str) -> bool:
-    return bool((await session.execute(
-        text(
-            "SELECT 1 FROM information_schema.tables "
-            "WHERE table_schema = :schema AND table_name = :table"
-        ),
-        {"schema": schema, "table": table},
-    )).scalar())
-
-
-async def _column_exists(session, schema: str, table: str, column: str) -> bool:
-    return bool((await session.execute(
-        text(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_schema = :schema AND table_name = :table "
-            "AND column_name = :column"
-        ),
-        {"schema": schema, "table": table, "column": column},
-    )).scalar())
-
-
-async def _index_exists(session, schema: str, index: str) -> bool:
-    return bool((await session.execute(
-        text(
-            "SELECT 1 FROM pg_indexes "
-            "WHERE schemaname = :schema AND indexname = :index"
-        ),
-        {"schema": schema, "index": index},
-    )).scalar())
-
-
-async def _index_definition(session, schema: str, index: str) -> str | None:
-    return (await session.execute(
-        text(
-            "SELECT indexdef FROM pg_indexes "
-            "WHERE schemaname = :schema AND indexname = :index"
-        ),
-        {"schema": schema, "index": index},
-    )).scalar_one_or_none()
-
-
-def _normalize_catalog_sql(sql: str) -> str:
-    return " ".join(sql.lower().split())
-
-
-EXPECTED_BINDING_INDEX_DEF = _normalize_catalog_sql(
-    "CREATE UNIQUE INDEX ux_bindings_wholesaler_tenant_user "
-    "ON public.wholesaler_retailer_bindings USING btree "
-    "(wholesaler_id, tenant_user_id) "
-    "WHERE ((tenant_user_id IS NOT NULL) AND (is_deleted IS FALSE))"
-)
-EXPECTED_BINDING_BALANCE_CHECK = _normalize_catalog_sql(
-    "CHECK ((outstanding_balance >= (0)::numeric))"
-)
-EXPECTED_BINDING_WHOLESALER_RETAILER_UNIQUE = _normalize_catalog_sql(
-    "UNIQUE (wholesaler_id, retailer_id)"
-)
-
-
-async def _constraint_definitions(
-    session, schema: str, table: str, contype: str
-) -> list[str]:
-    rows = (await session.execute(
-        text(
-            "SELECT pg_get_constraintdef(c.oid) "
-            "FROM pg_constraint c "
-            "JOIN pg_class t ON t.oid = c.conrelid "
-            "JOIN pg_namespace n ON n.oid = t.relnamespace "
-            "WHERE n.nspname = :schema AND t.relname = :table "
-            "AND c.contype = :contype "
-            "ORDER BY c.conname"
-        ),
-        {"schema": schema, "table": table, "contype": contype},
-    )).scalars().all()
-    return [str(row) for row in rows]
-
-
-async def _constraint_matches(
-    session, schema: str, table: str, contype: str, expected_def: str
-) -> bool:
-    normalized = _normalize_catalog_sql(expected_def)
-    return normalized in {
-        _normalize_catalog_sql(definition)
-        for definition in await _constraint_definitions(session, schema, table, contype)
-    }
-
-
-async def _public_contract_problems(session) -> list[str]:
-    problems: list[str] = []
-    if not await _extension_exists(session, "pgcrypto"):
-        problems.append("pgcrypto_missing")
-    required_columns = {
-        "wholesalers": {"status", "is_deleted", "created_at", "updated_at"},
-        "retailers": {"email", "email_verified_at", "is_deleted", "created_at", "updated_at"},
-        "wholesaler_retailer_bindings": {
-            "tenant_user_id",
-            "status",
-            "outstanding_balance",
-            "is_deleted",
-            "created_at",
-            "updated_at",
-        },
-    }
-    for table, columns in required_columns.items():
-        if not await _table_exists(session, "public", table):
-            problems.append(f"{table}:missing_table")
-            continue
-        for column in columns:
-            if not await _column_exists(session, "public", table, column):
-                problems.append(f"{table}:missing_column:{column}")
-    if await _table_exists(session, "public", "wholesaler_retailer_bindings"):
-        if not await _constraint_matches(
-            session,
-            "public",
-            "wholesaler_retailer_bindings",
-            "c",
-            EXPECTED_BINDING_BALANCE_CHECK,
-        ):
-            problems.append("wholesaler_retailer_bindings:missing_or_incompatible_balance_check")
-        if not await _constraint_matches(
-            session,
-            "public",
-            "wholesaler_retailer_bindings",
-            "u",
-            EXPECTED_BINDING_WHOLESALER_RETAILER_UNIQUE,
-        ):
-            problems.append("wholesaler_retailer_bindings:missing_or_incompatible_wholesaler_retailer_unique")
-        indexdef = await _index_definition(
-            session, "public", "ux_bindings_wholesaler_tenant_user"
-        )
-        if indexdef is None:
-            problems.append("wholesaler_retailer_bindings:missing_tenant_user_index")
-        elif _normalize_catalog_sql(indexdef) != EXPECTED_BINDING_INDEX_DEF:
-            problems.append("wholesaler_retailer_bindings:incompatible_tenant_user_index")
-    return problems
-
-
-async def _public_contract_ready(session) -> bool:
-    return not await _public_contract_problems(session)
-
-
 async def _ensure_public_tables(session) -> None:
-    if await _public_contract_ready(session):
-        return
     await session.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
     await session.execute(
         text(
@@ -198,27 +45,10 @@ async def _ensure_public_tables(session) -> None:
                 name TEXT NOT NULL,
                 status VARCHAR(32) NOT NULL DEFAULT 'active',
                 is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                 updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
             )
             """
         )
-    )
-    await session.execute(
-        text(
-            """
-            ALTER TABLE public.wholesalers
-                ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'active',
-                ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-            """
-        )
-    )
-    problems = await _public_contract_problems(session)
-    assert problems == [], (
-        "public test contract bootstrap incomplete or incompatible: "
-        + ", ".join(problems)
     )
     await session.execute(
         text(
@@ -227,24 +57,9 @@ async def _ensure_public_tables(session) -> None:
                 id UUID PRIMARY KEY,
                 phone VARCHAR(64) UNIQUE NOT NULL,
                 name TEXT NOT NULL,
-                email VARCHAR(255),
-                email_verified_at TIMESTAMP WITH TIME ZONE,
                 is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                 updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
             )
-            """
-        )
-    )
-    await session.execute(
-        text(
-            """
-            ALTER TABLE public.retailers
-                ADD COLUMN IF NOT EXISTS email VARCHAR(255),
-                ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP WITH TIME ZONE,
-                ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
             """
         )
     )
@@ -255,38 +70,14 @@ async def _ensure_public_tables(session) -> None:
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 wholesaler_id UUID NOT NULL,
                 retailer_id UUID NOT NULL,
-                tenant_user_id UUID,
                 status VARCHAR(32) NOT NULL DEFAULT 'active',
                 outstanding_balance NUMERIC(12, 2) NOT NULL DEFAULT 0,
                 is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                 updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                 CONSTRAINT ck_wrb_outstanding_balance_non_negative
                     CHECK (outstanding_balance >= 0),
                 UNIQUE (wholesaler_id, retailer_id)
             )
-            """
-        )
-    )
-    await session.execute(
-        text(
-            """
-            ALTER TABLE public.wholesaler_retailer_bindings
-                ADD COLUMN IF NOT EXISTS tenant_user_id UUID,
-                ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'active',
-                ADD COLUMN IF NOT EXISTS outstanding_balance NUMERIC(12, 2) NOT NULL DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-            """
-        )
-    )
-    await session.execute(
-        text(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS ux_bindings_wholesaler_tenant_user
-            ON public.wholesaler_retailer_bindings (wholesaler_id, tenant_user_id)
-            WHERE tenant_user_id IS NOT NULL AND is_deleted IS FALSE
             """
         )
     )
@@ -709,11 +500,6 @@ async def _shared_tenant_guard(async_session):
     """
     wholesaler_id = str(_tenant_id(async_session))
     async with AsyncSessionLocal() as snapshot_session:
-        # Fresh real-db runs may reach this guard before any test has durably
-        # created the public ownership tables. Bootstrap them outside the body
-        # first so the pre-test snapshot never fails on a missing relation.
-        await _ensure_public_tables(snapshot_session)
-        await snapshot_session.commit()
         snap = await _snapshot_public_tenant(
             snapshot_session, wholesaler_id=wholesaler_id
         )
@@ -734,16 +520,18 @@ async def _shared_tenant_guard(async_session):
 async def _cross_tenant_residue_guard(async_session):
     """Fail-closed teardown for the fixed 2222... cross-tenant residue."""
     # Pre-existing reverse-order hazard (reproduced at base b4c1ec6b): when
-    # this node runs FIRST in a fresh process/database, the public helper DDL
-    # may still be missing; _ensure_public_tables (via _seed_confirmed_order /
-    # _bootstrap_minimal_tenant_schema) would then run INSIDE the still-open
-    # test transaction, and the second setup session can block on the same
-    # catalog objects until the 10s command timeout. Installing the complete
-    # public contract durably BEFORE the body makes all in-test DDL idempotent
-    # no-ops. In natural suite order an earlier committing node already does
-    # this — only ordering hides the race.
+    # this node runs FIRST in a fresh process/database, pgcrypto does not
+    # exist yet; _ensure_public_tables (via _seed_confirmed_order) creates it
+    # INSIDE the still-open test transaction, and the second (setup) session's
+    # identical CREATE EXTENSION blocks on the extname tuple until the 10s
+    # command timeout (asyncpg TimeoutError). Installing the extension
+    # durably BEFORE the body makes both in-test statements no-ops. In
+    # natural suite order an earlier committing node already installs it —
+    # only ordering hides this.
     async with AsyncSessionLocal() as prerequisite_session:
-        await _ensure_public_tables(prerequisite_session)
+        await prerequisite_session.execute(
+            text("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+        )
         await prerequisite_session.commit()
     owned = {"second_retailer_id": None}
     yield owned
@@ -799,50 +587,6 @@ async def _cross_tenant_residue_guard(async_session):
     assert all(count == 0 for count in counts.values()), (
         f"cross-tenant residue teardown left database residue: {counts}"
     )
-
-
-@pytest.mark.asyncio
-async def test_public_bootstrap_rejects_incompatible_existing_binding_index():
-    if os.environ.get("MPANGO_ALLOW_TEMP_DB_CREATE") != "1":
-        pytest.skip("set MPANGO_ALLOW_TEMP_DB_CREATE=1 for public bootstrap isolation tests")
-    source_url = os.environ.get("TEST_DATABASE_URL")
-    if not source_url:
-        pytest.skip("TEST_DATABASE_URL is required for public bootstrap isolation tests")
-
-    with temporary_database_url(source_url, "dc11dpub") as database_url:
-        async_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        engine = create_async_engine(async_url, future=True)
-        try:
-            async with AsyncSession(engine, expire_on_commit=False) as session:
-                await _ensure_public_tables(session)
-                await session.commit()
-                await session.execute(
-                    text("DROP INDEX public.ux_bindings_wholesaler_tenant_user")
-                )
-                await session.execute(
-                    text(
-                        """
-                        CREATE UNIQUE INDEX ux_bindings_wholesaler_tenant_user
-                        ON public.wholesaler_retailer_bindings (tenant_user_id, wholesaler_id)
-                        WHERE tenant_user_id IS NOT NULL
-                        """
-                    )
-                )
-                await session.commit()
-
-                with pytest.raises(
-                    AssertionError,
-                    match="incompatible_tenant_user_index",
-                ):
-                    await _ensure_public_tables(session)
-
-                indexdef = await _index_definition(
-                    session, "public", "ux_bindings_wholesaler_tenant_user"
-                )
-                assert indexdef is not None
-                assert _normalize_catalog_sql(indexdef) != EXPECTED_BINDING_INDEX_DEF
-        finally:
-            await engine.dispose()
 
 
 @pytest.mark.asyncio

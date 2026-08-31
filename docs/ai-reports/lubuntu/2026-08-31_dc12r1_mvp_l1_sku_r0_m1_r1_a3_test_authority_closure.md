@@ -217,6 +217,36 @@ databases (`test_sku_a3_stale/_bundle_a/_bundle_b/_authority`), worktree
 `dc12r1-sku-a3-runtime`, venv `.venv-a3`, and `/tmp/a3_*` artifacts destroyed
 after the branch push; host-owner resources untouched.
 
+## Post-push audit correction (2026-08-31, same day)
+
+A post-push self-audit found that the A3 commit had unintentionally inherited
+an unverified, unfinished fail-closed "public contract verifier" fragment in
+`backend/tests/test_dc11d_payment_replay_concurrency_integrity.py` (+~270
+lines: schema-shape verification over `public.wholesalers/retailers/
+wholesaler_retailer_bindings`, an early-return guard, and a tamper negative
+test). The fragment was written by a concurrent authoring attempt in the same
+worktree AFTER every green run recorded above (the full authority run and the
+neighbor bundles predate it), and was swept into the commit by a directory-level
+staging. It contained two defects and was never executed by any green run:
+
+1. the verifier crashed on a fresh database
+   (`DataError: invalid input for query argument $3 ... bytes-like object
+   required`, at the bindings constraint lookup), and
+2. even without that crash, its whole-contract assertion was inserted after
+   `public.wholesalers` creation but BEFORE `public.retailers` and
+   `public.wholesaler_retailer_bindings` creation — a fresh database fails the
+   assert by construction (reproduced on a fresh PG16 at the pushed commit).
+
+Resolution (follow-up commit): `test_dc11d…` was restored to the exact
+verified state — the base-candidate file plus ONLY the reconciled identity
+columns and identity-shape CHECK in `_bootstrap_minimal_tenant_schema` (the
+shared helper also used by `test_dc11t4h…` and `test_dc12r1_s3_s2b_i2a…`).
+Fresh-DB re-verification after restoration: dc11d **10/10**, dc11t4h + i2a
+**31/31**. The fail-closed public-contract verifier idea (schema-shape
+assertions plus tamper negative test) is a reasonable future test-hardening
+task but requires its own design, ordering, and evidence; it is NOT part of
+this closure. No product file was ever affected.
+
 ## CTO hand-off
 
 With this closure, the remaining controlled-merge blocker for `8cef1fff` is

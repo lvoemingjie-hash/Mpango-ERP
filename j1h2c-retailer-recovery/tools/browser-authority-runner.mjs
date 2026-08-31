@@ -413,9 +413,11 @@ export class ControlPlane {
    *   contractPath  task-private contract JSON file (live byte source)
    *   repoRoot      task repository root for the live git candidate
    *   ledger        DurableJsonlLedger
-   *   profilePath   optional override of the canonical profile path
+   * The protected profile is ALWAYS the canonical module-relative
+   * browser-authority-profile.json — there is no profilePath override: a
+   * caller-supplied weaker profile cannot exist by construction.
    */
-  constructor({ contractPath, repoRoot, ledger, profilePath }) {
+  constructor({ contractPath, repoRoot, ledger }) {
     if (typeof contractPath !== 'string' || contractPath.length === 0) {
       throw new BrowserAuthorityError('contract_path_missing');
     }
@@ -428,7 +430,7 @@ export class ControlPlane {
     this.#contractPath = contractPath;
     this.#repoRoot = repoRoot;
     this.#ledger = ledger;
-    this.#profilePath = profilePath ?? canonicalProfilePath();
+    this.#profilePath = canonicalProfilePath();
 
     // Initial binding — all four from LIVE sources, none from the caller.
     const { profile, profileSha } = this.#readProfileLive();
@@ -656,40 +658,16 @@ export class ControlPlane {
     // Start sentinel FIRST, then RUNNING.
     this.launchStarts += 1;
     this.transition('AUTHORIZED', 'RUNNING');
+    let childOutcome;
     try {
-      const result = execFileImpl(argv[0], argv.slice(1));
-      // The implementation returned: a real start happened (sentinel stays).
-      if (result === null || typeof result !== 'object') {
-        this.stop('executor_result_shape');
-        throw new BrowserAuthorityError('executor_result_shape');
-      }
-      const rc = result.rc;
-      const complete = Boolean(result.reconciliation && result.reconciliation.complete === true);
-      if (rc === 0 && complete) {
-        this.transition('RUNNING', 'FINISHED');
-        this.#ledger.append(
-          { kind: 'finish', argv_count: argv.length, starts: this.launchStarts },
-          this.#sensitiveValues(),
-        );
-        return { outcome: 'FINISHED', rc, reconciliation_complete: true };
-      }
-      // A started child that failed — or failed to reconcile — is TEST_RED:
-      // never FINISHED, never VOID.
-      this.transition('RUNNING', 'TEST_RED');
-      this.#ledger.append(
-        {
-          kind: 'test_red',
-          child_rc_zero: rc === 0,
-          reconciliation_complete: complete,
-          starts: this.launchStarts,
-        },
-        this.#sensitiveValues(),
-      );
-      return { outcome: 'TEST_RED', rc, reconciliation_complete: complete };
+      // The implementation may return the child result directly OR a Promise
+      // that settles when the real process ends — the control plane ALWAYS
+      // awaits the real outcome before classifying (B1-R5-R2 closure).
+      childOutcome = execFileImpl(argv[0], argv.slice(1));
     } catch (error) {
+      // The executor threw without an actual start: revert the sentinel to
+      // the TRUE value and land STOPPED (never TEST_RED, never FINISHED).
       if (this.current === 'RUNNING') {
-        // The executor threw without an actual start: revert the sentinel to
-        // the TRUE value and land STOPPED (never TEST_RED, never FINISHED).
         this.launchStarts -= 1;
         this.current = 'STOPPED';
         this.#ledger.append(
@@ -699,6 +677,68 @@ export class ControlPlane {
       }
       throw error;
     }
+    if (
+      childOutcome === null ||
+      typeof childOutcome !== 'object' ||
+      typeof childOutcome.then !== 'function'
+    ) {
+      return this.#classifyChildResult(childOutcome, argv);
+    }
+    return Promise.resolve(childOutcome)
+      .then((result) => this.#classifyChildResult(result, argv))
+      .catch((error) => {
+        // An asynchronously failing child DID start: real child failure ->
+        // TEST_RED (never FINISHED, never VOID, never executor STOPPED).
+        if (this.current === 'RUNNING') {
+          this.transition('RUNNING', 'TEST_RED');
+          this.#ledger.append(
+            {
+              kind: 'test_red',
+              child_rc_zero: false,
+              reconciliation_complete: false,
+              async_failure: true,
+              starts: this.launchStarts,
+            },
+            this.#sensitiveValues(),
+          );
+          const wrapped = new BrowserAuthorityError('test_red_async_child_failure');
+          wrapped.async_reason = 'child_promise_rejected';
+          throw wrapped;
+        }
+        throw error;
+      });
+  }
+
+  /** Classify a settled child result: FINISHED only on rc==0 AND complete. */
+  #classifyChildResult(result, argv) {
+    if (result === null || typeof result !== 'object') {
+      // Post-start executor contract breach: truthful starts, VOID.
+      this.stop('executor_result_shape');
+      throw new BrowserAuthorityError('executor_result_shape');
+    }
+    const rc = result.rc;
+    const complete = Boolean(result.reconciliation && result.reconciliation.complete === true);
+    if (rc === 0 && complete) {
+      this.transition('RUNNING', 'FINISHED');
+      this.#ledger.append(
+        { kind: 'finish', argv_count: argv.length, starts: this.launchStarts },
+        this.#sensitiveValues(),
+      );
+      return { outcome: 'FINISHED', rc, reconciliation_complete: true };
+    }
+    // A started child that failed — or failed to reconcile — is TEST_RED:
+    // never FINISHED, never VOID.
+    this.transition('RUNNING', 'TEST_RED');
+    this.#ledger.append(
+      {
+        kind: 'test_red',
+        child_rc_zero: rc === 0,
+        reconciliation_complete: complete,
+        starts: this.launchStarts,
+      },
+      this.#sensitiveValues(),
+    );
+    return { outcome: 'TEST_RED', rc, reconciliation_complete: complete };
   }
 
   /** Terminal VOID — reachable from every live state, never left. */
@@ -719,6 +759,9 @@ export class ControlPlane {
     if (!['FINISHED', 'TEST_RED', 'STOPPED'].includes(this.current)) {
       throw new BrowserAuthorityError('seal_requires_terminal_state');
     }
+    // Full on-disk chain re-verification BEFORE sealing: a tampered history
+    // can never be sealed into terminal evidence.
+    this.#ledger.verifyChain();
     if (this.#ledger.hasTerminalSeal()) {
       throw new BrowserAuthorityError('seal_already_present');
     }
@@ -726,8 +769,13 @@ export class ControlPlane {
     return true;
   }
 
-  /** Labels, booleans, categories, counts — requires the terminal seal. */
+  /**
+   * Labels, booleans, categories, counts — requires the terminal seal AND a
+   * fully verified on-disk ledger chain: a record tampered after sealing
+   * fails the chain recompute and can never yield evidence.
+   */
   evidence() {
+    this.#ledger.verifyChain();
     if (!this.#ledger.hasTerminalSeal()) {
       throw new BrowserAuthorityError('evidence_unsealed');
     }

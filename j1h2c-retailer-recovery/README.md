@@ -157,3 +157,16 @@ Over the same control plane, R1 removes every caller self-attestation:
   ledger truncation/rewrite/duplicate-seq, per-field profile deletion,
   weakened caller contract), each with exact categories, fresh-instance
   restore re-GREEN and byte-identical file restores.
+
+### B1-R5-R2 — CTO P1 closure (profile override, async child, tamper-proof evidence)
+
+- The production constructor no longer accepts a `profilePath`: the
+  protected canonical profile is the only binding source, so a caller
+  cannot pair a weaker profile with a weaker contract (R19).
+- `launch()` awaits the REAL child outcome — a Promise-returning executor
+  settles into FINISHED/TEST_RED after the process ends; async child
+  failures are TEST_RED with true starts; synchronous pre-start exceptions
+  remain STOPPED with starts=0 (R20).
+- `seal()` and `evidence()` force a full on-disk ledger chain
+  re-verification FIRST: a record tampered after sealing fails
+  `ledger_chain_broken` and can never yield evidence (R21).

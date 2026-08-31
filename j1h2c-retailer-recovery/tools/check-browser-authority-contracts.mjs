@@ -203,6 +203,10 @@ async function greenPath(name = 'green') {
     },
     { argv },
   );
+  if (result && typeof result.then === 'function') {
+    failures.push(`${name}: GREEN path launch unexpectedly returned a promise for a plain result`);
+    return { inputSha, argv, evidence: null };
+  }
   expect(result.outcome === 'FINISHED' && result.rc === 0, `${name}: FINISHED on rc0+complete`);
   expect(calls.length === 1, `${name}: exactly one launch through the double`);
   expect(control.current === 'FINISHED' && control.launchStarts === 1, `${name}: state FINISHED, starts=1`);
@@ -625,7 +629,14 @@ function fullFlowPreflight(control) {
 }
 
 // ---------------------------------------------------------------------------
-// R17 — every required profile field deleted (per-field mutation + restore)
+// R17 — every required profile field deleted (weakened profile => RED)
+//
+// The production constructor binds the CANONICAL profile bytes only (no
+// profilePath override exists since B1-R5-R2), so a weakened profile is
+// probed at the reconciliation guard the constructor itself uses, plus the
+// structural owner guard and the env.ts machine reconciliation. The
+// tracked-file mutation variant runs in the external falsification driver
+// (deleted field on disk -> static [14] + checker S0 both FAIL).
 // ---------------------------------------------------------------------------
 
 {
@@ -636,40 +647,24 @@ function fullFlowPreflight(control) {
     const mutatedDoc = JSON.parse(profileText);
     delete mutatedDoc.fields[key];
     if (mutatedDoc.owner_field === key) {
-      // owner deletion takes the structural path — equally RED.
       expectCategory(
         () => runner.parseProfile(JSON.stringify(mutatedDoc)),
         'profile_owner_field_unknown',
         `R17: profile field "${key}" deleted (owner)`,
       );
     } else {
-      // Runner-level: a contract carrying the deleted env is now "unknown"
-      // to the weakened profile -> refused; checker-level env.ts
-      // reconciliation flags the missing field.
+      // The reconciliation guard used by the constructor: a profile that no
+      // longer knows an env the contract carries must be refused.
       expectCategory(
-        () => {
-          const mutatedPath = join(SCRATCH, `profile-missing-${key}.json`);
-          writeFileSync(mutatedPath, JSON.stringify(mutatedDoc), 'utf8');
-          const probe = () =>
-            new runner.ControlPlane({
-              contractPath,
-              repoRoot,
-              ledger: freshLedger(`r17-${key}`),
-              profilePath: mutatedPath,
-            });
-          try {
-            probe();
-          } finally {
-            rmSync(mutatedPath, { force: true });
-          }
-        },
+        () => runner.reconcileContractWithProfile(contract, mutatedDoc),
         'contract_field_unknown_to_profile',
         `R17: profile field "${key}" deleted`,
       );
-      // Checker-level env.ts reconciliation: the profile no longer equals the
-      // consumed J1H2C_* set.
+      // Checker-level env.ts reconciliation: the weakened profile no longer
+      // equals the consumed J1H2C_* set (profile_field_missing).
       const mutatedNames = new Set(Object.values(mutatedDoc.fields).map((field) => field.env));
-      const reconciles = envTsNames.size === mutatedNames.size && [...envTsNames].every((name) => mutatedNames.has(name));
+      const reconciles =
+        envTsNames.size === mutatedNames.size && [...envTsNames].every((name) => mutatedNames.has(name));
       expect(reconciles === false, `R17: env.ts reconciliation flags deleted "${key}" (profile_field_missing)`);
     }
     deletedAll += 1;
@@ -722,6 +717,149 @@ function fullFlowPreflight(control) {
 }
 
 // ---------------------------------------------------------------------------
+// R19 — the production profilePath override entry is GONE (B1-R5-R2)
+// ---------------------------------------------------------------------------
+
+{
+  const weak = {
+    schema: 'j1h2c/browser-authority-contract/1',
+    owner_field: 'owner',
+    fields: { owner: { env: 'J1H2C_RETAILER_EMAIL', required: true, sensitive: true } },
+    transitions: CONTRACT.transitions,
+    launch: { max_starts: 1 },
+  };
+  const weakContractPath = join(SCRATCH, 'contract-weak19.json');
+  writeFileSync(weakContractPath, JSON.stringify(weak), 'utf8');
+  const weakProfile = JSON.parse(profileText);
+  weakProfile.fields = { owner: profile.fields.owner };
+  const weakProfilePath = join(SCRATCH, 'profile-weak19.json');
+  writeFileSync(weakProfilePath, JSON.stringify(weakProfile), 'utf8');
+
+  // The production constructor has NO profilePath parameter: the override
+  // attempt is ignored and the CANONICAL protected profile is used, so the
+  // weak contract is still refused.
+  expectCategory(
+    () =>
+      new runner.ControlPlane({
+        contractPath: weakContractPath,
+        repoRoot,
+        ledger: freshLedger('r19'),
+        profilePath: weakProfilePath,
+      }),
+    'contract_weaker_than_profile',
+    'R19: profilePath override ignored; weak contract refused by canonical profile',
+  );
+  // Even with a FULL contract, a bogus profilePath must not change the
+  // binding: the canonical profile SHA is what gets bound.
+  const control = new runner.ControlPlane({
+    contractPath,
+    repoRoot,
+    ledger: freshLedger('r19b'),
+    profilePath: weakProfilePath,
+  });
+  expect(
+    control.boundProfileSha() === runner.parseProfile(profileText).profileSha,
+    'R19: canonical profile bound despite override attempt',
+  );
+  await greenPath('r19-restore');
+}
+
+// ---------------------------------------------------------------------------
+// R20 — launch awaits the REAL (async) child outcome (B1-R5-R2)
+// ---------------------------------------------------------------------------
+
+{
+  // (a) Promise-returning successful child: must reach FINISHED after the
+  // promise settles — never an immediate TEST_RED.
+  const control = freshControl('r20');
+  const { inputSha, argv } = fullFlow(control);
+  let calls = 0;
+  const result = await control.launch(
+    () => {
+      calls += 1;
+      return Promise.resolve({ rc: 0, reconciliation: { complete: true } });
+    },
+    { argv },
+  );
+  expect(result && result.outcome === 'FINISHED', 'R20: async successful child -> FINISHED');
+  expect(control.current === 'FINISHED' && control.launchStarts === 1, 'R20: final state FINISHED, starts=1');
+  expect(calls === 1, 'R20: the double started exactly once');
+
+  // (b) Promise-rejecting child: DID start -> TEST_RED with true starts.
+  const controlB = freshControl('r20b');
+  const flowB = fullFlow(controlB);
+  let caught = null;
+  try {
+    await controlB.launch(() => Promise.reject(new Error('child boom')), { argv: flowB.argv });
+  } catch (error) {
+    caught = error && error.name === 'BrowserAuthorityError' ? error.category : `<${error && error.name}>`;
+  }
+  expect(caught === 'test_red_async_child_failure', `R20: async child failure category (${caught})`);
+  expect(controlB.current === 'TEST_RED' && controlB.launchStarts === 1, 'R20: async failure lands TEST_RED, starts=1');
+
+  // (c) Synchronous executor exception BEFORE an actual start: STOPPED with
+  // starts reverted to 0.
+  const controlC = freshControl('r20c');
+  const flowC = fullFlow(controlC);
+  let threw = false;
+  try {
+    controlC.launch(
+      () => {
+        throw new Error('executor boom');
+      },
+      { argv: flowC.argv },
+    );
+  } catch {
+    threw = true;
+  }
+  expect(threw, 'R20: sync executor exception propagates');
+  expect(controlC.current === 'STOPPED' && controlC.launchStarts === 0, 'R20: pre-start executor STOPPED, starts=0');
+  await greenPath('r20-restore');
+}
+
+// ---------------------------------------------------------------------------
+// R21 — a tampered (even sealed) ledger can never yield evidence (B1-R5-R2)
+// ---------------------------------------------------------------------------
+
+{
+  const sinkPath = join(SCRATCH, 'ledger-r21.jsonl');
+  const ledger = new runner.DurableJsonlLedger(sinkPath);
+  const control = new runner.ControlPlane({ contractPath, repoRoot, ledger });
+  const { inputSha, argv } = fullFlow(control);
+  control.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv });
+  control.seal();
+  expect(control.evidence().state === 'FINISHED', 'R21: intact sealed evidence reads');
+
+  // Tamper an EARLY record while keeping every later line (incl. the seal):
+  // the chain recompute must refuse evidence.
+  const intact = readFileSync(sinkPath, 'utf8');
+  const lines = intact.split('\n').filter((line) => line.length > 0).map((line) => JSON.parse(line));
+  const finishIndex = lines.findIndex((record) => record.entry.kind === 'finish');
+  expect(finishIndex >= 0, 'R21: finish record present');
+  lines[finishIndex].entry.argv_count = 999; // stale event_sha kept on purpose
+  writeFileSync(
+    sinkPath,
+    lines.map((record) => JSON.stringify(record)).join('\n') + '\n',
+    'utf8',
+  );
+  expectCategory(
+    () => control.evidence(),
+    'ledger_chain_broken',
+    'R21: tampered early record refused by evidence chain re-verification',
+  );
+  expectCategory(
+    () => control.seal(),
+    'ledger_chain_broken',
+    'R21: re-sealing a tampered sink hits the mandatory chain re-verification first',
+  );
+
+  // Restore the intact bytes: evidence reads again.
+  writeFileSync(sinkPath, intact, 'utf8');
+  expect(control.evidence().state === 'FINISHED', 'R21: restored sink reads again');
+  await greenPath('r21-restore');
+}
+
+// ---------------------------------------------------------------------------
 // Verdict
 // ---------------------------------------------------------------------------
 
@@ -731,4 +869,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 rmSync(SCRATCH, { recursive: true, force: true });
-console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R18, live bindings, terminal truth, durable ledger).');
+console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R21, live bindings, terminal truth, durable ledger, async child truth).');

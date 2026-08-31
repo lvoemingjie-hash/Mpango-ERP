@@ -40,7 +40,8 @@
  *      byte bindings (git rev-parse candidate, profile/contract re-reads),
  *      terminal-state truth (RUNNING/TEST_RED/seal) and the durable
  *      hash-chained JSONL ledger categories; the checker exercises
- *      R11-R18.
+ *      R11-R18 and the B1-R5-R2 additions (no profilePath override,
+ *      async child classification, chain-forced seal/evidence).
  */
 
 import { execFileSync } from 'node:child_process';
@@ -558,15 +559,24 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   }
 
   const checkerText = readFileSync(join(ROOT, 'tools', 'check-browser-authority-contracts.mjs'), 'utf8');
-  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18']) {
+  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21']) {
     if (!checkerText.includes(`// ${marker} `)) fail(14, `checker missing ${marker} scenario`);
   }
   if (!checkerText.includes("'ledger_seq_duplicate'")) {
     fail(14, 'checker missing duplicate-seq probe');
   }
+  if (!checkerText.includes("'test_red_async_child_failure'")) {
+    fail(14, 'checker missing async child truth probe');
+  }
+  if (!runnerText.includes('#classifyChildResult') || !runnerText.includes('test_red_async_child_failure')) {
+    fail(14, 'runner missing async child classification');
+  }
+  if (!/evidence\(\) \{[\s\S]*?this\.#ledger\.verifyChain\(\)/.test(runnerText)) {
+    fail(14, 'evidence() does not force ledger chain re-verification first');
+  }
 
   if (failures === 0 && profileOk) {
-    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R18)`);
+    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R21)`);
   }
 }
 

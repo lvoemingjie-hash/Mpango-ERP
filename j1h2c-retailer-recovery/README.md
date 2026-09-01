@@ -79,7 +79,7 @@ only (values are never echoed).
 ```
 pnpm install --frozen-lockfile
 pnpm exec playwright test --list      # exactly 15 tests / 1 file
-pnpm run validate:static              # 9/9 steps
+pnpm run validate:static              # 15/15 steps
 pnpm run check:neutrality             # G1-G6 executable contract check
 pnpm run typecheck                    # tsc --noEmit
 pnpm run scan:artifacts               # post-run evidence scan (after a run)
@@ -260,3 +260,67 @@ direct command-line/env checks, critical HEAD-blob checks, live candidate
 checks, and contract/input/argv/cwd/real-child binding facts are all present.
 The capability is never accepted from constructor input, exported objects, env,
 argv, or JSON.
+
+### B1-R6-R4 - real Playwright child + runner-owned preflight helper
+
+Two confirmed defects from the prior round are closed:
+
+- `CONFIRMED_DEFECT_1: FIXED_AUTHORITY_CHILD_DOES_NOT_EXECUTE_PLAYWRIGHT` —
+  the authority child now REALLY spawns Playwright: it resolves the frozen
+  `@playwright/test` CLI from its own install directory (version pinned to
+  the frozen lockfile, never PATH/shell/`pnpm exec`/caller paths), spawns it
+  as an argv array with `shell: false` and silenced stdio, atomically records
+  `playwright_invocation_count = 1` in a create-exclusive marker BEFORE the
+  spawn (a second start is refused pre-spawn), awaits the real PID and exit
+  without pre-classifying, and maps the 15 materialized values onto the
+  EXACT `J1H2C_*` variables of the canonical profile — every other
+  `J1H2C_*` spelling and every `NODE_*`/`GIT_*` variable (all letter cases)
+  is stripped from the subprocess environment. Sensitive values never enter
+  stdout, stderr, or any exception text. The wrapper PID, the Playwright
+  PID, the awaited exit and the candidate SHA are cross-bound in the exact
+  result payload; `complete = true` requires 15 BROWSER PASS + 2 STATIC
+  PASS + gap 0 + PRECONDITION_PASS + fresh artifacts under the unchanged
+  candidate + a clean artifact scanner over THIS run's evidence. The child
+  never writes PASS artifacts itself.
+- `CONFIRMED_DEFECT_2: DIRECT_ENTRYPOINT_PREFLIGHT_USES_CALLER_INDEPENDENT_HARDCODED_TRUE_CHECK`
+  — the hardcoded `preflight([{ ok: true, label: 'entrypoint_direct_process' }])`
+  is gone. `tools/browser-authority-preflight-helper.mjs` is a
+  self-contained, process-isolated helper spawned by the runner (fixed
+  module-relative path, committed-blob proof, argv array, sanitized env,
+  private stdin). Its checks derive ONLY from the deep-frozen materialized
+  values: frontend origin reachable with the real SPA marker; backend
+  `/healthz` reachable; maildir exists, is writable and EMPTY; W1/W2
+  canonical-format and distinct; owner/unknown/unverified identities
+  distinct after normalization; both invitation code/phone pairs present
+  and mutually distinct; the forged token reused nowhere; the established
+  retailer able to log in through the formal login API; the unverified
+  identity still refused. It returns labels, booleans, categories and
+  counts only — never a URL, email, password, token or code. Any RED,
+  exception, timeout or schema mismatch VOIDs the plane before authorize
+  with zero starts; preflight is invocable exactly once and accepts no
+  caller input at all (`preflight_input_rejected`).
+
+Post-binding drift of the helper, child, runner, entrypoint or CORS helper
+bytes blocks authorize/launch (`authority_module_byte_drift`), on top of the
+existing profile/contract/input/candidate live re-binding.
+
+**Task-private execution contract for host-level checks (future Lubuntu
+gate).** PG reachability, Redis reachability, Alembic head currency and
+authority port ownership are HOST-level checks. They belong to the OUTER
+authority preflight that runs in the Lubuntu browser gate, not to this
+helper. The interface is fixed and machine-checked: a
+`host_preflight` block (`provided_by: 'outer_authority_preflight'`) with
+`pg_reachable`, `redis_reachable`, `alembic_head_current`,
+`authority_ports_owned` — each `{ ok, category }` — is validated and folded
+into the helper verdict; malformed blocks fail closed. The runner never
+fabricates host results: runner-driven invocations report
+`host_checks_present = 0` transparently.
+
+**Authenticity boundary (honest ceiling).** Source-level closure can prove
+internal consistency, freshness, candidate binding and scanner cleanliness;
+it cannot prove that a real browser touched a real product. R30-R40
+falsify every inconsistent, stale, candidate-mismatched or scanner-dirty
+evidence set. Only the separately authorized Lubuntu gate — with the real
+PG/Redis/backend/frontend and the outer preflight above — can produce an
+authoritative BROWSER PASS verdict. This round claims:
+`BROWSER_AUTHORITY_STATUS = NOT_YET_EXECUTABLE`.

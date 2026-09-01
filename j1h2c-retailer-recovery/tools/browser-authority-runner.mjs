@@ -66,8 +66,6 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import http from 'node:http';
-import https from 'node:https';
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, realpathSync, writeSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -114,53 +112,52 @@ export function deriveCorsTarget(apiBaseUrl) {
 }
 
 /**
- * B1-R6-R1: module-PRIVATE native OPTIONS transport (node:http/node:https).
- * The ambient globalThis.fetch is NEVER consulted — a launcher that
- * substitutes it (before or after this module's import) cannot influence
- * the CORS authority. No transport is accepted from callers. The response
- * is drained and reduced to { status, allowOrigin } only.
+ * B1-R6-R2: the canonical CORS probe HELPER path — a sibling file executed
+ * by a FRESH node child (fixed process.execPath, argv array, sanitized
+ * environment). The authoritative probe never runs inside the launcher's
+ * mutable JS process: node:http/node:https request bindings,
+ * globalThis.fetch and syncBuiltinESMExports in that process cannot touch
+ * the pristine child (MUTABLE_NODE_BUILTIN_TRANSPORT closure).
  */
-function nativeCorsOptionsRequest(target, origin, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    let parsed;
-    try {
-      parsed = new URL(target);
-    } catch {
-      reject(new BrowserAuthorityError('cors_target_invalid'));
-      return;
-    }
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      reject(new BrowserAuthorityError('cors_target_invalid'));
-      return;
-    }
-    const transport = parsed.protocol === 'https:' ? https : http;
-    const req = transport.request(
-      target,
-      {
-        method: 'OPTIONS',
-        headers: {
-          Origin: origin,
-          'Access-Control-Request-Method': 'POST',
-          'Access-Control-Request-Headers': 'content-type',
-          Connection: 'close',
-        },
-      },
-      (res) => {
-        const allowOrigin = res.headers['access-control-allow-origin'] ?? null;
-        const status = res.statusCode ?? 0;
-        res.resume(); // drain; the body is never read
-        res.on('end', () => resolve({ status, allowOrigin }));
-        res.on('error', () => resolve({ status, allowOrigin }));
-      },
-    );
-    req.setTimeout(timeoutMs, () => {
-      const timeoutError = new Error('cors probe deadline exceeded');
-      timeoutError.code = 'CORS_PROBE_TIMEOUT';
-      req.destroy(timeoutError);
+export function canonicalCorsHelperPath(moduleFile = fileURLToPath(import.meta.url)) {
+  return join(dirname(moduleFile), 'browser-authority-cors-probe-helper.mjs');
+}
+
+/**
+ * Committed-blob bytes for ANY tracked path at the owning repository's live
+ * HEAD (git cat-file blob HEAD:<rel>, argv array, GIT_*-stripped env).
+ * Untracked or dirty paths fail closed at the comparison site.
+ */
+function readCommittedBytesViaGit(path) {
+  try {
+    const toplevel = execFileSync('git', ['-C', dirname(path), 'rev-parse', '--show-toplevel'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: gitEnv(),
+    })
+      .toString('utf8')
+      .trim();
+    const rel = relative(toplevel, path).split(sep).join('/');
+    return execFileSync('git', ['-C', toplevel, 'cat-file', 'blob', `HEAD:${rel}`], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: gitEnv(),
     });
-    req.on('error', (error) => reject(error));
-    req.end();
-  });
+  } catch {
+    throw new BrowserAuthorityError('cors_helper_dirty_vs_head');
+  }
+}
+
+/**
+ * The probe child's environment: every NODE_* and GIT_* variable is
+ * STRIPPED — NODE_OPTIONS/NODE_PATH/preload entries cannot inject loaders
+ * into the pristine probe process, GIT_* cannot hijack repository identity.
+ */
+export function probeChildEnv() {
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    const upper = key.toUpperCase();
+    if (!upper.startsWith('NODE_') && !upper.startsWith('GIT_')) env[key] = value;
+  }
+  return env;
 }
 
 /** Canonical profile path, resolved relative to THIS module (never cwd). */
@@ -791,29 +788,68 @@ export class ControlPlane {
     this.#assertLiveBindings();
     const origin = deriveBrowserOrigin(this.#materialized.input.values.base_url);
     const target = deriveCorsTarget(this.#materialized.input.values.api_base_url);
-    let response;
-    try {
-      // B1-R6-R1: module-private native transport — globalThis.fetch or any
-      // ambient/qualified fetch) is deliberately never referenced here.
-      response = await nativeCorsOptionsRequest(target, origin, CORS_PROBE_TIMEOUT_MS);
-    } catch (error) {
-      const timedOut = error && error.code === 'CORS_PROBE_TIMEOUT';
-      this.stop(timedOut ? 'cors_probe_timeout' : 'cors_probe_no_response');
-      throw new BrowserAuthorityError(timedOut ? 'cors_probe_timeout' : 'cors_probe_no_response');
+    // B1-R6-R2: the probe runs in a FRESH node child (fixed
+    // process.execPath, argv array, sanitized environment). The helper's
+    // working-tree bytes must equal its committed blob at the owning
+    // repository's live HEAD, the probe input travels via private stdin,
+    // and the classification comes back as categories/booleans on stdout.
+    // The launcher process's mutable builtins are irrelevant here.
+    const helperPath = canonicalCorsHelperPath();
+    const helperWorkingSha = sha256Hex(readFileSync(helperPath));
+    const helperCommittedSha = sha256Hex(readCommittedBytesViaGit(helperPath));
+    if (helperWorkingSha !== helperCommittedSha) {
+      this.stop('cors_helper_dirty_vs_head');
+      throw new BrowserAuthorityError('cors_helper_dirty_vs_head');
     }
-    const status2xx = response.status >= 200 && response.status < 300;
-    const allowOrigin = response.allowOrigin;
-    const allowOriginExact = allowOrigin !== null && allowOrigin === origin;
-    if (!(status2xx && allowOriginExact)) {
+    const childInput = JSON.stringify({
+      origin,
+      target,
+      timeoutMs: CORS_PROBE_TIMEOUT_MS,
+    });
+    let payload;
+    try {
+      const childOut = execFileSync(
+        process.execPath,
+        [helperPath],
+        {
+          input: childInput,
+          env: probeChildEnv(),
+          stdio: ['pipe', 'pipe', 'pipe'],
+          timeout: CORS_PROBE_TIMEOUT_MS + 5000,
+          windowsHide: true,
+        },
+      );
+      payload = JSON.parse(childOut.toString('utf8'));
+    } catch {
+      // Child crash, kill (runaway), or unparseable output: fail closed.
+      this.stop('cors_probe_no_response');
+      throw new BrowserAuthorityError('cors_probe_no_response');
+    }
+    if (payload === null || typeof payload !== 'object') {
+      this.stop('cors_probe_no_response');
+      throw new BrowserAuthorityError('cors_probe_no_response');
+    }
+    const status2xx = payload.status_2xx === true;
+    const allowOriginPresent = payload.allow_origin_present === true;
+    const allowOriginExact = payload.allow_origin_exact === true;
+    const KNOWN_CATEGORIES = new Set([
+      'cors_allow_origin_mismatch',
+      'cors_probe_http_error',
+      'cors_probe_timeout',
+      'cors_probe_no_response',
+    ]);
+    if (payload.ok !== true) {
       const category =
-        status2xx || response.status === 0 ? 'cors_allow_origin_mismatch' : 'cors_probe_http_error';
+        typeof payload.category === 'string' && KNOWN_CATEGORIES.has(payload.category)
+          ? payload.category
+          : 'cors_probe_no_response';
       this.stop(category);
       this.#ledger.append(
         {
           kind: 'cors_preflight',
           ok: false,
           status_2xx: status2xx,
-          allow_origin_present: allowOrigin !== null,
+          allow_origin_present: allowOriginPresent,
           allow_origin_exact: false,
         },
         this.#sensitiveValues(),

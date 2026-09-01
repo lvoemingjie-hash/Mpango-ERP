@@ -17,8 +17,9 @@
  *   4. process.env has no GIT_* variables
  *
  * After the checks, this module imports the runner and executes the only
- * authority path: materialize -> isolated CORS probe -> preflight ->
- * authorize -> fixed real child -> terminal seal -> authority evidence.
+ * authority path: materialize -> isolated CORS probe -> runner-owned
+ * preflight helper -> authorize -> fixed real child -> terminal seal ->
+ * authority evidence.
  */
 
 // ---------------------------------------------------------------------------
@@ -141,6 +142,7 @@ const criticalPaths = [
   join(TOOL_DIR, 'browser-authority-entrypoint.mjs'),
   join(TOOL_DIR, 'browser-authority-runner.mjs'),
   join(TOOL_DIR, 'browser-authority-cors-probe-helper.mjs'),
+  join(TOOL_DIR, 'browser-authority-preflight-helper.mjs'),
   join(TOOL_DIR, 'browser-authority-child.mjs'),
   join(TOOL_DIR, '..', 'inventory', 'browser-authority-profile.json'),
 ];
@@ -188,7 +190,10 @@ try {
 
   const { inputSha } = control.materialize(process.env);
   await control.corsPreflightProbe();
-  control.preflight([{ ok: true, label: 'entrypoint_direct_process' }]);
+  // B1-R6-R4: the runner-OWNED preflight helper — the entrypoint supplies
+  // no checks and no results; every check runs in the process-isolated,
+  // committed-byte-bound helper from the deep-frozen materialized values.
+  control.preflight();
   const argv = runner.canonicalAuthorityChildArgv();
   control.authorize({ inputSha, argv, cwd: repoRoot });
 

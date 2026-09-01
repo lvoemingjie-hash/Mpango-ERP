@@ -75,8 +75,15 @@ export const PROFILE_SCHEMA = 'j1h2c/browser-authority-profile/1';
 export const CORS_PROBE_RESULT_SCHEMA = 'j1h2c/cors-probe-result/1';
 export const AUTHORITY_CHILD_RESULT_SCHEMA = 'j1h2c/browser-authority-child-result/1';
 export const AUTHORITY_CHILD_INPUT_SCHEMA = 'j1h2c/browser-authority-child-input/1';
+export const PREFLIGHT_HELPER_INPUT_SCHEMA = 'j1h2c/browser-authority-preflight-input/1';
+export const PREFLIGHT_HELPER_RESULT_SCHEMA = 'j1h2c/browser-authority-preflight-result/1';
 const GENESIS_SHA = '0'.repeat(64);
-const AUTHORITY_CHILD_TIMEOUT_MS = 30000;
+// The authoritative child waits for a REAL 17-node serial Playwright journey
+// (up to 120s per node under the frozen config); the wrapper budget covers
+// the run plus the artifact scanner. Fixture refusals happen pre-spawn and
+// return immediately — only a genuinely started journey consumes budget.
+const AUTHORITY_CHILD_TIMEOUT_MS = 1_800_000;
+const PREFLIGHT_HELPER_TIMEOUT_MS = 20_000;
 const AUTHORITY_CAPABILITY_BRAND = Symbol('browser-authority-capability');
 let authorityCapabilityIssued = false;
 
@@ -135,6 +142,16 @@ export function canonicalAuthorityEntrypointPath(moduleFile = fileURLToPath(impo
 
 export function canonicalAuthorityChildPath(moduleFile = fileURLToPath(import.meta.url)) {
   return join(dirname(moduleFile), 'browser-authority-child.mjs');
+}
+
+/**
+ * B1-R6-R4: the canonical runner-owned PREFLIGHT helper path — a sibling
+ * file executed by a FRESH node child (fixed process.execPath, argv array,
+ * sanitized environment, private stdin). The helper is derived from THIS
+ * module's own location; no caller-provided path exists.
+ */
+export function canonicalPreflightHelperPath(moduleFile = fileURLToPath(import.meta.url)) {
+  return join(dirname(moduleFile), 'browser-authority-preflight-helper.mjs');
 }
 
 export function canonicalAuthorityChildArgv(moduleFile = fileURLToPath(import.meta.url)) {
@@ -317,6 +334,14 @@ export function parseCorsProbePayload(payload) {
   return payload;
 }
 
+/**
+ * B1-R6-R4 exact child result shape. The wrapper pid/exit are cross-bound
+ * against the values the parent OBSERVED, the Playwright process facts are
+ * bound (launched -> exactly one invocation, a positive pid DISTINCT from
+ * the wrapper pid, and an awaited exit code), and the candidate SHA the
+ * child resolved must equal the runner-bound candidate. Any shape or
+ * binding violation fails closed.
+ */
 export function parseAuthorityChildStdout(stdout, { pid, exitCode }) {
   let payload;
   try {
@@ -329,24 +354,158 @@ export function parseAuthorityChildStdout(stdout, { pid, exitCode }) {
     throw new BrowserAuthorityError('authority_child_stdout_unparsable');
   }
   if (
-    !exactKeys(payload, ['schema', 'pid', 'exit', 'reconciliation']) ||
+    !exactKeys(payload, [
+      'schema',
+      'pid',
+      'exit',
+      'category',
+      'playwright',
+      'candidate_sha',
+      'reconciliation',
+    ]) ||
     payload.schema !== AUTHORITY_CHILD_RESULT_SCHEMA ||
     !Number.isInteger(payload.pid) ||
     payload.pid <= 0 ||
     !Number.isInteger(payload.exit) ||
     payload.pid !== pid ||
     payload.exit !== exitCode ||
-    !exactKeys(payload.reconciliation, ['complete']) ||
-    typeof payload.reconciliation.complete !== 'boolean'
+    typeof payload.category !== 'string' ||
+    payload.category.length === 0 ||
+    !/^[0-9a-f]{40}$/.test(payload.candidate_sha) ||
+    !exactKeys(payload.reconciliation, ['complete', 'category']) ||
+    typeof payload.reconciliation.complete !== 'boolean' ||
+    typeof payload.reconciliation.category !== 'string' ||
+    payload.reconciliation.category.length === 0 ||
+    !exactKeys(payload.playwright, ['launched', 'pid', 'exit_code', 'invocation_count']) ||
+    typeof payload.playwright.launched !== 'boolean' ||
+    !Number.isInteger(payload.playwright.invocation_count)
   ) {
+    throw new BrowserAuthorityError('authority_child_result_shape');
+  }
+  const pw = payload.playwright;
+  if (pw.launched === true) {
+    if (
+      pw.invocation_count !== 1 ||
+      !Number.isInteger(pw.pid) ||
+      pw.pid <= 0 ||
+      pw.pid === payload.pid ||
+      !Number.isInteger(pw.exit_code) ||
+      pw.exit_code < 0
+    ) {
+      throw new BrowserAuthorityError('authority_child_result_shape');
+    }
+  } else if (pw.pid !== null || pw.exit_code !== null || pw.invocation_count !== 0) {
     throw new BrowserAuthorityError('authority_child_result_shape');
   }
   return {
     rc: payload.exit,
     pid: payload.pid,
     real_child: true,
-    reconciliation: { complete: payload.reconciliation.complete },
+    category: payload.category,
+    candidate_sha: payload.candidate_sha,
+    playwright: {
+      launched: pw.launched,
+      pid: pw.pid,
+      exit_code: pw.exit_code,
+      invocation_count: pw.invocation_count,
+    },
+    reconciliation: {
+      complete: payload.reconciliation.complete,
+      category: payload.reconciliation.category,
+    },
   };
+}
+
+/**
+ * The FIXED preflight check-id taxonomy (labels only, never values). The
+ * host-level ids belong to the task-private execution contract that the
+ * OUTER authority preflight (future Lubuntu gate) owns; the helper only
+ * validates their shape when an outer layer supplies them.
+ */
+export const PREFLIGHT_CHECK_IDS = [
+  'frontend_origin_page',
+  'backend_health_reachable',
+  'maildir_ready_and_empty',
+  'w1_w2_canonical_and_distinct',
+  'identities_distinct_after_normalization',
+  'invitation_pairs_present_and_distinct',
+  'forged_token_not_reused',
+  'established_login_succeeds',
+  'unverified_login_refused',
+];
+
+export const PREFLIGHT_HOST_CHECK_IDS = [
+  'pg_reachable',
+  'redis_reachable',
+  'alembic_head_current',
+  'authority_ports_owned',
+];
+
+/**
+ * B1-R6-R4 exact preflight helper payload shape: labels, booleans,
+ * categories and counts only. ok:true is valid ONLY when every fixed check
+ * (and every provided host check) is green, every id is known and unique,
+ * and the counts agree with the check list. Any mismatch fails closed.
+ */
+export function parsePreflightHelperPayload(payload) {
+  if (
+    !exactKeys(payload, ['schema', 'ok', 'checks', 'counts']) ||
+    payload.schema !== PREFLIGHT_HELPER_RESULT_SCHEMA ||
+    typeof payload.ok !== 'boolean' ||
+    !Array.isArray(payload.checks) ||
+    !exactKeys(payload.counts, ['total', 'red', 'host_checks_present']) ||
+    !Number.isInteger(payload.counts.total) ||
+    !Number.isInteger(payload.counts.red) ||
+    !Number.isInteger(payload.counts.host_checks_present)
+  ) {
+    throw new BrowserAuthorityError('preflight_helper_payload_invalid');
+  }
+  const seen = new Set();
+  for (const check of payload.checks) {
+    if (
+      !exactKeys(check, ['id', 'ok', 'category']) ||
+      typeof check.id !== 'string' ||
+      typeof check.ok !== 'boolean' ||
+      typeof check.category !== 'string' ||
+      check.category.length === 0
+    ) {
+      throw new BrowserAuthorityError('preflight_helper_payload_invalid');
+    }
+    if (seen.has(check.id)) {
+      throw new BrowserAuthorityError('preflight_helper_payload_invalid');
+    }
+    seen.add(check.id);
+    const isCore = PREFLIGHT_CHECK_IDS.includes(check.id);
+    const isHost = PREFLIGHT_HOST_CHECK_IDS.includes(check.id);
+    if (!isCore && !isHost) {
+      throw new BrowserAuthorityError('preflight_helper_payload_invalid');
+    }
+    if (isCore && check.ok === false && check.category === 'check_green') {
+      throw new BrowserAuthorityError('preflight_helper_payload_invalid');
+    }
+  }
+  const coreIds = payload.checks.map((check) => check.id).filter((id) => PREFLIGHT_CHECK_IDS.includes(id));
+  const hostIds = payload.checks.map((check) => check.id).filter((id) => PREFLIGHT_HOST_CHECK_IDS.includes(id));
+  if (
+    coreIds.length !== PREFLIGHT_CHECK_IDS.length ||
+    hostIds.length !== payload.counts.host_checks_present
+  ) {
+    throw new BrowserAuthorityError('preflight_helper_payload_invalid');
+  }
+  const red = payload.checks.filter((check) => check.ok === false).length;
+  if (red !== payload.counts.red) {
+    throw new BrowserAuthorityError('preflight_helper_payload_invalid');
+  }
+  if (payload.counts.total !== payload.checks.length) {
+    throw new BrowserAuthorityError('preflight_helper_payload_invalid');
+  }
+  if (payload.ok === true && (red !== 0 || coreIds.length !== PREFLIGHT_CHECK_IDS.length)) {
+    throw new BrowserAuthorityError('preflight_helper_payload_invalid');
+  }
+  if (payload.ok === false && red === 0) {
+    throw new BrowserAuthorityError('preflight_helper_payload_invalid');
+  }
+  return payload;
 }
 
 /** Canonical profile path, resolved relative to THIS module (never cwd). */
@@ -829,7 +988,22 @@ export class ControlPlane {
     this.#childResult = null;
     this.launchStarts = 0;
     this.preflightInvocations = 0;
+    this.preflightRedCategories = [];
     this.transitionsTaken = [];
+    // B1-R6-R4: working-tree byte snapshot of every module-relative
+    // authority file, taken at construction and re-verified at authorize and
+    // launch. Any post-binding drift of the helper, child, runner,
+    // entrypoint or CORS helper blocks the launch (working-tree equality,
+    // NOT HEAD equality — HEAD binding stays the profile's closure).
+    this.#moduleByteSnapshot = new Map(
+      [
+        canonicalAuthorityEntrypointPath(),
+        fileURLToPath(import.meta.url),
+        canonicalCorsHelperPath(),
+        canonicalAuthorityChildPath(),
+        canonicalPreflightHelperPath(),
+      ].map((path) => [path, sha256Hex(readFileSync(path))]),
+    );
   }
 
   #contractPath;
@@ -848,6 +1022,9 @@ export class ControlPlane {
   #authority;
   #corsProbeInvocations = 0;
   #corsProbePassed = false;
+  #moduleByteSnapshot = new Map();
+  #preflightHelperInvocations = 0;
+  #preflightHelperGreen = false;
 
   // -- live byte sources ----------------------------------------------------
 
@@ -889,6 +1066,23 @@ export class ControlPlane {
     if (liveHead !== this.#candidateSha) {
       this.stop('candidate_sha_drift');
       throw new BrowserAuthorityError('candidate_sha_drift');
+    }
+    // B1-R6-R4: post-binding byte drift of any module-relative authority
+    // file (helper, child, runner, entrypoint, CORS helper) blocks every
+    // subsequent checkpoint — a swapped helper or child can never be
+    // silently launched.
+    for (const [path, boundSha] of this.#moduleByteSnapshot) {
+      let liveSha;
+      try {
+        liveSha = sha256Hex(readFileSync(path));
+      } catch {
+        this.stop('authority_module_byte_drift');
+        throw new BrowserAuthorityError('authority_module_byte_drift');
+      }
+      if (liveSha !== boundSha) {
+        this.stop('authority_module_byte_drift');
+        throw new BrowserAuthorityError('authority_module_byte_drift');
+      }
     }
   }
 
@@ -979,6 +1173,16 @@ export class ControlPlane {
       child_real_process_observed: this.#childResult !== null && this.#childResult.real_child === true,
       child_pid: this.#childResult ? this.#childResult.pid : null,
       child_exit_code: this.#childResult ? this.#childResult.exit : null,
+      child_playwright_observed:
+        this.#childResult !== null &&
+        this.#childResult.playwright !== null &&
+        this.#childResult.playwright.launched === true,
+      child_playwright_invocation_count:
+        this.#childResult && this.#childResult.playwright
+          ? this.#childResult.playwright.invocation_count
+          : 0,
+      preflight_helper_invocations: this.#preflightHelperInvocations,
+      preflight_red_categories: this.preflightRedCategories.length,
     };
   }
 
@@ -1106,8 +1310,16 @@ export class ControlPlane {
     return { state: this.current, allow_origin_exact: true };
   }
 
-  /** Exactly one preflight; live profile/contract/candidate re-check. */
-  preflight(checks) {
+  /**
+   * B1-R6-R4: exactly one preflight, owned ENTIRELY by the runner. The
+   * caller provides nothing — not checks, not results. The checks run in a
+   * FRESH node child at the canonical helper path (argv array, sanitized
+   * environment, private stdin carrying only the deep-frozen materialized
+   * values), whose committed bytes are proven against HEAD before the
+   * spawn. Any RED check, exception, timeout or schema mismatch lands
+   * STOPPED before authorize with launchStarts untouched (0).
+   */
+  preflight(...injected) {
     this.#guardLive('preflight');
     if (this.preflightInvocations > 0) {
       // C: persist the rejection FIRST, then STOPPED.
@@ -1115,35 +1327,112 @@ export class ControlPlane {
       this.stop('preflight_already_invoked');
       throw new BrowserAuthorityError('preflight_already_invoked');
     }
+    if (injected.length > 0) {
+      // The runner-owned preflight accepts NO caller-supplied check
+      // results; a hardcoded ok:true label has no path back in.
+      this.#appendRejection('rejection', { attempted: 'preflight_input_injection' });
+      this.stop('preflight_input_rejected');
+      throw new BrowserAuthorityError('preflight_input_rejected');
+    }
     if (!this.#corsProbePassed) {
-      // B1-R6: a caller ok=true check can never stand in for the runner-owned
-      // probe — omitting or faking it stops the plane before authorize.
+      // B1-R6: no caller check can stand in for the runner-owned probe —
+      // omitting or faking it stops the plane before authorize.
       this.#appendRejection('rejection', { attempted: 'preflight_without_cors_probe' });
       this.stop('cors_probe_missing');
       throw new BrowserAuthorityError('cors_probe_missing');
+    }
+    if (!this.#materialized) {
+      throw new BrowserAuthorityError('input_not_materialized');
     }
     this.preflightInvocations += 1;
     this.#assertLiveBindings();
     this.transition('INIT', 'PREFLIGHTED');
     try {
-      if (!Array.isArray(checks)) {
-        throw new BrowserAuthorityError('preflight_checks_not_array');
+      const helperPath = canonicalPreflightHelperPath();
+      // Committed-blob proof for the helper bytes BEFORE any spawn: a dirty
+      // or untracked helper can never run preflight checks.
+      const helperWorkingSha = sha256Hex(readFileSync(helperPath));
+      const helperCommittedSha = sha256Hex(readCommittedBytesGeneric(helperPath));
+      if (helperWorkingSha !== helperCommittedSha) {
+        this.stop('preflight_helper_dirty_vs_head');
+        throw new BrowserAuthorityError('preflight_helper_dirty_vs_head');
       }
-      for (const check of checks) {
-        if (check === null || typeof check !== 'object' || check.ok !== true) {
-          const category =
-            check && typeof check.category === 'string' ? check.category : 'preflight_red';
-          this.stop(`preflight_red:${category}`);
-          throw new BrowserAuthorityError('preflight_red');
+      const helperInput = JSON.stringify({
+        schema: PREFLIGHT_HELPER_INPUT_SCHEMA,
+        timeout_ms: PREFLIGHT_HELPER_TIMEOUT_MS,
+        values: { ...this.#materialized.input.values },
+      });
+      this.#preflightHelperInvocations += 1;
+      let payload;
+      try {
+        const helperOut = execFileSync(
+          process.execPath,
+          [helperPath],
+          {
+            input: helperInput,
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: probeChildEnv(),
+            timeout: PREFLIGHT_HELPER_TIMEOUT_MS + 5000,
+            windowsHide: true,
+          },
+        );
+        payload = parsePreflightHelperPayload(JSON.parse(helperOut.toString('utf8')));
+      } catch (error) {
+        if (error instanceof BrowserAuthorityError) {
+          this.stop('preflight_helper_payload_invalid');
+          throw error;
         }
+        // Helper crash, kill (runaway) or unparseable output: fail closed.
+        this.stop('preflight_helper_no_response');
+        throw new BrowserAuthorityError('preflight_helper_no_response');
       }
+      if (payload.ok !== true) {
+        const redCategories = payload.checks
+          .filter((check) => check.ok === false)
+          .map((check) => check.category);
+        this.preflightRedCategories = redCategories;
+        this.#ledger.append(
+          {
+            kind: 'preflight',
+            ok: false,
+            red_checks: redCategories.length,
+            host_checks_present: payload.counts.host_checks_present,
+          },
+          this.#sensitiveValues(),
+        );
+        const first = redCategories[0] ?? 'preflight_red';
+        this.stop(`preflight_red:${first}`);
+        throw new BrowserAuthorityError('preflight_red');
+      }
+      this.#preflightHelperGreen = true;
+      this.#ledger.append(
+        {
+          kind: 'preflight',
+          ok: true,
+          checks: payload.counts.total,
+          host_checks_present: payload.counts.host_checks_present,
+        },
+        this.#sensitiveValues(),
+      );
+      return {
+        state: this.current,
+        checks: payload.counts.total,
+        host_checks_present: payload.counts.host_checks_present,
+      };
     } catch (error) {
-      if (!(error instanceof BrowserAuthorityError) || error.category !== 'preflight_red') {
+      if (
+        !(error instanceof BrowserAuthorityError) ||
+        ![
+          'preflight_red',
+          'preflight_helper_dirty_vs_head',
+          'preflight_helper_no_response',
+          'preflight_helper_payload_invalid',
+        ].includes(error.category)
+      ) {
         this.stop('preflight_exception');
       }
       throw error;
     }
-    return { state: this.current, checks: checks.length };
   }
 
   /** Bind argv discipline; live contract/input/profile/candidate re-checks. */
@@ -1276,6 +1565,8 @@ export class ControlPlane {
       schema: AUTHORITY_CHILD_INPUT_SCHEMA,
       input_sha: this.#materialized.inputSha,
       cwd_sha: this.#cwdSha,
+      candidate_sha: this.#candidateSha,
+      owner_email_label: this.#materialized.input.owner_email_label,
       values: this.#materialized.input.values,
     });
     return new Promise((resolve, reject) => {
@@ -1315,12 +1606,25 @@ export class ControlPlane {
       pid: Number.isInteger(result.pid) ? result.pid : null,
       exit: Number.isInteger(rc) ? rc : null,
       real_child: result.real_child === true,
+      playwright: result.playwright ?? null,
+      candidate_sha: typeof result.candidate_sha === 'string' ? result.candidate_sha : null,
+      category: typeof result.category === 'string' ? result.category : null,
     };
     const complete = Boolean(result.reconciliation && result.reconciliation.complete === true);
-    if (rc === 0 && complete) {
+    // B1-R6-R4 cross-binding: a real child that resolved a DIFFERENT
+    // candidate than the one the runner bound can never reconcile complete.
+    const candidateMismatch =
+      typeof result.candidate_sha === 'string' && result.candidate_sha !== this.#candidateSha;
+    if (rc === 0 && complete && !candidateMismatch) {
       this.transition('RUNNING', 'FINISHED');
       this.#ledger.append(
-        { kind: 'finish', argv_count: argv.length, starts: this.launchStarts },
+        {
+          kind: 'finish',
+          argv_count: argv.length,
+          starts: this.launchStarts,
+          playwright_invocation_count:
+            this.#childResult.playwright ? this.#childResult.playwright.invocation_count : 0,
+        },
         this.#sensitiveValues(),
       );
       return {
@@ -1330,16 +1634,19 @@ export class ControlPlane {
         child_pid: this.#childResult.pid,
         child_exit_code: this.#childResult.exit,
         real_child: this.#childResult.real_child,
+        playwright: this.#childResult.playwright,
+        candidate_sha: this.#childResult.candidate_sha,
       };
     }
-    // A started child that failed — or failed to reconcile — is TEST_RED:
-    // never FINISHED, never VOID.
+    // A started child that failed — failed to reconcile, or resolved a
+    // mismatched candidate — is TEST_RED: never FINISHED, never VOID.
     this.transition('RUNNING', 'TEST_RED');
     this.#ledger.append(
       {
         kind: 'test_red',
         child_rc_zero: rc === 0,
         reconciliation_complete: complete,
+        child_candidate_mismatch: candidateMismatch,
         starts: this.launchStarts,
       },
       this.#sensitiveValues(),
@@ -1351,6 +1658,9 @@ export class ControlPlane {
       child_pid: this.#childResult.pid,
       child_exit_code: this.#childResult.exit,
       real_child: this.#childResult.real_child,
+      playwright: this.#childResult.playwright,
+      candidate_sha: this.#childResult.candidate_sha,
+      category: candidateMismatch ? 'authority_child_candidate_mismatch' : this.#childResult.category,
     };
   }
 
@@ -1423,8 +1733,18 @@ export class ControlPlane {
       child_real_process_observed: this.#childResult !== null && this.#childResult.real_child === true,
       child_pid: this.#childResult ? this.#childResult.pid : null,
       child_exit_code: this.#childResult ? this.#childResult.exit : null,
+      child_playwright_observed:
+        this.#childResult !== null &&
+        this.#childResult.playwright !== null &&
+        this.#childResult.playwright.launched === true,
+      child_playwright_invocation_count:
+        this.#childResult && this.#childResult.playwright
+          ? this.#childResult.playwright.invocation_count
+          : 0,
       cors_probe_invocations: this.#corsProbeInvocations,
       cors_probe_passed: this.#corsProbePassed,
+      preflight_helper_invocations: this.#preflightHelperInvocations,
+      preflight_red_categories: this.preflightRedCategories.length,
       ledger_sealed: true,
     };
   }
@@ -1436,6 +1756,7 @@ export function authorityCriticalPaths(moduleFile = fileURLToPath(import.meta.ur
     moduleFile,
     canonicalCorsHelperPath(moduleFile),
     canonicalAuthorityChildPath(moduleFile),
+    canonicalPreflightHelperPath(moduleFile),
     canonicalProfilePath(moduleFile),
   ];
 }

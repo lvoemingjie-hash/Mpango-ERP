@@ -42,6 +42,16 @@
  *      hash-chained JSONL ledger categories; the checker exercises
  *      R11-R18 and the B1-R5-R2 additions (no profilePath override,
  *      async child classification, chain-forced seal/evidence).
+ *  [15] B1-R6-R4 real Playwright child + runner-owned preflight helper:
+ *      the child resolves the frozen @playwright/test CLI from its own
+ *      install directory (version-pinned, argv array, shell:false),
+ *      records an atomic once-only invocation marker BEFORE spawn,
+ *      cross-binds wrapper/Playwright PIDs, awaited exits and the
+ *      candidate SHA, gates complete=true on the REAL reconciliation,
+ *      run stats and artifact scanner, and never writes PASS artifacts
+ *      itself; the runner owns the entire preflight (no caller checks),
+ *      spawns the committed-byte-bound helper process, refuses any
+ *      post-binding byte drift, and the checker proves R30-R40.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -651,8 +661,95 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   }
 }
 
+// [15] B1-R6-R4 real Playwright child + runner-owned preflight helper --------
+{
+  const runnerText = readFileSync(join(ROOT, 'tools', 'browser-authority-runner.mjs'), 'utf8');
+  for (const [needle, label] of [
+    ['canonicalPreflightHelperPath', 'canonical preflight helper path'],
+    ['PREFLIGHT_HELPER_INPUT_SCHEMA', 'exact preflight helper input schema'],
+    ['PREFLIGHT_HELPER_RESULT_SCHEMA', 'exact preflight helper result schema'],
+    ['parsePreflightHelperPayload', 'exact preflight payload parser'],
+    ['preflight_helper_dirty_vs_head', 'helper committed-blob binding'],
+    ['preflight_helper_no_response', 'helper crash/timeout fail-closed'],
+    ['preflight_helper_payload_invalid', 'forged helper payload fail-closed'],
+    ['preflight_input_rejected', 'caller check injection refused'],
+    ['authority_module_byte_drift', 'post-preflight helper/child byte drift guard'],
+    ['PREFLIGHT_CHECK_IDS', 'fixed preflight check taxonomy'],
+    ['PREFLIGHT_HOST_CHECK_IDS', 'host-level check id taxonomy'],
+    ['AUTHORITY_CHILD_INPUT_SCHEMA', 'child input schema binding'],
+    ['candidate_sha: this.#candidateSha', 'candidate SHA handed to the child'],
+  ]) {
+    if (!runnerText.includes(needle)) fail(15, `runner missing ${label}`);
+  }
+  if (/preflight\(checks\)/.test(runnerText) || /preflightInvocations \+= 1;\s*\n\s*if \(checks/.test(runnerText)) {
+    fail(15, 'runner still accepts caller-supplied preflight checks');
+  }
+
+  const entrypointText = readFileSync(join(ROOT, 'tools', 'browser-authority-entrypoint.mjs'), 'utf8');
+  if (!/control\.preflight\(\)/.test(entrypointText)) {
+    fail(15, 'entrypoint does not invoke the zero-argument runner-owned preflight');
+  }
+  if (entrypointText.includes("ok: true, label: 'entrypoint_direct_process'")) {
+    fail(15, 'entrypoint still carries the hardcoded preflight true check');
+  }
+  if (!entrypointText.includes('browser-authority-preflight-helper.mjs')) {
+    fail(15, 'entrypoint critical paths omit the preflight helper');
+  }
+
+  const childText = readFileSync(join(ROOT, 'tools', 'browser-authority-child.mjs'), 'utf8');
+  for (const [needle, label] of [
+    ["'1.49.1'", 'frozen Playwright version pin'],
+    ['@playwright', 'frozen Playwright install resolution'],
+    ['playwright_cli_unresolvable', 'frozen CLI resolution refusal'],
+    ['playwright_invocation_exceeded', 'second-start pre-spawn refusal'],
+    ['playwright_invocation_count', 'atomic invocation count record'],
+    ["'wx'", 'create-exclusive marker discipline'],
+    ['child_candidate_mismatch', 'candidate cross-binding refusal'],
+    ['reconciliation_json_missing', 'real reconciliation gate'],
+    ['reconciliation_stale', 'artifact freshness gate'],
+    ['run_stats_not_all_green', 'run stats genuineness gate'],
+    ['scanner_not_clean', 'artifact scanner gate'],
+    ['shell: false', 'no-shell subprocess discipline'],
+    ['spawn(process.execPath', 'fixed argv-array Playwright spawn'],
+  ]) {
+    if (!childText.includes(needle)) fail(15, `child missing ${label}`);
+  }
+  if (!/stdio: \['ignore', 'ignore', 'ignore'\]/.test(childText)) {
+    fail(15, 'child does not silence Playwright stdio (value-leak surface)');
+  }
+
+  const helperText = readFileSync(join(ROOT, 'tools', 'browser-authority-preflight-helper.mjs'), 'utf8');
+  for (const [needle, label] of [
+    ['browser-authority-preflight-input/1', 'helper input schema'],
+    ['browser-authority-preflight-result/1', 'helper result schema'],
+    ['browser-authority-profile.json', 'canonical profile re-read from own location'],
+    ['outer_authority_preflight', 'host-check execution-contract interface'],
+    ['frontend_page_marker_missing', 'frontend page criterion'],
+    ['maildir_not_empty', 'maildir empty criterion'],
+    ['forged_token_reuse', 'forged-token uniqueness criterion'],
+    ['established_login_refused', 'established login criterion'],
+    ['unverified_login_accepted', 'unverified refusal criterion'],
+  ]) {
+    if (!helperText.includes(needle)) fail(15, `preflight helper missing ${label}`);
+  }
+  if (/\bfetch\s*\(/.test(helperText)) {
+    fail(15, 'preflight helper references ambient fetch (native transport only)');
+  }
+
+  const checkerText = readFileSync(join(ROOT, 'tools', 'check-browser-authority-contracts.mjs'), 'utf8');
+  for (const marker of ['R30', 'R31', 'R32', 'R33', 'R34', 'R35', 'R36', 'R37', 'R38', 'R39', 'R40']) {
+    if (!checkerText.includes(`// ${marker} `) && !checkerText.includes(`// ${marker}—`) && !new RegExp(`// ${marker} [—-]`).test(checkerText)) {
+      fail(15, `checker missing ${marker} scenario`);
+    }
+  }
+
+  if (failures === 0) {
+    ok(15, 'real Playwright child + runner-owned preflight anchored (frozen CLI resolution, once-only invocation marker, candidate cross-binding, reconciliation/scanner gates, exact helper payloads, drift guards, R30-R40)');
+  }
+}
+
 if (failures > 0) {
   console.error(`STATIC GATE FAILED (${failures} failure(s))`);
   process.exit(1);
 }
-console.log('STATIC GATE PASSED (14/14 steps).');
+console.log('STATIC GATE PASSED (15/15 steps).');

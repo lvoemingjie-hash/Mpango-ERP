@@ -41,6 +41,18 @@
  *   R27 ambient fetch poisoning                    -> no authority bypass
  *   R28 launcher http/https poisoning              -> pristine child process probe
  *   R29 mutable launcher child result forgery      -> no authority seal/evidence
+ *   R30 fixed real child launches Playwright       -> PID/exit awaited + bound
+ *   R31 child/CLI path substitution refused        -> fixed module-relative argv only
+ *   R32 second Playwright start                    -> refused BEFORE spawn
+ *   R33 rc=0 without reconciliation                -> TEST_RED (complete=false)
+ *   R34 forged PASS artifacts / wrong candidate /  -> complete=false, TEST_RED
+ *       stale mtime / tampered run id
+ *   R35 scanner missing or nonzero                 -> TEST_RED
+ *   R36 helper omitted / forged payload / repeat   -> RED before authorize
+ *   R37 any preflight check RED                    -> VOID, spawn=0
+ *   R38 post-preflight input/helper/child drift    -> launch blocked, spawn=0
+ *   R39 sensitive values in outputs/ledger         -> firewall holds
+ *   R40 library seal/evidence still refused; R1-R29 GREEN preserved
  *
  * Every failing probe must throw the EXACT category; a probe that does not
  * throw, or throws a different category, fails this checker. After each RED
@@ -52,7 +64,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync, mkdtempSync, rmSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -129,7 +141,12 @@ const CONTRACT = {
 writeFileSync(contractPath, JSON.stringify(CONTRACT), 'utf8');
 
 // Local CORS fixture server: modes ok / wrong / missing / 400 / 500 / timeout.
+// It doubles as the preflight helper's frontend/backend fixture: GETs return
+// the real frontend SPA marker, and the formal login endpoint admits ONLY
+// the fixture owner value (the unverified identity must stay refused), so
+// the helper's positive flow passes against a REAL server over REAL http.
 let corsMode = 'ok';
+let preflightMode = 'ok'; // ok | frontend_down | health_down | owner_login_denied | unverified_login_allowed
 const corsRequests = [];
 const corsServer = http.createServer((req, res) => {
   corsRequests.push({
@@ -148,11 +165,42 @@ const corsServer = http.createServer((req, res) => {
     return;
   }
   if (corsMode === 'missing') { res.writeHead(200); res.end(); return; }
-  res.writeHead(200, { 'Access-Control-Allow-Origin': req.headers.origin ?? '' });
-  res.end();
+  let body = '';
+  req.on('data', (chunk) => {
+    if (body.length < 65536) body += chunk;
+  });
+  req.on('end', () => {
+    if (preflightMode === 'frontend_down' && !req.url.startsWith('/api/') && !req.url.startsWith('/healthz')) {
+      res.writeHead(500); res.end(); return;
+    }
+    if (preflightMode === 'health_down' && req.url.startsWith('/healthz')) {
+      res.writeHead(404); res.end(); return;
+    }
+    if (req.method === 'POST' && req.url.startsWith('/api/v1/client/auth/login')) {
+      let email = '';
+      try { email = String(JSON.parse(body || '{}').email ?? ''); } catch { email = ''; }
+      const ownerAllows = email === FIXTURE_ENV.J1H2C_RETAILER_EMAIL;
+      const unverifiedAllowed = preflightMode === 'unverified_login_allowed';
+      if (ownerAllows || (unverifiedAllowed && email === FIXTURE_ENV.J1H2C_UNVERIFIED_EMAIL)) {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end('{"token":"fixture-login-token","role":"fixture"}');
+        return;
+      }
+      res.writeHead(401, { 'content-type': 'application/json' });
+      res.end('{"error":"invalid_credentials"}');
+      return;
+    }
+    res.writeHead(200, { 'Access-Control-Allow-Origin': req.headers.origin ?? '' });
+    res.end('<!doctype html><html><body><div id="root"></div></body></html>');
+  });
 });
 await new Promise((resolve) => corsServer.listen(0, '127.0.0.1', resolve));
 const corsPort = corsServer.address().port;
+
+// The preflight helper proves the maildir exists, is writable and is EMPTY
+// at authority start — so the fixture value must be a real, empty directory.
+const FIXTURE_MAILDIR = join(SCRATCH, 'maildir');
+mkdirSync(FIXTURE_MAILDIR, { recursive: true });
 
 const FIXTURE_ENV = {
   J1H2C_RETAILER_EMAIL: 'fixture-owner-email-value',
@@ -160,7 +208,7 @@ const FIXTURE_ENV = {
   J1H2C_RETAILER_NEW_PASSWORD: 'fixture-new-password-value', // pragma: allowlist secret
   J1H2C_BASE_URL: `http://127.0.0.1:${corsPort}/portal`,
   J1H2C_API_BASE_URL: `http://127.0.0.1:${corsPort}`,
-  J1H2C_MAILDIR_ROOT: 'fixture-maildir-root-value',
+  J1H2C_MAILDIR_ROOT: FIXTURE_MAILDIR,
   J1H2C_W1_CANONICAL_CODE: 'FIXW1CODE',
   J1H2C_W2_CANONICAL_CODE: 'FIXW2CODE',
   J1H2C_UNKNOWN_EMAIL: 'fixture-unknown-email-value',
@@ -230,7 +278,7 @@ function freshControl(name) {
 async function fullFlow(control) {
   const { inputSha } = control.materialize(FIXTURE_ENV);
   await control.corsPreflightProbe();
-  control.preflight([{ ok: true, label: 'probe' }]);
+  control.preflight();
   const argv = ['node', 'tools', 'fixture-launch'];
   control.authorize({ inputSha, argv });
   return { inputSha, argv };
@@ -279,7 +327,9 @@ function copyCurrentAuthoritySource(label, { commitMutate = null } = {}) {
     'tools/browser-authority-runner.mjs',
     'tools/browser-authority-entrypoint.mjs',
     'tools/browser-authority-cors-probe-helper.mjs',
+    'tools/browser-authority-preflight-helper.mjs',
     'tools/browser-authority-child.mjs',
+    'tools/scan-artifacts.mjs',
     'inventory/browser-authority-profile.json',
   ]) {
     writeFileSync(join(sourceRoot, rel), readFileSync(join(ROOT, rel)));
@@ -334,6 +384,10 @@ function parseSingleJsonLine(text) {
   }
 }
 
+// Captured authority outputs for the R39 secret-firewall scans (assigned by
+// the R29/R30 scenarios that run real entrypoint/child processes).
+const r39ScannedOutputs = { entrypointStdout: '', entrypointStderr: '', childStdout: '', childStderr: '' };
+
 function ledgerRecords(path) {
   return readFileSync(path, 'utf8')
     .split('\n')
@@ -355,13 +409,18 @@ function writeCommittedChildVariant(sourceRoot, variant) {
     );
     return;
   }
+  // The dummy variants emit the EXACT new child result shape: a never-
+  // launched Playwright block, a bound candidate stand-in, and the requested
+  // exit/complete combination.
   const exitCode = variant === 'nonzero' ? 7 : 0;
   const complete = variant === 'incomplete' ? 'false' : 'true';
+  const category = variant === 'incomplete' ? 'reconciliation_incomplete' : 'child_complete';
   writeFileSync(
     join(sourceRoot, 'tools', 'browser-authority-child.mjs'),
     [
       ...prefix,
-      `writeSync(1, Buffer.from(JSON.stringify({ schema: RESULT_SCHEMA, pid: process.pid, exit: ${exitCode}, reconciliation: { complete: ${complete} } }) + '\\n', 'utf8'));`,
+      `const pw = { launched: ${variant === 'incomplete'}, pid: ${variant === 'incomplete' ? 'process.pid + 12345' : 'null'}, exit_code: ${variant === 'incomplete' ? 0 : 'null'}, invocation_count: ${variant === 'incomplete' ? 1 : 0} };`,
+      `writeSync(1, Buffer.from(JSON.stringify({ schema: RESULT_SCHEMA, pid: process.pid, exit: ${exitCode}, category: '${category}', playwright: pw, candidate_sha: '${'a'.repeat(40)}', reconciliation: { complete: ${complete}, category: '${category}' } }) + '\\n', 'utf8'));`,
       `process.exit(${exitCode});`,
       '',
     ].join('\n'),
@@ -727,7 +786,7 @@ async function fullFlowPreflight(control) {
   const { inputSha, argv } = await fullFlow(control);
   let caught = null;
   try {
-    control.preflight([{ ok: true, label: 'probe' }]);
+    control.preflight();
   } catch (error) {
     caught = error.category;
   }
@@ -1284,12 +1343,12 @@ function controlProfileStillDirty() {
   // POST + content-type, exact allow-origin echo, then the full flow.
   const control = freshControl('r26-pos');
   const { inputSha, argv } = await fullFlow(control);
-  const last = corsRequests[corsRequests.length - 1];
-  expect(last.method === 'OPTIONS', 'R26-POS: side-effect-free OPTIONS');
-  expect(last.url === '/client/auth/forgot-password', 'R26-POS: target derived from bound api_base_url exactly');
-  expect(last.acrm === 'POST' && last.acrh === 'content-type', 'R26-POS: declares POST + content-type');
+  const lastOptions = [...corsRequests].reverse().find((request) => request.method === 'OPTIONS');
+  expect(lastOptions.method === 'OPTIONS', 'R26-POS: side-effect-free OPTIONS');
+  expect(lastOptions.url === '/client/auth/forgot-password', 'R26-POS: target derived from bound api_base_url exactly');
+  expect(lastOptions.acrm === 'POST' && lastOptions.acrh === 'content-type', 'R26-POS: declares POST + content-type');
   const derivedOrigin = new URL(FIXTURE_ENV.J1H2C_BASE_URL).origin;
-  expect(last.origin === derivedOrigin, 'R26-POS: Origin derived from bound base_url');
+  expect(lastOptions.origin === derivedOrigin, 'R26-POS: Origin derived from bound base_url');
   await expectCategoryAsync(
     () => control.corsPreflightProbe(),
     'cors_probe_already_invoked',
@@ -1302,22 +1361,24 @@ function controlProfileStillDirty() {
   const controlOmit = freshControl('r26-omit');
   controlOmit.materialize(FIXTURE_ENV);
   expectCategory(
-    () => controlOmit.preflight([{ ok: true, label: 'probe' }]),
+    () => controlOmit.preflight(),
     'cors_probe_missing',
     'R26-OMIT: preflight without the runner-owned probe',
   );
   expect(controlOmit.current === 'STOPPED' && controlOmit.launchStarts === 0, 'R26-OMIT: STOPPED, starts=0');
 
-  // R26-FAKE: a caller ok=true check (however labeled) cannot substitute.
+  // R26-FAKE: caller-supplied check results (however labeled) have no path
+  // into the runner-owned preflight at all.
   const controlFake = freshControl('r26-fake');
   controlFake.materialize(FIXTURE_ENV);
+  await controlFake.corsPreflightProbe();
   expectCategory(
     () =>
       controlFake.preflight([
         { ok: true, label: 'caller_cors', category: 'caller_cors_ok' },
         { ok: true, label: 'anything' },
       ]),
-    'cors_probe_missing',
+    'preflight_input_rejected',
     'R26-FAKE: caller ok=true boolean refused',
   );
   expect(controlFake.launchStarts === 0, 'R26-FAKE: starts=0');
@@ -1683,15 +1744,23 @@ const R27_CHILD_SOURCE = [
     );
   }
 
+  // B1-R6-R4 positive control: the direct entrypoint now runs the chain
+  // against the REAL child, which truthfully refuses to spawn a frozen
+  // Playwright CLI that the fixture source tree does not carry. The
+  // truthful terminal verdict is therefore a SEALED TEST_RED with the real
+  // child process observed — never a fabricated FINISHED.
   const positive = await runCommittedEntrypoint('r29-r1-positive');
+  r39ScannedOutputs.entrypointStdout = String(positive.stdout ?? '');
+  r39ScannedOutputs.entrypointStderr = String(positive.stderr ?? '');
   const positivePayload = parseSingleJsonLine(positive.stdout);
-  expect(positive.status === 0, `R29-R1: direct entrypoint exited 0 (got ${positive.status})`);
+  expect(positive.status !== 0, `R29-R1: direct entrypoint without a frozen install exits nonzero (got ${positive.status})`);
   expect(positivePayload && positivePayload.authority === true, 'R29-R1: direct entrypoint emitted authority evidence');
-  expect(positivePayload && positivePayload.outcome === 'FINISHED', 'R29-R1: direct entrypoint FINISHED');
-  expect(positivePayload && positivePayload.evidence && positivePayload.evidence.state === 'FINISHED', 'R29-R1: evidence state FINISHED');
+  expect(positivePayload && positivePayload.outcome === 'TEST_RED', 'R29-R1: truthful TEST_RED verdict');
+  expect(positivePayload && positivePayload.evidence && positivePayload.evidence.state === 'TEST_RED', 'R29-R1: evidence state TEST_RED');
   expect(positivePayload && positivePayload.evidence && positivePayload.evidence.child_real_process_observed === true, 'R29-R1: real child observed');
   expect(positivePayload && positivePayload.evidence && Number.isInteger(positivePayload.evidence.child_pid) && positivePayload.evidence.child_pid > 0, 'R29-R1: real child PID recorded');
-  expect(positivePayload && positivePayload.evidence && positivePayload.evidence.child_exit_code === 0, 'R29-R1: child exit=0 recorded');
+  expect(positivePayload && positivePayload.evidence && Number.isInteger(positivePayload.evidence.child_exit_code) && positivePayload.evidence.child_exit_code !== 0, 'R29-R1: child refusal exit recorded');
+  expect(positivePayload && positivePayload.evidence && positivePayload.evidence.child_playwright_observed === false, 'R29-R1: no Playwright process without a frozen install');
   expect(positivePayload && positivePayload.evidence && positivePayload.evidence.ledger_sealed === true, 'R29-R1: evidence reports terminal seal');
   expect(new runner.DurableJsonlLedger(positive.ledgerPath).verifyChain().count > 0, 'R29-R1: ledger hash chain valid');
   expect(
@@ -1758,6 +1827,491 @@ const R27_CHILD_SOURCE = [
 }
 
 // ---------------------------------------------------------------------------
+// R30-R40 — real Playwright child + runner-owned preflight authenticity
+// (B1-R6-R4). The child is exercised DIRECTLY as a fixed-argv process over a
+// scratch source tree with a FAKE frozen Playwright install; every PID, exit
+// and artifact is awaited and cross-bound. Sensitive fixture values never
+// reach output.
+// ---------------------------------------------------------------------------
+
+// Field-keyed projection of the fixture values (the materialized input shape).
+const FIXTURE_VALUES = {
+  owner: FIXTURE_ENV.J1H2C_RETAILER_EMAIL,
+  owner_current_password: FIXTURE_ENV.J1H2C_RETAILER_CURRENT_PASSWORD,
+  owner_new_password: FIXTURE_ENV.J1H2C_RETAILER_NEW_PASSWORD,
+  base_url: FIXTURE_ENV.J1H2C_BASE_URL,
+  api_base_url: FIXTURE_ENV.J1H2C_API_BASE_URL,
+  maildir_root: FIXTURE_MAILDIR,
+  w1_canonical_code: FIXTURE_ENV.J1H2C_W1_CANONICAL_CODE,
+  w2_canonical_code: FIXTURE_ENV.J1H2C_W2_CANONICAL_CODE,
+  unknown_identity: FIXTURE_ENV.J1H2C_UNKNOWN_EMAIL,
+  unverified_identity: FIXTURE_ENV.J1H2C_UNVERIFIED_EMAIL,
+  forged_reset_token: FIXTURE_ENV.J1H2C_FORGED_RESET_TOKEN,
+  w1_verified_invitation_code: FIXTURE_ENV.J1H2C_W1_VERIFIED_INVITATION_CODE,
+  w1_verified_invitation_phone: FIXTURE_ENV.J1H2C_W1_VERIFIED_INVITATION_PHONE,
+  w1_unverified_invitation_code: FIXTURE_ENV.J1H2C_W1_UNVERIFIED_INVITATION_CODE,
+  w1_unverified_invitation_phone: FIXTURE_ENV.J1H2C_W1_UNVERIFIED_INVITATION_PHONE,
+};
+
+function fixtureGit(root, ...args) {
+  return execFileSync('git', ['-C', root, ...args], { stdio: ['ignore', 'pipe', 'ignore'] });
+}
+
+const FAKE_CLI_TEMPLATE = (cliExit, writeArtifacts, tamperMarker) => `
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+const proof = { pid: process.pid, argv: process.argv.slice(2), marker: 'fake-playwright-ran' };
+mkdirSync('artifacts', { recursive: true });
+writeFileSync('artifacts/fake-playwright-proof.json', JSON.stringify(proof));
+${writeArtifacts ? `
+const nodes = [
+  ...['HC01','HC02','HC03','HC04','HC05','HC06','HC07','HC08','HC09','HC10','HC12','HC13','HC14','HC15','HC16'].map((id) => ({ nodeId: id, surface: 'browser', outcome: 'PASS' })),
+  { nodeId: 'HC11', surface: 'static', outcome: 'PASS' },
+  { nodeId: 'HC17', surface: 'static', outcome: 'PASS' },
+];
+const summary = { browser: { total: 15, pass: 15 }, static: { total: 2, pass: 2 }, total: 17, gap: 0, incomplete: [], outcomes: { pass: 17, fail: 0, notRun: 0, pending: 0 }, preconditionOutcome: 'PRECONDITION_PASS' };
+writeFileSync('artifacts/reconciliation.json', JSON.stringify({ schema: 'j1h2c-reconciliation/1', preconditionOutcome: 'PRECONDITION_PASS', note: 'fixture', summary, nodes }, null, 2));
+writeFileSync('artifacts/reconciliation.csv', 'node_id,surface,outcome\\n' + nodes.map((n) => n.nodeId + ',' + n.surface + ',' + n.outcome).join('\\n') + '\\n');
+writeFileSync('artifacts/results.json', JSON.stringify({ stats: { startTime: new Date().toISOString(), duration: 1, expected: 15, skipped: 0, unexpected: 0, flaky: 0 } }));
+writeFileSync('artifacts/results-junit.xml', '<testsuites tests="15" failures="0" skipped="0" errors="0" time="0.001"></testsuites>');
+writeFileSync('artifacts/maildir-snapshot.json', JSON.stringify({ schema: 'j1h2c-maildir-snapshot/2', mailboxes: { established: [], unverified: [] }, note: 'fixture' }));
+${tamperMarker ? `
+const markerPath = 'artifacts/authority-invocation.json';
+const marker = JSON.parse(readFileSync(markerPath, 'utf8'));
+marker.run_id = 'tampered-run-id-00000000000000000000000000';
+writeFileSync(markerPath, JSON.stringify(marker));
+` : ''}` : ''}
+process.exit(${cliExit});
+`;
+
+function makeChildFixture(label, { withCli = true, cliExit = 0, writeArtifacts = true, tamperMarker = false, withScanner = true } = {}) {
+  const root = join(SCRATCH, `${label}-root`);
+  ensureDir(join(root, 'tools'));
+  ensureDir(join(root, 'inventory'));
+  for (const rel of [
+    'tools/browser-authority-runner.mjs',
+    'tools/browser-authority-entrypoint.mjs',
+    'tools/browser-authority-cors-probe-helper.mjs',
+    'tools/browser-authority-preflight-helper.mjs',
+    'tools/browser-authority-child.mjs',
+    'tools/scan-artifacts.mjs',
+    'inventory/browser-authority-profile.json',
+  ]) {
+    writeFileSync(join(root, rel), readFileSync(join(ROOT, rel)));
+  }
+  if (!withScanner) rmSync(join(root, 'tools', 'scan-artifacts.mjs'));
+  fixtureGit(root, 'init', '-b', 'main');
+  fixtureGit(root, 'config', 'user.email', 'fixture@charges.invalid');
+  fixtureGit(root, 'config', 'user.name', 'fixture');
+  fixtureGit(root, 'add', 'tools', 'inventory');
+  fixtureGit(root, 'commit', '-m', 'child fixture');
+  const head = fixtureGit(root, 'rev-parse', 'HEAD').toString().trim();
+  if (withCli) {
+    const cliDir = join(root, 'node_modules', '@playwright', 'test');
+    ensureDir(cliDir);
+    writeFileSync(
+      join(cliDir, 'package.json'),
+      JSON.stringify({ name: '@playwright/test', version: '1.49.1' }),
+      'utf8',
+    );
+    writeFileSync(join(cliDir, 'cli.js'), FAKE_CLI_TEMPLATE(cliExit, writeArtifacts, tamperMarker), 'utf8');
+  }
+  // Task maildir with exactly one fresh delivery per mailbox (setup tokens).
+  const maildir = join(root, 'maildir');
+  mkdirSync(join(maildir, FIXTURE_ENV.J1H2C_RETAILER_EMAIL.toLowerCase()), { recursive: true });
+  mkdirSync(join(maildir, FIXTURE_ENV.J1H2C_UNVERIFIED_EMAIL.toLowerCase()), { recursive: true });
+  writeFileSync(
+    join(maildir, FIXTURE_ENV.J1H2C_RETAILER_EMAIL.toLowerCase(), 'delivery-1.json'),
+    JSON.stringify({ link: 'https://mail.invalid/reset#setupToken=fixsetup-established-token-0001' }),
+    'utf8',
+  );
+  writeFileSync(
+    join(maildir, FIXTURE_ENV.J1H2C_UNVERIFIED_EMAIL.toLowerCase(), 'delivery-1.json'),
+    JSON.stringify({ link: 'https://mail.invalid/setup#setupToken=fixsetup-unverified-token-0002' }),
+    'utf8',
+  );
+  return { root, head, proofPath: join(root, 'artifacts', 'fake-playwright-proof.json'), maildir };
+}
+
+function childInputFor(fx, { valuesPatch = {}, candidateSha } = {}) {
+  const values = { ...FIXTURE_VALUES, ...valuesPatch, maildir_root: fx.maildir };
+  return {
+    schema: 'j1h2c/browser-authority-child-input/1',
+    input_sha: runner.sha256Hex(JSON.stringify({ owner_email_label: 'owner', values })),
+    cwd_sha: runner.sha256Hex(realpathSync(fx.root)),
+    candidate_sha: candidateSha ?? fx.head,
+    owner_email_label: 'owner',
+    values,
+  };
+}
+
+function runChildDirect(fx, input, { argvExtra = [], envPatch = {} } = {}) {
+  const result = spawnSync(
+    process.execPath,
+    [join(fx.root, 'tools', 'browser-authority-child.mjs'), ...argvExtra],
+    {
+      cwd: fx.root,
+      input: JSON.stringify(input),
+      encoding: 'utf8',
+      env: { ...runner.probeChildEnv(), ...envPatch },
+      timeout: 120000,
+      windowsHide: true,
+    },
+  );
+  let payload = null;
+  try {
+    payload = JSON.parse(String(result.stdout).trim());
+  } catch {
+    payload = null;
+  }
+  return { status: result.status, stdout: String(result.stdout ?? ''), stderr: String(result.stderr ?? ''), payload };
+}
+
+// R30 — the fixed child REALLY launches the fake Playwright executable and
+// awaits + binds its PID and exit; only a fully consistent, fresh,
+// candidate-bound, scanner-clean evidence set reaches complete=true.
+const r30fx = makeChildFixture('r30');
+const r30input = childInputFor(r30fx);
+const r30 = runChildDirect(r30fx, r30input);
+r39ScannedOutputs.childStdout = r30.stdout;
+r39ScannedOutputs.childStderr = r30.stderr;
+expect(r30.status === 0, `R30: child exit 0 (got ${r30.status}; stderr ${r30.stderr.slice(0, 120)})`);
+expect(r30.payload && r30.payload.schema === 'j1h2c/browser-authority-child-result/1', 'R30: exact result schema');
+expect(r30.payload && r30.payload.exit === 0 && r30.payload.reconciliation.complete === true, 'R30: complete=true only after full gates');
+expect(r30.payload && r30.payload.reconciliation.category === 'child_complete', 'R30: complete category');
+expect(r30.payload && r30.payload.playwright.launched === true, 'R30: Playwright process launched');
+expect(r30.payload && Number.isInteger(r30.payload.playwright.pid) && r30.payload.playwright.pid > 0, 'R30: Playwright PID bound');
+expect(r30.payload && r30.payload.playwright.pid !== r30.payload.pid, 'R30: Playwright PID distinct from wrapper PID');
+expect(r30.payload && r30.payload.playwright.exit_code === 0, 'R30: awaited Playwright exit bound');
+expect(r30.payload && r30.payload.playwright.invocation_count === 1, 'R30: exactly one invocation recorded');
+expect(r30.payload && r30.payload.candidate_sha === r30fx.head, 'R30: candidate SHA cross-bound');
+const r30proof = JSON.parse(readFileSync(r30fx.proofPath, 'utf8'));
+expect(r30proof.marker === 'fake-playwright-ran', 'R30: fake Playwright executable really ran');
+expect(r30.payload && r30proof.pid === r30.payload.playwright.pid, 'R30: reported PID equals the real spawned PID');
+expect(JSON.stringify(r30proof.argv) === JSON.stringify(['test']), 'R30: fixed Playwright argv only');
+const r30marker = JSON.parse(readFileSync(join(r30fx.root, 'artifacts', 'authority-invocation.json'), 'utf8'));
+expect(r30marker.playwright_invocation_count === 1 && r30marker.candidate_sha === r30fx.head, 'R30: atomic invocation marker bound');
+expect(r30.payload && r30marker.wrapper_pid === r30.payload.pid, 'R30: wrapper PID cross-bound via marker');
+
+// R31 — caller child/CLI path substitution is refused.
+{
+  const fx = makeChildFixture('r31', { cliExit: 0 });
+  // Extra argv element: refused before anything runs (proof file absent).
+  const extra = runChildDirect(fx, childInputFor(fx), { argvExtra: ['--evil-arg'] });
+  expect(extra.status !== 0, 'R31: extra argv refused');
+  expect(extra.payload && extra.payload.category === 'child_argv_shape_refused', 'R31: argv shape category');
+  expect(extra.payload && extra.payload.playwright.launched === false, 'R31: nothing launched under a doctored argv');
+  expect(!existsSync(fx.proofPath), 'R31: doctored argv never reached Playwright');
+  // Environment-provided path overrides are ignored by construction.
+  const override = runChildDirect(fx, childInputFor(fx), {
+    envPatch: { PLAYWRIGHT_CLI_PATH: join(SCRATCH, 'evil-cli.js'), J1H2C_BROWSER_AUTHORITY_CHILD: join(SCRATCH, 'evil-child.mjs') },
+  });
+  expect(override.status === 0 && override.payload && override.payload.playwright.launched === true, 'R31: env path overrides cannot redirect the frozen CLI');
+}
+
+// R32 — a second Playwright start is refused BEFORE spawn.
+{
+  const r32 = runChildDirect(r30fx, r30input);
+  expect(r32.status !== 0, 'R32: second invocation refused');
+  expect(r32.payload && r32.payload.category === 'playwright_invocation_exceeded', 'R32: pre-spawn refusal category');
+  expect(r32.payload && r32.payload.playwright.launched === false, 'R32: no second Playwright process');
+  const proofAfter = JSON.parse(readFileSync(r30fx.proofPath, 'utf8'));
+  expect(proofAfter.pid === r30proof.pid, 'R32: spawn count still exactly one');
+}
+
+// R33 — Playwright rc=0 WITHOUT genuine reconciliation evidence is TEST_RED.
+{
+  const fx = makeChildFixture('r33', { cliExit: 0, writeArtifacts: false });
+  const out = runChildDirect(fx, childInputFor(fx));
+  expect(out.status !== 0, 'R33: missing evidence exits nonzero');
+  expect(out.payload && out.payload.exit !== 0 && out.payload.reconciliation.complete === false, 'R33: complete=false');
+  expect(out.payload && out.payload.reconciliation.category === 'reconciliation_json_missing', 'R33: missing reconciliation category');
+}
+
+// R34 — forged PASS artifacts, wrong candidate, stale mtimes and a tampered
+// run id are ALL refused.
+{
+  // (a) forged reconciliation whose run stats disagree.
+  const fxA = makeChildFixture('r34-stats', { cliExit: 0, writeArtifacts: true });
+  writeFileSync(
+    join(fxA.root, 'artifacts', 'results.json'),
+    JSON.stringify({ stats: { startTime: new Date().toISOString(), duration: 1, expected: 3, skipped: 0, unexpected: 12, flaky: 0 } }),
+    'utf8',
+  );
+  const outA = runChildDirect(fxA, childInputFor(fxA));
+  expect(outA.status !== 0 && outA.payload && outA.payload.reconciliation.complete === false, 'R34: forged PASS reconciliation refused');
+  expect(outA.payload && outA.payload.reconciliation.category === 'run_stats_not_all_green', 'R34: stats mismatch category');
+
+  // (b) input candidate SHA that does not match the live HEAD.
+  const fxB = makeChildFixture('r34-candidate', { cliExit: 0 });
+  const outB = runChildDirect(fxB, childInputFor(fxB, { candidateSha: 'b'.repeat(40) }));
+  expect(outB.status === 5 && outB.payload && outB.payload.category === 'child_candidate_mismatch', 'R34: wrong candidate refused pre-spawn');
+  expect(outB.payload && outB.payload.playwright.launched === false, 'R34: wrong candidate never spawns');
+
+  // (c) stale artifacts older than the invocation marker.
+  const fxC = makeChildFixture('r34-stale', { cliExit: 0, writeArtifacts: false });
+  mkdirSync(join(fxC.root, 'artifacts'), { recursive: true });
+  const staleNodes = [
+    ...['HC01','HC02','HC03','HC04','HC05','HC06','HC07','HC08','HC09','HC10','HC12','HC13','HC14','HC15','HC16'].map((id) => ({ nodeId: id, surface: 'browser', outcome: 'PASS' })),
+    { nodeId: 'HC11', surface: 'static', outcome: 'PASS' },
+    { nodeId: 'HC17', surface: 'static', outcome: 'PASS' },
+  ];
+  const staleSummary = { browser: { total: 15, pass: 15 }, static: { total: 2, pass: 2 }, total: 17, gap: 0, incomplete: [], outcomes: { pass: 17, fail: 0, notRun: 0, pending: 0 }, preconditionOutcome: 'PRECONDITION_PASS' };
+  writeFileSync(join(fxC.root, 'artifacts', 'reconciliation.json'), JSON.stringify({ schema: 'j1h2c-reconciliation/1', preconditionOutcome: 'PRECONDITION_PASS', note: 'stale', summary: staleSummary, nodes: staleNodes }));
+  writeFileSync(join(fxC.root, 'artifacts', 'reconciliation.csv'), 'node_id,surface,outcome\n' + staleNodes.map((n) => `${n.nodeId},${n.surface},${n.outcome}`).join('\n') + '\n');
+  writeFileSync(join(fxC.root, 'artifacts', 'results.json'), JSON.stringify({ stats: { expected: 15, skipped: 0, unexpected: 0, flaky: 0 } }));
+  writeFileSync(join(fxC.root, 'artifacts', 'results-junit.xml'), '<testsuites tests="15" failures="0" skipped="0" errors="0"></testsuites>');
+  writeFileSync(join(fxC.root, 'artifacts', 'maildir-snapshot.json'), JSON.stringify({ schema: 'j1h2c-maildir-snapshot/2', mailboxes: { established: [], unverified: [] } }));
+  const stale = new Date(Date.now() - 60000);
+  for (const name of ['reconciliation.json', 'reconciliation.csv', 'results.json', 'results-junit.xml']) {
+    utimesSync(join(fxC.root, 'artifacts', name), stale, stale);
+  }
+  const outC = runChildDirect(fxC, childInputFor(fxC));
+  expect(outC.status !== 0 && outC.payload && outC.payload.reconciliation.complete === false, 'R34: stale artifacts refused');
+  expect(outC.payload && outC.payload.reconciliation.category === 'reconciliation_stale', 'R34: stale mtime category');
+
+  // (d) tampered invocation run id.
+  const fxD = makeChildFixture('r34-runid', { cliExit: 0, writeArtifacts: true, tamperMarker: true });
+  const outD = runChildDirect(fxD, childInputFor(fxD));
+  expect(outD.status !== 0 && outD.payload && outD.payload.reconciliation.complete === false, 'R34: tampered run id refused');
+  expect(outD.payload && outD.payload.reconciliation.category === 'invocation_marker_drift', 'R34: run id drift category');
+}
+
+// R35 — a missing or failing artifact scanner keeps the run RED.
+{
+  const fxA = makeChildFixture('r35-missing', { cliExit: 0, withScanner: false });
+  const outA = runChildDirect(fxA, childInputFor(fxA));
+  expect(outA.status !== 0 && outA.payload && outA.payload.reconciliation.complete === false, 'R35: scanner missing refused');
+  expect(outA.payload && outA.payload.reconciliation.category === 'scanner_missing', 'R35: scanner-missing category');
+
+  const fxB = makeChildFixture('r35-nonzero', { cliExit: 0, withScanner: true });
+  writeFileSync(join(fxB.root, 'tools', 'scan-artifacts.mjs'), 'process.exit(1);\n', 'utf8');
+  const outB = runChildDirect(fxB, childInputFor(fxB));
+  expect(outB.status !== 0 && outB.payload && outB.payload.reconciliation.complete === false, 'R35: scanner nonzero refused');
+  expect(outB.payload && outB.payload.reconciliation.category === 'scanner_not_clean', 'R35: scanner-nonzero category');
+}
+
+// R36 — the preflight helper cannot be omitted, forged, or repeated.
+{
+  // (a) omission: an entrypoint fixture whose helper was deleted refuses.
+  const omit = await runCommittedEntrypoint('r36-helper-omit', {
+    mutate: (sourceRoot) => rmSync(join(sourceRoot, 'tools', 'browser-authority-preflight-helper.mjs')),
+  });
+  expect(omit.status !== 0, 'R36: omitted helper refuses authority');
+  expect((omit.stdout + omit.stderr).includes('working_tree_dirty_vs_head'), 'R36: omitted helper category exact');
+
+  // (b) forged helper payloads fail the exact-schema parser.
+  const greenCheck = (id) => ({ id, ok: true, category: 'check_green' });
+  const coreGreen = runner.PREFLIGHT_CHECK_IDS.map(greenCheck);
+  const hostGreen = runner.PREFLIGHT_HOST_CHECK_IDS.map(greenCheck);
+  expectCategory(() => runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: true, checks: coreGreen, counts: { total: 9, red: 0, host_checks_present: 0 } }), 'preflight_helper_payload_invalid', 'R36: extra top-level key refused');
+  expectCategory(() => runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: true, checks: coreGreen.slice(0, 8), counts: { total: 8, red: 0, host_checks_present: 0 } }), 'preflight_helper_payload_invalid', 'R36: missing core check refused');
+  expectCategory(() => runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: true, checks: [...coreGreen.slice(0, 8), greenCheck('caller_extra_check')], counts: { total: 9, red: 0, host_checks_present: 0 } }), 'preflight_helper_payload_invalid', 'R36: forged ok=true with an unknown check refused');
+  expectCategory(() => runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: true, checks: [...coreGreen.slice(0, 8), { id: 'frontend_origin_page', ok: true, category: 'check_green' }], counts: { total: 9, red: 0, host_checks_present: 0 } }), 'preflight_helper_payload_invalid', 'R36: duplicate check id refused');
+  expectCategory(() => runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: true, checks: [...coreGreen.slice(0, 8), { id: 'frontend_origin_page', ok: false, category: 'frontend_origin_unreachable' }], counts: { total: 9, red: 1, host_checks_present: 0 } }), 'preflight_helper_payload_invalid', 'R36: forged ok=true over a RED check refused');
+  expectCategory(() => runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: false, checks: coreGreen, counts: { total: 9, red: 0, host_checks_present: 0 } }), 'preflight_helper_payload_invalid', 'R36: ok=false without any red check refused');
+  expectCategory(() => runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: true, checks: coreGreen, counts: { total: 8, red: 0, host_checks_present: 0 } }), 'preflight_helper_payload_invalid', 'R36: counts mismatch refused');
+  const acceptedGreen = runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: true, checks: [...coreGreen, ...hostGreen], counts: { total: 13, red: 0, host_checks_present: 4 } });
+  expect(acceptedGreen.ok === true, 'R36: all-green core+host payload accepted');
+  const acceptedHostRed = runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: false, checks: [...coreGreen, { id: 'pg_reachable', ok: false, category: 'pg_unreachable' }, ...hostGreen.slice(1)], counts: { total: 13, red: 1, host_checks_present: 4 } });
+  expect(acceptedHostRed.ok === false && acceptedHostRed.counts.red === 1, 'R36: host RED payload accepted for classification');
+
+  // (c) repetition: a second preflight on the same plane is terminal.
+  const controlRepeat = freshControl('r36-repeat');
+  const flowRepeat = await fullFlow(controlRepeat);
+  expectCategory(() => controlRepeat.preflight(), 'preflight_already_invoked', 'R36: repeated preflight refused');
+  expect(controlRepeat.launchStarts === 0, 'R36: repetition started nothing');
+  await greenPath('r36-restore');
+
+  // (d) host-check interface: the helper folds a provided outer-preflight
+  // block into the verdict (categories only) and rejects malformed blocks.
+  function spawnHelperDirect(inputObject) {
+    const out = spawnSync(
+      process.execPath,
+      [join(ROOT, 'tools', 'browser-authority-preflight-helper.mjs')],
+      {
+        cwd: ROOT,
+        input: JSON.stringify(inputObject),
+        encoding: 'utf8',
+        env: runner.probeChildEnv(),
+        timeout: 60000,
+        windowsHide: true,
+      },
+    );
+    let payload = null;
+    try {
+      payload = JSON.parse(String(out.stdout).trim());
+    } catch {
+      payload = null;
+    }
+    return { status: out.status, payload, stdout: String(out.stdout ?? '') };
+  }
+  const hostRedBlock = {
+    schema: runner.PREFLIGHT_HELPER_INPUT_SCHEMA,
+    timeout_ms: 20000,
+    values: FIXTURE_VALUES,
+    host_preflight: {
+      provided_by: 'outer_authority_preflight',
+      checks: [{ id: 'pg_reachable', ok: false, category: 'pg_unreachable' }],
+    },
+  };
+  const hostRed = spawnHelperDirect(hostRedBlock);
+  expect(hostRed.status === 0 && hostRed.payload && hostRed.payload.ok === false, 'R36: host RED folds into ok=false');
+  expect(hostRed.payload && hostRed.payload.checks.some((check) => check.id === 'pg_reachable' && check.ok === false && check.category === 'pg_unreachable'), 'R36: host RED category reported');
+  expect(hostRed.payload && hostRed.payload.counts.host_checks_present === 1, 'R36: host presence counted');
+  const hostGreenBlock = { ...hostRedBlock };
+  hostGreenBlock.host_preflight = {
+    provided_by: 'outer_authority_preflight',
+    checks: runner.PREFLIGHT_HOST_CHECK_IDS.map((id) => ({ id, ok: true, category: 'check_green' })),
+  };
+  const hostGreenRun = spawnHelperDirect(hostGreenBlock);
+  expect(hostGreenRun.status === 0 && hostGreenRun.payload && hostGreenRun.payload.ok === true, 'R36: host GREEN folds into ok=true');
+  const hostBadBlock = { ...hostRedBlock };
+  hostBadBlock.host_preflight = { provided_by: 'not_the_outer_layer', checks: [] };
+  const hostBad = spawnHelperDirect(hostBadBlock);
+  expect(hostBad.status !== 0 && hostBad.payload === null, 'R36: malformed host block fails closed without a payload');
+  await greenPath('r36-host-restore');
+}
+
+// R37 — every preflight check RED lands VOID before authorize, spawn=0.
+{
+  async function expectPreflightVoid(label, { envPatch = {}, preflightSetup = null } = {}) {
+    const control = freshControl(`r37-${label}`);
+    const env = { ...FIXTURE_ENV, ...envPatch };
+    control.materialize(env);
+    await control.corsPreflightProbe();
+    if (preflightSetup) preflightSetup();
+    expectCategory(() => control.preflight(), 'preflight_red', `R37-${label}: RED check refused`);
+    expect(control.current === 'STOPPED' && control.launchStarts === 0, `R37-${label}: VOID with spawn=0`);
+    const sink = join(SCRATCH, `ledger-r37-${label}.jsonl`);
+    const records = existsSync(sink)
+      ? readFileSync(sink, 'utf8').split('\n').filter((line) => line.length > 0).map((line) => JSON.parse(line))
+      : [];
+    expect(records.some((record) => record.entry && record.entry.kind === 'void'), `R37-${label}: void record ledgered`);
+  }
+  preflightMode = 'frontend_down';
+  await expectPreflightVoid('frontend-down', {});
+  preflightMode = 'health_down';
+  await expectPreflightVoid('health-down', {});
+  preflightMode = 'owner_login_denied';
+  await expectPreflightVoid('owner-login-denied', {});
+  preflightMode = 'unverified_login_allowed';
+  await expectPreflightVoid('unverified-login-allowed', {});
+  preflightMode = 'ok';
+  await expectPreflightVoid('maildir-nonempty', {
+    preflightSetup: () => writeFileSync(join(FIXTURE_MAILDIR, 'stray-delivery.json'), '{}'),
+  });
+  rmSync(join(FIXTURE_MAILDIR, 'stray-delivery.json'));
+  await expectPreflightVoid('w-collision', {
+    envPatch: { J1H2C_W2_CANONICAL_CODE: FIXTURE_ENV.J1H2C_W1_CANONICAL_CODE },
+  });
+  await expectPreflightVoid('identity-collision', {
+    envPatch: { J1H2C_UNVERIFIED_EMAIL: FIXTURE_ENV.J1H2C_RETAILER_EMAIL },
+  });
+  await expectPreflightVoid('invitation-collision', {
+    envPatch: { J1H2C_W1_UNVERIFIED_INVITATION_CODE: FIXTURE_ENV.J1H2C_W1_VERIFIED_INVITATION_CODE },
+  });
+  await expectPreflightVoid('forged-reuse', {
+    envPatch: { J1H2C_FORGED_RESET_TOKEN: FIXTURE_ENV.J1H2C_RETAILER_EMAIL },
+  });
+  await greenPath('r37-restore');
+}
+
+// R38 — any input/helper/child drift AFTER preflight blocks the launch.
+{
+  const childPath = join(ROOT, 'tools', 'browser-authority-child.mjs');
+  const helperPath = join(ROOT, 'tools', 'browser-authority-preflight-helper.mjs');
+  for (const [label, driftPath] of [['child', childPath], ['helper', helperPath]]) {
+    const control = freshControl(`r38-${label}`);
+    const { argv } = await fullFlow(control);
+    const saved = readFileSync(driftPath);
+    try {
+      writeFileSync(driftPath, Buffer.concat([saved, Buffer.from('\n')], saved.length + 1));
+      expectCategory(
+        () => control.launch(() => ({ rc: 0, pid: 4242424, real_child: true, reconciliation: { complete: true } }), { argv }),
+        'authority_module_byte_drift',
+        `R38-${label}: byte drift blocks launch`,
+      );
+      expect(control.current === 'STOPPED' && control.launchStarts === 0, `R38-${label}: STOPPED, spawn=0`);
+    } finally {
+      writeFileSync(driftPath, saved);
+    }
+    expect(runner.sha256Hex(readFileSync(driftPath)) === runner.sha256Hex(saved), `R38-${label}: byte-identical restore`);
+  }
+  const controlInput = freshControl('r38-input');
+  controlInput.materialize(FIXTURE_ENV);
+  await controlInput.corsPreflightProbe();
+  controlInput.preflight();
+  expectCategory(
+    () => controlInput.authorize({ inputSha: 'f'.repeat(64), argv: ['node', 'tools', 'fixture-launch'] }),
+    'input_sha_drift',
+    'R38-input: drifted input expectation refused at authorize',
+  );
+  expect(controlInput.launchStarts === 0, 'R38-input: spawn=0');
+  await greenPath('r38-restore');
+}
+
+// R39 — sensitive values never reach child/entrypoint outputs or ledgers.
+{
+  const sensitiveValues = Object.entries(FIXTURE_ENV)
+    .filter(([name]) => name !== 'J1H2C_MAILDIR_ROOT')
+    .map(([, value]) => value);
+  const scannedOutputs = [
+    r39ScannedOutputs.childStdout,
+    r39ScannedOutputs.childStderr,
+    r39ScannedOutputs.entrypointStdout,
+    r39ScannedOutputs.entrypointStderr,
+  ];
+  for (const value of sensitiveValues) {
+    expect(
+      !scannedOutputs.some((text) => text.includes(value)),
+      'R39: fixture secret absent from child/entrypoint stdout+stderr',
+    );
+  }
+  const ledgerText = (() => {
+    try {
+      return readdirSync(SCRATCH)
+        .filter((name) => name.endsWith('.jsonl'))
+        .map((name) => {
+          try {
+            return readFileSync(join(SCRATCH, name), 'utf8');
+          } catch {
+            return '';
+          }
+        })
+        .join('\n');
+    } catch {
+      return '';
+    }
+  })();
+  for (const value of sensitiveValues) {
+    expect(!ledgerText.includes(value), 'R39: fixture secret absent from every ledger sink');
+  }
+}
+
+// R40 — the library surface is still non-authority; R1-R29 GREEN preserved.
+{
+  const control = freshControl('r40');
+  const { argv } = await fullFlow(control);
+  const result = control.launch(() => ({ rc: 0, pid: 4242425, real_child: true, reconciliation: { complete: true } }), { argv });
+  expect(result.outcome === 'FINISHED', 'R40: functional FINISHED still reachable with a double');
+  expectCategory(() => control.seal(), 'authority_mode_required', 'R40: library seal refused');
+  expectCategory(() => control.evidence(), 'authority_mode_required', 'R40: library evidence refused');
+  expectCategory(
+    () => runner.sealAuthorityEvidence(control),
+    'not_direct_entrypoint',
+    'R40: exported sealer cannot mint from a library import',
+  );
+  const runnerText = readFileSync(join(ROOT, 'tools', 'browser-authority-runner.mjs'), 'utf8');
+  const childText = readFileSync(join(ROOT, 'tools', 'browser-authority-child.mjs'), 'utf8');
+  const helperText = readFileSync(join(ROOT, 'tools', 'browser-authority-preflight-helper.mjs'), 'utf8');
+  expect(!/\bfetch\s*\(/.test(runnerText + helperText + childText), 'R40: no ambient fetch in runner/helper/child');
+  expect(!/from 'node:http'|from 'node:https'/.test(runnerText), 'R40: runner still performs no in-process network I/O');
+  expect(childText.includes('shell: false') && childText.includes('spawn(process.execPath'), 'R40: child spawns Playwright via argv array with shell:false');
+  expect(runner.PREFLIGHT_CHECK_IDS.length === 9 && runner.PREFLIGHT_HOST_CHECK_IDS.length === 4, 'R40: fixed preflight taxonomy');
+  expect(readFileSync(join(ROOT, 'tools', 'browser-authority-entrypoint.mjs'), 'utf8').includes('entrypoint_direct_process') === false, 'R40: hardcoded preflight label removed from the authority path');
+}
+
+// ---------------------------------------------------------------------------
 // Verdict
 // ---------------------------------------------------------------------------
 rmSync(SCRATCH, { recursive: true, force: true });
@@ -1766,7 +2320,7 @@ if (failures.length > 0) {
   console.error(`BROWSER-AUTHORITY CONTRACT CHECK FAILED (${failures.length})`);
   process.exit(1);
 }
-console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R29, direct-process authority boundary, single canonical repo identity, case-insensitive GIT_* sanitization).');
+console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R40, direct-process authority boundary, single canonical repo identity, case-insensitive GIT_* sanitization, real fixed Playwright child + runner-owned preflight helper).');
 // The fixture HTTP server and undici keep-alive sockets hold the event loop;
 // the verdict above is final, so exit explicitly.
 process.exit(0);

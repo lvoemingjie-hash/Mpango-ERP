@@ -567,15 +567,27 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
     ['CORS_PREFLIGHT_PATH', 'runner-owned CORS preflight path'],
     ['cors_probe_missing', 'mandatory CORS probe enforcement'],
     ['cors_allow_origin_mismatch', 'exact allow-origin criterion'],
-    ["from 'node:https'", 'native https transport import'],
-    ['nativeCorsOptionsRequest', 'module-private native CORS transport'],
+    ['canonicalCorsHelperPath', 'canonical CORS helper path'],
+    ['cors_helper_dirty_vs_head', 'helper committed-blob binding'],
+    ['probeChildEnv', 'sanitized probe child environment'],
   ]) {
     if (!runnerText.includes(needle)) fail(14, `runner missing ${label}`);
   }
   if (/\bfetch\s*\(/.test(runnerText)) {
     fail(14, 'runner references ambient fetch (B1-R6-R1: native transport only)');
   }
-  if (!/Access-Control-Request-Method/.test(runnerText) || !/Access-Control-Request-Headers/.test(runnerText)) {
+  if (/from 'node:http'|from 'node:https'/.test(runnerText)) {
+    fail(14, 'runner performs in-process network I/O (B1-R6-R2: child process only)');
+  }
+  // Helper file anchors: native transport + exact criteria live in the helper.
+  const helperText = readFileSync(join(ROOT, 'tools', 'browser-authority-cors-probe-helper.mjs'), 'utf8');
+  if (!helperText.includes("from 'node:http'") || !helperText.includes("from 'node:https'")) {
+    fail(14, 'helper missing native http/https transport');
+  }
+  if (!helperText.includes('Access-Control-Request-Method')) {
+    fail(14, 'helper missing POST declaration');
+  }
+  if (!/Access-Control-Request-Method/.test(runnerText + helperText) || !/Access-Control-Request-Headers/.test(runnerText + helperText)) {
     fail(14, 'CORS probe does not declare POST + content-type');
   }
   const gitCallSites = (runnerText.match(/execFileSync\('git'/g) || []).length;

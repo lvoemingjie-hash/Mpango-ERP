@@ -40,6 +40,7 @@
  */
 
 import http from 'node:http';
+import https from 'node:https';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -1368,6 +1369,129 @@ const R27_CHILD_SOURCE = [
     globalThis.fetch = savedFetch;
   }
   await greenPath('r27-restore');
+}
+
+// ---------------------------------------------------------------------------
+// R28 — process-isolated probe: launcher-process builtin poisoning cannot
+// forge CORS authority (B1-R6-R2, MUTABLE_NODE_BUILTIN_TRANSPORT closure).
+// The LAUNCHER process (this checker playing the hostile executor) poisons
+// globalThis.fetch AND http.request/https.request AND freezes them via
+// syncBuiltinESMExports; the runner must still consult the pristine child.
+// UNREACHABLE_ENV points at 127.0.0.1:9 — a real network attempt fails, a
+// forged in-process attempt would "succeed" with zero real network calls.
+// ---------------------------------------------------------------------------
+
+{
+  const savedFetch = globalThis.fetch;
+  const savedHttpRequest = http.request;
+  const savedHttpsRequest = https.request;
+  let fakeCalls = 0;
+  const UNREACHABLE_ORIGIN = 'http://127.0.0.1:9';
+  const UNREACHABLE_ENV = {
+    ...FIXTURE_ENV,
+    J1H2C_BASE_URL: `${UNREACHABLE_ORIGIN}/portal`,
+    J1H2C_API_BASE_URL: UNREACHABLE_ORIGIN,
+  };
+  try {
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: (name) => (String(name).toLowerCase() === 'access-control-allow-origin' ? UNREACHABLE_ORIGIN : null) },
+    });
+    const fakeResponse = (originHeader) => ({
+      statusCode: 200,
+      headers: { 'access-control-allow-origin': originHeader },
+      resume() {},
+      on(event, handler) {
+        if (event === 'end') queueMicrotask(handler);
+        return this;
+      },
+    });
+    const fakeRequest = function fakeRequest(url, options, callback) {
+      fakeCalls += 1;
+      const done = typeof options === 'function' ? options : callback;
+      const originHeader = (options && options.headers && options.headers.Origin) || UNREACHABLE_ORIGIN;
+      const res = fakeResponse(originHeader);
+      const reqObj = {
+        setTimeout() { return this; },
+        destroy() { return this; },
+        on() { return this; },
+        end() {
+          queueMicrotask(() => done(res));
+          return this;
+        },
+      };
+      return reqObj;
+    };
+    http.request = fakeRequest;
+    https.request = fakeRequest;
+    if (typeof https.syncBuiltinESMExports === 'function') {
+      https.syncBuiltinESMExports();
+    }
+
+    // Attack: unreachable target under a fully poisoned launcher process.
+    const control = freshControl('r28');
+    control.materialize(UNREACHABLE_ENV);
+    const serverBefore = corsRequests.length;
+    await expectCategoryAsync(
+      () => control.corsPreflightProbe(),
+      'cors_probe_no_response',
+      'R28: unreachable target really fails through the pristine child',
+    );
+    const serverDelta = corsRequests.length - serverBefore;
+    expect(control.current === 'STOPPED', 'R28: STOPPED');
+    expect(
+      !['PREFLIGHTED', 'AUTHORIZED'].includes(control.current),
+      'R28: never reached PREFLIGHTED/AUTHORIZED',
+    );
+    expect(control.launchStarts === 0, 'R28: starts=0');
+    expect(fakeCalls === 0, 'R28: the runner never consulted the poisoned in-process bindings');
+    expect(serverDelta === 0, 'R28: zero real network calls for the unreachable target');
+
+    // Positive control: the REAL reachable server passes under the same
+    // poisoning — process isolation, not absence of network.
+    const controlR = freshControl('r28-real');
+    const flowR = await fullFlow(controlR);
+    const resultR = controlR.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv: flowR.argv });
+    expect(resultR.outcome === 'FINISHED', 'R28-REAL: correct real server still passes');
+
+    // Wrong-origin / HTTP RED / timeout stay fail-closed under poisoning.
+    // The probes are called DIRECTLY (not through fullFlow) because a
+    // failing probe throws — the scenario expects the throw.
+    corsMode = 'wrong';
+    const controlW = freshControl('r28-wrong');
+    controlW.materialize(FIXTURE_ENV);
+    await expectCategoryAsync(
+      () => controlW.corsPreflightProbe(),
+      'cors_allow_origin_mismatch',
+      'R28: wrong-origin still fail-closed',
+    );
+    corsMode = '400';
+    const controlH = freshControl('r28-400');
+    controlH.materialize(FIXTURE_ENV);
+    await expectCategoryAsync(
+      () => controlH.corsPreflightProbe(),
+      'cors_probe_http_error',
+      'R28: HTTP RED still fail-closed',
+    );
+    corsMode = 'timeout';
+    const controlT = freshControl('r28-timeout');
+    controlT.materialize(FIXTURE_ENV);
+    await expectCategoryAsync(
+      () => controlT.corsPreflightProbe(),
+      'cors_probe_timeout',
+      'R28: timeout still fail-closed',
+    );
+  } finally {
+    globalThis.fetch = savedFetch;
+    http.request = savedHttpRequest;
+    https.request = savedHttpsRequest;
+    if (typeof https.syncBuiltinESMExports === 'function') {
+      https.syncBuiltinESMExports();
+    }
+    corsMode = 'ok';
+  }
+  await greenPath('r28-restore');
 }
 
 // ---------------------------------------------------------------------------

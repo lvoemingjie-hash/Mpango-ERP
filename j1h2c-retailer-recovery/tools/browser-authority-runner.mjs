@@ -64,7 +64,7 @@
  * itself remains a later, separately authorized gate.
  */
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, realpathSync, writeSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
@@ -808,18 +808,31 @@ export class ControlPlane {
     });
     let payload;
     try {
-      const childOut = execFileSync(
-        process.execPath,
-        [helperPath],
-        {
-          input: childInput,
-          env: probeChildEnv(),
-          stdio: ['pipe', 'pipe', 'pipe'],
-          timeout: CORS_PROBE_TIMEOUT_MS + 5000,
-          windowsHide: true,
-        },
-      );
-      payload = JSON.parse(childOut.toString('utf8'));
+      // Async execFile: the parent's event loop stays free so the fixture
+      // server can answer the child's request (no execFileSync deadlock).
+      const childOut = await new Promise((resolve, reject) => {
+        const child = execFile(
+          process.execPath,
+          [helperPath],
+          {
+            env: probeChildEnv(),
+            stdio: ['pipe', 'pipe', 'pipe'],
+            timeout: CORS_PROBE_TIMEOUT_MS + 5000,
+            windowsHide: true,
+          },
+          (error, stdout) => {
+            if (error) {
+              error.stdout_text = typeof stdout === 'string' ? stdout : '';
+              reject(error);
+            } else {
+              resolve(stdout);
+            }
+          },
+        );
+        child.stdin.write(childInput);
+        child.stdin.end();
+      });
+      payload = JSON.parse(childOut);
     } catch {
       // Child crash, kill (runaway), or unparseable output: fail closed.
       this.stop('cors_probe_no_response');
@@ -829,6 +842,7 @@ export class ControlPlane {
       this.stop('cors_probe_no_response');
       throw new BrowserAuthorityError('cors_probe_no_response');
     }
+    if (process.env.R6R2_DEBUG) console.error('DEBUG probe payload:', JSON.stringify(payload));
     const status2xx = payload.status_2xx === true;
     const allowOriginPresent = payload.allow_origin_present === true;
     const allowOriginExact = payload.allow_origin_exact === true;

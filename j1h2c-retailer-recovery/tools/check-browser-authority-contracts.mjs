@@ -170,7 +170,7 @@ const corsServer = http.createServer((req, res) => {
     if (body.length < 65536) body += chunk;
   });
   req.on('end', () => {
-    if (preflightMode === 'frontend_down' && !req.url.startsWith('/api/') && !req.url.startsWith('/healthz')) {
+    if (preflightMode === 'frontend_down' && req.url.startsWith('/portal')) {
       res.writeHead(500); res.end(); return;
     }
     if (preflightMode === 'health_down' && req.url.startsWith('/healthz')) {
@@ -179,7 +179,7 @@ const corsServer = http.createServer((req, res) => {
     if (req.method === 'POST' && req.url.startsWith('/api/v1/client/auth/login')) {
       let email = '';
       try { email = String(JSON.parse(body || '{}').email ?? ''); } catch { email = ''; }
-      const ownerAllows = email === FIXTURE_ENV.J1H2C_RETAILER_EMAIL;
+      const ownerAllows = preflightMode !== 'owner_login_denied' && email === FIXTURE_ENV.J1H2C_RETAILER_EMAIL;
       const unverifiedAllowed = preflightMode === 'unverified_login_allowed';
       if (ownerAllows || (unverifiedAllowed && email === FIXTURE_ENV.J1H2C_UNVERIFIED_EMAIL)) {
         res.writeHead(200, { 'content-type': 'application/json' });
@@ -278,7 +278,7 @@ function freshControl(name) {
 async function fullFlow(control) {
   const { inputSha } = control.materialize(FIXTURE_ENV);
   await control.corsPreflightProbe();
-  control.preflight();
+  await control.preflight();
   const argv = ['node', 'tools', 'fixture-launch'];
   control.authorize({ inputSha, argv });
   return { inputSha, argv };
@@ -515,7 +515,7 @@ async function runCorsProbe(control) {
   const control = new runner.ControlPlane({ contractPath, repoRoot, ledger });
   control.stop('probe_void');
   try {
-    control.preflight([]);
+    await control.preflight();
   } catch {
     /* terminal_stop — the rejection was persisted before the throw */
   }
@@ -552,7 +552,7 @@ async function runCorsProbe(control) {
   const control = freshControl('r5');
   control.materialize(FIXTURE_ENV);
   control.stop('probe_void');
-  expectCategory(() => control.preflight([{ ok: true, label: 'probe' }]), 'terminal_stop', 'R5: preflight after VOID');
+  await expectCategoryAsync(() => control.preflight(), 'terminal_stop', 'R5: preflight after VOID');
   expectCategory(
     () => control.authorize({ inputSha: control.materializedInputSha(), argv: ['node', 'x'] }),
     'terminal_stop',
@@ -570,7 +570,7 @@ async function runCorsProbe(control) {
 {
   const control = freshControl('r6');
   await fullFlowPreflight(control);
-  expectCategory(() => control.preflight([{ ok: true, label: 'probe' }]), 'preflight_already_invoked', 'R6: preflight twice');
+  await expectCategoryAsync(() => control.preflight(), 'preflight_already_invoked', 'R6: preflight twice');
   expect(control.current === 'STOPPED', 'R6: repeat preflight lands STOPPED (C)');
   await greenPath('r6-restore');
 }
@@ -578,7 +578,7 @@ async function runCorsProbe(control) {
 async function fullFlowPreflight(control) {
   control.materialize(FIXTURE_ENV);
   await control.corsPreflightProbe();
-  control.preflight([{ ok: true, label: 'probe' }]);
+  await control.preflight();
 }
 
 // R7 — second browser launch (double called exactly once)
@@ -601,7 +601,7 @@ async function fullFlowPreflight(control) {
   const control = freshControl('r8a');
   const { inputSha } = control.materialize(FIXTURE_ENV);
   await control.corsPreflightProbe();
-  control.preflight([{ ok: true, label: 'probe' }]);
+  await control.preflight();
   expectCategory(
     () => control.authorize({ inputSha: runner.sha256Hex('drifted-input'), argv: ['node', 'x'] }),
     'input_sha_drift',
@@ -616,7 +616,7 @@ async function fullFlowPreflight(control) {
   const preFlow = async (control) => {
     const { inputSha } = control.materialize(FIXTURE_ENV);
     await control.corsPreflightProbe();
-    control.preflight([{ ok: true, label: 'probe' }]);
+    await control.preflight();
     return { inputSha };
   };
   const control = freshControl('r9');
@@ -786,7 +786,7 @@ async function fullFlowPreflight(control) {
   const { inputSha, argv } = await fullFlow(control);
   let caught = null;
   try {
-    control.preflight();
+    await control.preflight();
   } catch (error) {
     caught = error.category;
   }
@@ -1360,7 +1360,7 @@ function controlProfileStillDirty() {
   // R26-OMIT: omitting the probe can never reach preflight.
   const controlOmit = freshControl('r26-omit');
   controlOmit.materialize(FIXTURE_ENV);
-  expectCategory(
+  await expectCategoryAsync(
     () => controlOmit.preflight(),
     'cors_probe_missing',
     'R26-OMIT: preflight without the runner-owned probe',
@@ -1372,7 +1372,7 @@ function controlProfileStillDirty() {
   const controlFake = freshControl('r26-fake');
   controlFake.materialize(FIXTURE_ENV);
   await controlFake.corsPreflightProbe();
-  expectCategory(
+  await expectCategoryAsync(
     () =>
       controlFake.preflight([
         { ok: true, label: 'caller_cors', category: 'caller_cors_ok' },
@@ -1857,11 +1857,17 @@ function fixtureGit(root, ...args) {
   return execFileSync('git', ['-C', root, ...args], { stdio: ['ignore', 'pipe', 'ignore'] });
 }
 
-const FAKE_CLI_TEMPLATE = (cliExit, writeArtifacts, tamperMarker) => `
-import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+const FAKE_CLI_TEMPLATE = (cliExit, writeArtifacts, tamperMarker, refreshArtifacts) => `
+import { writeFileSync, mkdirSync, readFileSync, utimesSync } from 'node:fs';
 const proof = { pid: process.pid, argv: process.argv.slice(2), marker: 'fake-playwright-ran' };
 mkdirSync('artifacts', { recursive: true });
 writeFileSync('artifacts/fake-playwright-proof.json', JSON.stringify(proof));
+${refreshArtifacts ? `
+for (const name of ['reconciliation.json', 'reconciliation.csv', 'results.json', 'results-junit.xml', 'maildir-snapshot.json']) {
+  const now = new Date();
+  utimesSync('artifacts/' + name, now, now);
+}
+` : ''}
 ${writeArtifacts ? `
 const nodes = [
   ...['HC01','HC02','HC03','HC04','HC05','HC06','HC07','HC08','HC09','HC10','HC12','HC13','HC14','HC15','HC16'].map((id) => ({ nodeId: id, surface: 'browser', outcome: 'PASS' })),
@@ -1883,7 +1889,7 @@ writeFileSync(markerPath, JSON.stringify(marker));
 process.exit(${cliExit});
 `;
 
-function makeChildFixture(label, { withCli = true, cliExit = 0, writeArtifacts = true, tamperMarker = false, withScanner = true } = {}) {
+function makeChildFixture(label, { withCli = true, cliExit = 0, writeArtifacts = true, tamperMarker = false, withScanner = true, refreshArtifacts = false } = {}) {
   const root = join(SCRATCH, `${label}-root`);
   ensureDir(join(root, 'tools'));
   ensureDir(join(root, 'inventory'));
@@ -1913,7 +1919,7 @@ function makeChildFixture(label, { withCli = true, cliExit = 0, writeArtifacts =
       JSON.stringify({ name: '@playwright/test', version: '1.49.1' }),
       'utf8',
     );
-    writeFileSync(join(cliDir, 'cli.js'), FAKE_CLI_TEMPLATE(cliExit, writeArtifacts, tamperMarker), 'utf8');
+    writeFileSync(join(cliDir, 'cli.js'), FAKE_CLI_TEMPLATE(cliExit, writeArtifacts, tamperMarker, refreshArtifacts), 'utf8');
   }
   // Task maildir with exactly one fresh delivery per mailbox (setup tokens).
   const maildir = join(root, 'maildir');
@@ -2030,13 +2036,22 @@ expect(r30.payload && r30marker.wrapper_pid === r30.payload.pid, 'R30: wrapper P
 // R34 — forged PASS artifacts, wrong candidate, stale mtimes and a tampered
 // run id are ALL refused.
 {
-  // (a) forged reconciliation whose run stats disagree.
-  const fxA = makeChildFixture('r34-stats', { cliExit: 0, writeArtifacts: true });
-  writeFileSync(
-    join(fxA.root, 'artifacts', 'results.json'),
-    JSON.stringify({ stats: { startTime: new Date().toISOString(), duration: 1, expected: 3, skipped: 0, unexpected: 12, flaky: 0 } }),
-    'utf8',
-  );
+  // (a) forged PASS reconciliation whose run stats disagree: the full
+  // artifact set is pre-written by the forger (the fake CLI only records
+  // its own spawn), everything fresh — ONLY the stats lie.
+  const fxA = makeChildFixture('r34-stats', { cliExit: 0, writeArtifacts: false, refreshArtifacts: true });
+  ensureDir(join(fxA.root, 'artifacts'));
+  const forgedNodes = [
+    ...['HC01','HC02','HC03','HC04','HC05','HC06','HC07','HC08','HC09','HC10','HC12','HC13','HC14','HC15','HC16'].map((id) => ({ nodeId: id, surface: 'browser', outcome: 'PASS' })),
+    { nodeId: 'HC11', surface: 'static', outcome: 'PASS' },
+    { nodeId: 'HC17', surface: 'static', outcome: 'PASS' },
+  ];
+  const forgedSummary = { browser: { total: 15, pass: 15 }, static: { total: 2, pass: 2 }, total: 17, gap: 0, incomplete: [], outcomes: { pass: 17, fail: 0, notRun: 0, pending: 0 }, preconditionOutcome: 'PRECONDITION_PASS' };
+  writeFileSync(join(fxA.root, 'artifacts', 'reconciliation.json'), JSON.stringify({ schema: 'j1h2c-reconciliation/1', preconditionOutcome: 'PRECONDITION_PASS', note: 'forged', summary: forgedSummary, nodes: forgedNodes }));
+  writeFileSync(join(fxA.root, 'artifacts', 'reconciliation.csv'), 'node_id,surface,outcome\n' + forgedNodes.map((n) => `${n.nodeId},${n.surface},${n.outcome}`).join('\n') + '\n');
+  writeFileSync(join(fxA.root, 'artifacts', 'results.json'), JSON.stringify({ stats: { startTime: new Date().toISOString(), duration: 1, expected: 3, skipped: 0, unexpected: 12, flaky: 0 } }));
+  writeFileSync(join(fxA.root, 'artifacts', 'results-junit.xml'), '<testsuites tests="15" failures="0" skipped="0" errors="0" time="0.001"></testsuites>');
+  writeFileSync(join(fxA.root, 'artifacts', 'maildir-snapshot.json'), JSON.stringify({ schema: 'j1h2c-maildir-snapshot/2', mailboxes: { established: [], unverified: [] } }));
   const outA = runChildDirect(fxA, childInputFor(fxA));
   expect(outA.status !== 0 && outA.payload && outA.payload.reconciliation.complete === false, 'R34: forged PASS reconciliation refused');
   expect(outA.payload && outA.payload.reconciliation.category === 'run_stats_not_all_green', 'R34: stats mismatch category');
@@ -2103,7 +2118,7 @@ expect(r30.payload && r30marker.wrapper_pid === r30.payload.pid, 'R30: wrapper P
   const greenCheck = (id) => ({ id, ok: true, category: 'check_green' });
   const coreGreen = runner.PREFLIGHT_CHECK_IDS.map(greenCheck);
   const hostGreen = runner.PREFLIGHT_HOST_CHECK_IDS.map(greenCheck);
-  expectCategory(() => runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: true, checks: coreGreen, counts: { total: 9, red: 0, host_checks_present: 0 } }), 'preflight_helper_payload_invalid', 'R36: extra top-level key refused');
+  expectCategory(() => runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: true, checks: coreGreen, counts: { total: 9, red: 0, host_checks_present: 0 }, extra: true }), 'preflight_helper_payload_invalid', 'R36: extra top-level key refused');
   expectCategory(() => runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: true, checks: coreGreen.slice(0, 8), counts: { total: 8, red: 0, host_checks_present: 0 } }), 'preflight_helper_payload_invalid', 'R36: missing core check refused');
   expectCategory(() => runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: true, checks: [...coreGreen.slice(0, 8), greenCheck('caller_extra_check')], counts: { total: 9, red: 0, host_checks_present: 0 } }), 'preflight_helper_payload_invalid', 'R36: forged ok=true with an unknown check refused');
   expectCategory(() => runner.parsePreflightHelperPayload({ schema: runner.PREFLIGHT_HELPER_RESULT_SCHEMA, ok: true, checks: [...coreGreen.slice(0, 8), { id: 'frontend_origin_page', ok: true, category: 'check_green' }], counts: { total: 9, red: 0, host_checks_present: 0 } }), 'preflight_helper_payload_invalid', 'R36: duplicate check id refused');
@@ -2118,32 +2133,47 @@ expect(r30.payload && r30marker.wrapper_pid === r30.payload.pid, 'R30: wrapper P
   // (c) repetition: a second preflight on the same plane is terminal.
   const controlRepeat = freshControl('r36-repeat');
   const flowRepeat = await fullFlow(controlRepeat);
-  expectCategory(() => controlRepeat.preflight(), 'preflight_already_invoked', 'R36: repeated preflight refused');
+  await expectCategoryAsync(() => controlRepeat.preflight(), 'preflight_already_invoked', 'R36: repeated preflight refused');
   expect(controlRepeat.launchStarts === 0, 'R36: repetition started nothing');
   await greenPath('r36-restore');
 
   // (d) host-check interface: the helper folds a provided outer-preflight
   // block into the verdict (categories only) and rejects malformed blocks.
-  function spawnHelperDirect(inputObject) {
-    const out = spawnSync(
-      process.execPath,
-      [join(ROOT, 'tools', 'browser-authority-preflight-helper.mjs')],
-      {
-        cwd: ROOT,
-        input: JSON.stringify(inputObject),
-        encoding: 'utf8',
-        env: runner.probeChildEnv(),
-        timeout: 60000,
-        windowsHide: true,
-      },
-    );
+  // The spawn must be ASYNC — a synchronous wait would freeze the checker's
+  // event loop (and with it the fixture server the helper talks to).
+  async function spawnHelperDirect(inputObject) {
+    const out = await new Promise((resolve) => {
+      const child = execFile(
+        process.execPath,
+        [join(ROOT, 'tools', 'browser-authority-preflight-helper.mjs')],
+        {
+          cwd: ROOT,
+          env: runner.probeChildEnv(),
+          timeout: 60000,
+          windowsHide: true,
+        },
+        (error, stdout, stderr) => {
+          if (error) {
+            resolve({
+              status: Number.isInteger(error.code) ? error.code : 1,
+              stdout: String(stdout ?? ''),
+              stderr: String(stderr ?? ''),
+            });
+          } else {
+            resolve({ status: 0, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') });
+          }
+        },
+      );
+      child.stdin.write(JSON.stringify(inputObject));
+      child.stdin.end();
+    });
     let payload = null;
     try {
       payload = JSON.parse(String(out.stdout).trim());
     } catch {
       payload = null;
     }
-    return { status: out.status, payload, stdout: String(out.stdout ?? '') };
+    return { ...out, payload };
   }
   const hostRedBlock = {
     schema: runner.PREFLIGHT_HELPER_INPUT_SCHEMA,
@@ -2154,7 +2184,7 @@ expect(r30.payload && r30marker.wrapper_pid === r30.payload.pid, 'R30: wrapper P
       checks: [{ id: 'pg_reachable', ok: false, category: 'pg_unreachable' }],
     },
   };
-  const hostRed = spawnHelperDirect(hostRedBlock);
+  const hostRed = await spawnHelperDirect(hostRedBlock);
   expect(hostRed.status === 0 && hostRed.payload && hostRed.payload.ok === false, 'R36: host RED folds into ok=false');
   expect(hostRed.payload && hostRed.payload.checks.some((check) => check.id === 'pg_reachable' && check.ok === false && check.category === 'pg_unreachable'), 'R36: host RED category reported');
   expect(hostRed.payload && hostRed.payload.counts.host_checks_present === 1, 'R36: host presence counted');
@@ -2163,11 +2193,11 @@ expect(r30.payload && r30marker.wrapper_pid === r30.payload.pid, 'R30: wrapper P
     provided_by: 'outer_authority_preflight',
     checks: runner.PREFLIGHT_HOST_CHECK_IDS.map((id) => ({ id, ok: true, category: 'check_green' })),
   };
-  const hostGreenRun = spawnHelperDirect(hostGreenBlock);
+  const hostGreenRun = await spawnHelperDirect(hostGreenBlock);
   expect(hostGreenRun.status === 0 && hostGreenRun.payload && hostGreenRun.payload.ok === true, 'R36: host GREEN folds into ok=true');
   const hostBadBlock = { ...hostRedBlock };
   hostBadBlock.host_preflight = { provided_by: 'not_the_outer_layer', checks: [] };
-  const hostBad = spawnHelperDirect(hostBadBlock);
+  const hostBad = await spawnHelperDirect(hostBadBlock);
   expect(hostBad.status !== 0 && hostBad.payload === null, 'R36: malformed host block fails closed without a payload');
   await greenPath('r36-host-restore');
 }
@@ -2180,7 +2210,7 @@ expect(r30.payload && r30marker.wrapper_pid === r30.payload.pid, 'R30: wrapper P
     control.materialize(env);
     await control.corsPreflightProbe();
     if (preflightSetup) preflightSetup();
-    expectCategory(() => control.preflight(), 'preflight_red', `R37-${label}: RED check refused`);
+    await expectCategoryAsync(() => control.preflight(), 'preflight_red', `R37-${label}: RED check refused`);
     expect(control.current === 'STOPPED' && control.launchStarts === 0, `R37-${label}: VOID with spawn=0`);
     const sink = join(SCRATCH, `ledger-r37-${label}.jsonl`);
     const records = existsSync(sink)
@@ -2240,7 +2270,7 @@ expect(r30.payload && r30marker.wrapper_pid === r30.payload.pid, 'R30: wrapper P
   const controlInput = freshControl('r38-input');
   controlInput.materialize(FIXTURE_ENV);
   await controlInput.corsPreflightProbe();
-  controlInput.preflight();
+  await controlInput.preflight();
   expectCategory(
     () => controlInput.authorize({ inputSha: 'f'.repeat(64), argv: ['node', 'tools', 'fixture-launch'] }),
     'input_sha_drift',

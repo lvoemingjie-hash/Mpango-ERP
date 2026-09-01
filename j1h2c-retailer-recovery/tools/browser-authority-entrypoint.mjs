@@ -193,7 +193,7 @@ try {
   // B1-R6-R4: the runner-OWNED preflight helper — the entrypoint supplies
   // no checks and no results; every check runs in the process-isolated,
   // committed-byte-bound helper from the deep-frozen materialized values.
-  control.preflight();
+  await control.preflight();
   const argv = runner.canonicalAuthorityChildArgv();
   control.authorize({ inputSha, argv, cwd: repoRoot });
 

@@ -1319,7 +1319,7 @@ export class ControlPlane {
    * spawn. Any RED check, exception, timeout or schema mismatch lands
    * STOPPED before authorize with launchStarts untouched (0).
    */
-  preflight(...injected) {
+  async preflight(...injected) {
     this.#guardLive('preflight');
     if (this.preflightInvocations > 0) {
       // C: persist the rejection FIRST, then STOPPED.
@@ -1365,18 +1365,33 @@ export class ControlPlane {
       this.#preflightHelperInvocations += 1;
       let payload;
       try {
-        const helperOut = execFileSync(
-          process.execPath,
-          [helperPath],
-          {
-            input: helperInput,
-            stdio: ['pipe', 'pipe', 'pipe'],
-            env: probeChildEnv(),
-            timeout: PREFLIGHT_HELPER_TIMEOUT_MS + 5000,
-            windowsHide: true,
-          },
-        );
-        payload = parsePreflightHelperPayload(JSON.parse(helperOut.toString('utf8')));
+        // Async execFile: the parent's event loop stays free so the checked
+        // origins (and any fixture server) can answer the helper's real
+        // requests — a synchronous wait would deadlock the very server the
+        // helper talks to (same closure as the CORS probe).
+        const helperOut = await new Promise((resolve, reject) => {
+          const child = execFile(
+            process.execPath,
+            [helperPath],
+            {
+              env: probeChildEnv(),
+              stdio: ['pipe', 'pipe', 'pipe'],
+              timeout: PREFLIGHT_HELPER_TIMEOUT_MS + 5000,
+              windowsHide: true,
+            },
+            (error, stdout) => {
+              if (error) {
+                error.stdout_text = typeof stdout === 'string' ? stdout : '';
+                reject(error);
+              } else {
+                resolve(stdout);
+              }
+            },
+          );
+          child.stdin.write(helperInput);
+          child.stdin.end();
+        });
+        payload = parsePreflightHelperPayload(JSON.parse(helperOut));
       } catch (error) {
         if (error instanceof BrowserAuthorityError) {
           this.stop('preflight_helper_payload_invalid');

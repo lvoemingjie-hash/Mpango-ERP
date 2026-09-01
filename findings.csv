@@ -1,0 +1,31 @@
+finding_id,category,severity,status,evidence_type,description,location
+F-001,AUTHORITY_BOUNDARY,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Library ControlPlane rejects authority:true at construction,runner.mjs:788-790
+F-002,AUTHORITY_BOUNDARY,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,seal() throws authority_mode_required in library mode,runner.mjs:1380-1382
+F-003,AUTHORITY_BOUNDARY,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,evidence() throws authority_mode_required in library mode,runner.mjs:1403-1405
+F-004,AUTHORITY_BOUNDARY,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Authority capability is module-private Symbol not exported,runner.mjs:80
+F-005,AUTHORITY_BOUNDARY,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Only direct-process entrypoint can mint authority,entrypoint.mjs:64-69
+F-006,ENV_INJECTION,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Entrypoint rejects NODE_OPTIONS/NODE_PATH/GIT_* case-insensitively,entrypoint.mjs:96-101
+F-007,IDENTITY_BINDING,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Canonical repo root derived from profile location not caller,runner.mjs:417-419
+F-008,IDENTITY_BINDING,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Candidate HEAD resolved via live git subprocess not caller string,runner.mjs:426-441
+F-009,IDENTITY_BINDING,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Profile committed-blob binding verified at construction,runner.mjs:457-468
+F-010,PATH_FIXED,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Helper path derived from module location not caller input,runner.mjs:128-130
+F-011,PATH_FIXED,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Child path derived from module location not caller input,runner.mjs:136-138
+F-012,ARGV_DISCIPLINE,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,All subprocesses use argv array no shell:true,runner.mjs:multiple
+F-013,CORS_ISOLATION,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,CORS probe runs in fresh child process not launcher,runner.mjs:1038-1059
+F-014,CORS_SCHEMA,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,CORS helper output exact schema pass requires all three true,runner.mjs:283-318
+F-015,AUTHORITY_ORDER,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Authority order enforced: materialize→CORS→preflight→authorize→launch→seal→evidence,entrypoint.mjs:189-206
+F-016,TERMINAL_STATE,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Child rc!=0 or incomplete reconciliation→TEST_RED never FINISHED,runner.mjs:1307-1355
+F-017,FAIL_STOP,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Preflight RED/exception→STOP launch count=0,runner.mjs:1110-1147
+F-018,LEDGER_INTEGRITY,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Terminal seal/evidence re-verify ledger chain + bindings,runner.mjs:1379-1394
+F-019,MUTATION_GUARD,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Library fake sync child cannot seal/evidence,.kilo-mutation-test/mutation-test.mjs:M1
+F-020,MUTATION_GUARD,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Library fake async child cannot seal/evidence,.kilo-mutation-test/mutation-test.mjs:M2
+F-021,IMPORT_REJECTION,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Import entrypoint rejected with not_direct_entrypoint,.kilo-mutation-test/mutation-test.mjs:M3
+F-022,DYNAMIC_IMPORT_REJECTION,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,node -e dynamic import rejected,.kilo-mutation-test/mutation-test.mjs:M4
+F-023,PAYLOAD_VALIDATION,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,CORS payload ok:true with missing true values rejected,.kilo-mutation-test/mutation-test.mjs:M7
+F-024,PUBLIC_AUTHORITY_REFUSED,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Public authority:true refused at construction,.kilo-mutation-test/mutation-test.mjs:M9
+F-025,CAPABILITY_BRANDING,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Authority capability requires module-private Symbol brand,.kilo-mutation-test/mutation-test.mjs:M10
+F-026,AUTHORITY_GUARD,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Mutation this.#authority=false→true bypasses guard (guard effective),.kilo-mutation-test/mutation-test.mjs:M12
+F-027,CHECKER_RESULT,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,R1-R29-R1 checker GREEN,tools/check-browser-authority-contracts.mjs
+F-028,STATIC_GATE,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,validate-static.mjs 14/14 GREEN,tools/validate-static.mjs
+F-029,NEUTRALITY_GATE,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,check:neutrality G1-G6 GREEN,tools/check-neutrality.mjs
+F-030,FROZEN_LOCKFILE,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,pnpm install --frozen-lockfile PASS,package.json

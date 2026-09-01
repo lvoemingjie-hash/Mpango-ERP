@@ -1,5 +1,6 @@
 /**
- * Global setup: fail-closed preflight, then SHARED identity provisioning.
+ * Global setup: fail-closed mode resolution + invocation accounting, then
+ * fail-closed preflight, then SHARED identity provisioning.
  *
  * Only immutable shared identities are created here (tenant A/B owners and
  * sessions, retailer identity/binding/session, local-mail prerequisites).
@@ -14,17 +15,21 @@ import * as path from 'path';
 import { runPreflight } from './preflight';
 import { provisionShared } from './provision';
 import {
+  RETRIES,
+  WORKERS,
   beginInvocation,
   clearGeneratedRuntimeOutputs,
+  requireRuntimeMode,
+  writeLiveExecutionContract,
   PREFLIGHT_VERDICT,
-  requireAuthorDiagnosticMode,
 } from './runtime';
 import { HARNESS_CONFIG } from '../playwright.config';
 
 export default async function globalSetup(): Promise<void> {
-  requireAuthorDiagnosticMode();
-  beginInvocation(HARNESS_CONFIG.candidateSha, 1, 0);
+  requireRuntimeMode();
+  const mode = beginInvocation(HARNESS_CONFIG.candidateSha, WORKERS, RETRIES);
   clearGeneratedRuntimeOutputs();
+  writeLiveExecutionContract(mode, HARNESS_CONFIG.candidateSha, WORKERS, RETRIES);
 
   const repoRoot = path.resolve(__dirname, '..', '..');
   const { outcome } = await runPreflight(repoRoot);

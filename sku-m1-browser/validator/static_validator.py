@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static harness validator for the SKU browser harness (B1). Stdlib only.
+"""Static harness validator for the SKU browser harness (B1 + B3 + B4). Stdlib only.
 
 Enforces, fail-closed:
   - exact two-node manifest (sorted, unique, LF-terminated, no duplicates,
@@ -16,8 +16,14 @@ Enforces, fail-closed:
   - no direct database drivers or DB seeding;
   - page.goto restricted to the whitelisted entry points (supported
     navigation guard);
+  - B4 authority modes: exactly two mutually exclusive runtime modes
+    (AUTHOR_DIAGNOSTIC / INDEPENDENT_AUTHORITY), fail-closed resolution,
+    frozen recorded mode, append-only invocation accounting;
   - reconciliation accounting: every node x viewport combination recorded
-    exactly once (checked against a results dir when present, else skipped
+    exactly once, and ONE execution mode + ONE candidate SHA shared by the
+    invocation ledger, the live execution contract, the authority report,
+    the Playwright report metadata and the reconciliation records
+    (checked against a results dir when present, else skipped
     with --allow-missing-reconciliation).
 
 Exit 0 = GREEN, 1 = RED (findings listed on stdout).
@@ -37,6 +43,8 @@ EXPECTED_NODES = [
     "sku-m1-browser/tests/catalog-hist-001.spec.ts::CATALOG-HIST-001",
     "sku-m1-browser/tests/catalog-id-001.spec.ts::CATALOG-ID-001",
 ]
+
+RUNTIME_MODES = ("AUTHOR_DIAGNOSTIC", "INDEPENDENT_AUTHORITY")
 
 # Required assertion anchors: the EXACT assertion code that must remain
 # present. The mutation suite removes each one independently; the validator
@@ -82,6 +90,84 @@ ALLOWED_GOTO = [
     r"^ENTRY_WHOLESALER_LOGIN$", r"^ENTRY_RETAILER_LOGIN$",
     r"^retailerEntry$",  # supported portal handoff entry (defined as `/client/login?w=<code>`)
 ]
+
+# B4: single-occurrence control-plane anchors. Each one is the subject of a
+# dedicated mutation; removing or weakening it must turn the validator RED.
+AUTHORITY_ANCHORS = {
+    "playwright.config.ts": [
+        "B3_AUTHOR_DIAGNOSTIC",
+        "B4_INDEPENDENT_AUTHORITY",
+        "process.argv.some",
+        "isListMode ? null : resolveRuntimeMode()",
+        "= runtimeMode ? [",
+        "src/authority-reporter",
+        "execution_mode: runtimeMode",
+        "candidate_sha: HARNESS_CONFIG.candidateSha",
+        "metadata: reportBinding",
+    ],
+    "src/runtime.ts": [
+        "if (authorSet && independentSet) {",
+        "if (authorSet) return AUTHOR_DIAGNOSTIC;",
+        "if (independentSet) return INDEPENDENT_AUTHORITY;",
+        "`exactly one of ${AUTHOR_DIAGNOSTIC_ENV}=1 / ${INDEPENDENT_AUTHORITY_ENV}=1 is required",
+        "CODE_MODE_VALUE_UNKNOWN,",
+        "CODE_MODE_LABEL_UNKNOWN,",
+        "if (contract) return assertKnownMode(contract.execution_mode, LIVE_EXECUTION_CONTRACT);",
+        "record.candidate_sha !== candidateSha",
+        "record.mode !== mode",
+        "if (starts.length >= 1) {",
+        "REFUSAL_SECOND_INVOCATION,",
+        "REFUSAL_CROSS_MODE,",
+        "REFUSAL_CANDIDATE_SHA_MISMATCH,",
+        "live-execution-contract.json",
+        "authority-report.json",
+        "invocation-ledger.jsonl",
+        "second_invocation_refused",
+        "cross_mode_invocation_refused",
+        "candidate_sha_mismatch_void",
+        "both_modes_set",
+        "mode_unset",
+        "mode_value_unknown",
+        "mode_label_unknown",
+    ],
+    "src/reconcile.ts": [
+        "checkBinding('live_execution_contract'",
+        "checkBinding(`invocation_ledger:",
+        "checkBinding(`reconciliation_record:",
+        "checkBinding('playwright_report'",
+        "mode_mismatch:${label}",
+        "candidate_sha_mismatch:${label}",
+    ],
+    "src/global-setup.ts": [
+        "requireRuntimeMode();",
+        "beginInvocation(HARNESS_CONFIG.candidateSha, WORKERS, RETRIES)",
+        "writeLiveExecutionContract(mode, HARNESS_CONFIG.candidateSha, WORKERS, RETRIES)",
+    ],
+    "src/authority-reporter.ts": [
+        "class BrowserAuthorityReporter",
+        "execution_mode: mode",
+        "candidate_sha: candidateSha",
+        "workers: WORKERS",
+        "retries: RETRIES",
+        "expected_execution_count: EXPECTED_EXECUTION_COUNT",
+        "observed_execution_count: this.executions.length",
+        "failure_class: sanitizedFailureClass(result.status, result.errors)",
+        "reportBindings: this.bindings",
+    ],
+    "src/fixtures.ts": [
+        "hasRecordedInvocation()",
+        "mode: recordedMode()",
+        "candidate_sha: recordedCandidateSha()",
+    ],
+}
+
+# B4: strings that must NOT appear — any of them would let author-mode
+# evidence be relabelled as independent authority (or vice versa).
+AUTHORITY_FORBIDDEN = {
+    "src/fixtures.ts": ["isAuthorDiagnosticMode"],
+    "src/authority-reporter.ts": ["AUTHOR_DIAGNOSTIC_ONLY", "B3_AUTHOR_DIAGNOSTIC"],
+    "playwright.config.ts": ["diagnostic-reporter"],
+}
 
 
 def read(rel: str) -> str:
@@ -257,19 +343,39 @@ def check_mobile_navigation(findings: list[str]) -> None:
             pass  # helper internally gates on viewport
 
 
+def check_authority_mode(findings: list[str]) -> None:
+    """B4 authority modes: two mutually exclusive modes, fail-closed
+    resolution, a frozen recorded mode, and mode/candidate-SHA binding on
+    every evidence source."""
+    for rel, anchors in AUTHORITY_ANCHORS.items():
+        try:
+            body = read(rel)
+        except FileNotFoundError:
+            findings.append(f"authority:source_missing:{rel}")
+            continue
+        for anchor in anchors:
+            if anchor not in body:
+                findings.append(f"authority:anchor_missing:{rel}: {anchor[:60]}")
+    for rel, forbidden in AUTHORITY_FORBIDDEN.items():
+        body = read(rel)
+        for token in forbidden:
+            if token in body:
+                findings.append(f"authority:forbidden_token:{rel}:{token}")
+
+
 def check_runtime_lifecycle(findings: list[str]) -> None:
     cfg = read("playwright.config.ts")
     setup = read("src/global-setup.ts")
     fixtures = read("src/fixtures.ts")
-    reporter = read("src/diagnostic-reporter.ts")
+    reporter = read("src/authority-reporter.ts")
     runtime = read("src/runtime.ts")
     reconcile = read("src/reconcile.ts")
 
     if "B3_AUTHOR_DIAGNOSTIC" not in cfg or "process.argv.some" not in cfg:
         findings.append("runtime:config_mode_or_list_guard_missing")
-    if "const reporter" not in cfg or "diagnostic-reporter" not in cfg:
-        findings.append("runtime:diagnostic_reporter_not_configured")
-    if "requireAuthorDiagnosticMode();" not in setup:
+    if "const reporter" not in cfg or "authority-reporter" not in cfg:
+        findings.append("runtime:authority_reporter_not_configured")
+    if "requireRuntimeMode();" not in setup:
         findings.append("runtime:global_setup_mode_guard_missing")
     if setup.find("beginInvocation(") < 0 or setup.find("clearGeneratedRuntimeOutputs()") < 0:
         findings.append("runtime:invocation_or_cleanup_missing")
@@ -277,23 +383,27 @@ def check_runtime_lifecycle(findings: list[str]) -> None:
         findings.append("runtime:cleanup_before_invocation_not_ordered")
     if setup.find("clearGeneratedRuntimeOutputs()") > setup.find("runPreflight("):
         findings.append("runtime:cleanup_not_before_preflight")
+    if setup.find("writeLiveExecutionContract(") > setup.find("runPreflight("):
+        findings.append("runtime:live_contract_not_before_preflight")
     for target in (
         "reconciliation-in.jsonl",
         "reconciliation.json",
         "playwright-report.json",
         "preflight-verdict.json",
+        "authority-report.json",
+        "live-execution-contract.json",
         "test-artifacts",
         "maildir",
     ):
         if target not in runtime:
             findings.append(f"runtime:cleanup_target_missing:{target}")
-    if "invocation-ledger.jsonl" not in runtime or "second_author_diagnostic_invocation_refused" not in runtime:
+    if "invocation-ledger.jsonl" not in runtime or "second_invocation_refused" not in runtime:
         findings.append("runtime:invocation_ledger_or_second_guard_missing")
     if "{ auto: true }" not in fixtures or "recordExecution({" not in fixtures:
         findings.append("runtime:central_auto_recorder_missing")
     if "testInfo.status === 'passed' ? 'passed' : 'failed'" not in fixtures:
         findings.append("runtime:failure_not_recorded_as_failed")
-    if "buildReconciliation(this.observed)" not in reporter or "endInvocation(" not in reporter:
+    if "buildReconciliation({" not in reporter or "endInvocation(" not in reporter:
         findings.append("runtime:reporter_reconciliation_or_ledger_end_missing")
     for field in (
         "unknown_nodes",
@@ -301,6 +411,8 @@ def check_runtime_lifecycle(findings: list[str]) -> None:
         "report_disagreements",
         "playwright_without_reconciliation",
         "reconciliation_without_playwright",
+        "mode_mismatches",
+        "candidate_sha_mismatches",
     ):
         if field not in reconcile:
             findings.append(f"runtime:reconciliation_fail_closed_field_missing:{field}")
@@ -328,6 +440,9 @@ EXPECTED_COMBOS = {
     for viewport in ("desktop", "mobile-390")
 }
 
+LIVE_CONTRACT_SCHEMA = "sku-m1-browser/live-execution-contract/1"
+AUTHORITY_REPORT_SCHEMA = "sku-m1-browser/authority-report/1"
+
 
 def _playwright_results(report: Path) -> dict[tuple[str, str], str]:
     data = json.loads(report.read_text(encoding="utf-8"))
@@ -351,8 +466,29 @@ def _playwright_results(report: Path) -> dict[tuple[str, str], str]:
     return observed
 
 
-def _reconciliation_records(jsonl: Path) -> tuple[dict[tuple[str, str], str], list[str]]:
+def _playwright_bindings(report: Path, findings: list[str]) -> set[tuple[str, str]]:
+    """Mode/candidate-SHA binding carried by the Playwright report metadata."""
+    data = json.loads(report.read_text(encoding="utf-8"))
+    projects = ((data.get("config") or {}).get("projects")) or []
+    if not projects:
+        findings.append("authority:playwright_report_projects_absent")
+        return {(None, None)}
+    bindings: set[tuple[str, str]] = set()
+    for project in projects:
+        metadata = project.get("metadata")
+        if not isinstance(metadata, dict):
+            findings.append(f"authority:playwright_report_metadata_absent:{project.get('name')}")
+            bindings.add((None, None))
+            continue
+        bindings.add((metadata.get("execution_mode"), metadata.get("candidate_sha")))
+    return bindings
+
+
+def _reconciliation_records(
+    jsonl: Path,
+) -> tuple[dict[tuple[str, str], str], set[tuple[str, str]], list[str]]:
     observed: dict[tuple[str, str], str] = {}
+    bindings: set[tuple[str, str]] = set()
     findings: list[str] = []
     counts: dict[tuple[str, str], int] = {}
     for line_no, line in enumerate(jsonl.read_text(encoding="utf-8").splitlines(), 1):
@@ -374,63 +510,70 @@ def _reconciliation_records(jsonl: Path) -> tuple[dict[tuple[str, str], str], li
         if status not in ("passed", "failed"):
             findings.append(f"reconciliation:unknown_status:{status}")
         observed[key] = status
-    return observed, findings
+        bindings.add((record.get("mode"), record.get("candidate_sha")))
+    return observed, bindings, findings
 
 
-def check_reconciliation(findings: list[str], allow_missing: bool) -> None:
-    results = HARNESS / "results"
-    reconciliation_json = results / "reconciliation.json"
-    reconciliation_in = results / "reconciliation-in.jsonl"
-    playwright_report = results / "playwright-report.json"
-    invocation_ledger = results / "invocation-ledger.jsonl"
-    if not reconciliation_json.exists():
-        if allow_missing:
-            return
-        findings.append("reconciliation:results_absent")
-        return
+def _live_contract_binding(path: Path, findings: list[str]) -> tuple[str, str]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("schema") != LIVE_CONTRACT_SCHEMA:
+        findings.append(f"authority:live_contract_schema:{data.get('schema')}")
+    if data.get("workers") != 1:
+        findings.append(f"authority:live_contract_workers:{data.get('workers')}")
+    if data.get("retries") != 0:
+        findings.append(f"authority:live_contract_retries:{data.get('retries')}")
+    if data.get("expected_execution_count") != 4:
+        findings.append(f"authority:live_contract_expected:{data.get('expected_execution_count')}")
+    if data.get("frozen_at_invocation_start") is not True:
+        findings.append("authority:live_contract_not_frozen")
+    return data.get("execution_mode"), data.get("candidate_sha")
 
-    for required in (reconciliation_in, playwright_report, invocation_ledger):
-        if not required.exists():
-            findings.append(f"reconciliation:runtime_file_absent:{required.name}")
-            return
 
-    data = json.loads(reconciliation_json.read_text(encoding="utf-8"))
-    accounting = data.get("accounting", {})
-    if accounting.get("gap") != 0:
-        findings.append(f"reconciliation:gap_nonzero({json.dumps(accounting)})")
-    if accounting.get("pass") != 4 or accounting.get("fail") != 0:
-        findings.append(f"reconciliation:pass_fail_not_4_0({json.dumps(accounting)})")
-    if accounting.get("skipped") != 0 or accounting.get("not_run") != 0:
-        findings.append(f"reconciliation:skipped_or_not_run_nonzero({json.dumps(accounting)})")
-    if accounting.get("duplicates") != 0:
-        findings.append(f"reconciliation:duplicates_nonzero({json.dumps(accounting)})")
-    if data.get("errors"):
-        findings.append(f"reconciliation:errors_present({data.get('errors')})")
-    seen = set()
-    for node, records in (data.get("nodes") or {}).items():
-        for rec in records or []:
-            seen.add((node, rec.get("viewport")))
+def _authority_report_binding(path: Path, findings: list[str]) -> tuple[str, str]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("schema") != AUTHORITY_REPORT_SCHEMA:
+        findings.append(f"authority:report_schema:{data.get('schema')}")
+    for field, expected in (
+        ("workers", 1),
+        ("retries", 0),
+        ("expected_execution_count", 4),
+        ("observed_execution_count", 4),
+    ):
+        if data.get(field) != expected:
+            findings.append(f"authority:report_field:{field}:{data.get(field)}")
+    if data.get("status") != "passed":
+        findings.append(f"authority:report_status_not_passed:{data.get('status')}")
+    executions = data.get("executions") or []
+    if len(executions) != 4:
+        findings.append(f"authority:report_execution_count:{len(executions)}")
+    seen: set[tuple[str, str]] = set()
+    for execution in executions:
+        key = (execution.get("node"), execution.get("viewport"))
+        if key not in EXPECTED_COMBOS:
+            findings.append(f"authority:report_unknown_combination:{key}")
+        seen.add(key)
+        if execution.get("status") not in ("passed", "failed"):
+            findings.append(f"authority:report_execution_status:{execution.get('status')}")
+        if not execution.get("failure_class"):
+            findings.append(f"authority:report_failure_class_missing:{key}")
     if seen != EXPECTED_COMBOS:
-        findings.append(f"reconciliation:combination_mismatch(missing={sorted(EXPECTED_COMBOS - seen)})")
+        findings.append(f"authority:report_combination_mismatch(missing={sorted(EXPECTED_COMBOS - seen)})")
+    return data.get("execution_mode"), data.get("candidate_sha")
 
-    raw_records, record_findings = _reconciliation_records(reconciliation_in)
-    findings.extend(record_findings)
-    report_records = _playwright_results(playwright_report)
-    if set(report_records) != EXPECTED_COMBOS:
-        findings.append(f"reconciliation:playwright_combination_mismatch(missing={sorted(EXPECTED_COMBOS - set(report_records))})")
-    for key in EXPECTED_COMBOS:
-        if key in report_records and key not in raw_records:
-            findings.append(f"reconciliation:playwright_without_record:{key}")
-        if key in raw_records and key not in report_records:
-            findings.append(f"reconciliation:record_without_playwright:{key}")
-        if key in raw_records and key in report_records and raw_records[key] != report_records[key]:
-            findings.append(f"reconciliation:report_disagreement:{key}:{raw_records[key]}:{report_records[key]}")
 
+def _ledger_binding(path: Path, findings: list[str]) -> tuple[str, str]:
     starts = ends = refused = 0
-    for line in invocation_ledger.read_text(encoding="utf-8").splitlines():
+    modes: set[str] = set()
+    shas: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
         record = json.loads(line)
-        if record.get("mode") != "AUTHOR_DIAGNOSTIC":
-            findings.append(f"invocation:unknown_mode:{record.get('mode')}")
+        mode = record.get("mode")
+        if mode not in RUNTIME_MODES:
+            findings.append(f"invocation:unknown_mode:{mode}")
+        modes.add(mode)
+        shas.add(record.get("candidate_sha"))
         if record.get("event") == "start":
             starts += 1
             if record.get("workers") != 1 or record.get("retries") != 0:
@@ -445,14 +588,128 @@ def check_reconciliation(findings: list[str], allow_missing: bool) -> None:
                 findings.append(f"invocation:end_status_not_passed:{record.get('status')}")
         elif record.get("event") == "refused":
             refused += 1
+        else:
+            findings.append(f"invocation:unknown_event:{record.get('event')}")
     if starts != 1 or ends != 1 or refused != 0:
         findings.append(f"invocation:expected_single_start_end(starts={starts}, ends={ends}, refused={refused})")
+    if len(modes) != 1:
+        findings.append(f"invocation:mode_not_uniform:{sorted(map(str, modes))}")
+    if len(shas) != 1:
+        findings.append(f"invocation:candidate_sha_not_uniform:{sorted(map(str, shas))}")
+    return (next(iter(modes)) if len(modes) == 1 else None,
+            next(iter(shas)) if len(shas) == 1 else None)
+
+
+def check_reconciliation(
+    findings: list[str],
+    allow_missing: bool,
+    require_mode: str | None = None,
+) -> None:
+    results = HARNESS / "results"
+    reconciliation_json = results / "reconciliation.json"
+    reconciliation_in = results / "reconciliation-in.jsonl"
+    playwright_report = results / "playwright-report.json"
+    invocation_ledger = results / "invocation-ledger.jsonl"
+    authority_report = results / "authority-report.json"
+    live_contract = results / "live-execution-contract.json"
+    if not reconciliation_json.exists():
+        if allow_missing:
+            return
+        findings.append("reconciliation:results_absent")
+        return
+
+    for required in (
+        reconciliation_in,
+        playwright_report,
+        invocation_ledger,
+        authority_report,
+        live_contract,
+    ):
+        if not required.exists():
+            findings.append(f"reconciliation:runtime_file_absent:{required.name}")
+            return
+
+    data = json.loads(reconciliation_json.read_text(encoding="utf-8"))
+    accounting = data.get("accounting", {})
+    if accounting.get("gap") != 0:
+        findings.append(f"reconciliation:gap_nonzero({json.dumps(accounting)})")
+    if accounting.get("pass") != 4 or accounting.get("fail") != 0:
+        findings.append(f"reconciliation:pass_fail_not_4_0({json.dumps(accounting)})")
+    if accounting.get("skipped") != 0 or accounting.get("not_run") != 0:
+        findings.append(f"reconciliation:skipped_or_not_run_nonzero({json.dumps(accounting)})")
+    if accounting.get("duplicates") != 0:
+        findings.append(f"reconciliation:duplicates_nonzero({json.dumps(accounting)})")
+    if accounting.get("mode_mismatches") != 0:
+        findings.append(f"reconciliation:mode_mismatches_nonzero({accounting.get('mode_mismatches')})")
+    if accounting.get("candidate_sha_mismatches") != 0:
+        findings.append(
+            f"reconciliation:candidate_sha_mismatches_nonzero({accounting.get('candidate_sha_mismatches')})"
+        )
+    if data.get("errors"):
+        findings.append(f"reconciliation:errors_present({data.get('errors')})")
+    seen = set()
+    for node, records in (data.get("nodes") or {}).items():
+        for rec in records or []:
+            seen.add((node, rec.get("viewport")))
+    if seen != EXPECTED_COMBOS:
+        findings.append(f"reconciliation:combination_mismatch(missing={sorted(EXPECTED_COMBOS - seen)})")
+
+    raw_records, record_bindings, record_findings = _reconciliation_records(reconciliation_in)
+    findings.extend(record_findings)
+    report_records = _playwright_results(playwright_report)
+    if set(report_records) != EXPECTED_COMBOS:
+        findings.append(f"reconciliation:playwright_combination_mismatch(missing={sorted(EXPECTED_COMBOS - set(report_records))})")
+    for key in EXPECTED_COMBOS:
+        if key in report_records and key not in raw_records:
+            findings.append(f"reconciliation:playwright_without_record:{key}")
+        if key in raw_records and key not in report_records:
+            findings.append(f"reconciliation:record_without_playwright:{key}")
+        if key in raw_records and key in report_records and raw_records[key] != report_records[key]:
+            findings.append(f"reconciliation:report_disagreement:{key}:{raw_records[key]}:{report_records[key]}")
+
+    sources: dict[str, tuple[str, str]] = {
+        "invocation_ledger": _ledger_binding(invocation_ledger, findings),
+        "live_execution_contract": _live_contract_binding(live_contract, findings),
+        "authority_report": _authority_report_binding(authority_report, findings),
+    }
+    report_bindings = _playwright_bindings(playwright_report, findings)
+    if len(report_bindings) != 1:
+        findings.append(
+            f"authority:playwright_report_binding_not_uniform:{sorted(map(str, report_bindings))}"
+        )
+    else:
+        sources["playwright_report"] = next(iter(report_bindings))
+    if len(record_bindings) != 1:
+        findings.append(
+            f"authority:reconciliation_record_binding_not_uniform:{sorted(map(str, record_bindings))}"
+        )
+    else:
+        sources["reconciliation_records"] = next(iter(record_bindings))
+
+    modes = {label: binding[0] for label, binding in sources.items()}
+    shas = {label: binding[1] for label, binding in sources.items()}
+    for label, mode in modes.items():
+        if mode not in RUNTIME_MODES:
+            findings.append(f"authority:unknown_mode:{label}:{mode}")
+    if len({m for m in modes.values() if m is not None}) > 1:
+        findings.append(f"authority:mode_mismatch_across_sources({json.dumps(modes, sort_keys=True)})")
+    if len({s for s in shas.values() if s is not None}) > 1 or not shas:
+        findings.append(f"authority:candidate_sha_mismatch_across_sources({json.dumps(shas, sort_keys=True)})")
+    for label, sha in shas.items():
+        if not sha:
+            findings.append(f"authority:candidate_sha_absent:{label}")
+    if require_mode:
+        for label, mode in sorted(modes.items()):
+            if mode != require_mode:
+                findings.append(f"authority:required_mode_not_met:{label}:{mode}")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--allow-missing-reconciliation", action="store_true",
                         help="author validation mode: reconciliation.json may be absent")
+    parser.add_argument("--require-mode", choices=list(RUNTIME_MODES), default=None,
+                        help="require every evidence source to carry exactly this execution mode")
     args = parser.parse_args()
 
     findings: list[str] = []
@@ -462,9 +719,10 @@ def main() -> int:
     check_auth_truth(findings)
     check_namespace_isolation(findings)
     check_mobile_navigation(findings)
+    check_authority_mode(findings)
     check_runtime_lifecycle(findings)
     check_no_h2c_imports(findings)
-    check_reconciliation(findings, args.allow_missing_reconciliation)
+    check_reconciliation(findings, args.allow_missing_reconciliation, args.require_mode)
 
     if findings:
         print("STATIC VALIDATOR: RED")

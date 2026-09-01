@@ -1,10 +1,22 @@
 #!/usr/bin/env python3
-"""SKU browser harness mutation suite — B1 (M01-M10) + B3 (M11-M26).
+"""SKU browser harness mutation suite — B1 (M01-M10) + B3 (M11-M26) + B4 (M27-M36).
 
 Each mutation independently removes or weakens ONE required harness property;
 the static validator must turn RED under the mutation and GREEN again after
 the byte-exact restore. Detection is static (fast, deterministic, and runtime
 401s are terminal by contract).
+
+B4 (M27-M36) covers the independent-browser-authority mode contract:
+  M27 remove mode exclusivity
+  M28 map independent mode to AUTHOR_DIAGNOSTIC
+  M29 allow no-mode execution
+  M30 delete ledger mode comparison
+  M31 delete reconciliation mode comparison
+  M32 permit cross-mode second invocation
+  M33 permit candidate-SHA ledger drift
+  M34 enable reporter only for author mode
+  M35 let --list write evidence
+  M36 relabel author evidence independent
 """
 from __future__ import annotations
 
@@ -187,21 +199,75 @@ def main() -> int:
             (FIXTURES, "const status = testInfo.status === 'passed' ? 'passed' : 'failed';",
              "const status = testInfo.status === 'passed' ? 'passed' : 'not_run' as any;"),
         ]),
-        ("M23-author-diagnostic-mode-guard-removed", [
-            (GLOBAL_SETUP, "  requireAuthorDiagnosticMode();",
-             "  // requireAuthorDiagnosticMode removed by M23"),
+        ("M23-runtime-mode-guard-removed", [
+            (GLOBAL_SETUP, "  requireRuntimeMode();",
+             "  // requireRuntimeMode removed by M23"),
         ]),
         ("M24-stale-runtime-cleanup-removed", [
             (GLOBAL_SETUP, "  clearGeneratedRuntimeOutputs();",
              "  // clearGeneratedRuntimeOutputs removed by M24"),
         ]),
-        ("M25-second-author-invocation-guard-removed", [
-            (RUNTIME, "second_author_diagnostic_invocation_refused",
-             "second_invocation_allowed_by_M25"),
+        ("M25-second-invocation-guard-removed", [
+            (RUNTIME, "  if (starts.length >= 1) {",
+             "  if (false) {  // second-invocation guard removed by M25"),
         ]),
         ("M26-report-disagreement-accounting-removed", [
             (RECONCILE, "reportDisagreements += 1;",
              "// report disagreement increment removed by M26"),
+        ]),
+        # ---- B4: independent browser authority mode contract -----------------
+        ("M27-mode-exclusivity-removed", [
+            (RUNTIME, "  if (authorSet && independentSet) {",
+             "  if (false) {  // mode exclusivity removed by M27"),
+        ]),
+        ("M28-independent-mode-mapped-to-author-diagnostic", [
+            (RUNTIME, "  if (independentSet) return INDEPENDENT_AUTHORITY;",
+             "  if (independentSet) return AUTHOR_DIAGNOSTIC;  // relabelled by M28"),
+        ]),
+        ("M29-no-mode-execution-allowed", [
+            (RUNTIME,
+             "  if (authorSet) return AUTHOR_DIAGNOSTIC;\n"
+             "  if (independentSet) return INDEPENDENT_AUTHORITY;\n"
+             "  throw new ModeResolutionError(\n"
+             "    CODE_MODE_UNSET,\n"
+             "    `exactly one of ${AUTHOR_DIAGNOSTIC_ENV}=1 / ${INDEPENDENT_AUTHORITY_ENV}=1 is required for browser runtime execution`,\n"
+             "  );",
+             "  if (independentSet) return INDEPENDENT_AUTHORITY;\n"
+             "  return AUTHOR_DIAGNOSTIC;  // no-mode execution allowed by M29"),
+        ]),
+        ("M30-ledger-mode-comparison-deleted", [
+            (RECONCILE,
+             "    checkBinding(`invocation_ledger:${record.event}`, record.mode, record.candidate_sha,\n"
+             "      expectedMode, expectedSha, errors, bindingTally);",
+             "    // ledger mode comparison deleted by M30"),
+        ]),
+        ("M31-reconciliation-mode-comparison-deleted", [
+            (RECONCILE,
+             "    checkBinding(`reconciliation_record:${key(rec.node, rec.viewport)}`, rec.mode, rec.candidate_sha,\n"
+             "      expectedMode, expectedSha, errors, bindingTally);",
+             "    // reconciliation mode comparison deleted by M31"),
+        ]),
+        ("M32-cross-mode-second-invocation-permitted", [
+            (RUNTIME, "  const foreignMode = starts.filter((record) => record.mode !== mode);",
+             "  const foreignMode = starts.filter((record) => false);  // cross-mode permitted by M32"),
+        ]),
+        ("M33-candidate-sha-ledger-drift-permitted", [
+            (RUNTIME,
+             "  const foreignSha = prior.filter((record) => record.candidate_sha !== candidateSha);",
+             "  const foreignSha = prior.filter((record) => false);  // SHA drift permitted by M33"),
+        ]),
+        ("M34-reporter-enabled-only-for-author-mode", [
+            (CONFIG, "= runtimeMode ? [",
+             "= runtimeMode === AUTHOR_DIAGNOSTIC ? [  // independent mode silenced by M34"),
+        ]),
+        ("M35-list-writes-runtime-evidence", [
+            (CONFIG, "isListMode ? null : resolveRuntimeMode()",
+             "resolveRuntimeMode()  // --list no longer exempt by M35"),
+        ]),
+        ("M36-author-evidence-relabelled-independent", [
+            (RUNTIME,
+             "  if (contract) return assertKnownMode(contract.execution_mode, LIVE_EXECUTION_CONTRACT);",
+             "  if (contract) return INDEPENDENT_AUTHORITY;  // relabelled by M36"),
         ]),
     ]
 
@@ -216,7 +282,7 @@ def main() -> int:
     if failures:
         print(f"MUTATION SUITE: RED-FAILED ({len(failures)}): {failures}")
         return 1
-    print("MUTATION SUITE: all 26 mutations RED as intended, pristine and restored states GREEN")
+    print(f"MUTATION SUITE: all {len(mutations)} mutations RED as intended, pristine and restored states GREEN")
     return 0
 
 

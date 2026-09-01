@@ -1,6 +1,6 @@
 import { test as base, expect } from '@playwright/test';
 import { recordExecution, Viewport } from './reconcile';
-import { isAuthorDiagnosticMode, sanitizedFailureClass } from './runtime';
+import { hasRecordedInvocation, recordedCandidateSha, recordedMode, sanitizedFailureClass } from './runtime';
 
 type B3Fixtures = {
   markAssertion: (label: string) => void;
@@ -17,7 +17,7 @@ export const test = base.extend<B3Fixtures>({
   _b3ReconciliationRecorder: [async ({}, use, testInfo) => {
     assertionLabels(testInfo);
     await use();
-    if (!isAuthorDiagnosticMode()) return;
+    if (!hasRecordedInvocation()) return;
     const status = testInfo.status === 'passed' ? 'passed' : 'failed';
     recordExecution({
       node: `sku-m1-browser/tests/${(testInfo.file ?? '').split('/').pop()}::${testInfo.title}`,
@@ -25,6 +25,8 @@ export const test = base.extend<B3Fixtures>({
       status,
       failure_class: sanitizedFailureClass(testInfo.status ?? 'failed', testInfo.errors),
       assertions: assertionLabels(testInfo),
+      mode: recordedMode(),
+      candidate_sha: recordedCandidateSha(),
     });
   }, { auto: true }],
 

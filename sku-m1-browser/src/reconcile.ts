@@ -8,6 +8,10 @@ import * as fs from 'fs';
 import {
   RECONCILIATION_IN,
   RECONCILIATION_OUT,
+  assertKnownMode,
+  readInvocationLedger,
+  readLiveExecutionContract,
+  RuntimeMode,
 } from './runtime';
 
 export const NODE_IDS = {
@@ -25,12 +29,27 @@ export interface NodeViewportReconciliation {
   status: 'passed' | 'failed';
   failure_class: string;
   assertions: string[];
+  mode?: RuntimeMode;
+  candidate_sha?: string;
 }
 
 export interface PlaywrightObservedResult {
   node: string;
   viewport: string;
   status: 'passed' | 'failed';
+}
+
+/** Mode/candidate-SHA binding carried by the Playwright config metadata. */
+export interface PlaywrightReportBinding {
+  execution_mode?: string;
+  candidate_sha?: string;
+}
+
+export interface ReconciliationInput {
+  mode: RuntimeMode;
+  candidateSha: string;
+  observed: PlaywrightObservedResult[];
+  reportBindings: PlaywrightReportBinding[];
 }
 
 export interface Reconciliation {
@@ -50,6 +69,8 @@ export interface Reconciliation {
     report_disagreements: number;
     playwright_without_reconciliation: number;
     reconciliation_without_playwright: number;
+    mode_mismatches: number;
+    candidate_sha_mismatches: number;
     gap: number;
   };
 }
@@ -66,9 +87,34 @@ function key(node: string, viewport: string): string {
   return `${node}|${viewport}`;
 }
 
-export function buildReconciliation(observedResults: PlaywrightObservedResult[] = []): Reconciliation {
+/**
+ * Require ONE execution mode and ONE candidate SHA across every evidence
+ * source. `label` names the source so a disagreement is attributable.
+ */
+function checkBinding(
+  label: string,
+  actualMode: unknown,
+  actualSha: unknown,
+  expectedMode: RuntimeMode,
+  expectedSha: string,
+  errors: string[],
+  tally: { mode: number; sha: number },
+): void {
+  if (actualMode !== expectedMode) {
+    errors.push(`mode_mismatch:${label}:${String(actualMode)}`);
+    tally.mode += 1;
+  }
+  if (actualSha !== expectedSha) {
+    errors.push(`candidate_sha_mismatch:${label}:${String(actualSha)}`);
+    tally.sha += 1;
+  }
+}
+
+export function buildReconciliation(input: ReconciliationInput): Reconciliation {
+  const observedResults = input.observed;
   const combos: NodeViewportReconciliation[] = [];
   const errors: string[] = [];
+  const bindingTally = { mode: 0, sha: 0 };
   const counts = new Map<string, number>();
   const expectedNodes = new Set<string>(Object.values(NODE_IDS));
   const expectedViewports = new Set<string>(REQUIRED_VIEWPORTS);
@@ -95,6 +141,50 @@ export function buildReconciliation(observedResults: PlaywrightObservedResult[] 
       combos.push(rec);
     }
   }
+
+  // ---- Mode / candidate-SHA binding: all four sources must agree. -----------
+  let expectedMode: RuntimeMode;
+  try {
+    expectedMode = assertKnownMode(input.mode, 'reconciliation input');
+  } catch (error) {
+    errors.push(`unknown_mode:${String(input.mode)}`);
+    bindingTally.mode += 1;
+    expectedMode = input.mode as RuntimeMode;
+    void error;
+  }
+  const expectedSha = input.candidateSha;
+
+  const contract = readLiveExecutionContract();
+  if (!contract) {
+    errors.push('live_execution_contract_missing');
+  } else {
+    checkBinding('live_execution_contract', contract.execution_mode, contract.candidate_sha,
+      expectedMode, expectedSha, errors, bindingTally);
+  }
+
+  const ledger = readInvocationLedger();
+  if (ledger.length === 0) {
+    errors.push('invocation_ledger_missing');
+  }
+  for (const record of ledger) {
+    checkBinding(`invocation_ledger:${record.event}`, record.mode, record.candidate_sha,
+      expectedMode, expectedSha, errors, bindingTally);
+  }
+
+  for (const rec of combos) {
+    checkBinding(`reconciliation_record:${key(rec.node, rec.viewport)}`, rec.mode, rec.candidate_sha,
+      expectedMode, expectedSha, errors, bindingTally);
+  }
+
+  if (input.reportBindings.length === 0) {
+    errors.push('playwright_report_binding_missing');
+  }
+  for (const binding of input.reportBindings) {
+    checkBinding('playwright_report', binding.execution_mode, binding.candidate_sha,
+      expectedMode, expectedSha, errors, bindingTally);
+  }
+  // -------------------------------------------------------------------------
+
   const required = Object.values(NODE_IDS).flatMap((node) =>
     REQUIRED_VIEWPORTS.map((viewport) => `${node}|${viewport}`),
   );
@@ -160,9 +250,12 @@ export function buildReconciliation(observedResults: PlaywrightObservedResult[] 
       report_disagreements: reportDisagreements,
       playwright_without_reconciliation: playwrightWithoutReconciliation,
       reconciliation_without_playwright: reconciliationWithoutPlaywright,
+      mode_mismatches: bindingTally.mode,
+      candidate_sha_mismatches: bindingTally.sha,
       gap: missing.length + Math.max(0, seen.size - required.length) + duplicates
         + unknownNodes + unknownViewports + reportDisagreements
-        + playwrightWithoutReconciliation + reconciliationWithoutPlaywright,
+        + playwrightWithoutReconciliation + reconciliationWithoutPlaywright
+        + bindingTally.mode + bindingTally.sha,
     },
   };
   fs.writeFileSync(RECONCILIATION_OUT, JSON.stringify(reconciliation, null, 2));

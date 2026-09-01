@@ -13,6 +13,7 @@
  */
 import { defineConfig, devices } from '@playwright/test';
 import * as path from 'path';
+import { RETRIES, WORKERS, resolveRuntimeMode, RuntimeMode } from './src/runtime';
 
 const resultsDir = path.resolve(__dirname, 'results');
 
@@ -40,25 +41,48 @@ export const HARNESS_CONFIG = {
   expectedAlembicHead: '038_catalog_identity_vertical_slice',
   expectedAlembicParent: '037_payment_declarations_schema',
   provisioningPath: path.resolve(__dirname, 'provisioning', 'official.json'),
+  resultsDir,
 };
 
+/**
+ * B4 authority modes — exactly two, mutually exclusive:
+ *
+ *   B3_AUTHOR_DIAGNOSTIC=1      -> AUTHOR_DIAGNOSTIC     (author evidence)
+ *   B4_INDEPENDENT_AUTHORITY=1  -> INDEPENDENT_AUTHORITY (independent evidence)
+ *
+ * `--list` is read-only and ignores BOTH mode variables: no runtime reporter,
+ * no runtime evidence, no mode binding.
+ *
+ * Every other invocation must select exactly one mode; resolution fails closed
+ * here, before Playwright can launch a browser.
+ */
 const isListMode = process.argv.some((arg) => arg === '--list' || arg === 'list');
-const isAuthorDiagnosticMode = process.env.B3_AUTHOR_DIAGNOSTIC === '1' && !isListMode;
-const reporter: NonNullable<ReturnType<typeof defineConfig>['reporter']> = isAuthorDiagnosticMode
-  ? [
-      ['list'],
-      [
-        'json',
-        {
-          outputFile: path.join(resultsDir, 'playwright-report.json'),
-        },
-      ],
-      [require.resolve('./src/diagnostic-reporter')],
-    ]
-  : [['list']];
+export const RUNTIME_MODE: RuntimeMode | null = isListMode ? null : resolveRuntimeMode();
+const runtimeMode = RUNTIME_MODE;
+
+const reportBinding = runtimeMode
+  ? {
+      execution_mode: runtimeMode,
+      candidate_sha: HARNESS_CONFIG.candidateSha,
+      workers: WORKERS,
+      retries: RETRIES,
+    }
+  : undefined;
+
+const reporter: NonNullable<ReturnType<typeof defineConfig>['reporter']> = runtimeMode ? [
+  ['list'],
+  [
+    'json',
+    {
+      outputFile: path.join(resultsDir, 'playwright-report.json'),
+    },
+  ],
+  [require.resolve('./src/authority-reporter')],
+] : [['list']];
 
 export default defineConfig({
   testDir: path.resolve(__dirname, 'tests'),
+  metadata: reportBinding,
   timeout: 240_000,
   globalTimeout: 1_800_000,
   workers: 1,
@@ -70,6 +94,7 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop',
+      metadata: reportBinding,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1280, height: 800 },
@@ -85,6 +110,7 @@ export default defineConfig({
     },
     {
       name: 'mobile-390',
+      metadata: reportBinding,
       use: {
         ...devices['Pixel 7'],
         viewport: { width: 390, height: 844 },

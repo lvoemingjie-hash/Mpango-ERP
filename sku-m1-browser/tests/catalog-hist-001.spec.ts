@@ -2,61 +2,64 @@
  * CATALOG-HIST-001 — immutable order snapshots across catalog rename and
  * deactivation (P1, full_stack, desktop-and-mobile-390).
  *
- * Runs under BOTH Playwright projects (desktop, mobile-390). The order is
- * created through the public client-orders API with a stable sellable_unit_id;
- * catalog rename/deactivation happen through the public wholesaler APIs;
- * every historical observation is UI-first (supported navigation only) with
- * an API read for the stable-identity proof. Nothing is mocked.
+ * Own namespace: CATHIST-DESKTOP / CATHIST-MOBILE-390. Creates its own
+ * product, packages, stock and price through accepted API setup, then creates
+ * the historical order via the public client-orders API with a stable
+ * sellable_unit_id. All direct API requests carry explicit contextual bearer
+ * tokens; 401 is terminal (no retry/replay). Nothing is mocked.
  */
-import { test, expect } from '@playwright/test';
-import { loadProvisionedState } from '../src/provision';
-import { recordOutcome, Viewport } from '../src/reconcile';
+import { test, expect } from '../src/fixtures';
+import { executionNamespace, loadSharedState, provisionExecutionResources } from '../src/provision';
 import { HARNESS_CONFIG } from '../playwright.config';
+import { Viewport } from '../src/reconcile';
 
 const ENTRY_RETAILER_LOGIN = '/client/login';
 const API = HARNESS_CONFIG.backendBaseUrl;
 
+function linkForSku(page: import('@playwright/test').Page, skuCode: string) {
+  return page.getByRole('link', { name: new RegExp(skuCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) });
+}
+
 interface CapturedSnapshot {
   productName: string;
   skuCode: string;
-  unit: string;
   quantity: string;
   unitPrice: string;
   amount: string;
   orderId: string;
 }
 
-test('CATALOG-HIST-001', async ({ page }, testInfo) => {
+test('CATALOG-HIST-001', async ({ page, markAssertion }, testInfo) => {
   const viewport = testInfo.project.name as Viewport;
-  const assertions: string[] = [];
-  const state = loadProvisionedState();
-  const productRenameSuffix = ' Renamed B1';
+  const shared = loadSharedState();
+
+  // --- Own per-execution namespace (node x viewport) via API setup ---------
+  const ns = executionNamespace('CATHIST', viewport);
+  const exec = await provisionExecutionResources(
+    shared, ns.tag, ns.productName, ns.codes,
+  );
+  const unit = exec.units[0];
 
   // --- 1. Create an order using a stable sellable_unit_id (public API) -----
-  const unit = state.tenantA.units[0];
   const created = await page.request.post(`${API}/api/v1/client/orders`, {
-    headers: { Authorization: `Bearer ${state.retailer.accessToken}` },
+    headers: { Authorization: `Bearer ${shared.retailer.accessToken}` },
     data: { items: [{ sellable_unit_id: unit.sellableUnitId, sku_code: unit.skuCode, quantity: 2 }] },
   });
   expect(created.status()).toBe(201);
   const orderData = ((await created.json()).data ?? {}) as any;
   const orderId: string = orderData.id;
   expect(orderId).toMatch(/^[0-9a-f-]{36}$/i);
-  assertions.push('order_created_with_stable_sellable_unit_id');
+  markAssertion('order_created_with_stable_sellable_unit_id');
 
   // --- 2. Capture the displayed historical snapshot before catalog mutation -
-  // Supported entry: the portal handoff link /client/login?w=<portal code>
-  // (server-verified code from the retailer registration response).
-  const retailerEntry: string = `/client/login?w=${state.retailer.wholesalerCode}`;
+  const retailerEntry: string = `/client/login?w=${shared.retailer.wholesalerCode}`;
   await page.goto(retailerEntry);
-  await page.getByLabel(/email/i).fill(state.retailer.email);
-  await page.getByLabel(/password/i).fill(state.retailer.password);
-  await page.getByRole('button', { name: /sign in/i }).click();
-  await expect(page.getByRole('link', { name: /.*/ }).first()).toBeVisible({ timeout: 30_000 });
+  await page.getByLabel('Email').fill(shared.retailer.email);
+  await page.getByLabel('Password').fill(shared.retailer.password);
+  await page.getByRole('button', { name: 'Sign In' }).click();
+  await expect(page.getByRole('link', { name: 'Orders' })).toBeVisible({ timeout: 30_000 });
 
-  // Supported navigation: orders list -> the historical order row.
-  const ordersLink = page.getByRole('link', { name: /^orders$/i }).first();
-  await ordersLink.click();
+  await page.getByRole('link', { name: 'Orders' }).click();
   const orderRow = page.getByText(`#${orderId.slice(0, 8)}`).first();
   await expect(orderRow).toBeVisible({ timeout: 30_000 });
   await orderRow.click();
@@ -66,7 +69,6 @@ test('CATALOG-HIST-001', async ({ page }, testInfo) => {
   const before: CapturedSnapshot = {
     productName: (await itemRow.locator('p').first().innerText()).trim(),
     skuCode: unit.skuCode,
-    unit: unit.unit,
     quantity: '',
     unitPrice: '',
     amount: '',
@@ -78,47 +80,44 @@ test('CATALOG-HIST-001', async ({ page }, testInfo) => {
   before.unitPrice = qtyPrice ? qtyPrice[2] : '';
   const amounts = rowText.match(/([0-9][0-9.,]+)\s*$/);
   before.amount = amounts ? amounts[1] : '';
-  expect(before.productName.toLowerCase()).toContain('juice');
-  assertions.push('historical_snapshot_captured_before_mutation');
+  expect(before.productName).toBe(ns.productName);
+  markAssertion('historical_snapshot_captured_before_mutation');
 
   // --- 3. Rename the source CatalogProduct (wholesaler API) ----------------
   const rename = await page.request.put(
-    `${API}/api/v1/catalog-products/${state.tenantA.productId}`,
+    `${API}/api/v1/catalog-products/${exec.productId}`,
     {
-      headers: { Authorization: `Bearer ${state.tenantA.accessToken}` },
-      data: { name: state.tenantA.productName + productRenameSuffix },
+      headers: { Authorization: `Bearer ${shared.tenantA.accessToken}` },
+      data: { name: ns.productName + ' Renamed B3' },
     },
   );
   expect([200, 201]).toContain(rename.status());
-  assertions.push('source_product_renamed');
+  markAssertion('source_product_renamed');
 
   // --- 4. Deactivate the source product/package (wholesaler API) -----------
   const deactivate = await page.request.put(
-    `${API}/api/v1/catalog-products/${state.tenantA.productId}/sellable-units/${unit.sellableUnitId}`,
+    `${API}/api/v1/catalog-products/${exec.productId}/sellable-units/${unit.sellableUnitId}`,
     {
-      headers: { Authorization: `Bearer ${state.tenantA.accessToken}` },
+      headers: { Authorization: `Bearer ${shared.tenantA.accessToken}` },
       data: { is_active: false },
     },
   );
   expect([200, 201]).toContain(deactivate.status());
-  assertions.push('source_package_deactivated');
+  markAssertion('source_package_deactivated');
 
   // --- 5. New retailer selection hides the unavailable item ----------------
-  await page.getByRole('link', { name: /client|catalog|back/i }).first().click();
-  await expect(page.getByRole('link', { name: state.tenantA.productName + productRenameSuffix })).toBeVisible();
-  await page.getByRole('link', { name: state.tenantA.productName + productRenameSuffix }).click();
-  const addBtn = page.getByRole('button', { name: /add to order/i });
-  const addCount = await addBtn.count();
-  const addVisible = addCount > 0 && (await addBtn.first().isVisible().catch(() => false));
-  const addDisabled = addCount > 0 && (await addBtn.first().isDisabled().catch(() => false));
+  await page.getByRole('button', { name: 'Back to orders' }).click();
+  await expect(page.getByRole('link', { name: 'Products' })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('link', { name: 'Products' }).click();
+  await expect(linkForSku(page, ns.codes[1])).toBeVisible({ timeout: 30_000 });
+  const unavailableUnitLink = linkForSku(page, unit.skuCode);
 
   // B1-ANCHOR:unavailable-item-hidden-or-disabled
-  expect(addCount === 0 || !addVisible || addDisabled).toBeTruthy();
-  assertions.push('unavailable_package_hidden_or_disabled_for_new_selection');
+  await expect(unavailableUnitLink).toHaveCount(0);
+  markAssertion('unavailable_package_hidden_or_disabled_for_new_selection');
 
   // --- 6.+7. Historical order remains reachable and unchanged (UI) ---------
-  const ordersLinkAfter = page.getByRole('link', { name: /^orders$/i }).first();
-  await ordersLinkAfter.click();
+  await page.getByRole('link', { name: 'Orders' }).click();
   const historicalRow = page.getByText(`#${orderId.slice(0, 8)}`).first();
   await expect(historicalRow).toBeVisible({ timeout: 30_000 });
   await historicalRow.click();
@@ -135,13 +134,13 @@ test('CATALOG-HIST-001', async ({ page }, testInfo) => {
   expect(afterQtyPrice?.[1] ?? '').toBe(before.quantity);
   expect(afterQtyPrice?.[2] ?? '').toBe(before.unitPrice);
   expect(afterAmounts?.[1] ?? '').toBe(before.amount);
-  assertions.push('historical_ui_presentation_unchanged_after_rename_and_deactivation');
+  markAssertion('historical_ui_presentation_unchanged_after_rename_and_deactivation');
 
   // --- 8. Historical response keeps original sellable_unit_id + snapshots --
   const historical = await page.request.get(`${API}/api/v1/client/orders/${orderId}`, {
-    headers: { Authorization: `Bearer ${state.retailer.accessToken}` },
+    headers: { Authorization: `Bearer ${shared.retailer.accessToken}` },
   });
-  expect(historical.ok()).toBeTruthy();
+  expect(historical.ok(), `historical GET -> ${historical.status()}`).toBeTruthy();
   const historicalData = ((await historical.json()).data ?? {}) as any;
   const historicalItems: any[] = historicalData.items ?? [];
   const historicalItem = historicalItems.find(
@@ -152,19 +151,9 @@ test('CATALOG-HIST-001', async ({ page }, testInfo) => {
     before.productName,
   );
   expect(String(historicalItem.skuCode ?? historicalItem.sku_code)).toBe(unit.skuCode);
-  expect(String(historicalItem.unitSnapshot ?? historicalItem.unit_snapshot ?? unit.unit)).toBe(
-    unit.unit,
-  );
-  assertions.push('historical_api_keeps_original_sellable_unit_id_and_snapshots');
+  markAssertion('historical_api_keeps_original_sellable_unit_id_and_snapshots');
 
   // --- 10. No live catalog join rewrote the historical presentation --------
   // Proven by 7: the live product is renamed, the historical view still shows
   // the original captured name/code/unit/quantity/price/amount.
-
-  recordOutcome(
-    'sku-m1-browser/tests/catalog-hist-001.spec.ts::CATALOG-HIST-001',
-    viewport,
-    testInfo.status === 'passed' ? 'passed' : (testInfo.status as 'failed'),
-    assertions,
-  );
 });

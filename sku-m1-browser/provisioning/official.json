@@ -5,11 +5,6 @@
     "country": "TZ",
     "owner_email": "b1-owner-a@skum1browser.dev",
     "owner_password": "B1Owner-A-7kQz2Wx9Vm4N",
-    "product_name": "SKU M1 Browser Juice",
-    "packages": [
-      { "sku_code": "B1-JUICE-BOTTLE", "unit": "bottle", "package_quantity": "1.000", "stock_adjust": 50 },
-      { "sku_code": "B1-JUICE-CASE", "unit": "case", "package_quantity": "12.000", "stock_adjust": 5 }
-    ],
     "retailer": {
       "name": "SKU M1 Browser Retailer A",
       "phone": "+255700000001",
@@ -21,10 +16,6 @@
     "company_name": "SKU M1 Browser Wholesaler B",
     "country": "TZ",
     "owner_email": "b1-owner-b@skum1browser.dev",
-    "owner_password": "B1Owner-B-3fHs6Jc8Wq1Z",
-    "product_name": "SKU M1 Browser Foreign Juice",
-    "packages": [
-      { "sku_code": "B1-FOREIGN-BOTTLE", "unit": "bottle", "package_quantity": "1.000", "stock_adjust": 50 }
-    ]
+    "owner_password": "B1Owner-B-3fHs6Jc8Wq1Z"
   }
 }

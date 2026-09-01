@@ -1,21 +1,36 @@
 /**
- * Global setup: fail-closed preflight, then public-API provisioning.
+ * Global setup: fail-closed preflight, then SHARED identity provisioning.
+ *
+ * Only immutable shared identities are created here (tenant A/B owners and
+ * sessions, retailer identity/binding/session, local-mail prerequisites).
+ * Per-execution catalog resources are created by each test through
+ * provisionExecutionResources() in a deterministic namespace.
  *
  * Any PRECONDITION_FAIL / VOID aborts the whole run before any browser
  * launches (browser launch count stays 0; browser nodes NOT_RUN).
  */
-import * as child_process from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import { runPreflight } from './preflight';
-import { provisionAll } from './provision';
+import { provisionShared } from './provision';
+import {
+  beginInvocation,
+  clearGeneratedRuntimeOutputs,
+  PREFLIGHT_VERDICT,
+  requireAuthorDiagnosticMode,
+} from './runtime';
+import { HARNESS_CONFIG } from '../playwright.config';
 
 export default async function globalSetup(): Promise<void> {
-  const repoRoot = path.resolve(__dirname, '..', '..');
-  const { outcome, provisioning } = await runPreflight(repoRoot);
+  requireAuthorDiagnosticMode();
+  beginInvocation(HARNESS_CONFIG.candidateSha, 1, 0);
+  clearGeneratedRuntimeOutputs();
 
-  const verdictFile = path.resolve(__dirname, '..', 'results', 'preflight-verdict.json');
+  const repoRoot = path.resolve(__dirname, '..', '..');
+  const { outcome } = await runPreflight(repoRoot);
+
   const write = (payload: unknown) => {
-    require('fs').writeFileSync(verdictFile, JSON.stringify(payload, null, 2));
+    fs.writeFileSync(PREFLIGHT_VERDICT, JSON.stringify(payload, null, 2));
   };
 
   if (outcome.kind !== 'OK') {
@@ -30,14 +45,12 @@ export default async function globalSetup(): Promise<void> {
     );
   }
 
-  await provisionAll();
+  const raw = fs.readFileSync(HARNESS_PROVISIONING, 'utf-8');
+  await provisionShared(JSON.parse(raw));
   write({
     outcome: { kind: 'OK' },
-    candidateSha: child_process
-      .execSync('git rev-parse HEAD', { cwd: repoRoot })
-      .toString()
-      .trim(),
-    provisionedAt: 'provisioning content is run state, not a node identity',
+    sharedIdentitiesOnly: true,
   });
-  void provisioning;
 }
+
+const HARNESS_PROVISIONING = path.resolve(__dirname, '..', 'provisioning', 'official.json');

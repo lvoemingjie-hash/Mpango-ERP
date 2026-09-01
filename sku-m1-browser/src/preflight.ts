@@ -30,8 +30,6 @@ export interface OfficialProvisioning {
     country: string;
     owner_email: string;
     owner_password: string;
-    product_name: string;
-    packages: { sku_code: string; unit: string; package_quantity: string; stock_adjust: number }[];
     retailer: { name: string; phone: string; email: string; password: string };
   };
   tenant_b: {
@@ -39,8 +37,6 @@ export interface OfficialProvisioning {
     country: string;
     owner_email: string;
     owner_password: string;
-    product_name: string;
-    packages: { sku_code: string; unit: string; package_quantity: string; stock_adjust: number }[];
   };
 }
 
@@ -56,8 +52,14 @@ export function loadOfficialProvisioning(): OfficialProvisioning | { error: stri
       if (!tenant.company_name) missing.push(`${tenantKey}.company_name`);
       if (!tenant.owner_email) missing.push(`${tenantKey}.owner_email`);
       if (!tenant.owner_password) missing.push(`${tenantKey}.owner_password`);
-      if (!tenant.product_name) missing.push(`${tenantKey}.product_name`);
-      if (!tenant.packages?.length) missing.push(`${tenantKey}.packages`);
+      if ('product_name' in tenant) {
+        // B3: per-execution product names moved out of shared provisioning.
+        missing.push(`${tenantKey}.product_name_must_not_be_shared`);
+      }
+      if ('packages' in tenant) {
+        // B3: per-execution resources moved out of shared provisioning data.
+        missing.push(`${tenantKey}.packages_must_not_be_shared`);
+      }
       if (tenantKey === 'tenant_a') {
         const retailerBlock = (tenant as OfficialProvisioning['tenant_a']).retailer;
         if (!retailerBlock?.email) missing.push(`${tenantKey}.retailer.email`);

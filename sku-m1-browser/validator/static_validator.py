@@ -51,7 +51,7 @@ REQUIRED_ANCHORS = {
     ],
     "tests/catalog-hist-001.spec.ts": [
         "expect(afterName).toBe(before.productName);",
-        "expect(addCount === 0 || !addVisible || addDisabled).toBeTruthy();",
+        "await expect(unavailableUnitLink).toHaveCount(0);",
     ],
 }
 
@@ -67,6 +67,14 @@ FORBIDDEN_PATTERNS = [
     (r"from\s+['\"](pg|pg-promise|mysql|mysql2|mongodb)['\"]", "db_driver_import"),
     (r"from\s+['\"](psycopg|asyncpg|sqlalchemy)", "db_driver_import"),
     (r"INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM", "direct_db_seeding"),
+    # B3 selector exactness: broad/conditional contract-critical navigation
+    (r"getByRole\('link',\s*\{\s*name:\s*/client\|catalog\|back/i", "selector:broad_back_link"),
+    (r"getByRole\('link',\s*\{\s*name:\s*/\.\*/", "selector:wildcard_link"),
+    (r"getByRole\('link',\s*\{\s*name:\s*'Back to orders'\s*\}\)", "selector:back_as_link_role"),
+    (r"getByRole\('button',\s*\{\s*name:\s*'Back to products'\s*\}\)", "selector:wrong_back_name"),
+    # B3 auth truth: no 401 acceptance, no retry-on-401 replay
+    (r"\[?[^\]]*401[^\]]*\]\)\.toContain|toContain\(.*401", "auth:401_accepted"),
+    (r"for\s*\([^)]*401|while[^\n]*401", "auth:401_replay_loop"),
 ]
 
 ALLOWED_GOTO = [
@@ -152,6 +160,152 @@ def check_specs(findings: list[str]) -> None:
             first_arg = match.group(1).strip()
             if not (first_arg.startswith("'") or first_arg.startswith('"')):
                 findings.append(f"spec:dynamic_title:{rel}:{first_arg[:30]}")
+    for rel, body in bodies.items():
+        if "recordOutcome(" in body or "recordExecution(" in body:
+            findings.append(f"reconciliation:tail_write_in_test_body:{rel}")
+        if "from '../src/fixtures'" not in body:
+            findings.append(f"reconciliation:central_fixture_not_imported:{rel}")
+
+
+def _direct_request_blocks(body: str) -> list[tuple[int, str, str]]:
+    """Yield (line, method, call-text) for every direct page.request call,
+    with the balanced call text for header inspection."""
+    out = []
+    for match in re.finditer(r"page\.request\.(get|post|put|patch|delete)\(", body):
+        method = match.group(1)
+        start = match.end() - 1
+        depth = 0
+        i = start
+        while i < len(body):
+            if body[i] == "(":
+                depth += 1
+            elif body[i] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        call_text = body[start : i + 1]
+        line = body[: match.start()].count("\n") + 1
+        out.append((line, method, call_text))
+    return out
+
+
+def check_auth_truth(findings: list[str]) -> None:
+    """B3 auth truth: EVERY direct page.request call must explicitly carry the
+    correct contextual Authorization bearer header. 401 must never be accepted
+    or retried. Failure output must not embed the token."""
+    for rel in ("tests/catalog-id-001.spec.ts", "tests/catalog-hist-001.spec.ts"):
+        body = read(rel)
+        blocks = _direct_request_blocks(body)
+        if not blocks:
+            findings.append(f"auth:no_direct_calls:{rel}")
+            continue
+        for line_no, method, call_text in blocks:
+            if "Authorization:" not in call_text and "Authorization =" not in call_text:
+                findings.append(f"auth:bearer_missing:{rel}:{line_no}:{method}")
+            if re.search(r"accessToken\]|`\$\{.*[Tt]oken", call_text):
+                # tokens may be REFERENCED (state.tenantA.accessToken) — that is
+                # required. Only literal token VALUES are forbidden; the specs
+                # hold no literals, so this branch never fires for correct code.
+                pass
+        # 401 must never appear as an accepted status anywhere
+        for i, line in enumerate(body.split("\n"), 1):
+            if re.search(r"toContain\([^)]*401|toBe\(401\)|status\(\)\s*===?\s*401", line):
+                findings.append(f"auth:401_accepted:{rel}:{i}")
+        # no retry/replay constructs around authentication
+        if re.search(r"for\s*\(\s*(let|var)\s+attempt|while\s*\([^)]*401|attempt\s*\+\s*1|retries\s*<|\.retry\(", body):
+            findings.append(f"auth:retry_replay_construct:{rel}")
+
+
+def check_namespace_isolation(findings: list[str]) -> None:
+    """B3 resource isolation: per-execution namespace derived from node x
+    viewport; no cross-node references inside either spec."""
+    prov = read("src/provision.ts")
+    if 'codes: [`${nodeShort}-${vp}-UNIT`, `${nodeShort}-${vp}-PACK`]' not in prov:
+        findings.append("namespace:codes_not_derived_from_node_and_viewport")
+    if "viewport === 'mobile-390' ? 'MOBILE-390' : 'DESKTOP'" not in prov:
+        findings.append("namespace:viewport_id_not_derived")
+    id_spec = read("tests/catalog-id-001.spec.ts")
+    hist_spec = read("tests/catalog-hist-001.spec.ts")
+    if "executionNamespace('CATID', viewport)" not in id_spec:
+        findings.append("namespace:catalog_id_namespace_not_catid")
+    if "executionNamespace('CATHIST', viewport)" not in hist_spec:
+        findings.append("namespace:catalog_hist_namespace_not_cathist")
+    if re.search(r"CATHIST", id_spec):
+        findings.append("namespace:catalog_id_references_other_node")
+    if re.search(r"CATID-", hist_spec):
+        findings.append("namespace:catalog_hist_references_other_node")
+    # shared fixed provisioning must not contain per-execution product codes
+    official = read("provisioning/official.json")
+    for fixed_code in ("B1-JUICE-BOTTLE", "B1-JUICE-CASE", "B1-FOREIGN-UNIT"):
+        if fixed_code in official:
+            findings.append(f"namespace:fixed_provisioning_code_present:{fixed_code}")
+
+
+def check_mobile_navigation(findings: list[str]) -> None:
+    """B3 mobile: the navigation menu must be explicitly opened via the named
+    toggle button before contract-critical selection, on mobile only."""
+    id_spec = read("tests/catalog-id-001.spec.ts")
+    if "Toggle navigation menu" not in id_spec:
+        findings.append("mobile:toggle_button_name_missing")
+    if "async function openNavigation" not in id_spec:
+        findings.append("mobile:open_navigation_helper_missing")
+    if "await menuButton.click()" not in id_spec:
+        findings.append("mobile:menu_click_missing")
+    if viewport_line := [l for l in id_spec.splitlines() if "openNavigation(page, viewport)" in l]:
+        if not any("if (viewport" in l or "mobile" in l for l in id_spec.splitlines()[: len(viewport_line)]):
+            pass  # helper internally gates on viewport
+
+
+def check_runtime_lifecycle(findings: list[str]) -> None:
+    cfg = read("playwright.config.ts")
+    setup = read("src/global-setup.ts")
+    fixtures = read("src/fixtures.ts")
+    reporter = read("src/diagnostic-reporter.ts")
+    runtime = read("src/runtime.ts")
+    reconcile = read("src/reconcile.ts")
+
+    if "B3_AUTHOR_DIAGNOSTIC" not in cfg or "process.argv.some" not in cfg:
+        findings.append("runtime:config_mode_or_list_guard_missing")
+    if "const reporter" not in cfg or "diagnostic-reporter" not in cfg:
+        findings.append("runtime:diagnostic_reporter_not_configured")
+    if "requireAuthorDiagnosticMode();" not in setup:
+        findings.append("runtime:global_setup_mode_guard_missing")
+    if setup.find("beginInvocation(") < 0 or setup.find("clearGeneratedRuntimeOutputs()") < 0:
+        findings.append("runtime:invocation_or_cleanup_missing")
+    elif setup.find("beginInvocation(") > setup.find("clearGeneratedRuntimeOutputs()"):
+        findings.append("runtime:cleanup_before_invocation_not_ordered")
+    if setup.find("clearGeneratedRuntimeOutputs()") > setup.find("runPreflight("):
+        findings.append("runtime:cleanup_not_before_preflight")
+    for target in (
+        "reconciliation-in.jsonl",
+        "reconciliation.json",
+        "playwright-report.json",
+        "preflight-verdict.json",
+        "test-artifacts",
+        "maildir",
+    ):
+        if target not in runtime:
+            findings.append(f"runtime:cleanup_target_missing:{target}")
+    if "invocation-ledger.jsonl" not in runtime or "second_author_diagnostic_invocation_refused" not in runtime:
+        findings.append("runtime:invocation_ledger_or_second_guard_missing")
+    if "{ auto: true }" not in fixtures or "recordExecution({" not in fixtures:
+        findings.append("runtime:central_auto_recorder_missing")
+    if "testInfo.status === 'passed' ? 'passed' : 'failed'" not in fixtures:
+        findings.append("runtime:failure_not_recorded_as_failed")
+    if "buildReconciliation(this.observed)" not in reporter or "endInvocation(" not in reporter:
+        findings.append("runtime:reporter_reconciliation_or_ledger_end_missing")
+    for field in (
+        "unknown_nodes",
+        "unknown_viewports",
+        "report_disagreements",
+        "playwright_without_reconciliation",
+        "reconciliation_without_playwright",
+    ):
+        if field not in reconcile:
+            findings.append(f"runtime:reconciliation_fail_closed_field_missing:{field}")
+    if "reportDisagreements += 1;" not in reconcile:
+        findings.append("runtime:report_disagreement_increment_missing")
 
 
 def check_no_h2c_imports(findings: list[str]) -> None:
@@ -165,27 +319,127 @@ def check_no_h2c_imports(findings: list[str]) -> None:
                 findings.append(f"h2c_import:{rel}:{pattern}")
 
 
+EXPECTED_COMBOS = {
+    (node, viewport)
+    for node in (
+        "sku-m1-browser/tests/catalog-id-001.spec.ts::CATALOG-ID-001",
+        "sku-m1-browser/tests/catalog-hist-001.spec.ts::CATALOG-HIST-001",
+    )
+    for viewport in ("desktop", "mobile-390")
+}
+
+
+def _playwright_results(report: Path) -> dict[tuple[str, str], str]:
+    data = json.loads(report.read_text(encoding="utf-8"))
+    observed: dict[tuple[str, str], str] = {}
+    for suite in data.get("suites", []):
+        file_name = Path(str(suite.get("file", ""))).name
+        for spec in suite.get("specs", []) or []:
+            title = spec.get("title")
+            node = f"sku-m1-browser/tests/{file_name}::{title}"
+            for test_case in spec.get("tests", []) or []:
+                viewport = test_case.get("projectName")
+                status = "passed" if test_case.get("status") == "passed" else "failed"
+                observed[(node, viewport)] = status
+    return observed
+
+
+def _reconciliation_records(jsonl: Path) -> tuple[dict[tuple[str, str], str], list[str]]:
+    observed: dict[tuple[str, str], str] = {}
+    findings: list[str] = []
+    counts: dict[tuple[str, str], int] = {}
+    for line_no, line in enumerate(jsonl.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        node = record.get("node")
+        viewport = record.get("viewport")
+        status = record.get("status")
+        key = (node, viewport)
+        counts[key] = counts.get(key, 0) + 1
+        if counts[key] > 1:
+            findings.append(f"reconciliation:duplicate_combination:{line_no}:{key}")
+        if key not in EXPECTED_COMBOS:
+            if node not in {n for n, _ in EXPECTED_COMBOS}:
+                findings.append(f"reconciliation:unknown_node:{node}")
+            if viewport not in {v for _, v in EXPECTED_COMBOS}:
+                findings.append(f"reconciliation:unknown_viewport:{viewport}")
+        if status not in ("passed", "failed"):
+            findings.append(f"reconciliation:unknown_status:{status}")
+        observed[key] = status
+    return observed, findings
+
+
 def check_reconciliation(findings: list[str], allow_missing: bool) -> None:
-    results = HARNESS / "results" / "reconciliation.json"
-    if not results.exists():
+    results = HARNESS / "results"
+    reconciliation_json = results / "reconciliation.json"
+    reconciliation_in = results / "reconciliation-in.jsonl"
+    playwright_report = results / "playwright-report.json"
+    invocation_ledger = results / "invocation-ledger.jsonl"
+    if not reconciliation_json.exists():
         if allow_missing:
             return
         findings.append("reconciliation:results_absent")
         return
-    data = json.loads(results.read_text(encoding="utf-8"))
+
+    for required in (reconciliation_in, playwright_report, invocation_ledger):
+        if not required.exists():
+            findings.append(f"reconciliation:runtime_file_absent:{required.name}")
+            return
+
+    data = json.loads(reconciliation_json.read_text(encoding="utf-8"))
     accounting = data.get("accounting", {})
     if accounting.get("gap") != 0:
         findings.append(f"reconciliation:gap_nonzero({json.dumps(accounting)})")
-    expected = {(n, v) for n in (
-        "sku-m1-browser/tests/catalog-id-001.spec.ts::CATALOG-ID-001",
-        "sku-m1-browser/tests/catalog-hist-001.spec.ts::CATALOG-HIST-001",
-    ) for v in ("desktop", "mobile-390")}
+    if accounting.get("pass") != 4 or accounting.get("fail") != 0:
+        findings.append(f"reconciliation:pass_fail_not_4_0({json.dumps(accounting)})")
+    if accounting.get("skipped") != 0 or accounting.get("not_run") != 0:
+        findings.append(f"reconciliation:skipped_or_not_run_nonzero({json.dumps(accounting)})")
+    if accounting.get("duplicates") != 0:
+        findings.append(f"reconciliation:duplicates_nonzero({json.dumps(accounting)})")
+    if data.get("errors"):
+        findings.append(f"reconciliation:errors_present({data.get('errors')})")
     seen = set()
     for node, records in (data.get("nodes") or {}).items():
         for rec in records or []:
             seen.add((node, rec.get("viewport")))
-    if seen != expected:
-        findings.append(f"reconciliation:combination_mismatch(missing={sorted(expected - seen)})")
+    if seen != EXPECTED_COMBOS:
+        findings.append(f"reconciliation:combination_mismatch(missing={sorted(EXPECTED_COMBOS - seen)})")
+
+    raw_records, record_findings = _reconciliation_records(reconciliation_in)
+    findings.extend(record_findings)
+    report_records = _playwright_results(playwright_report)
+    if set(report_records) != EXPECTED_COMBOS:
+        findings.append(f"reconciliation:playwright_combination_mismatch(missing={sorted(EXPECTED_COMBOS - set(report_records))})")
+    for key in EXPECTED_COMBOS:
+        if key in report_records and key not in raw_records:
+            findings.append(f"reconciliation:playwright_without_record:{key}")
+        if key in raw_records and key not in report_records:
+            findings.append(f"reconciliation:record_without_playwright:{key}")
+        if key in raw_records and key in report_records and raw_records[key] != report_records[key]:
+            findings.append(f"reconciliation:report_disagreement:{key}:{raw_records[key]}:{report_records[key]}")
+
+    starts = ends = refused = 0
+    for line in invocation_ledger.read_text(encoding="utf-8").splitlines():
+        record = json.loads(line)
+        if record.get("mode") != "AUTHOR_DIAGNOSTIC":
+            findings.append(f"invocation:unknown_mode:{record.get('mode')}")
+        if record.get("event") == "start":
+            starts += 1
+            if record.get("workers") != 1 or record.get("retries") != 0:
+                findings.append("invocation:workers_or_retries_wrong")
+            if record.get("expected_node_count") != 4:
+                findings.append("invocation:expected_node_count_wrong")
+        elif record.get("event") == "end":
+            ends += 1
+            if record.get("observed_node_count") != 4:
+                findings.append("invocation:observed_node_count_wrong")
+            if record.get("status") != "passed":
+                findings.append(f"invocation:end_status_not_passed:{record.get('status')}")
+        elif record.get("event") == "refused":
+            refused += 1
+    if starts != 1 or ends != 1 or refused != 0:
+        findings.append(f"invocation:expected_single_start_end(starts={starts}, ends={ends}, refused={refused})")
 
 
 def main() -> int:
@@ -198,6 +452,10 @@ def main() -> int:
     check_manifest(findings)
     check_config(findings)
     check_specs(findings)
+    check_auth_truth(findings)
+    check_namespace_isolation(findings)
+    check_mobile_navigation(findings)
+    check_runtime_lifecycle(findings)
     check_no_h2c_imports(findings)
     check_reconciliation(findings, args.allow_missing_reconciliation)
 

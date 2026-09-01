@@ -8,7 +8,7 @@
 | `sku-m1-browser/tsconfig.json` | strict TS compile (typecheck gate) |
 | `sku-m1-browser/playwright.config.ts` | frozen node identities, two viewport projects (desktop 1280x800, mobile-390 390x844), retries 0, workers 1 |
 | `sku-m1-browser/manifest/nodes.manifest.txt` | exact two-node manifest (sorted, unique, LF) |
-| `sku-m1-browser/manifest/frozen-candidate.sha` | frozen candidate SHA binding for preflight |
+| `sku-m1-browser/manifest/product-base.sha` | historical product-base SHA for product-byte identity proof; runtime candidate SHA is external `B1_CANDIDATE_SHA` |
 | `sku-m1-browser/manifest/reconciliation.schema.json` | reconciliation contract (4 combinations, gap must be 0) |
 | `sku-m1-browser/provisioning/official.json` | official provisioning data (missing => PRECONDITION_FAIL) |
 | `sku-m1-browser/src/global-setup.ts` | fail-closed preflight + provisioning entry (VOID/PRECONDITION_FAIL => 0 browser launches) |

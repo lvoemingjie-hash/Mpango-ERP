@@ -12,7 +12,6 @@
  * local SMTP sink for verification/credential emails).
  */
 import { defineConfig, devices } from '@playwright/test';
-import * as fs from 'fs';
 import * as path from 'path';
 
 const resultsDir = path.resolve(__dirname, 'results');
@@ -22,9 +21,6 @@ export const REQUIRED_NODE_TITLES = ['CATALOG-ID-001', 'CATALOG-HIST-001'] as co
 function readCandidateSha(): string {
   const fromEnv = process.env.B1_CANDIDATE_SHA?.trim();
   if (fromEnv) return fromEnv;
-  // Fall back to the frozen expectation recorded next to the manifest.
-  const frozen = path.resolve(__dirname, 'manifest', 'frozen-candidate.sha');
-  if (fs.existsSync(frozen)) return fs.readFileSync(frozen, 'utf-8').trim();
   return '';
 }
 
@@ -45,6 +41,21 @@ export const HARNESS_CONFIG = {
   expectedAlembicParent: '037_payment_declarations_schema',
   provisioningPath: path.resolve(__dirname, 'provisioning', 'official.json'),
 };
+
+const isListMode = process.argv.some((arg) => arg === '--list' || arg === 'list');
+const isAuthorDiagnosticMode = process.env.B3_AUTHOR_DIAGNOSTIC === '1' && !isListMode;
+const reporter: NonNullable<ReturnType<typeof defineConfig>['reporter']> = isAuthorDiagnosticMode
+  ? [
+      ['list'],
+      [
+        'json',
+        {
+          outputFile: path.join(resultsDir, 'playwright-report.json'),
+        },
+      ],
+      [require.resolve('./src/diagnostic-reporter')],
+    ]
+  : [['list']];
 
 export default defineConfig({
   testDir: path.resolve(__dirname, 'tests'),
@@ -88,13 +99,5 @@ export default defineConfig({
       },
     },
   ],
-  reporter: [
-    ['list'],
-    [
-      'json',
-      {
-        outputFile: path.join(resultsDir, 'playwright-report.json'),
-      },
-    ],
-  ],
+  reporter,
 });

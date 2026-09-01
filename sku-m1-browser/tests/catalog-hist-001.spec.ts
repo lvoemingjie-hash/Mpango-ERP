@@ -31,7 +31,7 @@ interface CapturedSnapshot {
 
 test('CATALOG-HIST-001', async ({ page, markAssertion }, testInfo) => {
   const viewport = testInfo.project.name as Viewport;
-  const shared = loadSharedState();
+  const shared = await loadSharedState();
 
   // --- Own per-execution namespace (node x viewport) via API setup ---------
   const ns = executionNamespace('CATHIST', viewport);

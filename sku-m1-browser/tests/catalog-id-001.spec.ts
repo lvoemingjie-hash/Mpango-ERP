@@ -32,7 +32,7 @@ test('CATALOG-ID-001', async ({ page, markAssertion }, testInfo) => {
   const viewport = testInfo.project.name as Viewport;
   const observed: ObservedRequest[] = [];
   attachObserver(page, observed);
-  const shared = loadSharedState();
+  const shared = await loadSharedState();
 
   const ns = executionNamespace('CATID', viewport);
   const { productName } = ns;

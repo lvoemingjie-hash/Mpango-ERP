@@ -137,6 +137,11 @@ export interface SharedIdentity {
   wholesalerCode: string;
   wholesalerId: string;
 }
+interface PersistedSharedIdentity {
+  ownerEmail: string;
+  wholesalerCode: string;
+  wholesalerId: string;
+}
 export interface SharedRetailer {
   email: string;
   password: string;
@@ -144,11 +149,23 @@ export interface SharedRetailer {
   accessToken: string;
   retailerId: string;
 }
+interface PersistedSharedRetailer {
+  email: string;
+  wholesalerCode: string;
+  retailerId: string;
+}
 export interface SharedState {
   tenantA: SharedIdentity;
   tenantB: SharedIdentity;
   retailer: SharedRetailer;
   /** Immutable tenant-B sellable unit used ONLY for cross-tenant negatives. */
+  tenantBForeignUnitId: string;
+}
+interface PersistedSharedState {
+  schema: 'sku-m1-browser/shared-state/1';
+  tenantA: PersistedSharedIdentity;
+  tenantB: PersistedSharedIdentity;
+  retailer: PersistedSharedRetailer;
   tenantBForeignUnitId: string;
 }
 
@@ -169,8 +186,21 @@ async function provisionOwner(
   await api(HARNESS_CONFIG.backendBaseUrl, 'POST', '/api/v1/auth/onboarding/setup-credential', {
     body: { setupToken, password: tenant.owner_password }, expect: [200],
   });
+  const session = await loginOwnerSession(tenant.owner_email, tenant.owner_password);
+  return {
+    ownerEmail: tenant.owner_email,
+    ownerPassword: tenant.owner_password,
+    ...session,
+  };
+}
+
+async function loginOwnerSession(ownerEmail: string, ownerPassword: string): Promise<{
+  accessToken: string;
+  wholesalerCode: string;
+  wholesalerId: string;
+}> {
   const login = await api(HARNESS_CONFIG.backendBaseUrl, 'POST', '/api/v1/auth/login', {
-    body: { email: tenant.owner_email, password: tenant.owner_password }, expect: [200],
+    body: { email: ownerEmail, password: ownerPassword }, expect: [200],
   });
   const loginData = dataPayload(login.json);
   const identityToken: string = loginData.access_token ?? loginData.accessToken;
@@ -202,8 +232,6 @@ async function provisionOwner(
     throw new ApiError('GET', '/api/v1/wholesalers', 200, 'wholesaler code missing');
   }
   return {
-    ownerEmail: tenant.owner_email,
-    ownerPassword: tenant.owner_password,
     accessToken,
     wholesalerCode,
     wholesalerId: String(wsItems[0]?.id ?? tenants[0].id),
@@ -241,11 +269,26 @@ async function provisionRetailer(
   await api(HARNESS_CONFIG.backendBaseUrl, 'POST', '/api/v1/retailers/setup-credential', {
     body: { setup_token: setupToken, new_password: retailerSpec.password }, expect: [200],
   });
+  const session = await loginRetailerSession(
+    retailerSpec.email,
+    retailerSpec.password,
+    tenantA.wholesalerCode,
+    retailerId,
+  );
+  return session;
+}
+
+async function loginRetailerSession(
+  email: string,
+  password: string,
+  wholesalerCode: string,
+  retailerId: string,
+): Promise<SharedRetailer> {
   const login = await api(HARNESS_CONFIG.backendBaseUrl, 'POST', '/api/v1/client/auth/login', {
     body: {
-      email: retailerSpec.email,
-      password: retailerSpec.password,
-      wholesaler_code: tenantA.wholesalerCode,
+      email,
+      password,
+      wholesaler_code: wholesalerCode,
     },
     expect: [200],
   });
@@ -258,9 +301,9 @@ async function provisionRetailer(
     throw new ApiError('POST', '/api/v1/client/auth/login', 200, 'retailer login access token missing');
   }
   return {
-    email: retailerSpec.email,
-    password: retailerSpec.password,
-    wholesalerCode: tenantA.wholesalerCode,
+    email,
+    password,
+    wholesalerCode,
     accessToken,
     retailerId,
   };
@@ -293,15 +336,63 @@ export async function provisionShared(official: OfficialProvisioning): Promise<S
     throw new ApiError('POST', '/api/v1/catalog-products', 201, 'tenant-B foreign unit id missing');
   }
   const state: SharedState = { tenantA, tenantB, retailer, tenantBForeignUnitId };
+  const persisted: PersistedSharedState = {
+    schema: 'sku-m1-browser/shared-state/1',
+    tenantA: {
+      ownerEmail: tenantA.ownerEmail,
+      wholesalerCode: tenantA.wholesalerCode,
+      wholesalerId: tenantA.wholesalerId,
+    },
+    tenantB: {
+      ownerEmail: tenantB.ownerEmail,
+      wholesalerCode: tenantB.wholesalerCode,
+      wholesalerId: tenantB.wholesalerId,
+    },
+    retailer: {
+      email: retailer.email,
+      wholesalerCode: retailer.wholesalerCode,
+      retailerId: retailer.retailerId,
+    },
+    tenantBForeignUnitId,
+  };
   fs.mkdirSync(MAILDIR, { recursive: true });
-  fs.writeFileSync(path.join(MAILDIR, 'provisioned.json'), JSON.stringify(state, null, 2));
+  fs.writeFileSync(path.join(MAILDIR, 'provisioned.json'), JSON.stringify(persisted, null, 2));
   return state;
 }
 
-export function loadSharedState(): SharedState {
+export async function loadSharedState(): Promise<SharedState> {
   const file = path.join(MAILDIR, 'provisioned.json');
   if (!fs.existsSync(file)) throw new Error('shared provisioning state absent — global setup did not run');
-  return JSON.parse(fs.readFileSync(file, 'utf-8')) as SharedState;
+  const persisted = JSON.parse(fs.readFileSync(file, 'utf-8')) as PersistedSharedState;
+  const official = JSON.parse(fs.readFileSync(HARNESS_CONFIG.provisioningPath, 'utf-8')) as OfficialProvisioning;
+  const tenantASession = await loginOwnerSession(
+    official.tenant_a.owner_email,
+    official.tenant_a.owner_password,
+  );
+  const tenantBSession = await loginOwnerSession(
+    official.tenant_b.owner_email,
+    official.tenant_b.owner_password,
+  );
+  const retailerSession = await loginRetailerSession(
+    official.tenant_a.retailer.email,
+    official.tenant_a.retailer.password,
+    persisted.retailer.wholesalerCode,
+    persisted.retailer.retailerId,
+  );
+  return {
+    tenantA: {
+      ownerEmail: official.tenant_a.owner_email,
+      ownerPassword: official.tenant_a.owner_password,
+      ...tenantASession,
+    },
+    tenantB: {
+      ownerEmail: official.tenant_b.owner_email,
+      ownerPassword: official.tenant_b.owner_password,
+      ...tenantBSession,
+    },
+    retailer: retailerSession,
+    tenantBForeignUnitId: persisted.tenantBForeignUnitId,
+  };
 }
 
 export interface ExecutionUnit {

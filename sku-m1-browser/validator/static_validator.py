@@ -339,7 +339,14 @@ def _playwright_results(report: Path) -> dict[tuple[str, str], str]:
             node = f"sku-m1-browser/tests/{file_name}::{title}"
             for test_case in spec.get("tests", []) or []:
                 viewport = test_case.get("projectName")
-                status = "passed" if test_case.get("status") == "passed" else "failed"
+                result_statuses = [
+                    r.get("status") for r in (test_case.get("results") or [])
+                    if r.get("status")
+                ]
+                status = "passed" if (
+                    test_case.get("status") == "passed"
+                    or (test_case.get("status") == "expected" and result_statuses == ["passed"])
+                ) else "failed"
                 observed[(node, viewport)] = status
     return observed
 

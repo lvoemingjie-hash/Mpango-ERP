@@ -41,46 +41,66 @@ def compute_stock_level(quantity_on_hand: Decimal) -> StockLevel:
 
 
 # ---------------------------------------------------------------------------
-# Product View Models
+# Product View Models (DC-12R1-MVP-L1-SKU-R0-M1-R1-R1 product-level contract)
 # ---------------------------------------------------------------------------
+#
+# OLD (per-SKU) semantics — REMOVED:
+#   GET /client/products returned ONE item PER SELLABLE UNIT (per SKU row);
+#   `id`/`sellable_unit_id` were the SKU.id and `product_id` was ambiguous
+#   (GET /client/products/{id} actually queried skus.id).
+#
+# NEW (product-level) semantics:
+#   GET /client/products returns ONE item PER CATALOG PRODUCT; `id` is the
+#   CatalogProduct.id; the product carries its ACTIVE sellable units (packaging
+#   choices) nested under `units`. GET /client/products/{id} queries
+#   CatalogProduct.id ONLY (a sellable-unit UUID is a 404, never a product).
+
+class ClientSellableUnitOption(BaseModel):
+    """One packaging choice inside its parent product container."""
+    sellable_unit_id: str = Field(..., description="Stable sellable-unit UUID used for ordering")
+    sku_code: str
+    unit: str
+    package_quantity: Decimal
+    price: Optional[Decimal] = Field(None, description="Retailer-specific selling price (null if not priced)")
+    in_stock: bool
+    stock_level: StockLevel
+    can_order: bool = Field(..., description="True if in stock AND priced for this retailer")
+
+    model_config = {"from_attributes": True}
+
+
+_UNIT_STOCK_RANK = {
+    StockLevel.HIGH: 3,
+    StockLevel.MEDIUM: 2,
+    StockLevel.LOW: 1,
+    StockLevel.OUT_OF_STOCK: 0,
+}
+
+
+def product_stock_level(unit_levels: List[StockLevel]) -> StockLevel:
+    """Aggregate a product's stock level as its BEST unit level."""
+    if not unit_levels:
+        return StockLevel.OUT_OF_STOCK
+    return max(unit_levels, key=lambda level: _UNIT_STOCK_RANK[level])
+
 
 class ClientProductSummary(BaseModel):
-    """Product card — used in list view."""
-    id: str
-    product_id: str
-    catalog_product_id: str
-    sellable_unit_id: str
+    """Product container — one per CatalogProduct in list view."""
+    id: str = Field(..., description="CatalogProduct.id — the customer product identity")
     name: str
-    sku_code: str
     category: Optional[str] = None
-    unit: str
-    package_quantity: Decimal
-    price: Optional[Decimal] = Field(None, description="Selling price visible to retailer (null if not priced)")
-    in_stock: bool
-    stock_level: StockLevel
-    can_order: bool = Field(..., description="True if active AND in stock AND has price")
+    in_stock: bool = Field(..., description="True if ANY active unit is in stock")
+    stock_level: StockLevel = Field(..., description="Best (highest) unit stock level")
+    can_order: bool = Field(..., description="True if ANY active unit can be ordered")
+    unit_count: int
+    units: List[ClientSellableUnitOption] = Field(..., description="Active packaging choices (deterministic order)")
 
     model_config = {"from_attributes": True}
 
 
-class ClientProductDetail(BaseModel):
-    """Product detail — full info for single product view."""
-    id: str
-    product_id: str
-    catalog_product_id: str
-    sellable_unit_id: str
-    name: str
-    sku_code: str
+class ClientProductDetail(ClientProductSummary):
+    """Product detail — the full product container with its packaging choices."""
     description: Optional[str] = None
-    category: Optional[str] = None
-    unit: str
-    package_quantity: Decimal
-    price: Optional[Decimal] = Field(None, description="Selling price (null if not priced for this retailer)")
-    in_stock: bool
-    stock_level: StockLevel
-    can_order: bool
-
-    model_config = {"from_attributes": True}
 
 
 # ---------------------------------------------------------------------------

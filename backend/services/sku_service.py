@@ -10,6 +10,7 @@ from models.catalog_product import CatalogProduct
 from models.sku import SKU
 from repositories.sku_repository import SKURepository
 from repositories.inventory_repository import InventoryRepository
+from services.sku_integrity import flush_skus_or_409
 
 
 class SKUService:
@@ -86,7 +87,11 @@ class SKUService:
             is_active=is_active,
             created_by=uuid.UUID(created_by) if created_by else None,
         )
-        sku = await self._sku_repo.create(db, sku=sku)
+        db.add(sku)
+        # R1: concurrent duplicate-code race surfaces at flush — mapped to
+        # SKU_EXISTS/409 by the named-constraint guard (never a 500).
+        await flush_skus_or_409(db, sku_code=sku_code)
+        await db.refresh(sku)
 
         await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
         return sku

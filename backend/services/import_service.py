@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.import_run import ImportRun
 from repositories.inventory_repository import InventoryRepository
+from services.sku_integrity import flush_skus_or_409
 from schemas.import_schemas import (
     ImportErrorDetail,
     ImportPreviewResponse,
@@ -564,7 +565,9 @@ class ImportService:
                 is_active=is_active_val if is_active_val is not None else True,
             )
             db.add(sku)
-            await db.flush()
+            # R1: concurrent duplicate-code race surfaces at flush — mapped to
+            # SKU_EXISTS/409 by the named-constraint guard (never a 500).
+            await flush_skus_or_409(db, sku_code=sku_code)
             await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
             existing_sku_codes.add(sku_code)
             created_count += 1

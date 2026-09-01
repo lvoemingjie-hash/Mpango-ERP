@@ -24,8 +24,8 @@ async function openNavigation(page: import('@playwright/test').Page, viewport: V
   await expect(page.getByRole('link', { name: 'Products' })).toBeVisible({ timeout: 15_000 });
 }
 
-function linkForSku(page: import('@playwright/test').Page, skuCode: string) {
-  return page.getByRole('link', { name: new RegExp(skuCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) });
+function escaped(skuCode: string): string {
+  return skuCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 test('CATALOG-ID-001', async ({ page, markAssertion }, testInfo) => {
@@ -165,23 +165,65 @@ test('CATALOG-ID-001', async ({ page, markAssertion }, testInfo) => {
   );
   expect(reactivate.status(), `reactivate package -> ${reactivate.status()}`).toBeLessThan(400);
 
-  // --- 7.+8. Retailer reaches the catalog; packaging selection visible -----
+  // --- 7. Retailer reaches the catalog: ONE container per product ----------
+  // R1 product-level contract: the provisioned product is represented by
+  // exactly ONE product container (never two independent SKU cards/links).
   const retailerEntry: string = `/client/login?w=${shared.retailer.wholesalerCode}`;
   await page.goto(retailerEntry);
   await page.getByLabel('Email').fill(shared.retailer.email);
   await page.getByLabel('Password').fill(shared.retailer.password);
   await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(linkForSku(page, bottleCode)).toBeVisible({ timeout: 30_000 });
+  const productContainer = page
+    .getByTestId('client-product-card')
+    .filter({ hasText: productName });
+  // R1-ANCHOR:product-container-exactly-one
+  await expect(productContainer).toHaveCount(1, { timeout: 30_000 });
   markAssertion('retailer_sees_product_in_catalog');
 
-  await expect(linkForSku(page, caseCode)).toBeVisible({ timeout: 30_000 });
+  // --- 8. Both packaging choices live INSIDE that same container -----------
+  const containerUnits = productContainer.getByTestId('client-product-units');
+  await expect(containerUnits).toContainText(bottleCode, { timeout: 30_000 });
+  // R1-ANCHOR:packaging-inside-product-container
+  await expect(containerUnits).toContainText(caseCode, { timeout: 30_000 });
   markAssertion('product_level_packaging_selection_visible');
 
-  await linkForSku(page, bottleCode).click();
-  await expect(page.getByRole('button', { name: 'Add to Order' })).toBeVisible();
-  await expect(page.getByText(/bottle/i).first()).toBeVisible();
+  // --- 8b. Packaging selector switches the selected sellable_unit_id -------
+  await productContainer.click();
+  await expect(page.getByRole('button', { name: 'Add to Order' })).toBeVisible({
+    timeout: 30_000,
+  });
+  const orderSection = page.getByTestId('order-section');
+  const packagingGroup = page.getByRole('radiogroup', { name: 'Packaging' });
+  const bottleChoice = packagingGroup.getByRole('radio', { name: new RegExp(escaped(bottleCode)) });
+  const caseChoice = packagingGroup.getByRole('radio', { name: new RegExp(escaped(caseCode)) });
 
-  // --- 9.+10. Order creation sends the selected sellable_unit_id -----------
+  // Default selection is the first packaging choice (bottle).
+  await expect(orderSection).toHaveAttribute('data-selected-sellable-unit-id', bottleUuid, {
+    timeout: 30_000,
+  });
+  // R1-ANCHOR:selected-unit-switch
+  await caseChoice.click();
+  await expect(orderSection).toHaveAttribute('data-selected-sellable-unit-id', caseUuid, {
+    timeout: 30_000,
+  });
+  markAssertion('packaging_selection_changes_sellable_unit_id');
+
+  // Stock presentation must follow the SELECTED unit (case: 5 on hand -> Low
+  // Stock; bottle: 50 on hand -> Limited Stock).
+  await expect(page.getByTestId('selected-unit-stock')).toHaveText('Low Stock', {
+    timeout: 30_000,
+  });
+  // R1-ANCHOR:selected-stock-updates
+  await bottleChoice.click();
+  await expect(orderSection).toHaveAttribute('data-selected-sellable-unit-id', bottleUuid, {
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId('selected-unit-stock')).toHaveText('Limited Stock', {
+    timeout: 30_000,
+  });
+  markAssertion('stock_updates_for_selected_unit');
+
+  // --- 9.+10. Order creation sends the SELECTED sellable_unit_id -----------
   await page.getByRole('button', { name: 'Add to Order' }).click();
   await expect(page.getByRole('button', { name: /Submit Order \(/i })).toBeVisible();
   await page.getByRole('button', { name: /Submit Order \(/i }).click();
@@ -197,6 +239,21 @@ test('CATALOG-ID-001', async ({ page, markAssertion }, testInfo) => {
   expect(payloadUnitIds).toContain(bottleUuid);
   markAssertion('order_request_carried_selected_sellable_unit_uuid');
   expect(payloadUnitIds.every((id) => uuidRe.test(id))).toBeTruthy();
+
+  // --- 10b. The returned identity equals the CHOSEN unit -------------------
+  const orderUrlMatch = page.url().match(/\/client\/orders\/([0-9a-f-]{36})/i);
+  expect(orderUrlMatch, 'submission must land on the created order page').toBeTruthy();
+  const createdOrderId = String(orderUrlMatch?.[1]);
+  const historicalOrder = await page.request.get(
+    `${API}/api/v1/client/orders/${createdOrderId}`,
+    { headers: { Authorization: `Bearer ${shared.retailer.accessToken}` } },
+  );
+  expect(historicalOrder.status(), `created order GET -> ${historicalOrder.status()}`).toBeLessThan(400);
+  const orderItems: any[] = ((await historicalOrder.json()).data ?? {}).items ?? [];
+  expect(orderItems.length).toBeGreaterThan(0);
+  // R1-ANCHOR:returned-identity-equals-chosen-unit
+  expect(orderItems[0].sellable_unit_id ?? orderItems[0].sellableUnitId).toBe(bottleUuid);
+  markAssertion('submitted_identity_equals_chosen_unit');
 
   // --- 11. Mismatched sellable_unit_id + SKU code is rejected --------------
   const mismatch = await page.request.post(`${API}/api/v1/client/orders`, {

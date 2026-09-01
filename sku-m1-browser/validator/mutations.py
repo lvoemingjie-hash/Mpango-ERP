@@ -6,7 +6,12 @@ the static validator must turn RED under the mutation and GREEN again after
 the byte-exact restore. Detection is static (fast, deterministic, and runtime
 401s are terminal by contract).
 
-B4 (M27-M36) covers the independent-browser-authority mode contract:
+B4 (M27-M36) covers the independent-browser-authority mode contract.
+
+R1 (M37-M42) covers the product-level multipackaging oracle: containment
+(exactly one product container), packaging inside that same container,
+selection switching the selected sellable_unit_id, stock following the
+selected unit, and the returned identity equaling the chosen unit:
   M27 remove mode exclusivity
   M28 map independent mode to AUTHOR_DIAGNOSTIC
   M29 allow no-mode execution
@@ -268,6 +273,37 @@ def main() -> int:
             (RUNTIME,
              "  if (contract) return assertKnownMode(contract.execution_mode, LIVE_EXECUTION_CONTRACT);",
              "  if (contract) return INDEPENDENT_AUTHORITY;  // relabelled by M36"),
+        ]),
+        # ---- R1: product-level multipackaging oracle -------------------------
+        ("M37-product-container-uniqueness-removed", [
+            (ID_SPEC,
+             "  await expect(productContainer).toHaveCount(1, { timeout: 30_000 });",
+             "  // product-container uniqueness removed by M37"),
+        ]),
+        ("M38-in-container-packaging-assertion-removed", [
+            (ID_SPEC,
+             "  await expect(containerUnits).toContainText(caseCode, { timeout: 30_000 });",
+             "  // in-container packaging assertion removed by M38"),
+        ]),
+        ("M39-selected-unit-switch-assertion-removed", [
+            (ID_SPEC,
+             "  await expect(orderSection).toHaveAttribute('data-selected-sellable-unit-id', caseUuid, {",
+             "  // selected-unit switch assertion removed by M39"),
+        ]),
+        ("M40-selected-stock-update-assertion-removed", [
+            (ID_SPEC,
+             "  await expect(page.getByTestId('selected-unit-stock')).toHaveText('Low Stock', {",
+             "  // selected-stock update assertion removed by M40"),
+        ]),
+        ("M41-returned-identity-check-removed", [
+            (ID_SPEC,
+             "  expect(orderItems[0].sellable_unit_id ?? orderItems[0].sellableUnitId).toBe(bottleUuid);",
+             "  // returned-identity check removed by M41"),
+        ]),
+        ("M42-hist-product-container-anchor-removed", [
+            (HIST_SPEC,
+             "  await expect(productContainer).toBeVisible({ timeout: 30_000 });",
+             "  // hist product-container anchor removed by M42"),
         ]),
     ]
 

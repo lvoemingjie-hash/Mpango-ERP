@@ -7,19 +7,31 @@
 
 export type StockLevel = 'OUT_OF_STOCK' | 'LOW' | 'MEDIUM' | 'HIGH';
 
-export interface ClientProduct {
-  id: string;
-  catalog_product_id: string;
+/**
+ * DC-12R1-MVP-L1-SKU-R0-M1-R1-R1 product-level catalog contract.
+ * One ClientProduct per CatalogProduct; packaging choices are nested units,
+ * each carrying its own stable sellable_unit_id, price and stock.
+ */
+export interface ClientSellableUnit {
   sellable_unit_id: string;
-  name: string;
   sku_code: string;
-  category: string | null;
   unit: string;
   package_quantity: number;
   price: number | null;
   in_stock: boolean;
   stock_level: StockLevel;
   can_order: boolean;
+}
+
+export interface ClientProduct {
+  id: string; // CatalogProduct.id — the customer product identity
+  name: string;
+  category: string | null;
+  in_stock: boolean;
+  stock_level: StockLevel;
+  can_order: boolean;
+  unit_count: number;
+  units: ClientSellableUnit[];
 }
 
 export interface ClientProductDetail extends ClientProduct {

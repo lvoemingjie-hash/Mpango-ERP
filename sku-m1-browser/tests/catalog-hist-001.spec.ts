@@ -16,10 +16,6 @@ import { Viewport } from '../src/reconcile';
 const ENTRY_RETAILER_LOGIN = '/client/login';
 const API = HARNESS_CONFIG.backendBaseUrl;
 
-function linkForSku(page: import('@playwright/test').Page, skuCode: string) {
-  return page.getByRole('link', { name: new RegExp(skuCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) });
-}
-
 interface CapturedSnapshot {
   productName: string;
   skuCode: string;
@@ -109,8 +105,19 @@ test('CATALOG-HIST-001', async ({ page, markAssertion }, testInfo) => {
   await page.getByRole('button', { name: 'Back to orders' }).click();
   await expect(page.getByRole('link', { name: 'Products' })).toBeVisible({ timeout: 30_000 });
   await page.getByRole('link', { name: 'Products' }).click();
-  await expect(linkForSku(page, ns.codes[1])).toBeVisible({ timeout: 30_000 });
-  const unavailableUnitLink = linkForSku(page, unit.skuCode);
+  // R1 product-level contract: the product is ONE container; the still-active
+  // case packaging remains offered INSIDE it.
+  const productContainer = page
+    .getByTestId('client-product-card')
+    .filter({ hasText: exec.productName });
+  // R1-ANCHOR:hist-product-container-visible
+  await expect(productContainer).toBeVisible({ timeout: 30_000 });
+  await expect(
+    productContainer.getByTestId('client-product-units').getByText(ns.codes[1]),
+  ).toBeVisible({ timeout: 30_000 });
+  const unavailableUnitLink = productContainer
+    .getByTestId('client-product-units')
+    .getByText(unit.skuCode);
 
   // B1-ANCHOR:unavailable-item-hidden-or-disabled
   await expect(unavailableUnitLink).toHaveCount(0);

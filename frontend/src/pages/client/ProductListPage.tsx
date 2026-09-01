@@ -13,6 +13,11 @@ const STOCK_BADGE: Record<string, { label: string; className: string }> = {
   OUT_OF_STOCK: { label: 'Out of Stock', className: 'bg-red-100 text-red-700' },
 };
 
+/**
+ * DC-12R1-MVP-L1-SKU-R0-M1-R1-R1: exactly ONE card per CatalogProduct.
+ * Packaging choices (bottle/case/...) are rendered INSIDE the same product
+ * container — never as independent SKU cards.
+ */
 export function ProductListPage() {
   const [products, setProducts] = useState<ClientProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,6 +50,13 @@ export function ProductListPage() {
     e.preventDefault();
     setPage(1);
     load();
+  };
+
+  const lowestPrice = (product: ClientProduct): number | null => {
+    const priced = product.units
+      .map((u) => u.price)
+      .filter((p): p is number => p !== null);
+    return priced.length ? Math.min(...priced) : null;
   };
 
   return (
@@ -88,17 +100,20 @@ export function ProductListPage() {
         />
       )}
 
-      {/* Product Cards Grid */}
+      {/* Product Cards Grid — one container per CatalogProduct */}
       {!loading && !error && products.length > 0 && (
         <>
           <div className="grid grid-cols-2 gap-3">
             {products.map((product) => {
               const badge = STOCK_BADGE[product.stock_level] ?? STOCK_BADGE.OUT_OF_STOCK;
+              const fromPrice = lowestPrice(product);
 
               return (
                 <Link
                   key={product.id}
                   to={`/client/products/${product.id}`}
+                  data-testid="client-product-card"
+                  aria-label={`View product ${product.name}`}
                   className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md hover:border-primary-200"
                 >
                   {/* Product Icon Placeholder */}
@@ -111,9 +126,9 @@ export function ProductListPage() {
                     <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 group-hover:text-primary-600 transition-colors">
                       {product.name}
                     </h3>
-                    {product.price !== null ? (
+                    {fromPrice !== null ? (
                       <span className="text-sm font-bold text-gray-900 whitespace-nowrap">
-                        KES {product.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        KES {fromPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     ) : (
                       <span className="text-xs font-medium text-gray-500 italic whitespace-nowrap mt-0.5">
@@ -122,10 +137,20 @@ export function ProductListPage() {
                     )}
                   </div>
 
-                  {/* SKU */}
-                  <p className="mt-1 text-xs text-gray-400 font-mono">
-                    {product.sku_code}
-                  </p>
+                  {/* Packaging choices — inside this same product container */}
+                  <ul data-testid="client-product-units" className="mt-2 space-y-1">
+                    {product.units.map((unit) => (
+                      <li
+                        key={unit.sellable_unit_id}
+                        className="flex items-center justify-between gap-2 text-xs text-gray-500"
+                      >
+                        <span className="font-mono truncate">{unit.sku_code}</span>
+                        <span className="whitespace-nowrap">
+                          {unit.package_quantity} × {unit.unit}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
 
                   {/* Category */}
                   {product.category && (
@@ -133,16 +158,16 @@ export function ProductListPage() {
                   )}
 
                   {/* Stock Badge */}
-                  <div className="mt-2">
+                  <div className="mt-2 flex items-center gap-1.5">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>
                       {badge.label}
                     </span>
+                    {product.unit_count > 0 && (
+                      <span className="text-xs text-gray-400">
+                        {product.unit_count} {product.unit_count === 1 ? 'packaging' : 'packagings'}
+                      </span>
+                    )}
                   </div>
-
-                  {/* Unit */}
-                  <p className="mt-1 text-xs text-gray-400">
-                    Per {product.unit}
-                  </p>
                 </Link>
               );
             })}

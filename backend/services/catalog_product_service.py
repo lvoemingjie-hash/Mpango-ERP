@@ -14,6 +14,7 @@ from models.catalog_product import CatalogProduct
 from models.sku import SKU
 from repositories.inventory_repository import InventoryRepository
 from schemas.catalog import CatalogProductCreate, CatalogProductUpdate, SellableUnitCreate, SellableUnitUpdate
+from services.sku_integrity import flush_skus_or_409
 
 
 class CatalogProductService:
@@ -85,7 +86,10 @@ class CatalogProductService:
             for unit in request.sellable_units
         ]
         db.add_all(created_units)
-        await db.flush()
+        # R1: concurrent duplicate-code race surfaces here — map the named
+        # unique-index violation to SKU_EXISTS/409 (rollback inside the guard);
+        # never a 500.
+        await flush_skus_or_409(db, sku_code=request.sellable_units[0].sku_code)
         for unit in created_units:
             await self._inventory_repo.ensure_stock_row(db, sku_id=unit.id)
         return await self._reload_product_graph(db, product_id=product.id)
@@ -178,7 +182,9 @@ class CatalogProductService:
             created_by=actor_id,
         )
         db.add(unit)
-        await db.flush()
+        # R1: concurrent duplicate-code race surfaces here — mapped to
+        # SKU_EXISTS/409 by the named-constraint guard (never a 500).
+        await flush_skus_or_409(db, sku_code=request.sku_code)
         await self._inventory_repo.ensure_stock_row(db, sku_id=unit.id)
         return await self._reload_product_graph(db, product_id=product.id)
 

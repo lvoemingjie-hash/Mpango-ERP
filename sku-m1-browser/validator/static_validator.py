@@ -56,10 +56,18 @@ REQUIRED_ANCHORS = {
         "expect([400, 403, 404, 409, 422]).toContain(foreign.status());",
         "expect(String(bottleStock.skuId ?? bottleStock.sku_id ?? '')).not.toBe(",
         "expect(bottleUuid).toMatch(uuidRe);",
+        # R1 product-level multipackaging oracle: containment + selected UUID
+        "await expect(productContainer).toHaveCount(1, { timeout: 30_000 });",
+        "await expect(containerUnits).toContainText(caseCode, { timeout: 30_000 });",
+        "await expect(orderSection).toHaveAttribute('data-selected-sellable-unit-id', caseUuid, {",
+        "await expect(page.getByTestId('selected-unit-stock')).toHaveText('Low Stock', {",
+        "expect(orderItems[0].sellable_unit_id ?? orderItems[0].sellableUnitId).toBe(bottleUuid);",
     ],
     "tests/catalog-hist-001.spec.ts": [
         "expect(afterName).toBe(before.productName);",
         "await expect(unavailableUnitLink).toHaveCount(0);",
+        # R1: the deactivated unit disappears from its OWN product container
+        "await expect(productContainer).toBeVisible({ timeout: 30_000 });",
     ],
 }
 
@@ -82,6 +90,8 @@ FORBIDDEN_PATTERNS = [
     (r"getByRole\('button',\s*\{\s*name:\s*'Back to products'\s*\}\)", "selector:wrong_back_name"),
     # B3 auth truth: no 401 acceptance, no retry-on-401 replay
     (r"\[?[^\]]*401[^\]]*\]\)\.toContain|toContain\(.*401", "auth:401_accepted"),
+    # R1: per-SKU link/card locators would re-introduce the two-cards proof
+    (r"getByRole\('link',\s*\{\s*name:\s*new RegExp\(skuCode", "selector:per_sku_link_locator"),
     (r"for\s*\([^)]*401|while[^\n]*401", "auth:401_replay_loop"),
 ]
 

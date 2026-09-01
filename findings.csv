@@ -1,0 +1,21 @@
+finding_id,category,severity,status,evidence_type,description,location
+F-E1-001,AUTHORITY_BOUNDARY,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Authority guard is a necessary enforcement point proven by mutation not the sole defense,review.md:Phase 3
+F-E1-002,DEFENSE_IN_DEPTH,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Authority depends on combined chain: module-private capability + direct-process entrypoint + execArgv/env rejection + canonical repo bindings + process-isolated CORS probe + fixed real child + durable ledger + terminal seal/evidence,review.md:Phase 3
+F-E1-003,MUTATION_PROOF,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Mutation this.#authority=false→true creates bypass proving guard is necessary condition,.kilo-mutation-test/mutation-test.mjs:M12
+F-E1-004,MUTATION_LIMITATION,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Mutation proves guard necessary does not prove other controls irrelevant,review.md:Phase 3
+F-E1-005,LIBRARY_BOUNDARY,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Library ControlPlane cannot independently mint authority evidence,.kilo-mutation-test/mutation-test.mjs:M1 M2 M11
+F-E1-006,DIRECT_ENTRYPOINT,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Direct-process entrypoint is the only authority evidence path,entrypoint.mjs:64-69
+F-E1-007,FIXED_HELPER_CHILD,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Helper and child paths derived from module location not caller input,.kilo-mutation-test/mutation-test.mjs:M5 M6
+F-E1-008,CORS_SCHEMA,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,CORS probe pass requires ok=true AND status_2xx=true AND allow_origin_exact=true,.kilo-mutation-test/mutation-test.mjs:M7
+F-E1-009,CHECKER_RESULT,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,R1-R29-R1 checker GREEN,tools/check-browser-authority-contracts.mjs
+F-E1-010,STATIC_GATE,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,validate-static.mjs 14/14 GREEN,tools/validate-static.mjs
+F-E1-011,NEUTRALITY_GATE,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,check:neutrality G1-G6 GREEN,tools/check-neutrality.mjs
+F-E1-012,RUNTIME_CONTRACTS,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,check:runtime-contracts PASS,tools/check-runtime-contracts.mjs
+F-E1-013,TYPECHECK,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,typecheck PASS,tsc --noEmit
+F-E1-014,DIFF_CHECK,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,git diff --check clean,git diff
+F-E1-015,CLAIM_CEILING,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,No product runtime or authoritative browser evidence this round,review.md:Phase 3
+F-E1-016,TEST_LIST,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,15 tests / 1 file order unchanged,pnpm run test:list
+F-E1-017,FROZEN_LOCKFILE,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,pnpm install --frozen-lockfile PASS,package.json
+F-E1-018,PUBLIC_AUTHORITY_REFUSED,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Public authority:true refused at construction,.kilo-mutation-test/mutation-test.mjs:M9
+F-E1-019,CAPABILITY_BRANDING,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Authority capability requires module-private Symbol brand,.kilo-mutation-test/mutation-test.mjs:M10
+F-E1-020,IMPORT_REJECTION,INFO,PASS,KILO_INDEPENDENTLY_EXECUTED_EVIDENCE,Import entrypoint rejected with not_direct_entrypoint,.kilo-mutation-test/mutation-test.mjs:M3

@@ -216,3 +216,16 @@ missing/wrong allow-origin lands STOPPED before authorize with
 launchStarts=0. Omitting the probe, faking a caller `ok=true` check, or
 repeating the probe can never bypass it (R26 matrix; evidence carries
 categories/booleans/counts only — never URLs or credentials).
+
+### B1-R6-R1 — native CORS transport (ambient fetch substitution closure)
+
+The CORS probe no longer touches `globalThis.fetch` at all: it travels over a
+module-private native `node:http`/`node:https` OPTIONS transport with the same
+Origin/target/method/headers/timeout/exact-allow-origin criteria. R27 proves —
+via a real child process with the ambient fetch poisoned BEFORE the module
+import, plus in-process poisoning AFTER it — that an unreachable target really
+fails (`cors_probe_no_response`, STOPPED, never PREFLIGHTED/AUTHORIZED,
+starts=0), that a correct real server still passes, and that wrong-origin,
+HTTP-failure and timeout modes remain fail-closed (their probes share the same
+native transport). A transport degraded back to ambient fetch produces a REAL
+identity substitution (`BYPASS_ACCEPTED`), which R27 reports as RED.

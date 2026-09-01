@@ -1249,6 +1249,128 @@ function controlProfileStillDirty() {
 }
 
 // ---------------------------------------------------------------------------
+// R27 — ambient globalThis.fetch substitution cannot forge CORS authority
+// (B1-R6-R1). The PRE-import substitution runs in a real child process (the
+// checker's own import cannot be re-ordered); the POST-import substitution
+// and the real-server pass run in-process. The injected ambient fetch is a
+// SUCCESS fake: with a degraded (ambient) transport an unreachable target
+// would be reported as success — BYPASS_ACCEPTED — while the native
+// transport must really fail with cors_probe_no_response.
+// ---------------------------------------------------------------------------
+
+const R27_CHILD_SOURCE = [
+  "import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';",
+  "import { tmpdir } from 'node:os';",
+  "import { join } from 'node:path';",
+  "globalThis.fetch = async () => ({",
+  "  ok: true,",
+  "  status: 200,",
+  "  headers: { get: (name) => (String(name).toLowerCase() === 'access-control-allow-origin' ? 'FAKE-AMBIENT-ORIGIN' : null) },",
+  "});",
+  "const runner = await import('./tools/browser-authority-runner.mjs');",
+  "const profile = JSON.parse(readFileSync('inventory/browser-authority-profile.json', 'utf8'));",
+  "const fields = {};",
+  "for (const [key, field] of Object.entries(profile.fields)) fields[key] = { env: field.env, required: true, sensitive: field.sensitive };",
+  "const contract = { schema: 'j1h2c/browser-authority-contract/1', owner_field: profile.owner_field, fields, transitions: [{ from: 'INIT', to: 'PREFLIGHTED' }, { from: 'PREFLIGHTED', to: 'AUTHORIZED' }], launch: { max_starts: 1 } };",
+  "const scratch = mkdtempSync(join(tmpdir(), 'r27-child-'));",
+  "const contractPath = join(scratch, 'contract.json');",
+  "writeFileSync(contractPath, JSON.stringify(contract), 'utf8');",
+  "const env = {};",
+  "for (const field of Object.values(contract.fields)) env[field.env] = (field.env === 'J1H2C_BASE_URL' ? 'http://127.0.0.1:9/portal' : field.env === 'J1H2C_API_BASE_URL' ? 'http://127.0.0.1:9' : 'fixture-' + field.env.toLowerCase() + '-value');",
+  "async function probeOnce(label) {",
+  "  const control = new runner.ControlPlane({ contractPath, repoRoot: runner.canonicalRepoRoot(), ledger: new runner.DurableJsonlLedger(join(scratch, 'ledger-' + label + '.jsonl')) });",
+  "  control.materialize(env);",
+  "  let category = null;",
+  "  try { await control.corsPreflightProbe(); } catch (error) { category = error && error.name === 'BrowserAuthorityError' ? error.category : '<' + (error && error.name) + '>'; }",
+  "  return { control, category };",
+  "}",
+  "const pre = await probeOnce('pre-import-substitution');",
+  "if (pre.category === null || pre.category === 'cors_allow_origin_mismatch') {",
+  "  console.log('BYPASS_ACCEPTED pre-import state=' + pre.control.current);",
+  "  process.exit(2);",
+  "}",
+  "if (pre.category !== 'cors_probe_no_response' || pre.control.current !== 'STOPPED' || pre.control.launchStarts !== 0) {",
+  "  console.log('R27-PREIMPORT-UNEXPECTED category=' + pre.category + ' state=' + pre.control.current);",
+  "  process.exit(3);",
+  "}",
+  "if (['PREFLIGHTED', 'AUTHORIZED'].includes(pre.control.current)) {",
+  "  console.log('BYPASS_ACCEPTED pre-import reached ' + pre.control.current);",
+  "  process.exit(2);",
+  "}",
+  "globalThis.fetch = async () => ({",
+  "  ok: true,",
+  "  status: 200,",
+  "  headers: { get: (name) => (String(name).toLowerCase() === 'access-control-allow-origin' ? 'FAKE-AMBIENT-ORIGIN-POST' : null) },",
+  "});",
+  "const post = await probeOnce('post-import-substitution');",
+  "if (post.category === null || post.category === 'cors_allow_origin_mismatch') {",
+  "  console.log('BYPASS_ACCEPTED post-import state=' + post.control.current);",
+  "  process.exit(2);",
+  "}",
+  "if (post.category !== 'cors_probe_no_response' || post.control.current !== 'STOPPED') {",
+  "  console.log('R27-POSTIMPORT-UNEXPECTED category=' + post.category + ' state=' + post.control.current);",
+  "  process.exit(3);",
+  "}",
+  "console.log('R27 AMBIENT_SUBSTITUTION_BLOCKED pre=cors_probe_no_response post=cors_probe_no_response');",
+  "process.exit(0);",
+].join("\n");
+
+{
+  const child = execFileSync(process.execPath, ['--input-type=module', '-e', R27_CHILD_SOURCE], {
+    cwd: ROOT,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: runner.gitEnv(),
+  });
+  const out = child.toString('utf8');
+  expect(out.includes('R27 AMBIENT_SUBSTITUTION_BLOCKED'), 'R27-PRE: pre-import ambient substitution blocked in child');
+  expect(!out.includes('BYPASS_ACCEPTED'), 'R27-PRE: no BYPASS_ACCEPTED');
+}
+
+{
+  // POST-import substitution, in-process: unreachable target + a SUCCESS
+  // fake on globalThis.fetch must still really fail.
+    const savedFetch = globalThis.fetch;
+    try {
+      // The fake echoes the CORRECT allow-origin for the bound target: if the
+      // runner consulted ambient fetch at all, the unreachable target would
+      // be reported as a full CORS success (complete bypass).
+      globalThis.fetch = async () => ({
+        ok: true,
+        status: 200,
+        headers: { get: (name) => (String(name).toLowerCase() === 'access-control-allow-origin' ? unreachableOrigin : null) },
+      });
+    const UNREACHABLE_ENV = {
+      ...FIXTURE_ENV,
+      J1H2C_BASE_URL: 'http://127.0.0.1:9/portal',
+      J1H2C_API_BASE_URL: 'http://127.0.0.1:9',
+    };
+    const unreachableOrigin = new URL(UNREACHABLE_ENV.J1H2C_BASE_URL).origin;
+    const control = freshControl('r27-post');
+    control.materialize(UNREACHABLE_ENV);
+    await expectCategoryAsync(
+      () => control.corsPreflightProbe(),
+      'cors_probe_no_response',
+      'R27-POST: unreachable target really fails under ambient substitution',
+    );
+    expect(control.current === 'STOPPED', 'R27-POST: STOPPED');
+    expect(
+      !['PREFLIGHTED', 'AUTHORIZED'].includes(control.current),
+      'R27-POST: never reached PREFLIGHTED/AUTHORIZED',
+    );
+    expect(control.launchStarts === 0, 'R27-POST: starts=0');
+
+    // A correct REAL server still passes with ambient fetch poisoned.
+    const controlR = freshControl('r27-real');
+    const flowR = await fullFlow(controlR);
+    const resultR = controlR.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv: flowR.argv });
+    expect(resultR.outcome === 'FINISHED', 'R27-REAL: correct real server still passes');
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
+  await greenPath('r27-restore');
+}
+
+// ---------------------------------------------------------------------------
 // Verdict
 // ---------------------------------------------------------------------------
 rmSync(SCRATCH, { recursive: true, force: true });

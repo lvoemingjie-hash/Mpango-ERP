@@ -20,6 +20,10 @@
  *      - the working-tree profile bytes must EQUAL the committed blob at
  *        the owning repository's live HEAD (B1-R5-R3: a dirty profile can
  *        never be the binding source — profile_dirty_vs_head);
+ *      - the CORS probe travels over a module-PRIVATE native
+ *        node:http/node:https OPTIONS transport: globalThis.fetch \— ambient
+ *        or otherwise) is never referenced, so launcher-side substitution of
+ *        the ambient fetch cannot forge CORS authority (B1-R6-R1);
  *      - ONE canonical repository root is derived from the profile's own
  *        location; the caller repoRoot must realpath-match it and every git
  *        subprocess runs with all GIT_* variables stripped
@@ -62,6 +66,8 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import http from 'node:http';
+import https from 'node:https';
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, realpathSync, writeSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -105,6 +111,56 @@ export function deriveCorsTarget(apiBaseUrl) {
     throw new BrowserAuthorityError('cors_target_invalid');
   }
   return target.toString();
+}
+
+/**
+ * B1-R6-R1: module-PRIVATE native OPTIONS transport (node:http/node:https).
+ * The ambient globalThis.fetch is NEVER consulted — a launcher that
+ * substitutes it (before or after this module's import) cannot influence
+ * the CORS authority. No transport is accepted from callers. The response
+ * is drained and reduced to { status, allowOrigin } only.
+ */
+function nativeCorsOptionsRequest(target, origin, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(target);
+    } catch {
+      reject(new BrowserAuthorityError('cors_target_invalid'));
+      return;
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      reject(new BrowserAuthorityError('cors_target_invalid'));
+      return;
+    }
+    const transport = parsed.protocol === 'https:' ? https : http;
+    const req = transport.request(
+      target,
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: origin,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'content-type',
+          Connection: 'close',
+        },
+      },
+      (res) => {
+        const allowOrigin = res.headers['access-control-allow-origin'] ?? null;
+        const status = res.statusCode ?? 0;
+        res.resume(); // drain; the body is never read
+        res.on('end', () => resolve({ status, allowOrigin }));
+        res.on('error', () => resolve({ status, allowOrigin }));
+      },
+    );
+    req.setTimeout(timeoutMs, () => {
+      const timeoutError = new Error('cors probe deadline exceeded');
+      timeoutError.code = 'CORS_PROBE_TIMEOUT';
+      req.destroy(timeoutError);
+    });
+    req.on('error', (error) => reject(error));
+    req.end();
+  });
 }
 
 /** Canonical profile path, resolved relative to THIS module (never cwd). */
@@ -737,23 +793,16 @@ export class ControlPlane {
     const target = deriveCorsTarget(this.#materialized.input.values.api_base_url);
     let response;
     try {
-      response = await fetch(target, {
-        method: 'OPTIONS',
-        headers: {
-          Origin: origin,
-          'Access-Control-Request-Method': 'POST',
-          'Access-Control-Request-Headers': 'content-type',
-        },
-        redirect: 'error',
-        signal: AbortSignal.timeout(CORS_PROBE_TIMEOUT_MS),
-      });
+      // B1-R6-R1: module-private native transport — globalThis.fetch or any
+      // ambient/qualified fetch) is deliberately never referenced here.
+      response = await nativeCorsOptionsRequest(target, origin, CORS_PROBE_TIMEOUT_MS);
     } catch (error) {
-      const timedOut = error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+      const timedOut = error && error.code === 'CORS_PROBE_TIMEOUT';
       this.stop(timedOut ? 'cors_probe_timeout' : 'cors_probe_no_response');
       throw new BrowserAuthorityError(timedOut ? 'cors_probe_timeout' : 'cors_probe_no_response');
     }
     const status2xx = response.status >= 200 && response.status < 300;
-    const allowOrigin = response.headers.get('access-control-allow-origin');
+    const allowOrigin = response.allowOrigin;
     const allowOriginExact = allowOrigin !== null && allowOrigin === origin;
     if (!(status2xx && allowOriginExact)) {
       const category =

@@ -567,9 +567,13 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
     ['CORS_PREFLIGHT_PATH', 'runner-owned CORS preflight path'],
     ['cors_probe_missing', 'mandatory CORS probe enforcement'],
     ['cors_allow_origin_mismatch', 'exact allow-origin criterion'],
-    ['AbortSignal.timeout', 'probe timeout'],
+    ["from 'node:https'", 'native https transport import'],
+    ['nativeCorsOptionsRequest', 'module-private native CORS transport'],
   ]) {
     if (!runnerText.includes(needle)) fail(14, `runner missing ${label}`);
+  }
+  if (/\bfetch\s*\(/.test(runnerText)) {
+    fail(14, 'runner references ambient fetch (B1-R6-R1: native transport only)');
   }
   if (!/Access-Control-Request-Method/.test(runnerText) || !/Access-Control-Request-Headers/.test(runnerText)) {
     fail(14, 'CORS probe does not declare POST + content-type');
@@ -581,7 +585,7 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   }
 
   const checkerText = readFileSync(join(ROOT, 'tools', 'check-browser-authority-contracts.mjs'), 'utf8');
-  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21', 'R22', 'R23', 'R24', 'R25', 'R26']) {
+  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21', 'R22', 'R23', 'R24', 'R25', 'R26', 'R27']) {
     if (!checkerText.includes(`// ${marker} `)) fail(14, `checker missing ${marker} scenario`);
   }
   if (!checkerText.includes("'ledger_seq_duplicate'")) {
@@ -598,7 +602,7 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   }
 
   if (failures === 0 && profileOk) {
-    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R26, canonical repo identity + case-insensitive GIT_* sanitization + mandatory CORS preflight probe, git subprocess env coverage ${sanitizedCallSites}/${gitCallSites})`);
+    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R27, canonical repo identity + case-insensitive GIT_* sanitization + mandatory CORS preflight probe over the native transport, git subprocess env coverage ${sanitizedCallSites}/${gitCallSites})`);
   }
 }
 

@@ -29,6 +29,34 @@ class CatalogProductService:
                 detail={"code": "SKU_EXISTS", "message": f"SKU code '{collision}' already exists"},
             )
 
+    async def _reload_product_graph(self, db: AsyncSession, *, product_id) -> CatalogProduct:
+        """Awaited post-flush reload of the full product graph.
+
+        AuditMixin.updated_at carries ``onupdate=func.now()``, so a flush
+        EXPIRES the updated_at scalar on every mutated row; touching it outside
+        an awaited boundary raises MissingGreenlet. This explicit SELECT
+        refreshes product and unit scalar state (including updated_at) and
+        materializes the sellable_units collection in the same awaited
+        database boundary, so the route serializer stays pure synchronous
+        mapping with zero implicit SQL.
+        """
+        result = await db.execute(
+            select(CatalogProduct)
+            .options(selectinload(CatalogProduct.sellable_units))
+            .where(CatalogProduct.id == product_id, CatalogProduct.is_deleted.is_(False))
+            .execution_options(populate_existing=True)
+        )
+        product = result.scalar_one()
+        # selectinload+populate_existing refreshes the parent; expired unit
+        # scalars (server-onupdate updated_at) are refreshed here in the same
+        # awaited boundary.
+        for unit in product.sellable_units:
+            import sqlalchemy as _sa
+
+            if _sa.inspect(unit).expired:
+                await db.refresh(unit)
+        return product
+
     async def create_product(
         self, db: AsyncSession, *, request: CatalogProductCreate, actor_id: str | None
     ) -> CatalogProduct:
@@ -60,8 +88,7 @@ class CatalogProductService:
         await db.flush()
         for unit in created_units:
             await self._inventory_repo.ensure_stock_row(db, sku_id=unit.id)
-        await db.refresh(product, attribute_names=["sellable_units"])
-        return product
+        return await self._reload_product_graph(db, product_id=product.id)
 
     async def list_products(
         self, db: AsyncSession, *, page: int, size: int, is_active: Optional[bool], q: Optional[str]
@@ -98,6 +125,7 @@ class CatalogProductService:
             select(CatalogProduct)
             .where(CatalogProduct.id == product_uuid, CatalogProduct.is_deleted.is_(False))
             .options(selectinload(CatalogProduct.sellable_units))
+            .execution_options(populate_existing=True)
         )
         product = result.scalar_one_or_none()
         if product is None:
@@ -126,7 +154,7 @@ class CatalogProductService:
                 unit.category = product.category
             unit.updated_by = actor_id
         await db.flush()
-        return product
+        return await self._reload_product_graph(db, product_id=product.id)
 
     async def add_sellable_unit(
         self,
@@ -152,7 +180,7 @@ class CatalogProductService:
         db.add(unit)
         await db.flush()
         await self._inventory_repo.ensure_stock_row(db, sku_id=unit.id)
-        return await self.get_product(db, product_id=product_id)
+        return await self._reload_product_graph(db, product_id=product.id)
 
     async def update_sellable_unit(
         self,
@@ -175,4 +203,4 @@ class CatalogProductService:
             setattr(unit, field, value)
         unit.updated_by = actor_id
         await db.flush()
-        return product
+        return await self._reload_product_graph(db, product_id=product.id)

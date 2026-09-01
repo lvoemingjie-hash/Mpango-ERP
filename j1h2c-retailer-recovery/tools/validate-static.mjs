@@ -570,8 +570,17 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
     ['canonicalCorsHelperPath', 'canonical CORS helper path'],
     ['cors_helper_dirty_vs_head', 'helper committed-blob binding'],
     ['probeChildEnv', 'sanitized probe child environment'],
+    ['authority_mode_required', 'non-authority library evidence gate'],
+    ['AUTHORITY_CAPABILITY_BRAND', 'module-private authority capability brand'],
+    ['sealAuthorityEvidence', 'authority evidence sealer'],
+    ['launchAuthorityChild', 'fixed real child launch path'],
+    ['CORS_PROBE_RESULT_SCHEMA', 'exact CORS helper payload schema'],
+    ['parseAuthorityChildStdout', 'exact authority child stdout parser'],
   ]) {
     if (!runnerText.includes(needle)) fail(14, `runner missing ${label}`);
+  }
+  if (runnerText.includes('this.#authority = authority') || /constructor\s*\([^)]*authority/.test(runnerText)) {
+    fail(14, 'runner exposes public authority elevation');
   }
   if (/\bfetch\s*\(/.test(runnerText)) {
     fail(14, 'runner references ambient fetch (B1-R6-R1: native transport only)');
@@ -581,6 +590,9 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   }
   // Helper file anchors: native transport + exact criteria live in the helper.
   const helperText = readFileSync(join(ROOT, 'tools', 'browser-authority-cors-probe-helper.mjs'), 'utf8');
+  if (!helperText.includes('CORS_PROBE_RESULT_SCHEMA') || !helperText.includes('cors_probe_passed')) {
+    fail(14, 'helper missing exact CORS result schema');
+  }
   if (!helperText.includes("from 'node:http'") || !helperText.includes("from 'node:https'")) {
     fail(14, 'helper missing native http/https transport');
   }
@@ -597,8 +609,8 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   }
 
   const checkerText = readFileSync(join(ROOT, 'tools', 'check-browser-authority-contracts.mjs'), 'utf8');
-  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21', 'R22', 'R23', 'R24', 'R25', 'R26', 'R27']) {
-    if (!checkerText.includes(`// ${marker} `)) fail(14, `checker missing ${marker} scenario`);
+  for (const marker of ['R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21', 'R22', 'R23', 'R24', 'R25', 'R26', 'R27', 'R28', 'R29']) {
+    if (!checkerText.includes(`// ${marker}`)) fail(14, `checker missing ${marker} scenario`);
   }
   if (!checkerText.includes("'ledger_seq_duplicate'")) {
     fail(14, 'checker missing duplicate-seq probe');
@@ -613,8 +625,29 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
     fail(14, 'evidence() does not force ledger chain re-verification first');
   }
 
+  const entrypointText = readFileSync(join(ROOT, 'tools', 'browser-authority-entrypoint.mjs'), 'utf8');
+  for (const [needle, label] of [
+    ['process.report', 'original command-line directness check'],
+    ['not_direct_entrypoint', 'import/directness refusal category'],
+    ['argv_entrypoint_drift', 'argv drift refusal category'],
+    ['execargv_injection_detected', 'execArgv injection refusal category'],
+    ['env_injection_detected', 'NODE/GIT env injection refusal category'],
+    ['working_tree_dirty_vs_head', 'committed critical-path binding'],
+    ["boundary: 'direct_process_only'", 'direct-process boundary verdict'],
+    ['sealAuthorityEvidence', 'authority evidence sealer invocation'],
+    ['launchAuthorityChild', 'fixed real child invocation'],
+    ["schema: 'j1h2c/browser-authority-entrypoint-result/1'", 'entrypoint result schema'],
+  ]) {
+    if (!entrypointText.includes(needle)) fail(14, `entrypoint missing ${label}`);
+  }
+
+  const childText = readFileSync(join(ROOT, 'tools', 'browser-authority-child.mjs'), 'utf8');
+  if (!childText.includes('j1h2c/browser-authority-child-result/1') || !childText.includes('process.pid')) {
+    fail(14, 'authority child missing exact result schema or pid binding');
+  }
+
   if (failures === 0 && profileOk) {
-    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R27, canonical repo identity + case-insensitive GIT_* sanitization + mandatory CORS preflight probe over the native transport, git subprocess env coverage ${sanitizedCallSites}/${gitCallSites})`);
+    ok(14, `authority truth closure anchored (profile reconciles with ${envTsNames.size} env.ts fields; runner + checker R11-R29, canonical repo identity + case-insensitive GIT_* sanitization + mandatory CORS preflight probe over the native transport, direct-process authority boundary, git subprocess env coverage ${sanitizedCallSites}/${gitCallSites})`);
   }
 }
 

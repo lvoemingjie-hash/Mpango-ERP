@@ -29,6 +29,7 @@ import http from 'node:http';
 import https from 'node:https';
 
 const CORS_PREFLIGHT_PATH = '/client/auth/forgot-password';
+const CORS_PROBE_RESULT_SCHEMA = 'j1h2c/cors-probe-result/1';
 const FALLBACK_TIMEOUT_MS = 10000;
 const MAX_STDIN_BYTES = 1048576;
 
@@ -60,7 +61,7 @@ const finish = (payload) => {
   if (settled) return;
   settled = true;
   // Synchronous stdout: the verdict must survive process.exit(0).
-  writeSync(1, Buffer.from(JSON.stringify(payload) + '\n', 'utf8'));
+  writeSync(1, Buffer.from(JSON.stringify({ schema: CORS_PROBE_RESULT_SCHEMA, ...payload }) + '\n', 'utf8'));
   process.exit(0);
 };
 
@@ -94,7 +95,7 @@ const req = transport.request(
       const allowOriginExact = allowOrigin !== null && allowOrigin === origin;
       finish({
         ok: status2xx && allowOriginExact,
-        category: status2xx ? 'cors_allow_origin_mismatch' : 'cors_probe_http_error',
+        category: status2xx && allowOriginExact ? 'cors_probe_passed' : status2xx ? 'cors_allow_origin_mismatch' : 'cors_probe_http_error',
         status_2xx: status2xx,
         allow_origin_present: allowOrigin !== null,
         allow_origin_exact: allowOriginExact,
@@ -104,8 +105,8 @@ const req = transport.request(
       clearTimeout(timer);
       finish({
         ok: false,
-        category: 'cors_allow_origin_mismatch',
-        status_2xx: status2xx,
+        category: 'cors_probe_no_response',
+        status_2xx: false,
         allow_origin_present: false,
         allow_origin_exact: false,
       });

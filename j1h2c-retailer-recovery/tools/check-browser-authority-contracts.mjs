@@ -31,6 +31,16 @@
  *   R16 ledger tail truncated / rewritten / duplicate seq -> ledger_truncated / ledger_chain_broken / ledger_seq_duplicate
  *   R17 each required profile field deleted        -> RED (runner refuses; env.ts reconciliation flags)
  *   R18 caller contract weaker than profile        -> contract_weaker_than_profile
+ *   R19 profilePath override ignored               -> canonical protected profile only
+ *   R20 async child outcome truth                  -> FINISHED/TEST_RED after settle
+ *   R21 tampered ledger verifier                   -> ledger_chain_broken
+ *   R22 dirty working-tree profile                 -> profile_dirty_vs_head
+ *   R23 foreign repoRoot                           -> repo_root_mismatch
+ *   R24/R25 GIT_* identity injection               -> canonical identity preserved
+ *   R26 mandatory runner-owned CORS probe          -> cors_probe_missing / matrix RED
+ *   R27 ambient fetch poisoning                    -> no authority bypass
+ *   R28 launcher http/https poisoning              -> pristine child process probe
+ *   R29 mutable launcher child result forgery      -> no authority seal/evidence
  *
  * Every failing probe must throw the EXACT category; a probe that does not
  * throw, or throws a different category, fails this checker. After each RED
@@ -41,7 +51,7 @@
 
 import http from 'node:http';
 import https from 'node:https';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, relative, sep } from 'node:path';
@@ -245,22 +255,118 @@ async function greenPath(name = 'green') {
   expect(result.outcome === 'FINISHED' && result.rc === 0, `${name}: FINISHED on rc0+complete`);
   expect(calls.length === 1, `${name}: exactly one launch through the double`);
   expect(control.current === 'FINISHED' && control.launchStarts === 1, `${name}: state FINISHED, starts=1`);
-  expectCategory(() => control.evidence(), 'evidence_unsealed', `${name}: evidence before seal refused`);
-  control.seal();
-  const evidence = control.evidence();
-  expect(evidence.ledger_sealed === true, `${name}: evidence after seal`);
-  expect(
-    !JSON.stringify(evidence).includes('fixture-owner-email-value') &&
-      !JSON.stringify(evidence).includes('FIXW1CODE'),
-    `${name}: evidence carries no fixture values`,
-  );
-  return { control, inputSha, argv, evidence };
+  // B1-R6-R3: library-mode controls cannot seal or produce evidence.
+  expectCategory(() => control.seal(), 'authority_mode_required', `${name}: library seal refused`);
+  expectCategory(() => control.evidence(), 'authority_mode_required', `${name}: library evidence refused`);
+  return { control, inputSha, argv };
 }
 
 /** Materialize + (no probe yet): for CORS refusal scenarios. */
 function fullFlowProbeOnly(control) {
   const { inputSha } = control.materialize(FIXTURE_ENV);
   return { inputSha };
+}
+
+function ensureDir(path) {
+  mkdirSync(path, { recursive: true });
+}
+
+function copyCurrentAuthoritySource(label, { commitMutate = null } = {}) {
+  const sourceRoot = mkdtempSync(join(SCRATCH, `${label}-source-`));
+  ensureDir(join(sourceRoot, 'tools'));
+  ensureDir(join(sourceRoot, 'inventory'));
+  for (const rel of [
+    'tools/browser-authority-runner.mjs',
+    'tools/browser-authority-entrypoint.mjs',
+    'tools/browser-authority-cors-probe-helper.mjs',
+    'tools/browser-authority-child.mjs',
+    'inventory/browser-authority-profile.json',
+  ]) {
+    writeFileSync(join(sourceRoot, rel), readFileSync(join(ROOT, rel)));
+  }
+  if (commitMutate) commitMutate(sourceRoot);
+  const git = (...args) => execFileSync('git', ['-C', sourceRoot, ...args], { stdio: ['ignore', 'pipe', 'ignore'] });
+  git('init', '-b', 'main');
+  git('config', 'user.email', 'fixture@charges.invalid');
+  git('config', 'user.name', 'fixture');
+  git('add', 'tools', 'inventory');
+  git('commit', '-m', 'authority source');
+  return sourceRoot;
+}
+
+async function runCommittedEntrypoint(label, { envPatch = {}, mutate = null, commitMutate = null } = {}) {
+  const sourceRoot = copyCurrentAuthoritySource(label, { commitMutate });
+  const contractPathLocal = join(sourceRoot, 'contract.json');
+  const ledgerPath = join(sourceRoot, 'ledger.jsonl');
+  writeFileSync(contractPathLocal, JSON.stringify(CONTRACT), 'utf8');
+  if (mutate) mutate(sourceRoot);
+  const env = { ...runner.probeChildEnv(), ...FIXTURE_ENV, ...envPatch };
+  const result = await new Promise((resolve) => {
+    execFile(
+      process.execPath,
+      ['tools/browser-authority-entrypoint.mjs', '--contract', contractPathLocal, '--ledger', ledgerPath],
+      {
+        cwd: sourceRoot,
+        env,
+        encoding: 'utf8',
+        timeout: 45000,
+        windowsHide: true,
+      },
+      (error, stdout, stderr) => {
+        resolve({
+          status: error ? (Number.isInteger(error.code) ? error.code : 1) : 0,
+          stdout,
+          stderr,
+        });
+      },
+    );
+  });
+  return { ...result, sourceRoot, ledgerPath };
+}
+
+function parseSingleJsonLine(text) {
+  const lines = String(text).split('\n').filter((line) => line.length > 0);
+  if (lines.length !== 1) return null;
+  try {
+    return JSON.parse(lines[0]);
+  } catch {
+    return null;
+  }
+}
+
+function ledgerRecords(path) {
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line));
+}
+
+function writeCommittedChildVariant(sourceRoot, variant) {
+  const prefix = [
+    "#!/usr/bin/env node",
+    "import { writeSync } from 'node:fs';",
+    "const RESULT_SCHEMA = 'j1h2c/browser-authority-child-result/1';",
+  ];
+  if (variant === 'forged_stdout') {
+    writeFileSync(
+      join(sourceRoot, 'tools', 'browser-authority-child.mjs'),
+      [...prefix, 'writeSync(1, Buffer.from(\'{"ok":true,"rc":0,"reconciliation":{"complete":true}}\\n\', \'utf8\'));', 'process.exit(0);', ''].join('\n'),
+      'utf8',
+    );
+    return;
+  }
+  const exitCode = variant === 'nonzero' ? 7 : 0;
+  const complete = variant === 'incomplete' ? 'false' : 'true';
+  writeFileSync(
+    join(sourceRoot, 'tools', 'browser-authority-child.mjs'),
+    [
+      ...prefix,
+      `writeSync(1, Buffer.from(JSON.stringify({ schema: RESULT_SCHEMA, pid: process.pid, exit: ${exitCode}, reconciliation: { complete: ${complete} } }) + '\\n', 'utf8'));`,
+      `process.exit(${exitCode});`,
+      '',
+    ].join('\n'),
+    'utf8',
+  );
 }
 
 /** Runs the runner-owned CORS probe; returns the refusal category or null. */
@@ -354,7 +460,8 @@ async function runCorsProbe(control) {
   } catch {
     /* terminal_stop — the rejection was persisted before the throw */
   }
-  control.seal(); // terminal seal AFTER the rejection, chaining over it
+  // B1-R6-R3: library-mode controls cannot seal — authority gate fires.
+  expectCategory(() => control.seal(), 'authority_mode_required', 'R4: library seal refused');
   const lines = readFileSync(sinkPath, 'utf8')
     .split('\n')
     .filter((line) => line.length > 0);
@@ -371,13 +478,13 @@ async function runCorsProbe(control) {
     const record = JSON.parse(line);
     return !(record.entry && record.entry.kind === 'rejection_after_stop');
   });
-  const strippedPath = join(SCRATCH, 'ledger-r4-stripped.jsonl');
-  writeFileSync(strippedPath, strippedLines.join('\n') + '\n', 'utf8');
+  writeFileSync(sinkPath, strippedLines.join('\n') + '\n', 'utf8');
   expectCategory(
-    () => new runner.DurableJsonlLedger(strippedPath).verifyChain(),
-    'ledger_seq_duplicate',
+    () => ledger.verifyChain(),
+    'ledger_truncated',
     'R4: suppressed rejection caught by the seq/chain guards',
   );
+  writeFileSync(sinkPath, lines.join('\n') + '\n', 'utf8');
   await greenPath('r4-restore');
 }
 
@@ -600,9 +707,8 @@ async function fullFlowPreflight(control) {
   const red = control.launch(() => ({ rc: 1, reconciliation: { complete: true } }), { argv });
   expect(red.outcome === 'TEST_RED', 'R14: rc!=0 lands TEST_RED');
   expect(control.current === 'TEST_RED' && control.launchStarts === 1, 'R14: state TEST_RED with true starts=1');
-  control.seal();
-  const evidence = control.evidence();
-  expect(evidence.state === 'TEST_RED', 'R14: sealed TEST_RED evidence');
+  expectCategory(() => control.seal(), 'authority_mode_required', 'R14: library TEST_RED seal refused');
+  expectCategory(() => control.evidence(), 'authority_mode_required', 'R14: library TEST_RED evidence refused');
 
   const controlB = freshControl('r14b');
   const flowB = await fullFlow(controlB);
@@ -870,44 +976,41 @@ async function fullFlowPreflight(control) {
 }
 
 // ---------------------------------------------------------------------------
-// R21 — a tampered (even sealed) ledger can never yield evidence (B1-R5-R2)
+// R21 — a tampered ledger can never become authority evidence (B1-R5-R2)
+// B1-R6-R3: library-mode seal/evidence are authority-gated; the same durable
+// chain verifier remains the mandatory evidence backstop.
 // ---------------------------------------------------------------------------
 
 {
   const sinkPath = join(SCRATCH, 'ledger-r21.jsonl');
-  const ledger = new runner.DurableJsonlLedger(sinkPath);
-  const control = new runner.ControlPlane({ contractPath, repoRoot, ledger });
-  const { inputSha, argv } = await fullFlow(control);
-  control.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv });
-  control.seal();
-  expect(control.evidence().state === 'FINISHED', 'R21: intact sealed evidence reads');
+  const control = new runner.ControlPlane({ contractPath, repoRoot, ledger: new runner.DurableJsonlLedger(sinkPath) });
+  const { argv } = await fullFlow(control);
+  const result = control.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv });
+  expect(result.outcome === 'FINISHED', 'R21: library flow can finish functionally');
+  expectCategory(() => control.seal(), 'authority_mode_required', 'R21: library seal refused before evidence');
+  expectCategory(() => control.evidence(), 'authority_mode_required', 'R21: library evidence refused before seal');
 
-  // Tamper an EARLY record while keeping every later line (incl. the seal):
-  // the chain recompute must refuse evidence.
   const intact = readFileSync(sinkPath, 'utf8');
-  const lines = intact.split('\n').filter((line) => line.length > 0).map((line) => JSON.parse(line));
-  const finishIndex = lines.findIndex((record) => record.entry.kind === 'finish');
+  const records = intact.split('\n').filter((line) => line.length > 0).map((line) => JSON.parse(line));
+  const finishIndex = records.findIndex((record) => record.entry.kind === 'finish');
   expect(finishIndex >= 0, 'R21: finish record present');
-  lines[finishIndex].entry.argv_count = 999; // stale event_sha kept on purpose
+  records[finishIndex].entry.argv_count = 999; // stale event_sha kept on purpose
   writeFileSync(
     sinkPath,
-    lines.map((record) => JSON.stringify(record)).join('\n') + '\n',
+    records.map((record) => JSON.stringify(record)).join('\n') + '\n',
     'utf8',
   );
   expectCategory(
-    () => control.evidence(),
+    () => new runner.DurableJsonlLedger(sinkPath).verifyChain(),
     'ledger_chain_broken',
-    'R21: tampered early record refused by evidence chain re-verification',
-  );
-  expectCategory(
-    () => control.seal(),
-    'ledger_chain_broken',
-    'R21: re-sealing a tampered sink hits the mandatory chain re-verification first',
+    'R21: tampered early record refused by chain re-verification',
   );
 
-  // Restore the intact bytes: evidence reads again.
   writeFileSync(sinkPath, intact, 'utf8');
-  expect(control.evidence().state === 'FINISHED', 'R21: restored sink reads again');
+  expect(
+    new runner.DurableJsonlLedger(sinkPath).verifyChain().count === records.length,
+    'R21: restored sink re-verifies',
+  );
   await greenPath('r21-restore');
 }
 
@@ -1495,6 +1598,166 @@ const R27_CHILD_SOURCE = [
 }
 
 // ---------------------------------------------------------------------------
+// R29-R1 — direct-process authority positive path + mutable launcher
+// child-result forgery closure (B1-R6-R3-R1,
+// MUTABLE_CHILD_PROCESS_LAUNCH__PROBE_RESULT_FORGERY). Library ControlPlanes
+// may exercise the functional state machine with doubles, but public
+// authority elevation is refused and seal/evidence remain unavailable. The
+// only authority evidence path is a direct entrypoint process launching the
+// fixed real child argv.
+// ---------------------------------------------------------------------------
+
+{
+  expectCategory(
+    () =>
+      new runner.ControlPlane({
+        contractPath,
+        repoRoot,
+        ledger: freshLedger('r29-public-authority'),
+        authority: true,
+      }),
+    'authority_mode_required',
+    'R29: public authority:true elevation refused at construction',
+  );
+
+  const control = freshControl('r29-forged-sync');
+  const { argv } = await fullFlow(control);
+  const forged = control.launch(
+    () => ({ rc: 0, pid: process.pid, real_child: true, reconciliation: { complete: true } }),
+    { argv },
+  );
+  expect(forged.outcome === 'FINISHED', 'R29: fake sync child result can only affect library state');
+  expect(control.current === 'FINISHED' && control.launchStarts === 1, 'R29: forged sync result precondition reached');
+  expectCategory(() => control.seal(), 'authority_mode_required', 'R29: forged sync result cannot seal');
+  expectCategory(() => control.evidence(), 'authority_mode_required', 'R29: forged sync result cannot produce evidence');
+  expectCategory(
+    () => runner.sealAuthorityEvidence(control),
+    'not_direct_entrypoint',
+    'R29: exported authority sealer cannot mint from library import',
+  );
+  expectCategory(
+    () => control.enableAuthorityForEntrypoint({}),
+    'authority_mode_required',
+    'R29: plain exported object cannot become authority capability',
+  );
+  expectCategory(
+    () => control.enableAuthorityForEntrypoint({ [Symbol('browser-authority-capability')]: true }),
+    'authority_mode_required',
+    'R29: same-description Symbol cannot become authority capability',
+  );
+  expectCategory(
+    () => control.enableAuthorityForEntrypoint(JSON.parse('{"browser-authority-capability":true}')),
+    'authority_mode_required',
+    'R29: JSON cannot become authority capability',
+  );
+  const syncRecords = readFileSync(join(SCRATCH, 'ledger-r29-forged-sync.jsonl'), 'utf8')
+    .split('\n')
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line));
+  expect(
+    !syncRecords.some((record) => record.entry && record.entry.kind === 'terminal_seal'),
+    'R29: forged sync result wrote no terminal seal',
+  );
+
+  const controlAsync = freshControl('r29-forged-async');
+  const flowAsync = await fullFlow(controlAsync);
+  const forgedAsync = await controlAsync.launch(
+    () => Promise.resolve({ rc: 0, pid: process.pid, real_child: true, reconciliation: { complete: true } }),
+    { argv: flowAsync.argv },
+  );
+  expect(forgedAsync.outcome === 'FINISHED', 'R29: fake async child result can only affect library state');
+  expectCategory(() => controlAsync.seal(), 'authority_mode_required', 'R29: forged async result cannot seal');
+  expectCategory(() => controlAsync.evidence(), 'authority_mode_required', 'R29: forged async result cannot produce evidence');
+
+  for (const [label, payload] of [
+    ['missing-field', { ok: true, category: 'cors_probe_passed', status_2xx: true, allow_origin_present: true, allow_origin_exact: true }],
+    ['extra-field', { schema: runner.CORS_PROBE_RESULT_SCHEMA, ok: true, category: 'cors_probe_passed', status_2xx: true, allow_origin_present: true, allow_origin_exact: true, extra: true }],
+    ['type-error', { schema: runner.CORS_PROBE_RESULT_SCHEMA, ok: 'true', category: 'cors_probe_passed', status_2xx: true, allow_origin_present: true, allow_origin_exact: true }],
+    ['ok-three-false', { schema: runner.CORS_PROBE_RESULT_SCHEMA, ok: true, category: 'cors_probe_passed', status_2xx: false, allow_origin_present: false, allow_origin_exact: false }],
+    ['false-three-true', { schema: runner.CORS_PROBE_RESULT_SCHEMA, ok: false, category: 'cors_allow_origin_mismatch', status_2xx: true, allow_origin_present: true, allow_origin_exact: true }],
+  ]) {
+    expectCategory(
+      () => runner.parseCorsProbePayload(payload),
+      'cors_probe_payload_invalid',
+      `R29: exact CORS helper payload rejects ${label}`,
+    );
+  }
+
+  const positive = await runCommittedEntrypoint('r29-r1-positive');
+  const positivePayload = parseSingleJsonLine(positive.stdout);
+  expect(positive.status === 0, `R29-R1: direct entrypoint exited 0 (got ${positive.status})`);
+  expect(positivePayload && positivePayload.authority === true, 'R29-R1: direct entrypoint emitted authority evidence');
+  expect(positivePayload && positivePayload.outcome === 'FINISHED', 'R29-R1: direct entrypoint FINISHED');
+  expect(positivePayload && positivePayload.evidence && positivePayload.evidence.state === 'FINISHED', 'R29-R1: evidence state FINISHED');
+  expect(positivePayload && positivePayload.evidence && positivePayload.evidence.child_real_process_observed === true, 'R29-R1: real child observed');
+  expect(positivePayload && positivePayload.evidence && Number.isInteger(positivePayload.evidence.child_pid) && positivePayload.evidence.child_pid > 0, 'R29-R1: real child PID recorded');
+  expect(positivePayload && positivePayload.evidence && positivePayload.evidence.child_exit_code === 0, 'R29-R1: child exit=0 recorded');
+  expect(positivePayload && positivePayload.evidence && positivePayload.evidence.ledger_sealed === true, 'R29-R1: evidence reports terminal seal');
+  expect(new runner.DurableJsonlLedger(positive.ledgerPath).verifyChain().count > 0, 'R29-R1: ledger hash chain valid');
+  expect(
+    ledgerRecords(positive.ledgerPath).some((record) => record.entry && record.entry.kind === 'terminal_seal'),
+    'R29-R1: terminal seal record present',
+  );
+
+  const importSource = copyCurrentAuthoritySource('r29-import');
+  const importAttack = spawnSync(
+    process.execPath,
+    ['--input-type=module', '-e', "process.argv[1]='tools/browser-authority-entrypoint.mjs'; await import('./tools/browser-authority-entrypoint.mjs'); console.log('R29_IMPORT_ACCEPTED');"],
+    { cwd: importSource, env: { ...runner.probeChildEnv(), ...FIXTURE_ENV }, encoding: 'utf8', windowsHide: true },
+  );
+  expect(importAttack.status !== 0, 'R29: entrypoint import exits nonzero');
+  expect((importAttack.stdout + importAttack.stderr).includes('not_direct_entrypoint'), 'R29: entrypoint import forgery refused');
+  expect(!(importAttack.stdout + importAttack.stderr).includes('R29_IMPORT_ACCEPTED'), 'R29: entrypoint import never accepted');
+
+  for (const [label, envPatch] of [
+    ['node-options', { NODE_OPTIONS: '--trace-warnings' }],
+    ['node-path', { NODE_PATH: join(SCRATCH, 'r29-node-path') }],
+    ['git-env', { GIT_DIR: join(SCRATCH, 'r29-git-dir') }],
+  ]) {
+    const red = await runCommittedEntrypoint(`r29-${label}`, { envPatch });
+    expect(red.status !== 0, `R29: direct entrypoint rejects ${label}`);
+    expect((red.stdout + red.stderr).includes('env_injection_detected'), `R29: ${label} category exact`);
+  }
+
+  for (const [label, rel] of [
+    ['entrypoint', 'tools/browser-authority-entrypoint.mjs'],
+    ['runner', 'tools/browser-authority-runner.mjs'],
+    ['helper', 'tools/browser-authority-cors-probe-helper.mjs'],
+    ['profile', 'inventory/browser-authority-profile.json'],
+  ]) {
+    const red = await runCommittedEntrypoint(`r29-dirty-${label}`, {
+      mutate: (sourceRoot) => writeFileSync(join(sourceRoot, rel), readFileSync(join(sourceRoot, rel), 'utf8') + '\n', 'utf8'),
+    });
+    expect(red.status !== 0, `R29: dirty ${label} rejects direct authority`);
+    expect((red.stdout + red.stderr).includes('working_tree_dirty_vs_head'), `R29: dirty ${label} category exact`);
+  }
+
+  const forgedStdout = await runCommittedEntrypoint('r29-forged-stdout', {
+    commitMutate: (sourceRoot) => writeCommittedChildVariant(sourceRoot, 'forged_stdout'),
+  });
+  expect(forgedStdout.status !== 0, 'R29: forged execFile stdout exits nonzero');
+  expect(!String(forgedStdout.stdout).includes('"authority":true'), 'R29: forged execFile stdout cannot mint evidence');
+
+  for (const [label, mode] of [
+    ['nonzero', 'nonzero'],
+    ['incomplete', 'incomplete'],
+  ]) {
+    const red = await runCommittedEntrypoint(`r29-child-${label}`, {
+      commitMutate: (sourceRoot) => writeCommittedChildVariant(sourceRoot, mode),
+    });
+    const payload = parseSingleJsonLine(red.stdout);
+    expect(red.status !== 0, `R29: child ${label} direct entrypoint exits nonzero`);
+    expect(payload && payload.authority === true, `R29: child ${label} still produces sealed authority evidence`);
+    expect(payload && payload.outcome === 'TEST_RED', `R29: child ${label} lands TEST_RED`);
+    expect(payload && payload.evidence && payload.evidence.state === 'TEST_RED', `R29: child ${label} evidence TEST_RED`);
+    expect(payload && payload.evidence && payload.evidence.ledger_sealed === true, `R29: child ${label} terminal seal present`);
+    expect(new runner.DurableJsonlLedger(red.ledgerPath).verifyChain().count > 0, `R29: child ${label} ledger chain valid`);
+  }
+
+  await greenPath('r29-restore');
+}
+
+// ---------------------------------------------------------------------------
 // Verdict
 // ---------------------------------------------------------------------------
 rmSync(SCRATCH, { recursive: true, force: true });
@@ -1503,7 +1766,7 @@ if (failures.length > 0) {
   console.error(`BROWSER-AUTHORITY CONTRACT CHECK FAILED (${failures.length})`);
   process.exit(1);
 }
-console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R25 + R26 CORS matrix, single canonical repo identity, case-insensitive GIT_* sanitization).');
+console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R29, direct-process authority boundary, single canonical repo identity, case-insensitive GIT_* sanitization).');
 // The fixture HTTP server and undici keep-alive sockets hold the event loop;
 // the verdict above is final, so exit explicitly.
 process.exit(0);

@@ -67,12 +67,18 @@
 import { execFileSync, execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, realpathSync, writeSync } from 'node:fs';
-import { dirname, join, relative, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const CONTROL_PLANE_SCHEMA = 'j1h2c/browser-authority-contract/1';
 export const PROFILE_SCHEMA = 'j1h2c/browser-authority-profile/1';
+export const CORS_PROBE_RESULT_SCHEMA = 'j1h2c/cors-probe-result/1';
+export const AUTHORITY_CHILD_RESULT_SCHEMA = 'j1h2c/browser-authority-child-result/1';
+export const AUTHORITY_CHILD_INPUT_SCHEMA = 'j1h2c/browser-authority-child-input/1';
 const GENESIS_SHA = '0'.repeat(64);
+const AUTHORITY_CHILD_TIMEOUT_MS = 30000;
+const AUTHORITY_CAPABILITY_BRAND = Symbol('browser-authority-capability');
+let authorityCapabilityIssued = false;
 
 /**
  * Mandatory CORS preflight probe (B1-R6): the browser Origin is derived
@@ -123,6 +129,95 @@ export function canonicalCorsHelperPath(moduleFile = fileURLToPath(import.meta.u
   return join(dirname(moduleFile), 'browser-authority-cors-probe-helper.mjs');
 }
 
+export function canonicalAuthorityEntrypointPath(moduleFile = fileURLToPath(import.meta.url)) {
+  return join(dirname(moduleFile), 'browser-authority-entrypoint.mjs');
+}
+
+export function canonicalAuthorityChildPath(moduleFile = fileURLToPath(import.meta.url)) {
+  return join(dirname(moduleFile), 'browser-authority-child.mjs');
+}
+
+export function canonicalAuthorityChildArgv(moduleFile = fileURLToPath(import.meta.url)) {
+  return [process.execPath, canonicalAuthorityChildPath(moduleFile)];
+}
+
+function exactKeys(value, keys) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+function resolveMainPath(raw) {
+  if (typeof raw !== 'string' || raw.length === 0 || raw.startsWith('-')) return null;
+  return resolve(process.cwd(), raw);
+}
+
+function originalCommandLine() {
+  try {
+    const commandLine = process.report?.getReport?.().header?.commandLine;
+    return Array.isArray(commandLine) ? commandLine : [];
+  } catch {
+    return [];
+  }
+}
+
+function sameRealFile(a, b) {
+  try {
+    return realpathSync(a).toLowerCase() === realpathSync(b).toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+function assertNoProcessInjection() {
+  if (process.execArgv.length > 0) {
+    throw new BrowserAuthorityError('execargv_injection_detected');
+  }
+  for (const arg of process.execArgv) {
+    const lower = arg.toLowerCase();
+    if (
+      lower === '-r' ||
+      lower.startsWith('-r') ||
+      lower.startsWith('-e') ||
+      lower === '--require' ||
+      lower.startsWith('--require=') ||
+      lower === '--import' ||
+      lower.startsWith('--import=') ||
+      lower === '--loader' ||
+      lower.startsWith('--loader=') ||
+      lower === '--experimental-loader' ||
+      lower.startsWith('--experimental-loader=') ||
+      lower === '--eval' ||
+      lower.startsWith('--eval=') ||
+      lower === '--input-type' ||
+      lower.startsWith('--input-type=')
+    ) {
+      throw new BrowserAuthorityError('execargv_injection_detected');
+    }
+  }
+  for (const key of Object.keys(process.env)) {
+    const upper = key.toUpperCase();
+    if (upper === 'NODE_OPTIONS' || upper === 'NODE_PATH' || upper.startsWith('GIT_')) {
+      throw new BrowserAuthorityError('env_injection_detected');
+    }
+  }
+}
+
+export function assertDirectAuthorityEntrypointProcess(moduleFile = fileURLToPath(import.meta.url)) {
+  const entrypointPath = canonicalAuthorityEntrypointPath(moduleFile);
+  const originalMainPath = resolveMainPath(originalCommandLine()[1]);
+  const argvMainPath = resolveMainPath(process.argv[1]);
+  if (!originalMainPath || !sameRealFile(originalMainPath, entrypointPath)) {
+    throw new BrowserAuthorityError('not_direct_entrypoint');
+  }
+  if (!argvMainPath || !sameRealFile(argvMainPath, entrypointPath)) {
+    throw new BrowserAuthorityError('argv_entrypoint_drift');
+  }
+  assertNoProcessInjection();
+  return true;
+}
+
 /**
  * Committed-blob bytes for ANY tracked path at the owning repository's live
  * HEAD (git cat-file blob HEAD:<rel>, argv array, GIT_*-stripped env).
@@ -146,6 +241,31 @@ function readCommittedBytesViaGit(path) {
   }
 }
 
+function readCommittedBytesGeneric(path) {
+  const toplevel = execFileSync('git', ['-C', dirname(path), 'rev-parse', '--show-toplevel'], {
+    stdio: ['ignore', 'pipe', 'ignore'],
+    env: gitEnv(),
+  })
+    .toString('utf8')
+    .trim();
+  const rel = relative(toplevel, path).split(sep).join('/');
+  return execFileSync('git', ['-C', toplevel, 'cat-file', 'blob', `HEAD:${rel}`], {
+    stdio: ['ignore', 'pipe', 'ignore'],
+    env: gitEnv(),
+  });
+}
+
+function assertPathEqualsHeadBlob(path) {
+  try {
+    if (!readCommittedBytesGeneric(path).equals(readFileSync(path))) {
+      throw new BrowserAuthorityError('working_tree_dirty_vs_head');
+    }
+  } catch (error) {
+    if (error instanceof BrowserAuthorityError) throw error;
+    throw new BrowserAuthorityError('working_tree_dirty_vs_head');
+  }
+}
+
 /**
  * The probe child's environment: every NODE_* and GIT_* variable is
  * STRIPPED — NODE_OPTIONS/NODE_PATH/preload entries cannot inject loaders
@@ -158,6 +278,75 @@ export function probeChildEnv() {
     if (!upper.startsWith('NODE_') && !upper.startsWith('GIT_')) env[key] = value;
   }
   return env;
+}
+
+export function parseCorsProbePayload(payload) {
+  const keys = ['schema', 'ok', 'category', 'status_2xx', 'allow_origin_present', 'allow_origin_exact'];
+  if (!exactKeys(payload, keys) || payload.schema !== CORS_PROBE_RESULT_SCHEMA) {
+    throw new BrowserAuthorityError('cors_probe_payload_invalid');
+  }
+  if (
+    typeof payload.ok !== 'boolean' ||
+    typeof payload.category !== 'string' ||
+    typeof payload.status_2xx !== 'boolean' ||
+    typeof payload.allow_origin_present !== 'boolean' ||
+    typeof payload.allow_origin_exact !== 'boolean'
+  ) {
+    throw new BrowserAuthorityError('cors_probe_payload_invalid');
+  }
+  const knownCategories = new Set([
+    'cors_probe_passed',
+    'cors_allow_origin_mismatch',
+    'cors_probe_http_error',
+    'cors_probe_timeout',
+    'cors_probe_no_response',
+  ]);
+  if (!knownCategories.has(payload.category)) {
+    throw new BrowserAuthorityError('cors_probe_payload_invalid');
+  }
+  const exactPass =
+    payload.status_2xx === true &&
+    payload.allow_origin_present === true &&
+    payload.allow_origin_exact === true;
+  if (payload.ok === true && (payload.category !== 'cors_probe_passed' || !exactPass)) {
+    throw new BrowserAuthorityError('cors_probe_payload_invalid');
+  }
+  if (payload.ok === false && (payload.category === 'cors_probe_passed' || exactPass)) {
+    throw new BrowserAuthorityError('cors_probe_payload_invalid');
+  }
+  return payload;
+}
+
+export function parseAuthorityChildStdout(stdout, { pid, exitCode }) {
+  let payload;
+  try {
+    const text = String(stdout).trim();
+    if (text.length === 0 || text.includes('\n')) {
+      throw new Error('invalid stdout');
+    }
+    payload = JSON.parse(text);
+  } catch {
+    throw new BrowserAuthorityError('authority_child_stdout_unparsable');
+  }
+  if (
+    !exactKeys(payload, ['schema', 'pid', 'exit', 'reconciliation']) ||
+    payload.schema !== AUTHORITY_CHILD_RESULT_SCHEMA ||
+    !Number.isInteger(payload.pid) ||
+    payload.pid <= 0 ||
+    !Number.isInteger(payload.exit) ||
+    payload.pid !== pid ||
+    payload.exit !== exitCode ||
+    !exactKeys(payload.reconciliation, ['complete']) ||
+    typeof payload.reconciliation.complete !== 'boolean'
+  ) {
+    throw new BrowserAuthorityError('authority_child_result_shape');
+  }
+  return {
+    rc: payload.exit,
+    pid: payload.pid,
+    real_child: true,
+    reconciliation: { complete: payload.reconciliation.complete },
+  };
 }
 
 /** Canonical profile path, resolved relative to THIS module (never cwd). */
@@ -579,15 +768,25 @@ export class ControlPlane {
    *                 any other repository is refused (repo_root_mismatch,
    *                 B1-R5-R4 cross-repo candidate substitution closure)
    *   ledger        DurableJsonlLedger
+   *   authority     PUBLIC authority elevation is forbidden. Library-import
+   *                 ControlPlanes can exercise all functional paths for
+   *                 testing but CANNOT mint authority PASS, terminal seal, or
+   *                 merge-worthy evidence (B1-R6-R3). The direct process
+   *                 entrypoint is the production trust boundary and does not
+   *                 expose an in-process authority token.
    * The protected profile is ALWAYS the canonical module-relative
    * browser-authority-profile.json — there is no profilePath override: a
    * caller-supplied weaker profile cannot exist by construction. Profile
    * committed-blob verification and candidate HEAD resolution share the ONE
    * canonical toplevel.
    */
-  constructor({ contractPath, repoRoot, ledger }) {
+  constructor(options) {
+    const { contractPath, repoRoot, ledger } = options || {};
     if (typeof contractPath !== 'string' || contractPath.length === 0) {
       throw new BrowserAuthorityError('contract_path_missing');
+    }
+    if (Object.prototype.hasOwnProperty.call(options || {}, 'authority') && options.authority !== false) {
+      throw new BrowserAuthorityError('authority_mode_required');
     }
     if (typeof repoRoot !== 'string' || repoRoot.length === 0) {
       throw new BrowserAuthorityError('repo_root_missing');
@@ -604,6 +803,7 @@ export class ControlPlane {
     this.#contractPath = contractPath;
     this.#repoRoot = canonicalRoot;
     this.#ledger = ledger;
+    this.#authority = false;
     this.#profilePath = canonicalProfilePath();
 
     // Initial binding — all four from LIVE sources, none from the caller.
@@ -625,6 +825,8 @@ export class ControlPlane {
     this.current = 'INIT';
     this.#materialized = null; // { input, inputSha } — private, deep-frozen
     this.#authorized = null;
+    this.#cwdSha = null;
+    this.#childResult = null;
     this.launchStarts = 0;
     this.preflightInvocations = 0;
     this.transitionsTaken = [];
@@ -641,6 +843,9 @@ export class ControlPlane {
   #candidateSha;
   #materialized;
   #authorized;
+  #cwdSha;
+  #childResult;
+  #authority;
   #corsProbeInvocations = 0;
   #corsProbePassed = false;
 
@@ -757,6 +962,26 @@ export class ControlPlane {
     return resolveLiveHead(this.#repoRoot);
   }
 
+  assertLiveBindingSurface() {
+    this.#assertLiveBindings();
+    return true;
+  }
+
+  authorityBindingFacts() {
+    return {
+      state: this.current,
+      candidate_sha_bound: /^[0-9a-f]{40}$/.test(this.#candidateSha),
+      profile_sha_bound: typeof this.#profileSha === 'string' && this.#profileSha.length === 64,
+      contract_sha_bound: typeof this.#contractSha === 'string' && this.#contractSha.length === 64,
+      input_sha_bound: this.#materialized !== null && typeof this.#materialized.inputSha === 'string',
+      argv_sha_bound: this.#authorized !== null && typeof this.#authorized.argvSha === 'string',
+      cwd_sha_bound: typeof this.#cwdSha === 'string' && this.#cwdSha.length === 64,
+      child_real_process_observed: this.#childResult !== null && this.#childResult.real_child === true,
+      child_pid: this.#childResult ? this.#childResult.pid : null,
+      child_exit_code: this.#childResult ? this.#childResult.exit : null,
+    };
+  }
+
   materialize(env) {
     this.#guardLive('materialize');
     const { input, inputSha } = materializeInput(this.#contract, env);
@@ -832,13 +1057,9 @@ export class ControlPlane {
         child.stdin.write(childInput);
         child.stdin.end();
       });
-      payload = JSON.parse(childOut);
+      payload = parseCorsProbePayload(JSON.parse(childOut));
     } catch {
       // Child crash, kill (runaway), or unparseable output: fail closed.
-      this.stop('cors_probe_no_response');
-      throw new BrowserAuthorityError('cors_probe_no_response');
-    }
-    if (payload === null || typeof payload !== 'object') {
       this.stop('cors_probe_no_response');
       throw new BrowserAuthorityError('cors_probe_no_response');
     }
@@ -851,6 +1072,7 @@ export class ControlPlane {
       'cors_probe_http_error',
       'cors_probe_timeout',
       'cors_probe_no_response',
+      'cors_probe_payload_invalid',
     ]);
     if (payload.ok !== true) {
       const category =
@@ -925,7 +1147,7 @@ export class ControlPlane {
   }
 
   /** Bind argv discipline; live contract/input/profile/candidate re-checks. */
-  authorize({ inputSha, argv }) {
+  authorize({ inputSha, argv, cwd = this.#repoRoot }) {
     this.#guardLive('authorize');
     if (!this.#materialized) {
       throw new BrowserAuthorityError('input_not_materialized');
@@ -940,11 +1162,16 @@ export class ControlPlane {
     // materialize-time binding and the live recompute.
     this.#assertLiveBindings({ expectInputSha: inputSha });
     assertArgvArray(argv);
+    if (!sameRealDirectory(cwd, this.#repoRoot)) {
+      this.stop('cwd_mismatch');
+      throw new BrowserAuthorityError('cwd_mismatch');
+    }
     this.transition('PREFLIGHTED', 'AUTHORIZED');
     this.#authorized = {
       argvSha: sha256Hex(JSON.stringify(argv)),
       argvLength: argv.length,
     };
+    this.#cwdSha = sha256Hex(realpathSync(cwd));
     return { state: this.current, argvLength: this.#authorized.argvLength };
   }
 
@@ -1026,6 +1253,56 @@ export class ControlPlane {
       });
   }
 
+  launchAuthorityChild({ argv, cwd = this.#repoRoot }) {
+    const canonicalArgv = canonicalAuthorityChildArgv();
+    if (JSON.stringify(argv) !== JSON.stringify(canonicalArgv)) {
+      throw new BrowserAuthorityError('authority_child_argv_not_canonical');
+    }
+    if (!sameRealDirectory(cwd, this.#repoRoot)) {
+      throw new BrowserAuthorityError('cwd_mismatch');
+    }
+    return this.launch(
+      (file, args) => this.#execAuthorityChild(file, args, cwd),
+      { argv },
+    );
+  }
+
+  #execAuthorityChild(file, args, cwd) {
+    const canonicalArgv = canonicalAuthorityChildArgv();
+    if (file !== canonicalArgv[0] || JSON.stringify(args) !== JSON.stringify(canonicalArgv.slice(1))) {
+      throw new BrowserAuthorityError('authority_child_argv_not_canonical');
+    }
+    const childInput = JSON.stringify({
+      schema: AUTHORITY_CHILD_INPUT_SCHEMA,
+      input_sha: this.#materialized.inputSha,
+      cwd_sha: this.#cwdSha,
+      values: this.#materialized.input.values,
+    });
+    return new Promise((resolve, reject) => {
+      const child = execFile(
+        file,
+        args,
+        {
+          cwd,
+          env: probeChildEnv(),
+          stdio: ['pipe', 'pipe', 'pipe'],
+          timeout: AUTHORITY_CHILD_TIMEOUT_MS,
+          windowsHide: true,
+        },
+        (error, stdout) => {
+          const exitCode = error && Number.isInteger(error.code) ? error.code : 0;
+          try {
+            resolve(parseAuthorityChildStdout(stdout, { pid: child.pid, exitCode }));
+          } catch (parseError) {
+            reject(parseError);
+          }
+        },
+      );
+      child.stdin.write(childInput);
+      child.stdin.end();
+    });
+  }
+
   /** Classify a settled child result: FINISHED only on rc==0 AND complete. */
   #classifyChildResult(result, argv) {
     if (result === null || typeof result !== 'object') {
@@ -1034,6 +1311,11 @@ export class ControlPlane {
       throw new BrowserAuthorityError('executor_result_shape');
     }
     const rc = result.rc;
+    this.#childResult = {
+      pid: Number.isInteger(result.pid) ? result.pid : null,
+      exit: Number.isInteger(rc) ? rc : null,
+      real_child: result.real_child === true,
+    };
     const complete = Boolean(result.reconciliation && result.reconciliation.complete === true);
     if (rc === 0 && complete) {
       this.transition('RUNNING', 'FINISHED');
@@ -1041,7 +1323,14 @@ export class ControlPlane {
         { kind: 'finish', argv_count: argv.length, starts: this.launchStarts },
         this.#sensitiveValues(),
       );
-      return { outcome: 'FINISHED', rc, reconciliation_complete: true };
+      return {
+        outcome: 'FINISHED',
+        rc,
+        reconciliation_complete: true,
+        child_pid: this.#childResult.pid,
+        child_exit_code: this.#childResult.exit,
+        real_child: this.#childResult.real_child,
+      };
     }
     // A started child that failed — or failed to reconcile — is TEST_RED:
     // never FINISHED, never VOID.
@@ -1055,7 +1344,14 @@ export class ControlPlane {
       },
       this.#sensitiveValues(),
     );
-    return { outcome: 'TEST_RED', rc, reconciliation_complete: complete };
+    return {
+      outcome: 'TEST_RED',
+      rc,
+      reconciliation_complete: complete,
+      child_pid: this.#childResult.pid,
+      child_exit_code: this.#childResult.exit,
+      real_child: this.#childResult.real_child,
+    };
   }
 
   /** Terminal VOID — reachable from every live state, never left. */
@@ -1071,8 +1367,19 @@ export class ControlPlane {
     return this.current;
   }
 
+  enableAuthorityForEntrypoint(capability) {
+    if (!capability || capability[AUTHORITY_CAPABILITY_BRAND] !== true) {
+      throw new BrowserAuthorityError('authority_mode_required');
+    }
+    this.#authority = true;
+    return true;
+  }
+
   /** Terminal seal: terminal evidence cannot exist (nor PASS) without it. */
   seal() {
+    if (!this.#authority) {
+      throw new BrowserAuthorityError('authority_mode_required');
+    }
     if (!['FINISHED', 'TEST_RED', 'STOPPED'].includes(this.current)) {
       throw new BrowserAuthorityError('seal_requires_terminal_state');
     }
@@ -1087,11 +1394,15 @@ export class ControlPlane {
   }
 
   /**
-   * Labels, booleans, categories, counts — requires the terminal seal AND a
-   * fully verified on-disk ledger chain: a record tampered after sealing
-   * fails the chain recompute and can never yield evidence.
+   * Labels, booleans, categories, counts — requires authority mode (not
+   * exposed through the library constructor), the terminal seal, and a fully
+   * verified on-disk ledger chain: a record tampered after sealing fails the
+   * chain recompute and can never yield evidence.
    */
   evidence() {
+    if (!this.#authority) {
+      throw new BrowserAuthorityError('authority_mode_required');
+    }
     this.#ledger.verifyChain();
     if (!this.#ledger.hasTerminalSeal()) {
       throw new BrowserAuthorityError('evidence_unsealed');
@@ -1107,11 +1418,69 @@ export class ControlPlane {
       contract_sha_bound: typeof this.#contractSha === 'string' && this.#contractSha.length === 64,
       candidate_sha_live_resolved: /^[0-9a-f]{40}$/.test(this.#candidateSha),
       argv_authorized: this.#authorized !== null,
+      argv_sha_bound: this.#authorized !== null && typeof this.#authorized.argvSha === 'string',
+      cwd_sha_bound: typeof this.#cwdSha === 'string' && this.#cwdSha.length === 64,
+      child_real_process_observed: this.#childResult !== null && this.#childResult.real_child === true,
+      child_pid: this.#childResult ? this.#childResult.pid : null,
+      child_exit_code: this.#childResult ? this.#childResult.exit : null,
       cors_probe_invocations: this.#corsProbeInvocations,
       cors_probe_passed: this.#corsProbePassed,
       ledger_sealed: true,
     };
   }
+}
+
+export function authorityCriticalPaths(moduleFile = fileURLToPath(import.meta.url)) {
+  return [
+    canonicalAuthorityEntrypointPath(moduleFile),
+    moduleFile,
+    canonicalCorsHelperPath(moduleFile),
+    canonicalAuthorityChildPath(moduleFile),
+    canonicalProfilePath(moduleFile),
+  ];
+}
+
+export function assertAuthorityCriticalPathsClean(moduleFile = fileURLToPath(import.meta.url)) {
+  for (const path of authorityCriticalPaths(moduleFile)) {
+    assertPathEqualsHeadBlob(path);
+  }
+  return true;
+}
+
+function mintAuthorityCapability(control) {
+  if (authorityCapabilityIssued) {
+    throw new BrowserAuthorityError('authority_capability_already_used');
+  }
+  control.assertLiveBindingSurface();
+  const facts = control.authorityBindingFacts();
+  if (!['FINISHED', 'TEST_RED'].includes(facts.state)) {
+    throw new BrowserAuthorityError('seal_requires_terminal_state');
+  }
+  if (
+    facts.candidate_sha_bound !== true ||
+    facts.profile_sha_bound !== true ||
+    facts.contract_sha_bound !== true ||
+    facts.input_sha_bound !== true ||
+    facts.argv_sha_bound !== true ||
+    facts.cwd_sha_bound !== true ||
+    facts.child_real_process_observed !== true
+  ) {
+    throw new BrowserAuthorityError('authority_bindings_incomplete');
+  }
+  assertDirectAuthorityEntrypointProcess();
+  assertAuthorityCriticalPathsClean();
+  authorityCapabilityIssued = true;
+  return Object.freeze({ [AUTHORITY_CAPABILITY_BRAND]: true });
+}
+
+export function sealAuthorityEvidence(control) {
+  if (!(control instanceof ControlPlane)) {
+    throw new BrowserAuthorityError('control_plane_required');
+  }
+  const capability = mintAuthorityCapability(control);
+  control.enableAuthorityForEntrypoint(capability);
+  control.seal();
+  return control.evidence();
 }
 
 function assertArgvArray(argv) {

@@ -229,3 +229,34 @@ starts=0), that a correct real server still passes, and that wrong-origin,
 HTTP-failure and timeout modes remain fail-closed (their probes share the same
 native transport). A transport degraded back to ambient fetch produces a REAL
 identity substitution (`BYPASS_ACCEPTED`), which R27 reports as RED.
+
+### B1-R6-R2 - process-isolated CORS probe
+
+The CORS probe no longer runs network I/O in the launcher process. The runner
+spawns a fresh `node` child at the canonical helper path with argv-array
+discipline, sanitized `NODE_*`/`GIT_*` environment, private stdin input, and a
+committed-blob check for the helper bytes. R28 poisons the launcher's
+`globalThis.fetch`, `node:http`, and `node:https` bindings, then proves an
+unreachable target still fails in the pristine child while a reachable real
+server still passes.
+
+### B1-R6-R3/R3-R1 - direct-process authority boundary
+
+Library functional mode is not authority mode. Library-imported `ControlPlane`
+instances may exercise materialization, CORS probing, preflight, authorize, and
+fake child classification for source tests, but public `authority:true`
+elevation is refused and `seal()`/`evidence()` throw
+`authority_mode_required`; a fake sync/async executor can reach only a
+functional FINISHED/TEST_RED state, never authority evidence.
+
+`tools/browser-authority-entrypoint.mjs` is the only authority evidence path.
+It must be started directly as a fresh node process, rejects import/`-e`,
+`NODE_OPTIONS`/`NODE_PATH`, any `GIT_*` environment, and dirty critical files
+versus HEAD, then executes the full direct chain:
+materialize -> process-isolated CORS probe -> preflight -> authorize -> fixed
+real child argv -> FINISHED/TEST_RED -> terminal seal -> authority evidence.
+The runner mints a module-private Symbol-branded capability only after the
+direct command-line/env checks, critical HEAD-blob checks, live candidate
+checks, and contract/input/argv/cwd/real-child binding facts are all present.
+The capability is never accepted from constructor input, exported objects, env,
+argv, or JSON.

@@ -478,7 +478,16 @@ async def _seed_single_product(two_tenants, s2_clean_db) -> str:
 
 class TestCanonicalProductIdFailClosed:
     """R2-F1 contract: the detail path accepts ONLY canonical lowercase
-    hyphenated UUID text; everything else is a clean 404 before any SQL."""
+    hyphenated UUID text; everything else is a clean 404 before any SQL.
+
+    R3-F1-ORACLE refinement — malformed HTTP probes are split into exactly
+    two classes with different proofs:
+    - HANDLER_REACHABLE: the route matches, get_product executes, and the
+      answer MUST be an exact 404 PRODUCT_NOT_FOUND with zero driver/SQL
+      detail (422 is not acceptable).
+    - ROUTER_REJECTED: the path shape never matches the route, the request
+      never enters get_product, and a routing-layer generic 404 is expected —
+      explicitly NOT a PRODUCT_NOT_FOUND handler proof."""
 
     async def test_canonical_existing_uuid_returns_200(
         self, r1_client, two_tenants, s2_clean_db
@@ -528,41 +537,91 @@ class TestCanonicalProductIdFailClosed:
                 )
                 _assert_clean_product_not_found(resp)
 
-    async def test_malformed_shape_matrix_is_clean_404_422_never_500(
+    async def test_handler_reachable_malformed_ids_are_exact_product_not_found(
         self, r1_client, two_tenants, s2_clean_db
     ):
+        """HANDLER_REACHABLE class: each probe MATCHES the route (verified by
+        route-matching probe evidence: an unauthenticated variant of each form
+        reaches the auth dependency, i.e. 401 — never the generic routing 404),
+        so get_product executes and MUST answer an exact clean 404.
+
+        422 is NOT acceptable for any of these: the handler's contract is a
+        neutral PRODUCT_NOT_FOUND for every malformed/non-canonical id."""
         product_id = await _seed_single_product(two_tenants, s2_clean_db)
         token = await _login_retailer(r1_client, two_tenants)
 
-        # NOTE: a literal empty path segment is unroutable (Starlette path
-        # params require >= 1 char, so "" never reaches the handler over
-        # HTTP); the empty-value fail-closed proof is the direct-call test
-        # below (test_noncanonical_ids_never_reach_db_execute includes "").
         probes = [
             product_id.upper(),                        # uppercase UUID
             product_id.replace("-", ""),               # 32-hex, no hyphens
-            " ",                                       # blank value (decodes from %20)
+            " ",                                       # blank/space value
             "not-a-uuid",                              # plain text
             "x" * 2048,                                # overlong value
-            "../../../etc/passwd",                     # traversal
             "'; DROP TABLE catalog_products; --",      # SQL probe
             f"{product_id[:-1]}z",                     # near-miss corrupted hex
+            "%252Fetc%252Fpasswd",                     # double-encoded slash:
+                                                     # the router decodes %25->%
+                                                     # once, so get_product
+                                                     # receives the literal
+                                                     # "%2Fetc%2Fpasswd"
         ]
         for probe in probes:
             resp = await r1_client.get(
                 f"/api/v1/client/products/{probe}",
                 headers={"Authorization": f"Bearer {token}"},
             )
-            assert resp.status_code in (
-                HTTPStatus.NOT_FOUND,
-                HTTPStatus.UNPROCESSABLE_ENTITY,
-            ), f"probe={probe[:40]!r}: got {resp.status_code}: {resp.text[:200]}"
-            assert resp.text.lower().find("asyncpg") == -1
-            assert resp.text.lower().find("sqlalchemy") == -1
+            assert resp.status_code == HTTPStatus.NOT_FOUND, (
+                f"HANDLER_REACHABLE probe={probe[:40]!r}: expected exact 404, "
+                f"got {resp.status_code}: {resp.text[:200]}"
+            )
+            _assert_clean_product_not_found(resp)
+
+    async def test_router_rejected_probes_never_reach_get_product(
+        self, r1_client, two_tenants
+    ):
+        """ROUTER_REJECTED class: these path shapes do NOT match the route at
+        all, so the request NEVER ENTERS get_product (verified by probe
+        evidence: the unauthenticated variant returns the routing-layer
+        generic 404 instead of the auth 401).
+
+        Contract for this class:
+        - a routing-layer generic 404 is acceptable;
+        - it must NOT be presented as a PRODUCT_NOT_FOUND handler proof —
+          the response code is observed to be the generic RESOURCE_NOT_FOUND,
+          and the test asserts it is NOT PRODUCT_NOT_FOUND;
+        - the response must still leak no driver/SQL text."""
+        token = await _login_retailer(r1_client, two_tenants)
+
+        probes = [
+            "../../../etc/passwd",       # raw traversal (slashes defeat the
+                                         # single-segment path param)
+            "%2Fetc%2Fpasswd",           # single-encoded slash: the router
+                                         # decodes %2F to a real '/', so the
+                                         # path no longer matches the route
+        ]
+        for probe in probes:
+            resp = await r1_client.get(
+                f"/api/v1/client/products/{probe}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == HTTPStatus.NOT_FOUND, (
+                f"ROUTER_REJECTED probe={probe[:40]!r}: expected generic 404, "
+                f"got {resp.status_code}: {resp.text[:200]}"
+            )
+            body = resp.json()
+            assert body.get("code") != "PRODUCT_NOT_FOUND", (
+                f"probe={probe[:40]!r}: routing-layer response must not be "
+                f"confused with the handler's PRODUCT_NOT_FOUND proof: {body}"
+            )
+            lowered = resp.text.lower()
+            for marker in _FORBIDDEN_BODY_MARKERS:
+                assert marker.lower() not in lowered, (
+                    f"driver/SQL detail leaked ({marker!r}): {resp.text[:300]}"
+                )
 
     async def test_noncanonical_ids_never_reach_db_execute(self):
-        """Observable fake AsyncSession: every non-canonical id raises the
-        clean 404 BEFORE any db.execute call (zero SQL issued)."""
+        """Observable fake AsyncSession: every non-canonical id — including
+        the handler-reachable encoded literals %2Fetc%2Fpasswd and %7B...%7D —
+        raises the clean 404 BEFORE any db.execute call (zero SQL issued)."""
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
 
@@ -580,6 +639,7 @@ class TestCanonicalProductIdFailClosed:
             f"urn:uuid:{canonical}",
             canonical.upper(),
             canonical.replace("-", ""),
+            "%2Fetc%2Fpasswd",
             "",
             "not-a-uuid",
             "'; DROP TABLE catalog_products; --",

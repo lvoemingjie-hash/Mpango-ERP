@@ -578,45 +578,52 @@ class TestCanonicalProductIdFailClosed:
     async def test_router_rejected_probes_never_reach_get_product(
         self, r1_client, two_tenants
     ):
-        """ROUTER_REJECTED class: these path shapes do NOT match the route at
-        all, so the request NEVER ENTERS get_product (verified by probe
-        evidence: the unauthenticated variant returns the routing-layer
-        generic 404 instead of the auth 401).
+        """ROUTER_REJECTED class: this path shape does NOT match the route, so
+        the request NEVER ENTERS get_product.
 
-        Contract for this class:
-        - a routing-layer generic 404 is acceptable;
-        - it must NOT be presented as a PRODUCT_NOT_FOUND handler proof —
-          the response code is observed to be the generic RESOURCE_NOT_FOUND,
-          and the test asserts it is NOT PRODUCT_NOT_FOUND;
-        - the response must still leak no driver/SQL text."""
+        Scope note (R4): the raw `../../../etc/passwd` traversal form was
+        REMOVED from this class. httpx normalizes `../` segments client-side
+        BEFORE any ASGI scope is built — `GET
+        /api/v1/client/products/../../../etc/passwd` reaches the app as
+        scope path `/api/etc/passwd`, a different URL entirely — so its 404
+        is the router rejecting an unrelated path, NOT a product-routing
+        rejection proof. (The form remains in the direct-handler fake-session
+        no-SQL test, which explicitly bypasses the HTTP transport.)
+
+        The retained single-encoded slash proof:
+        `%2Fetc%2Fpasswd` decodes to a real `/`, so the ASGI scope path is
+        `/api/v1/client/products//etc/passwd` — the product route space is
+        targeted but the single-segment path param cannot match, Starlette
+        answers the routing-layer generic 404, and get_product never runs.
+
+        Exact contract for the retained probe:
+        - status == 404;
+        - code == RESOURCE_NOT_FOUND (the generic routing code, observed);
+        - code != PRODUCT_NOT_FOUND (never presented as handler proof);
+        - the full forbidden driver/SQL marker set is absent."""
         token = await _login_retailer(r1_client, two_tenants)
 
-        probes = [
-            "../../../etc/passwd",       # raw traversal (slashes defeat the
-                                         # single-segment path param)
-            "%2Fetc%2Fpasswd",           # single-encoded slash: the router
-                                         # decodes %2F to a real '/', so the
-                                         # path no longer matches the route
-        ]
-        for probe in probes:
-            resp = await r1_client.get(
-                f"/api/v1/client/products/{probe}",
-                headers={"Authorization": f"Bearer {token}"},
+        resp = await r1_client.get(
+            "/api/v1/client/products/%2Fetc%2Fpasswd",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == HTTPStatus.NOT_FOUND, (
+            f"ROUTER_REJECTED probe: expected generic 404, "
+            f"got {resp.status_code}: {resp.text[:200]}"
+        )
+        body = resp.json()
+        assert body.get("code") == "RESOURCE_NOT_FOUND", (
+            f"expected the routing-layer RESOURCE_NOT_FOUND code, got: {body}"
+        )
+        assert body.get("code") != "PRODUCT_NOT_FOUND", (
+            "routing-layer response must not be confused with the handler's "
+            "PRODUCT_NOT_FOUND proof"
+        )
+        lowered = resp.text.lower()
+        for marker in _FORBIDDEN_BODY_MARKERS:
+            assert marker.lower() not in lowered, (
+                f"driver/SQL detail leaked ({marker!r}): {resp.text[:300]}"
             )
-            assert resp.status_code == HTTPStatus.NOT_FOUND, (
-                f"ROUTER_REJECTED probe={probe[:40]!r}: expected generic 404, "
-                f"got {resp.status_code}: {resp.text[:200]}"
-            )
-            body = resp.json()
-            assert body.get("code") != "PRODUCT_NOT_FOUND", (
-                f"probe={probe[:40]!r}: routing-layer response must not be "
-                f"confused with the handler's PRODUCT_NOT_FOUND proof: {body}"
-            )
-            lowered = resp.text.lower()
-            for marker in _FORBIDDEN_BODY_MARKERS:
-                assert marker.lower() not in lowered, (
-                    f"driver/SQL detail leaked ({marker!r}): {resp.text[:300]}"
-                )
 
     async def test_noncanonical_ids_never_reach_db_execute(self):
         """Observable fake AsyncSession: every non-canonical id — including

@@ -2455,7 +2455,20 @@ function makeNestedHarnessFixture(label, { withConfig = true } = {}) {
   fixtureGit(repoRoot, 'commit', '-m', 'nested harness fixture');
   const head = fixtureGit(repoRoot, 'rev-parse', 'HEAD').toString().trim();
   const maildir = join(repoRoot, 'maildir');
-  mkdirSync(maildir, { recursive: true });
+  // Task maildir with exactly one fresh delivery per mailbox (the artifact
+  // scanner's strict setup-token cardinality contract).
+  mkdirSync(join(maildir, FIXTURE_ENV.J1H2C_RETAILER_EMAIL.toLowerCase()), { recursive: true });
+  mkdirSync(join(maildir, FIXTURE_ENV.J1H2C_UNVERIFIED_EMAIL.toLowerCase()), { recursive: true });
+  writeFileSync(
+    join(maildir, FIXTURE_ENV.J1H2C_RETAILER_EMAIL.toLowerCase(), 'delivery-1.json'),
+    JSON.stringify({ link: 'https://mail.invalid/reset#setupToken=fixsetup-established-token-0001' }),
+    'utf8',
+  );
+  writeFileSync(
+    join(maildir, FIXTURE_ENV.J1H2C_UNVERIFIED_EMAIL.toLowerCase(), 'delivery-1.json'),
+    JSON.stringify({ link: 'https://mail.invalid/setup#setupToken=fixsetup-unverified-token-0002' }),
+    'utf8',
+  );
   return { root: harnessRoot, cwdPath: repoRoot, head, maildir };
 }
 
@@ -2877,7 +2890,7 @@ function rawPostStatus(port, path, payload) {
       return null;
     }
   };
-  writeFileSync(pidFile, '424', 'utf8'); // truncated record (the retired script's defect)
+  writeFileSync(pidFile, '', 'utf8'); // truncated record (the retired script's defect)
   const hostRunTruncated = spawnHostModule();
   const hostPayloadTruncated = parseHostPayload(hostRunTruncated);
   expect(hostRunTruncated.status === 0 && hostPayloadTruncated !== null, 'R43: module emits a payload (RED is a payload, not a crash)');

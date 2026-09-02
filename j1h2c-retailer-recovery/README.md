@@ -292,8 +292,7 @@ Two confirmed defects from the prior round are closed:
   `/healthz` reachable; maildir exists, is writable and EMPTY; W1/W2
   canonical-format and distinct; owner/unknown/unverified identities
   distinct after normalization; both invitation code/phone pairs present
-  and mutually distinct; the forged token reused nowhere; the established
-  retailer able to log in through the formal login API; the unverified
+  and mutually distinct; the forged token reused nowhere; the unverified
   identity still refused. It returns labels, booleans, categories and
   counts only — never a URL, email, password, token or code. Any RED,
   exception, timeout or schema mismatch VOIDs the plane before authorize
@@ -304,23 +303,104 @@ Post-binding drift of the helper, child, runner, entrypoint or CORS helper
 bytes blocks authorize/launch (`authority_module_byte_drift`), on top of the
 existing profile/contract/input/candidate live re-binding.
 
-**Task-private execution contract for host-level checks (future Lubuntu
-gate).** PG reachability, Redis reachability, Alembic head currency and
-authority port ownership are HOST-level checks. They belong to the OUTER
-authority preflight that runs in the Lubuntu browser gate, not to this
-helper. The interface is fixed and machine-checked: a
-`host_preflight` block (`provided_by: 'outer_authority_preflight'`) with
-`pg_reachable`, `redis_reachable`, `alembic_head_current`,
-`authority_ports_owned` — each `{ ok, category }` — is validated and folded
-into the helper verdict; malformed blocks fail closed. The runner never
-fabricates host results: runner-driven invocations report
-`host_checks_present = 0` transparently.
+### B1-R6-R5 — execution-root truth + lifecycle-compatible preflight + host preflight module
+
+Three confirmed findings from the prior round are closed:
+
+- `P1-A: PLAYWRIGHT_EXECUTION_ROOT_MISMATCH` — the authority child used to
+  spawn `[cli, "test"]` with cwd equal to the repository root while the
+  frozen `playwright.config.ts` and tests live under the harness directory.
+  The child now derives the canonical HARNESS ROOT from its own module
+  location, refuses to launch without the frozen config
+  (`playwright_config_unresolvable`), and launches the frozen CLI with the
+  FIXED `--config <HARNESS_ROOT>/playwright.config.ts` and
+  `cwd = HARNESS_ROOT`. The child's own cwd stays bound to the canonical
+  repository root for the candidate/`cwd_sha` identity — starting from the
+  repository root still selects the exact frozen config; cross-tree specs
+  and default-config discovery are impossible by construction. The
+  invocation marker, run artifacts and the artifact scanner resolve from
+  the SAME harness root. R41 proves collection (15 tests / 1 spec) from
+  the repo-root cwd and nested-harness/decoy immunity.
+- `P1-B: PREFLIGHT_JOURNEY_LIFECYCLE_CONTRADICTION` — the runner preflight
+  used to require the J1H2C retailer login to SUCCEED before the run while
+  the harness `beforeAll` requires that identity to be FRESH and performs
+  register -> setup-credential -> login itself. The contradictory
+  `established_login_succeeds` id is removed from both fixed taxonomies
+  and replaced by `owner_identity_fresh_unregistered` with an EXACT
+  product contract (B1-R6-R5-R1): the owner login is fresh ONLY when it
+  answers precisely 401; a 200 proves the identity is already established
+  and REDs (`owner_identity_already_established`) before authorize, and
+  404 / 422 / 429 / 5xx / any other status are service or contract
+  anomalies that RED with fixed categories
+  (`owner_identity_lookup_missing` / `owner_identity_unprocessable` /
+  `owner_identity_rate_limited` / `owner_identity_backend_unavailable` /
+  `owner_identity_unexpected_status`) — never mistaken for freshness
+  (R44). The harness beforeAll remains the SOLE establishment lifecycle —
+  R42 runs the REAL `src/preconditions.ts` against a fixture lifecycle
+  server and proves the full register -> setup -> login flow completes on
+  the fresh identity, and that the same identity afterwards can never
+  register again (409).
+- `P1-C: AD_HOC_HOST_PREFLIGHT_NOT_REPRODUCIBLE` — the retired ad hoc
+  Lubuntu script misparsed PostgreSQL booleans, interpolated invitation
+  values into shell strings, and trusted a truncated PID file.
+  `tools/host-preflight.mjs` is now the version-controlled authority host
+  gate, owned and invoked BY THE RUNNER ITSELF (B1-R6-R5-R1): in a DIRECT
+  authority run the runner derives the module path from its own location,
+  proves the module's working-tree bytes equal its HEAD committed blob,
+  spawns it as a fresh node child (fixed argv, shell never involved,
+  sanitized environment, private stdin carrying only the deep-frozen
+  materialized values), parses the exact payload shape and folds the
+  block into the helper verdict. No caller, entrypoint or environment can
+  supply host results. PostgreSQL role booleans are parsed SEMANTICALLY
+  (`t`/`f`, `true`/`false`, `on`/`off`, `yes`/`no`, `1`/`0` — any case,
+  any surrounding space; anything unparsable is RED, never a silent
+  falsy); invitation availability uses a FIXED parameter-safe probe
+  (`public.invitations`, values travel as psql variables in separate argv
+  elements with `:'name'` quoting; the module refuses to spawn when a
+  value would enter the SQL text; there is no shell anywhere); authority
+  port ownership requires a full positive-integer PID record, an ALIVE
+  process in the process table AND the expected ownership token in its
+  command line (`authority_ports_pid_truncated` / `..._pid_stale` /
+  `..._owner_mismatch`). All subprocesses are argv arrays with
+  `shell: false`.
+
+**Direct authority requires exactly four host checks (B1-R6-R5-R1).**
+A DIRECT authority entrypoint run is authorized ONLY when the runner
+really invoked the version-controlled host module and EXACTLY
+`pg_reachable`, `redis_reachable`, `alembic_head_current` and
+`authority_ports_owned` were folded into the verdict.
+`host_checks_present = 0` — a missing host configuration, a transparent
+module result, or a module that was never invoked — is
+`host_preflight_not_configured` / `host_preflight_incomplete` and VOIDs
+the plane BEFORE authorize with zero starts. A missing module
+(`host_preflight_module_missing`), dirty module bytes
+(`host_preflight_dirty_vs_head`), a crash or timeout
+(`host_preflight_no_response`), a forged or malformed payload
+(`host_preflight_payload_invalid`) and any RED host check
+(`preflight_red:<category>`) VOID identically: STOPPED, authority child
+spawn = 0, Playwright invocation = 0. Library / non-authority fixtures
+stay transparent (host_checks_present = 0) and can never mint authority
+seal or evidence. R45 proves the four VOID paths over REAL direct
+entrypoint runs; R46 proves the REAL module's four-check GREEN block is
+accepted by the runner parser, folds green through the REAL helper and
+satisfies the direct coverage policy — and that a configured all-RED
+module through a REAL direct entrypoint VOIDs before authorize.
+
+**Host configuration contract (the Lubuntu gate's remaining duty).** The
+runner invokes `tools/host-preflight.mjs` itself; the outer gate's only
+role is to configure the descriptor environment (`J1H2C_HOST_PREFLIGHT=1`
+plus the fixed `J1H2C_HOST_*` / `PGPASSWORD` names documented in that
+module) on the real host. The `host_preflight` block interface
+(`provided_by: 'outer_authority_preflight'`, ids byte-identical with the
+runner's `PREFLIGHT_HOST_CHECK_IDS`) is unchanged and machine-checked;
+malformed blocks fail closed.
 
 **Authenticity boundary (honest ceiling).** Source-level closure can prove
 internal consistency, freshness, candidate binding and scanner cleanliness;
-it cannot prove that a real browser touched a real product. R30-R40
-falsify every inconsistent, stale, candidate-mismatched or scanner-dirty
-evidence set. Only the separately authorized Lubuntu gate — with the real
-PG/Redis/backend/frontend and the outer preflight above — can produce an
-authoritative BROWSER PASS verdict. This round claims:
+it cannot prove that a real browser touched a real product. R30-R46
+falsify every inconsistent, stale, candidate-mismatched, cross-root,
+host-unguarded or scanner-dirty evidence set. Only the separately
+authorized Lubuntu gate — with the real PG/Redis/backend/frontend and the
+runner-invoked host gate passing for real — can produce an authoritative
+BROWSER PASS verdict. This round claims:
 `BROWSER_AUTHORITY_STATUS = NOT_YET_EXECUTABLE`.

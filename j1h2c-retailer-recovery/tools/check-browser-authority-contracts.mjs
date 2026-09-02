@@ -53,6 +53,19 @@
  *   R38 post-preflight input/helper/child drift    -> launch blocked, spawn=0
  *   R39 sensitive values in outputs/ledger         -> firewall holds
  *   R40 library seal/evidence still refused; R1-R29 GREEN preserved
+ *   R41 execution-root truth: repo-root cwd still  -> exact frozen config,
+ *       15 tests / 1 spec; cross-tree + default    discovery impossible
+ *   R42 lifecycle-compatible pre-run proof: fresh  -> preflight PASS,
+ *       established -> preflight_red; REAL harness beforeAll lifecycle
+ *       (register -> setup credential -> login) completes on fresh identity
+ *   R43 version-controlled host preflight module:  -> semantic booleans,
+ *       parameter-safe invitations, PID ownership, host RED -> VOID fold
+ *   R44 EXACT-STATUS freshness contract: 401 the   -> only GREEN answer;
+ *       200 established RED; 404/422/429/500 RED with fixed categories
+ *   R45 DIRECT authority host gate: missing host   -> config, zero host
+ *       checks, missing module, dirty module bytes all VOID before authorize
+ *   R46 runner-owned host gate end-to-end: four-   -> check GREEN accepted,
+ *       configured all-RED host VOIDs a REAL direct entrypoint pre-authorize
  *
  * Every failing probe must throw the EXACT category; a probe that does not
  * throw, or throws a different category, fails this checker. After each RED
@@ -68,6 +81,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFi
 import { tmpdir } from 'node:os';
 import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRATCH = mkdtempSync(join(tmpdir(), 'j1h2c-b1r5r1-'));
@@ -146,7 +160,11 @@ writeFileSync(contractPath, JSON.stringify(CONTRACT), 'utf8');
 // the fixture owner value (the unverified identity must stay refused), so
 // the helper's positive flow passes against a REAL server over REAL http.
 let corsMode = 'ok';
-let preflightMode = 'ok'; // ok | frontend_down | health_down | owner_login_denied | unverified_login_allowed
+// B1-R6-R5-R1: the default mode answers the owner login EXACTLY 401 — the
+// retailer identity is FRESH (the harness beforeAll register -> setup ->
+// login lifecycle owns establishment). The owner_* modes exercise the
+// exact-status contract (200 established; 404/422/429/500 anomalies).
+let preflightMode = 'ok'; // ok (owner exactly 401) | frontend_down | health_down | owner_login_allowed | owner_login_404 | owner_login_422 | owner_login_429 | owner_login_500 | unverified_login_allowed
 const corsRequests = [];
 const corsServer = http.createServer((req, res) => {
   corsRequests.push({
@@ -179,9 +197,25 @@ const corsServer = http.createServer((req, res) => {
     if (req.method === 'POST' && req.url.startsWith('/api/v1/client/auth/login')) {
       let email = '';
       try { email = String(JSON.parse(body || '{}').email ?? ''); } catch { email = ''; }
-      const ownerAllows = preflightMode !== 'owner_login_denied' && email === FIXTURE_ENV.J1H2C_RETAILER_EMAIL;
+      // B1-R6-R5-R1: the owner freshness contract is EXACT-STATUS. The
+      // fixture answers the owner login with 200 (established), 401
+      // (fresh — the DEFAULT), 404, 422, 429 or 500 so every fixed
+      // category of the pre-run proof is exercised against a REAL server.
+      const ownerStatusByMode = {
+        owner_login_allowed: 200,
+        owner_login_404: 404,
+        owner_login_422: 422,
+        owner_login_429: 429,
+        owner_login_500: 500,
+      };
+      if (email === FIXTURE_ENV.J1H2C_RETAILER_EMAIL && ownerStatusByMode[preflightMode] !== undefined) {
+        const status = ownerStatusByMode[preflightMode];
+        res.writeHead(status, { 'content-type': 'application/json' });
+        res.end(status === 200 ? '{"token":"fixture-login-token","role":"fixture"}' : '{"error":"fixture-owner-status"}');
+        return;
+      }
       const unverifiedAllowed = preflightMode === 'unverified_login_allowed';
-      if (ownerAllows || (unverifiedAllowed && email === FIXTURE_ENV.J1H2C_UNVERIFIED_EMAIL)) {
+      if (unverifiedAllowed && email === FIXTURE_ENV.J1H2C_UNVERIFIED_EMAIL) {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end('{"token":"fixture-login-token","role":"fixture"}');
         return;
@@ -329,6 +363,7 @@ function copyCurrentAuthoritySource(label, { commitMutate = null } = {}) {
     'tools/browser-authority-cors-probe-helper.mjs',
     'tools/browser-authority-preflight-helper.mjs',
     'tools/browser-authority-child.mjs',
+    'tools/host-preflight.mjs',
     'tools/scan-artifacts.mjs',
     'inventory/browser-authority-profile.json',
   ]) {
@@ -1744,29 +1779,32 @@ const R27_CHILD_SOURCE = [
     );
   }
 
-  // B1-R6-R4 positive control: the direct entrypoint now runs the chain
-  // against the REAL child, which truthfully refuses to spawn a frozen
-  // Playwright CLI that the fixture source tree does not carry. The
-  // truthful terminal verdict is therefore a SEALED TEST_RED with the real
-  // child process observed — never a fabricated FINISHED.
+  // B1-R6-R5-R1 positive control: the direct entrypoint now runs the chain
+  // through the runner-owned HOST gate. Without a configured host the run
+  // VOIDs at preflight — truthful STOPPED with zero starts, no child
+  // process, no sealed TEST_RED/FINISHED, and no authority evidence
+  // payload. The host gate fires BEFORE the child can ever exist, so the
+  // absent frozen Playwright install of the fixture tree is unreachable.
   const positive = await runCommittedEntrypoint('r29-r1-positive');
   r39ScannedOutputs.entrypointStdout = String(positive.stdout ?? '');
   r39ScannedOutputs.entrypointStderr = String(positive.stderr ?? '');
-  const positivePayload = parseSingleJsonLine(positive.stdout);
-  expect(positive.status !== 0, `R29-R1: direct entrypoint without a frozen install exits nonzero (got ${positive.status})`);
-  expect(positivePayload && positivePayload.authority === true, 'R29-R1: direct entrypoint emitted authority evidence');
-  expect(positivePayload && positivePayload.outcome === 'TEST_RED', 'R29-R1: truthful TEST_RED verdict');
-  expect(positivePayload && positivePayload.evidence && positivePayload.evidence.state === 'TEST_RED', 'R29-R1: evidence state TEST_RED');
-  expect(positivePayload && positivePayload.evidence && positivePayload.evidence.child_real_process_observed === true, 'R29-R1: real child observed');
-  expect(positivePayload && positivePayload.evidence && Number.isInteger(positivePayload.evidence.child_pid) && positivePayload.evidence.child_pid > 0, 'R29-R1: real child PID recorded');
-  expect(positivePayload && positivePayload.evidence && Number.isInteger(positivePayload.evidence.child_exit_code) && positivePayload.evidence.child_exit_code !== 0, 'R29-R1: child refusal exit recorded');
-  expect(positivePayload && positivePayload.evidence && positivePayload.evidence.child_playwright_observed === false, 'R29-R1: no Playwright process without a frozen install');
-  expect(positivePayload && positivePayload.evidence && positivePayload.evidence.ledger_sealed === true, 'R29-R1: evidence reports terminal seal');
-  expect(new runner.DurableJsonlLedger(positive.ledgerPath).verifyChain().count > 0, 'R29-R1: ledger hash chain valid');
+  expect(positive.status !== 0, `R29-R1: direct entrypoint without a configured host exits nonzero (got ${positive.status})`);
+  expect(String(positive.stderr).includes('host_preflight_not_configured'), 'R29-R1: host-gate refusal category exact');
+  expect(parseSingleJsonLine(positive.stdout) === null, 'R29-R1: no authority evidence payload without the host gate');
+  const positiveRecords = ledgerRecords(positive.ledgerPath);
   expect(
-    ledgerRecords(positive.ledgerPath).some((record) => record.entry && record.entry.kind === 'terminal_seal'),
-    'R29-R1: terminal seal record present',
+    positiveRecords.some((record) => record.entry && record.entry.kind === 'void' && record.entry.category === 'host_preflight_not_configured'),
+    'R29-R1: host-gate void record durable',
   );
+  expect(
+    !positiveRecords.some((record) => record.entry && record.entry.kind === 'finish'),
+    'R29-R1: nothing started without the host gate',
+  );
+  expect(
+    !positiveRecords.some((record) => record.entry && record.entry.kind === 'terminal_seal'),
+    'R29-R1: no terminal seal without the host gate',
+  );
+  expect(new runner.DurableJsonlLedger(positive.ledgerPath).verifyChain().count > 0, 'R29-R1: ledger hash chain valid');
 
   const importSource = copyCurrentAuthoritySource('r29-import');
   const importAttack = spawnSync(
@@ -1801,10 +1839,15 @@ const R27_CHILD_SOURCE = [
     expect((red.stdout + red.stderr).includes('working_tree_dirty_vs_head'), `R29: dirty ${label} category exact`);
   }
 
+  // B1-R6-R5-R1: a committed child variant (forged stdout, nonzero exit,
+  // incomplete reconciliation) can never matter — the host gate VOIDs the
+  // direct run BEFORE authorize, so the child is never launched at all.
+  // The child's own result truth stays proven by R30-R35 direct runs.
   const forgedStdout = await runCommittedEntrypoint('r29-forged-stdout', {
     commitMutate: (sourceRoot) => writeCommittedChildVariant(sourceRoot, 'forged_stdout'),
   });
   expect(forgedStdout.status !== 0, 'R29: forged execFile stdout exits nonzero');
+  expect(String(forgedStdout.stderr).includes('host_preflight_not_configured'), 'R29: forged child stdout unreachable — host gate first');
   expect(!String(forgedStdout.stdout).includes('"authority":true'), 'R29: forged execFile stdout cannot mint evidence');
 
   for (const [label, mode] of [
@@ -1814,13 +1857,15 @@ const R27_CHILD_SOURCE = [
     const red = await runCommittedEntrypoint(`r29-child-${label}`, {
       commitMutate: (sourceRoot) => writeCommittedChildVariant(sourceRoot, mode),
     });
-    const payload = parseSingleJsonLine(red.stdout);
     expect(red.status !== 0, `R29: child ${label} direct entrypoint exits nonzero`);
-    expect(payload && payload.authority === true, `R29: child ${label} still produces sealed authority evidence`);
-    expect(payload && payload.outcome === 'TEST_RED', `R29: child ${label} lands TEST_RED`);
-    expect(payload && payload.evidence && payload.evidence.state === 'TEST_RED', `R29: child ${label} evidence TEST_RED`);
-    expect(payload && payload.evidence && payload.evidence.ledger_sealed === true, `R29: child ${label} terminal seal present`);
-    expect(new runner.DurableJsonlLedger(red.ledgerPath).verifyChain().count > 0, `R29: child ${label} ledger chain valid`);
+    expect(String(red.stderr).includes('host_preflight_not_configured'), `R29: child ${label} never launched — host gate first`);
+    const records = ledgerRecords(red.ledgerPath);
+    expect(
+      records.some((record) => record.entry && record.entry.kind === 'void' && record.entry.category === 'host_preflight_not_configured'),
+      `R29: child ${label} host-gate void record`,
+    );
+    expect(!records.some((record) => record.entry && record.entry.kind === 'finish'), `R29: child ${label} never finished`);
+    expect(!records.some((record) => record.entry && record.entry.kind === 'terminal_seal'), `R29: child ${label} never sealed`);
   }
 
   await greenPath('r29-restore');
@@ -1859,7 +1904,7 @@ function fixtureGit(root, ...args) {
 
 const FAKE_CLI_TEMPLATE = (cliExit, writeArtifacts, tamperMarker, refreshArtifacts) => `
 import { writeFileSync, mkdirSync, readFileSync, utimesSync } from 'node:fs';
-const proof = { pid: process.pid, argv: process.argv.slice(2), marker: 'fake-playwright-ran' };
+const proof = { pid: process.pid, argv: process.argv.slice(2), cwd: process.cwd(), marker: 'fake-playwright-ran' };
 mkdirSync('artifacts', { recursive: true });
 writeFileSync('artifacts/fake-playwright-proof.json', JSON.stringify(proof));
 ${refreshArtifacts ? `
@@ -1889,7 +1934,7 @@ writeFileSync(markerPath, JSON.stringify(marker));
 process.exit(${cliExit});
 `;
 
-function makeChildFixture(label, { withCli = true, cliExit = 0, writeArtifacts = true, tamperMarker = false, withScanner = true, refreshArtifacts = false } = {}) {
+function makeChildFixture(label, { withCli = true, cliExit = 0, writeArtifacts = true, tamperMarker = false, withScanner = true, refreshArtifacts = false, withConfig = true } = {}) {
   const root = join(SCRATCH, `${label}-root`);
   ensureDir(join(root, 'tools'));
   ensureDir(join(root, 'inventory'));
@@ -1899,12 +1944,18 @@ function makeChildFixture(label, { withCli = true, cliExit = 0, writeArtifacts =
     'tools/browser-authority-cors-probe-helper.mjs',
     'tools/browser-authority-preflight-helper.mjs',
     'tools/browser-authority-child.mjs',
+    'tools/host-preflight.mjs',
     'tools/scan-artifacts.mjs',
     'inventory/browser-authority-profile.json',
   ]) {
     writeFileSync(join(root, rel), readFileSync(join(ROOT, rel)));
   }
   if (!withScanner) rmSync(join(root, 'tools', 'scan-artifacts.mjs'));
+  // The frozen config stand-in at the fixture's HARNESS ROOT: the child
+  // must resolve and pass it as the fixed --config argv element.
+  if (withConfig) {
+    writeFileSync(join(root, 'playwright.config.ts'), readFileSync(join(ROOT, 'playwright.config.ts')), 'utf8');
+  }
   fixtureGit(root, 'init', '-b', 'main');
   fixtureGit(root, 'config', 'user.email', 'fixture@charges.invalid');
   fixtureGit(root, 'config', 'user.name', 'fixture');
@@ -1943,7 +1994,7 @@ function childInputFor(fx, { valuesPatch = {}, candidateSha } = {}) {
   return {
     schema: 'j1h2c/browser-authority-child-input/1',
     input_sha: runner.sha256Hex(JSON.stringify({ owner_email_label: 'owner', values })),
-    cwd_sha: runner.sha256Hex(realpathSync(fx.root)),
+    cwd_sha: runner.sha256Hex(realpathSync(fx.cwdPath ?? fx.root)),
     candidate_sha: candidateSha ?? fx.head,
     owner_email_label: 'owner',
     values,
@@ -1955,7 +2006,7 @@ function runChildDirect(fx, input, { argvExtra = [], envPatch = {} } = {}) {
     process.execPath,
     [join(fx.root, 'tools', 'browser-authority-child.mjs'), ...argvExtra],
     {
-      cwd: fx.root,
+      cwd: fx.cwdPath ?? fx.root,
       input: JSON.stringify(input),
       encoding: 'utf8',
       env: { ...runner.probeChildEnv(), ...envPatch },
@@ -1993,7 +2044,8 @@ expect(r30.payload && r30.payload.candidate_sha === r30fx.head, 'R30: candidate 
 const r30proof = JSON.parse(readFileSync(r30fx.proofPath, 'utf8'));
 expect(r30proof.marker === 'fake-playwright-ran', 'R30: fake Playwright executable really ran');
 expect(r30.payload && r30proof.pid === r30.payload.playwright.pid, 'R30: reported PID equals the real spawned PID');
-expect(JSON.stringify(r30proof.argv) === JSON.stringify(['test']), 'R30: fixed Playwright argv only');
+const r30ExpectedArgv = ['test', '--config', join(r30fx.root, 'playwright.config.ts')];
+expect(JSON.stringify(r30proof.argv) === JSON.stringify(r30ExpectedArgv), 'R30/R41: fixed Playwright argv carries the frozen --config exactly');
 const r30marker = JSON.parse(readFileSync(join(r30fx.root, 'artifacts', 'authority-invocation.json'), 'utf8'));
 expect(r30marker.playwright_invocation_count === 1 && r30marker.candidate_sha === r30fx.head, 'R30: atomic invocation marker bound');
 expect(r30.payload && r30marker.wrapper_pid === r30.payload.pid, 'R30: wrapper PID cross-bound via marker');
@@ -2105,6 +2157,47 @@ expect(r30.payload && r30marker.wrapper_pid === r30.payload.pid, 'R30: wrapper P
   expect(outB.payload && outB.payload.reconciliation.category === 'scanner_not_clean', 'R35: scanner-nonzero category');
 }
 
+/**
+ * Spawns the REAL preflight helper process with a private stdin input
+ * (the outer-layer hand-off shape). Shared by R36(d) and R43's host-block
+ * fold proofs. The spawn is ASYNC — a synchronous wait would freeze the
+ * checker's event loop (and with it the fixture server the helper talks to).
+ */
+async function spawnHelperDirect(inputObject) {
+  const out = await new Promise((resolve) => {
+    const child = execFile(
+      process.execPath,
+      [join(ROOT, 'tools', 'browser-authority-preflight-helper.mjs')],
+      {
+        cwd: ROOT,
+        env: runner.probeChildEnv(),
+        timeout: 60000,
+        windowsHide: true,
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          resolve({
+            status: Number.isInteger(error.code) ? error.code : 1,
+            stdout: String(stdout ?? ''),
+            stderr: String(stderr ?? ''),
+          });
+        } else {
+          resolve({ status: 0, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') });
+        }
+      },
+    );
+    child.stdin.write(JSON.stringify(inputObject));
+    child.stdin.end();
+  });
+  let payload = null;
+  try {
+    payload = JSON.parse(String(out.stdout).trim());
+  } catch {
+    payload = null;
+  }
+  return { ...out, payload };
+}
+
 // R36 — the preflight helper cannot be omitted, forged, or repeated.
 {
   // (a) omission: an entrypoint fixture whose helper was deleted refuses.
@@ -2139,42 +2232,7 @@ expect(r30.payload && r30marker.wrapper_pid === r30.payload.pid, 'R30: wrapper P
 
   // (d) host-check interface: the helper folds a provided outer-preflight
   // block into the verdict (categories only) and rejects malformed blocks.
-  // The spawn must be ASYNC — a synchronous wait would freeze the checker's
-  // event loop (and with it the fixture server the helper talks to).
-  async function spawnHelperDirect(inputObject) {
-    const out = await new Promise((resolve) => {
-      const child = execFile(
-        process.execPath,
-        [join(ROOT, 'tools', 'browser-authority-preflight-helper.mjs')],
-        {
-          cwd: ROOT,
-          env: runner.probeChildEnv(),
-          timeout: 60000,
-          windowsHide: true,
-        },
-        (error, stdout, stderr) => {
-          if (error) {
-            resolve({
-              status: Number.isInteger(error.code) ? error.code : 1,
-              stdout: String(stdout ?? ''),
-              stderr: String(stderr ?? ''),
-            });
-          } else {
-            resolve({ status: 0, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') });
-          }
-        },
-      );
-      child.stdin.write(JSON.stringify(inputObject));
-      child.stdin.end();
-    });
-    let payload = null;
-    try {
-      payload = JSON.parse(String(out.stdout).trim());
-    } catch {
-      payload = null;
-    }
-    return { ...out, payload };
-  }
+  // The shared async spawnHelperDirect lives at module level above.
   const hostRedBlock = {
     schema: runner.PREFLIGHT_HELPER_INPUT_SCHEMA,
     timeout_ms: 20000,
@@ -2222,8 +2280,11 @@ expect(r30.payload && r30marker.wrapper_pid === r30.payload.pid, 'R30: wrapper P
   await expectPreflightVoid('frontend-down', {});
   preflightMode = 'health_down';
   await expectPreflightVoid('health-down', {});
-  preflightMode = 'owner_login_denied';
-  await expectPreflightVoid('owner-login-denied', {});
+  // B1-R6-R5: the ALREADY-ESTABLISHED retailer (login admitted) is the RED
+  // case now; a fresh identity (default mode) is the GREEN case. The exact
+  // established category is asserted in R42.
+  preflightMode = 'owner_login_allowed';
+  await expectPreflightVoid('owner-login-allowed', {});
   preflightMode = 'unverified_login_allowed';
   await expectPreflightVoid('unverified-login-allowed', {});
   preflightMode = 'ok';
@@ -2338,7 +2399,813 @@ expect(r30.payload && r30marker.wrapper_pid === r30.payload.pid, 'R30: wrapper P
   expect(!/from 'node:http'|from 'node:https'/.test(runnerText), 'R40: runner still performs no in-process network I/O');
   expect(childText.includes('shell: false') && childText.includes('spawn(process.execPath'), 'R40: child spawns Playwright via argv array with shell:false');
   expect(runner.PREFLIGHT_CHECK_IDS.length === 9 && runner.PREFLIGHT_HOST_CHECK_IDS.length === 4, 'R40: fixed preflight taxonomy');
+  expect(
+    runner.PREFLIGHT_CHECK_IDS.includes('owner_identity_fresh_unregistered') &&
+      !runner.PREFLIGHT_CHECK_IDS.includes('established_login_succeeds'),
+    'R40/R42: lifecycle-compatible pre-run proof in the fixed taxonomy',
+  );
   expect(readFileSync(join(ROOT, 'tools', 'browser-authority-entrypoint.mjs'), 'utf8').includes('entrypoint_direct_process') === false, 'R40: hardcoded preflight label removed from the authority path');
+}
+
+// ---------------------------------------------------------------------------
+// R41 — execution-root truth (B1-R6-R5): starting from the repository root
+// still selects the EXACT frozen config; exactly 15 tests / 1 spec are
+// collected; cross-tree specs and default-config discovery are impossible;
+// a child mutated back to the repo-root cwd or omitting --config is RED
+// (file-level mutations M6/M7).
+// ---------------------------------------------------------------------------
+
+// (a) REAL frozen collection from the canonical repository root cwd, with
+// the harness root's frozen config passed explicitly. `--list` collects;
+// it never launches a browser.
+{
+  const cli = join(ROOT, 'node_modules', '@playwright', 'test', 'cli.js');
+  const listing = spawnSync(
+    process.execPath,
+    [cli, 'test', '--list', '--config', join(ROOT, 'playwright.config.ts')],
+    {
+      cwd: CANONICAL_ROOT,
+      env: runner.probeChildEnv(),
+      encoding: 'utf8',
+      timeout: 180000,
+      windowsHide: true,
+    },
+  );
+  const out = `${listing.stdout ?? ''}`;
+  expect(listing.status === 0, 'R41: frozen --list succeeds from the repository root cwd');
+  const total = out.match(/Total:\s+(\d+)\s+tests\s+in\s+(\d+)\s+files?/);
+  expect(
+    total !== null && total[1] === '15' && total[2] === '1',
+    `R41: exactly 15 tests / 1 spec collected from repo-root cwd (got "${total ? total[0] : 'none'}")`,
+  );
+  const specLines = out.match(/recovery\.spec\.ts:\d+:\d+ ›/g) ?? [];
+  expect(specLines.length === 15, `R41: all 15 listed tests are recovery.spec.ts lines (${specLines.length})`);
+  expect(!/decoy|cross-tree|other\.spec\.ts/.test(out), 'R41: no cross-tree spec in the frozen collection');
+}
+
+/**
+ * A nested fixture: the repository root (git toplevel, the child's bound
+ * cwd) is ABOVE the harness root. Decoy config + decoy spec sit at the
+ * repository root — exactly what default-config discovery from the child's
+ * cwd would select if the execution-root closure were broken.
+ */
+function makeNestedHarnessFixture(label, { withConfig = true } = {}) {
+  const repoRoot = join(SCRATCH, `${label}-repo`);
+  const harnessRoot = join(repoRoot, 'j1h2c-harness');
+  ensureDir(join(harnessRoot, 'tools'));
+  ensureDir(join(harnessRoot, 'inventory'));
+  for (const rel of [
+    'tools/browser-authority-runner.mjs',
+    'tools/browser-authority-entrypoint.mjs',
+    'tools/browser-authority-cors-probe-helper.mjs',
+    'tools/browser-authority-preflight-helper.mjs',
+    'tools/browser-authority-child.mjs',
+    'tools/host-preflight.mjs',
+    'tools/scan-artifacts.mjs',
+    'inventory/browser-authority-profile.json',
+  ]) {
+    writeFileSync(join(harnessRoot, rel), readFileSync(join(ROOT, rel)));
+  }
+  const cliDir = join(harnessRoot, 'node_modules', '@playwright', 'test');
+  ensureDir(cliDir);
+  writeFileSync(join(cliDir, 'package.json'), JSON.stringify({ name: '@playwright/test', version: '1.49.1' }), 'utf8');
+  writeFileSync(join(cliDir, 'cli.js'), FAKE_CLI_TEMPLATE(0, true, false, false), 'utf8');
+  if (withConfig) {
+    writeFileSync(join(harnessRoot, 'playwright.config.ts'), readFileSync(join(ROOT, 'playwright.config.ts')), 'utf8');
+  }
+  writeFileSync(join(repoRoot, 'playwright.config.ts'), 'export default { testDir: "./decoy-tests" };\n', 'utf8');
+  ensureDir(join(repoRoot, 'decoy-tests'));
+  writeFileSync(
+    join(repoRoot, 'decoy-tests', 'decoy.spec.ts'),
+    'import { test } from "@playwright/test";\ntest("decoy", () => {});\n',
+    'utf8',
+  );
+  fixtureGit(repoRoot, 'init', '-b', 'main');
+  fixtureGit(repoRoot, 'config', 'user.email', 'fixture@charges.invalid');
+  fixtureGit(repoRoot, 'config', 'user.name', 'fixture');
+  fixtureGit(repoRoot, 'add', 'j1h2c-harness');
+  fixtureGit(repoRoot, 'commit', '-m', 'nested harness fixture');
+  const head = fixtureGit(repoRoot, 'rev-parse', 'HEAD').toString().trim();
+  const maildir = join(repoRoot, 'maildir');
+  // Task maildir with exactly one fresh delivery per mailbox (the artifact
+  // scanner's strict setup-token cardinality contract).
+  mkdirSync(join(maildir, FIXTURE_ENV.J1H2C_RETAILER_EMAIL.toLowerCase()), { recursive: true });
+  mkdirSync(join(maildir, FIXTURE_ENV.J1H2C_UNVERIFIED_EMAIL.toLowerCase()), { recursive: true });
+  writeFileSync(
+    join(maildir, FIXTURE_ENV.J1H2C_RETAILER_EMAIL.toLowerCase(), 'delivery-1.json'),
+    JSON.stringify({ link: 'https://mail.invalid/reset#setupToken=fixsetup-established-token-0001' }),
+    'utf8',
+  );
+  writeFileSync(
+    join(maildir, FIXTURE_ENV.J1H2C_UNVERIFIED_EMAIL.toLowerCase(), 'delivery-1.json'),
+    JSON.stringify({ link: 'https://mail.invalid/setup#setupToken=fixsetup-unverified-token-0002' }),
+    'utf8',
+  );
+  return { root: harnessRoot, cwdPath: repoRoot, head, maildir };
+}
+
+{
+  // (b) the child is STARTED from the repository root (cwdPath) while the
+  // harness root is nested: the fixed --config + cwd=HARNESS_ROOT must
+  // select the frozen config, never the repo-root decoys.
+  const fx41 = makeNestedHarnessFixture('r41-nested');
+  const out41 = runChildDirect(fx41, childInputFor(fx41));
+  expect(out41.status === 0 && out41.payload && out41.payload.reconciliation.complete === true, `R41: child completes from repo-root cwd (got ${out41.status})`);
+  const proof41 = JSON.parse(readFileSync(join(fx41.root, 'artifacts', 'fake-playwright-proof.json'), 'utf8'));
+  expect(
+    realpathSync(proof41.cwd).toLowerCase() === realpathSync(fx41.root).toLowerCase(),
+    'R41: Playwright ran at the HARNESS ROOT, not at the repository-root cwd',
+  );
+  expect(
+    JSON.stringify(proof41.argv) === JSON.stringify(['test', '--config', join(fx41.root, 'playwright.config.ts')]),
+    'R41: fixed --config selects the exact frozen config path',
+  );
+  expect(
+    !existsSync(join(fx41.cwdPath, 'artifacts', 'fake-playwright-proof.json')),
+    'R41: nothing ran at the repository root (default-config discovery impossible)',
+  );
+
+  // (c) a missing frozen config refuses the launch BEFORE any spawn.
+  const fx41b = makeNestedHarnessFixture('r41-noconfig', { withConfig: false });
+  const out41b = runChildDirect(fx41b, childInputFor(fx41b));
+  expect(out41b.status === 5 && out41b.payload && out41b.payload.category === 'playwright_config_unresolvable', 'R41: missing frozen config refused pre-spawn');
+  expect(out41b.payload && out41b.payload.playwright.launched === false, 'R41: nothing launched without the frozen config');
+  expect(!existsSync(join(fx41b.root, 'artifacts', 'fake-playwright-proof.json')), 'R41: no spawn evidence without the frozen config');
+}
+
+// ---------------------------------------------------------------------------
+// R42 — lifecycle-compatible pre-run proof (B1-R6-R5): the fresh retailer
+// login refusal passes preflight; the already-established retailer fails
+// preflight BEFORE authorize; and the harness beforeAll — the SOLE
+// register -> setup-credential -> login lifecycle — REALLY completes on the
+// fresh identity (the REAL src/preconditions.ts, transpiled with the frozen
+// typescript package; no parallel implementation).
+// ---------------------------------------------------------------------------
+
+const tsCompiler = createRequire(import.meta.url)('typescript');
+
+function loadHarnessSourceModule(relPath, rewrites) {
+  const source = readFileSync(join(ROOT, relPath), 'utf8');
+  let out = tsCompiler.transpileModule(source, {
+    compilerOptions: {
+      module: tsCompiler.ModuleKind.CommonJS,
+      target: tsCompiler.ScriptTarget.ES2022,
+      esModuleInterop: true,
+    },
+  }).outputText;
+  for (const [specifier, absolutePath] of rewrites) {
+    const escaped = specifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    out = out.replace(new RegExp(`require\\((["'])${escaped}\\1\\)`, 'g'), `require(${JSON.stringify(absolutePath)})`);
+  }
+  const outPath = join(SCRATCH, `r42-${relPath.split(/[\\/]/).pop().replace(/\.ts$/, '')}.cjs`);
+  writeFileSync(outPath, out, 'utf8');
+  return outPath;
+}
+
+function rawPostStatus(port, path, payload) {
+  return new Promise((resolve, reject) => {
+    const data = Buffer.from(JSON.stringify(payload), 'utf8');
+    const request = http.request(
+      {
+        host: '127.0.0.1',
+        port,
+        path,
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'content-length': data.length },
+      },
+      (response) => {
+        response.resume();
+        response.on('end', () => resolve(response.statusCode ?? 0));
+      },
+    );
+    request.setTimeout(10000, () => request.destroy(new Error('timeout')));
+    request.on('error', reject);
+    request.write(data);
+    request.end();
+  });
+}
+
+{
+  // (a) fresh retailer login refusal passes preflight (default fixture
+  // mode admits NO owner login).
+  const controlFresh = freshControl('r42-fresh');
+  const flowFresh = await fullFlow(controlFresh);
+  expect(controlFresh.current === 'AUTHORIZED', 'R42: fresh-identity preflight passes into AUTHORIZED');
+  const fresh42 = controlFresh.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv: flowFresh.argv });
+  expect(fresh42.outcome === 'FINISHED', 'R42: fresh identity flow finishes');
+
+  // (b) already-established retailer fails preflight BEFORE authorize.
+  preflightMode = 'owner_login_allowed';
+  const controlEstablished = freshControl('r42-established');
+  controlEstablished.materialize(FIXTURE_ENV);
+  await controlEstablished.corsPreflightProbe();
+  await expectCategoryAsync(() => controlEstablished.preflight(), 'preflight_red', 'R42: established identity refused');
+  expect(controlEstablished.current === 'STOPPED' && controlEstablished.launchStarts === 0, 'R42: established identity VOID, spawn=0');
+  expect(
+    controlEstablished.preflightRedCategories.includes('owner_identity_already_established'),
+    'R42: established category exact',
+  );
+  expect(
+    ledgerRecords(join(SCRATCH, 'ledger-r42-established.jsonl')).some((record) => record.entry && record.entry.kind === 'void'),
+    'R42: void record durable for the established identity',
+  );
+  preflightMode = 'ok';
+
+  // (c) the REAL harness precondition lifecycle completes on the fresh
+  // identity against a dedicated lifecycle server: register -> setup email
+  // -> consume setup-credential -> login proof.
+  const lifecycleMaildir = join(SCRATCH, 'r42-lifecycle-maildir');
+  mkdirSync(join(lifecycleMaildir, FIXTURE_ENV.J1H2C_RETAILER_EMAIL.toLowerCase()), { recursive: true });
+  mkdirSync(join(lifecycleMaildir, FIXTURE_ENV.J1H2C_UNVERIFIED_EMAIL.toLowerCase()), { recursive: true });
+  const lifecycleState = {
+    registered: new Set(),
+    consumedInvitations: new Set(),
+    ownerSetupToken: null,
+    ownerCredentialed: false,
+  };
+  const readBody = (request) =>
+    new Promise((resolve) => {
+      let body = '';
+      request.on('data', (chunk) => {
+        if (body.length < 65536) body += chunk;
+      });
+      request.on('end', () => {
+        try {
+          resolve(JSON.parse(body || '{}'));
+        } catch {
+          resolve({});
+        }
+      });
+    });
+  const lifecycleServer = http.createServer(async (request, response) => {
+    const body = await readBody(request);
+    if (request.method === 'POST' && request.url.startsWith('/api/v1/retailers/register')) {
+      const email = String(body.email ?? '');
+      const invitation = `${String(body.invitation_code ?? '')}|${String(body.phone ?? '')}`;
+      const verifiedPair = `${FIXTURE_ENV.J1H2C_W1_VERIFIED_INVITATION_CODE}|${FIXTURE_ENV.J1H2C_W1_VERIFIED_INVITATION_PHONE}`;
+      const unverifiedPair = `${FIXTURE_ENV.J1H2C_W1_UNVERIFIED_INVITATION_CODE}|${FIXTURE_ENV.J1H2C_W1_UNVERIFIED_INVITATION_PHONE}`;
+      if (
+        lifecycleState.registered.has(email) ||
+        lifecycleState.consumedInvitations.has(invitation) ||
+        (invitation !== verifiedPair && invitation !== unverifiedPair)
+      ) {
+        response.writeHead(409, { 'content-type': 'application/json' });
+        response.end('{"error":"conflict"}');
+        return;
+      }
+      lifecycleState.registered.add(email);
+      lifecycleState.consumedInvitations.add(invitation);
+      if (email === FIXTURE_ENV.J1H2C_RETAILER_EMAIL) {
+        lifecycleState.ownerSetupToken = `fixsetup-lifecycle-owner-${lifecycleState.registered.size}`;
+        writeFileSync(
+          join(lifecycleMaildir, email.toLowerCase(), 'delivery-1.json'),
+          JSON.stringify({ link: `https://mail.invalid/setup#setupToken=${lifecycleState.ownerSetupToken}` }),
+          'utf8',
+        );
+      }
+      response.writeHead(201, { 'content-type': 'application/json' });
+      response.end('{"status":"registered"}');
+      return;
+    }
+    if (request.method === 'POST' && request.url.startsWith('/api/v1/retailers/setup-credential')) {
+      if (lifecycleState.ownerSetupToken !== null && String(body.setup_token ?? '') === lifecycleState.ownerSetupToken) {
+        lifecycleState.ownerCredentialed = true;
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end('{"status":"updated"}');
+        return;
+      }
+      response.writeHead(400, { 'content-type': 'application/json' });
+      response.end('{"error":"invalid_setup_token"}');
+      return;
+    }
+    if (request.method === 'POST' && request.url.startsWith('/api/v1/client/auth/login')) {
+      const admits =
+        lifecycleState.ownerCredentialed &&
+        String(body.email ?? '') === FIXTURE_ENV.J1H2C_RETAILER_EMAIL &&
+        String(body.password ?? '') === FIXTURE_ENV.J1H2C_RETAILER_CURRENT_PASSWORD &&
+        String(body.wholesaler_code ?? '') === FIXTURE_ENV.J1H2C_W1_CANONICAL_CODE;
+      if (admits) {
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end('{"token":"fixture-lifecycle-token","role":"fixture"}');
+        return;
+      }
+      response.writeHead(401, { 'content-type': 'application/json' });
+      response.end('{"error":"invalid_credentials"}');
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  await new Promise((resolve) => lifecycleServer.listen(0, '127.0.0.1', resolve));
+  const lifecyclePort = lifecycleServer.address().port;
+  const snapshotArtifact = join(process.cwd(), 'artifacts', 'maildir-snapshot.json');
+  // runPreconditions reads the forged token from the RUNTIME environment by
+  // contract (src/env.ts); scope it to this scenario and restore afterwards.
+  const savedForgedEnv = process.env.J1H2C_FORGED_RESET_TOKEN;
+  process.env.J1H2C_FORGED_RESET_TOKEN = FIXTURE_ENV.J1H2C_FORGED_RESET_TOKEN;
+  try {
+    const playwrightTestEntry = createRequire(join(ROOT, 'package.json')).resolve('@playwright/test');
+    const assertionsPath = loadHarnessSourceModule('src/assertions.ts', []);
+    const maildirPath = loadHarnessSourceModule('src/maildir.ts', [['./assertions.js', assertionsPath]]);
+    const preconditionsPath = loadHarnessSourceModule('src/preconditions.ts', [
+      ['./assertions.js', assertionsPath],
+      ['./maildir.js', maildirPath],
+      ['@playwright/test', playwrightTestEntry],
+    ]);
+    const { runPreconditions } = createRequire(join(ROOT, 'package.json'))(preconditionsPath);
+    const lifecycleEnv = {
+      baseUrl: `http://127.0.0.1:${lifecyclePort}/portal`,
+      apiBaseUrl: `http://127.0.0.1:${lifecyclePort}`,
+      maildirRoot: lifecycleMaildir,
+      w1CanonicalCode: FIXTURE_ENV.J1H2C_W1_CANONICAL_CODE,
+      w2CanonicalCode: FIXTURE_ENV.J1H2C_W2_CANONICAL_CODE,
+      retailer: {
+        email: FIXTURE_ENV.J1H2C_RETAILER_EMAIL,
+        currentPassword: FIXTURE_ENV.J1H2C_RETAILER_CURRENT_PASSWORD,
+        newPassword: FIXTURE_ENV.J1H2C_RETAILER_NEW_PASSWORD,
+      },
+      unknownEmail: FIXTURE_ENV.J1H2C_UNKNOWN_EMAIL,
+      unverifiedEmail: FIXTURE_ENV.J1H2C_UNVERIFIED_EMAIL,
+      forgedResetToken: FIXTURE_ENV.J1H2C_FORGED_RESET_TOKEN,
+      provisioning: {
+        w1VerifiedInvitationCode: FIXTURE_ENV.J1H2C_W1_VERIFIED_INVITATION_CODE,
+        w1VerifiedInvitationPhone: FIXTURE_ENV.J1H2C_W1_VERIFIED_INVITATION_PHONE,
+        w1UnverifiedInvitationCode: FIXTURE_ENV.J1H2C_W1_UNVERIFIED_INVITATION_CODE,
+        w1UnverifiedInvitationPhone: FIXTURE_ENV.J1H2C_W1_UNVERIFIED_INVITATION_PHONE,
+      },
+    };
+    const proofs = await runPreconditions(lifecycleEnv);
+    expect(proofs && proofs.establishedLifecycleComplete === true, 'R42: harness register->setup->login lifecycle completed');
+    expect(proofs && proofs.unverifiedStoppedBeforeVerification === true, 'R42: unverified identity stopped before verification');
+    expect(proofs && proofs.retailerNotBoundToW2 === true, 'R42: retailer not bound to W2');
+    expect(
+      await rawPostStatus(lifecyclePort, '/api/v1/retailers/register', {
+        invitation_code: FIXTURE_ENV.J1H2C_W1_VERIFIED_INVITATION_CODE,
+        phone: FIXTURE_ENV.J1H2C_W1_VERIFIED_INVITATION_PHONE,
+        email: FIXTURE_ENV.J1H2C_RETAILER_EMAIL,
+      }) === 409,
+      'R42: the established identity can never register again (409) — the exact contradiction the retired preflight demanded',
+    );
+  } finally {
+    lifecycleServer.close();
+    rmSync(snapshotArtifact, { force: true });
+    if (savedForgedEnv === undefined) delete process.env.J1H2C_FORGED_RESET_TOKEN;
+    else process.env.J1H2C_FORGED_RESET_TOKEN = savedForgedEnv;
+  }
+  await greenPath('r42-restore');
+}
+
+// ---------------------------------------------------------------------------
+// R43 — the version-controlled host preflight module (B1-R6-R5): semantic
+// PostgreSQL booleans, parameter-safe invitation probes, PID-ownership
+// proof, fixed taxonomy with fail-closed removal, and host RED folded to
+// VOID before entrypoint/Playwright launch.
+// ---------------------------------------------------------------------------
+
+{
+  const host = await import('./host-preflight.mjs');
+
+  // (a) semantic PostgreSQL boolean normalization.
+  const truthyForms = ['t', 'T', ' true ', 'TRUE', 'on', 'Yes', '1', true, 1];
+  const falsyForms = ['f', 'F', ' false ', 'FALSE', 'off', 'No', '0', false, 0];
+  expect(truthyForms.every((form) => host.parsePgBoolean(form) === true), 'R43: every true display format normalizes true');
+  expect(falsyForms.every((form) => host.parsePgBoolean(form) === false), 'R43: every false display format normalizes false');
+  expect(
+    ['', '  ', 'falsy', 't f', null, undefined, 2, -1, {}].every((form) => host.parsePgBoolean(form) === null),
+    'R43: unparsable booleans are null (RED), never a silent falsy',
+  );
+
+  // (b) parameter-safe invitation probes: fixed SQL text, out-of-band values.
+  const probe43 = host.buildInvitationProbe(FIXTURE_VALUES.w1_verified_invitation_code, FIXTURE_VALUES.w1_verified_invitation_phone);
+  expect(host.invitationProbeIsParameterSafe(probe43) === true, 'R43: fixed probe with out-of-band values is parameter-safe');
+  expect(
+    !probe43.text.includes(FIXTURE_VALUES.w1_verified_invitation_code) &&
+      !probe43.text.includes(FIXTURE_VALUES.w1_verified_invitation_phone),
+    'R43: SQL text carries no invitation values',
+  );
+  expect(
+    probe43.text.includes('public.invitations') &&
+      probe43.text.includes(":'invitation_code'") &&
+      probe43.text.includes(":'invitation_phone'"),
+    'R43: probe binds invitation code + phone as named parameters',
+  );
+  expect(
+    host.invitationProbeIsParameterSafe({
+      text: `SELECT * FROM public.invitations WHERE code = '${FIXTURE_VALUES.w1_verified_invitation_code}'`,
+      vars: {},
+    }) === false,
+    'R43: interpolated SQL is detected as NOT parameter-safe',
+  );
+
+  // (c) wrong (or unparsable) role capabilities fail closed.
+  const roleRow = (cells) => ({ ok: true, rows: cells.join('|') });
+  expect(host.checkRoleCapabilities(() => roleRow(['t', 'f', 'f', 'f', 'f']), 'authority-role').ok === true, 'R43: least-privilege role passes');
+  for (const [label, cells] of [
+    ['nologin', ['f', 'f', 'f', 'f', 'f']],
+    ['super', ['t', 't', 'f', 'f', 'f']],
+    ['createrole', ['t', 'f', 't', 'f', 'f']],
+    ['createdb', ['t', 'f', 'f', 't', 'f']],
+    ['replication', ['t', 'f', 'f', 'f', 't']],
+    ['unparsable', ['x', 'f', 'f', 'f', 'f']],
+    ['short-row', ['t', 'f', 'f']],
+  ]) {
+    const outcome = host.checkRoleCapabilities(() => roleRow(cells), 'authority-role');
+    expect(outcome.ok === false && outcome.category === 'pg_role_capabilities_invalid', `R43: wrong role capabilities fail closed (${label})`);
+  }
+  expect(
+    host.checkRoleCapabilities(() => ({ ok: false, rows: '' }), 'authority-role').category === 'pg_role_unresolvable',
+    'R43: role query failure is RED',
+  );
+
+  // (d) invitation availability RED paths.
+  const countRow = (n) => ({ ok: true, rows: `${n}` });
+  expect(host.checkInvitationAvailability(() => countRow(1), FIXTURE_VALUES).ok === true, 'R43: available invitation pairs pass');
+  expect(
+    host.checkInvitationAvailability(() => countRow(0), FIXTURE_VALUES).category === 'pg_invitation_missing',
+    'R43: missing invitation pair is RED',
+  );
+  expect(
+    host.checkInvitationAvailability(() => ({ ok: false, rows: null }), FIXTURE_VALUES).category ===
+      'pg_invitation_parameterization_invalid',
+    'R43: probe runner failure is RED (never a silent pass)',
+  );
+
+  // (e) PID ownership without trusting the mutable PID file alone.
+  const ownership = (pidFile, processEvidence, token) =>
+    host.checkPidOwnership({
+      readPidFile: pidFile,
+      processEvidence,
+      ownershipToken: () => token,
+    });
+  expect(
+    ownership(() => ({ ok: false, category: 'authority_ports_pid_truncated' }), () => ({ args: 'authority-runtime' }), 'authority-runtime').category ===
+      'authority_ports_pid_truncated',
+    'R43: truncated PID record is RED',
+  );
+  expect(
+    ownership(() => ({ ok: true, pid: 4242 }), () => null, 'authority-runtime').category === 'authority_ports_pid_stale',
+    'R43: dead (stale) recorded process is RED',
+  );
+  expect(
+    ownership(() => ({ ok: true, pid: 4242 }), () => ({ args: 'nginx: master process' }), 'authority-runtime').category ===
+      'authority_ports_owner_mismatch',
+    'R43: live process without the ownership token is RED',
+  );
+  expect(
+    ownership(() => ({ ok: true, pid: 4242 }), () => ({ args: 'authority-runtime --ports 5432,6379' }), 'authority-runtime').ok === true,
+    'R43: live AND owned process passes',
+  );
+
+  // (f) removed host checks are RED; the fixed taxonomy always stays complete.
+  const allMissing = await host.runHostPreflight({}, { configured: true, values: FIXTURE_VALUES });
+  expect(allMissing.ok === false && allMissing.counts.total === 4, 'R43: a module with every check removed is RED');
+  expect(
+    allMissing.checks.every((check) => check.category === 'host_check_missing'),
+    'R43: every removed check reports host_check_missing',
+  );
+  const partiallyRemoved = await host.runHostPreflight(
+    { pgProbe: async () => ({ ok: true, category: 'check_green' }) },
+    { configured: true, values: FIXTURE_VALUES },
+  );
+  expect(
+    partiallyRemoved.checks.find((check) => check.id === 'pg_reachable').ok === true &&
+      partiallyRemoved.checks.find((check) => check.id === 'redis_reachable').category === 'host_check_missing',
+    'R43: a single removed check is RED while present checks stay green',
+  );
+  const greenBlockEarly = await host.runHostPreflight({
+    pgProbe: async () => ({ ok: true, category: 'check_green' }),
+    redisProbe: async () => ({ ok: true, category: 'check_green' }),
+    alembicRevisions: async () => ({ ok: true, category: 'check_green' }),
+    portsOwnership: async () => ({ ok: true, category: 'check_green' }),
+  }, { configured: true, values: FIXTURE_VALUES });
+  expect(
+    JSON.stringify(greenBlockEarly.checks.map((check) => check.id)) === JSON.stringify(runner.PREFLIGHT_HOST_CHECK_IDS),
+    'R43: module taxonomy is byte-identical with the runner host ids',
+  );
+  const transparent = await host.runHostPreflight({}, { configured: false, values: FIXTURE_VALUES });
+  expect(transparent.ok === true && transparent.counts.total === 0, 'R43: unconfigured host stays transparent (not a RED)');
+
+  // (g) REAL module process, configured RED: all four fixed ids present,
+  // fixed categories only, truncated-then-stale PID evidence RED.
+  const pidFile = join(SCRATCH, 'r43-authority.pid');
+  const hostEnv = {
+    ...runner.probeChildEnv(),
+    J1H2C_HOST_PREFLIGHT: '1',
+    J1H2C_HOST_PGHOST: '127.0.0.1',
+    J1H2C_HOST_PGPORT: '1',
+    J1H2C_HOST_PGDATABASE: 'fixture-db',
+    J1H2C_HOST_PGUSER: 'fixture-user',
+    J1H2C_HOST_PGROLE: 'fixture-role',
+    PGPASSWORD: 'fixture-pg-password', // pragma: allowlist secret
+    J1H2C_HOST_REDIS_HOST: '127.0.0.1',
+    J1H2C_HOST_REDIS_PORT: '1',
+    J1H2C_HOST_BACKEND_DIR: SCRATCH,
+    J1H2C_HOST_PID_FILE: pidFile,
+    J1H2C_HOST_SERVICE_TOKEN: 'authority-runtime',
+  };
+  const spawnHostModule = () =>
+    spawnSync(process.execPath, [join(ROOT, 'tools', 'host-preflight.mjs')], {
+      input: JSON.stringify({
+        schema: 'j1h2c/host-preflight-input/1',
+        timeout_ms: 20000,
+        values: FIXTURE_VALUES,
+      }),
+      encoding: 'utf8',
+      env: hostEnv,
+      timeout: 60000,
+      windowsHide: true,
+    });
+  const parseHostPayload = (result) => {
+    try {
+      return JSON.parse(String(result.stdout).trim());
+    } catch {
+      return null;
+    }
+  };
+  writeFileSync(pidFile, '', 'utf8'); // truncated record (the retired script's defect)
+  const hostRunTruncated = spawnHostModule();
+  const hostPayloadTruncated = parseHostPayload(hostRunTruncated);
+  expect(hostRunTruncated.status === 0 && hostPayloadTruncated !== null, 'R43: module emits a payload (RED is a payload, not a crash)');
+  expect(hostPayloadTruncated && hostPayloadTruncated.ok === false && hostPayloadTruncated.counts.total === 4, 'R43: configured module reports all four checks');
+  expect(
+    hostPayloadTruncated &&
+      hostPayloadTruncated.checks.find((check) => check.id === 'authority_ports_owned').category ===
+        'authority_ports_pid_truncated',
+    'R43: truncated PID file is RED in the REAL module process',
+  );
+  writeFileSync(pidFile, '99999999', 'utf8'); // well-formed but no such process
+  const hostRunStale = spawnHostModule();
+  const hostPayloadStale = parseHostPayload(hostRunStale);
+  expect(
+    hostPayloadStale &&
+      hostPayloadStale.checks.find((check) => check.id === 'authority_ports_owned').category ===
+        'authority_ports_pid_stale',
+    'R43: stale recorded PID is RED in the REAL module process',
+  );
+  const r43HostSecrets = Object.entries(FIXTURE_VALUES)
+    .filter(([key]) => key !== 'maildir_root')
+    .map(([, value]) => value);
+  for (const result of [hostRunTruncated, hostRunStale]) {
+    for (const value of r43HostSecrets) {
+      expect(!String(result.stdout ?? '').includes(value) && !String(result.stderr ?? '').includes(value), 'R43: no sensitive value in module output');
+    }
+  }
+
+  // (h) host RED -> VOID before entrypoint/Playwright launch: the module's
+  // blocks fold through the REAL helper process over the frozen
+  // host_preflight interface; the runner parser accepts the folded payload;
+  // the control plane classifies ANY parsed payload with ok=false as
+  // preflight_red -> STOPPED before authorize with spawn=0 (the same
+  // machine-checked branch R37 proves end-to-end).
+  const greenBlock = await host.runHostPreflight({
+    pgProbe: async () => ({ ok: true, category: 'check_green' }),
+    redisProbe: async () => ({ ok: true, category: 'check_green' }),
+    alembicRevisions: async () => ({ ok: true, category: 'check_green' }),
+    portsOwnership: async () => ({ ok: true, category: 'check_green' }),
+  }, { configured: true, values: FIXTURE_VALUES });
+  const redBlock = await host.runHostPreflight({
+    pgProbe: async () => ({ ok: true, category: 'check_green' }),
+    redisProbe: async () => ({ ok: false, category: 'redis_unreachable' }),
+    alembicRevisions: async () => ({ ok: true, category: 'check_green' }),
+    portsOwnership: async () => ({ ok: true, category: 'check_green' }),
+  }, { configured: true, values: FIXTURE_VALUES });
+  expect(greenBlock.ok === true && redBlock.ok === false && redBlock.counts.red === 1, 'R43: module green/RED blocks');
+  const greenFold = await spawnHelperDirect({
+    schema: runner.PREFLIGHT_HELPER_INPUT_SCHEMA,
+    timeout_ms: 20000,
+    values: FIXTURE_VALUES,
+    host_preflight: { provided_by: 'outer_authority_preflight', checks: greenBlock.checks },
+  });
+  expect(
+    greenFold.status === 0 && greenFold.payload && greenFold.payload.ok === true && greenFold.payload.counts.host_checks_present === 4,
+    'R43: green host block folds green through the REAL helper',
+  );
+  const redFold = await spawnHelperDirect({
+    schema: runner.PREFLIGHT_HELPER_INPUT_SCHEMA,
+    timeout_ms: 20000,
+    values: FIXTURE_VALUES,
+    host_preflight: { provided_by: 'outer_authority_preflight', checks: redBlock.checks },
+  });
+  expect(redFold.status === 0 && redFold.payload && redFold.payload.ok === false, 'R43: RED host block folds RED through the REAL helper');
+  const parsedRedFold = runner.parsePreflightHelperPayload(redFold.payload);
+  expect(parsedRedFold.ok === false, 'R43: runner parser accepts the folded RED payload for classification');
+  const controlVoid = freshControl('r43-void');
+  controlVoid.materialize(FIXTURE_ENV);
+  await controlVoid.corsPreflightProbe();
+  preflightMode = 'unverified_login_allowed';
+  await expectCategoryAsync(() => controlVoid.preflight(), 'preflight_red', 'R43: ok=false payload classifies VOID');
+  expect(controlVoid.current === 'STOPPED' && controlVoid.launchStarts === 0, 'R43: VOID before authorize, spawn=0');
+  preflightMode = 'ok';
+  await greenPath('r43-restore');
+}
+
+// ---------------------------------------------------------------------------
+// R44 — EXACT-STATUS freshness contract (B1-R6-R5-R1): 401 is the ONLY
+// green answer of the pre-run proof; 200 is the established RED; 404,
+// 422, 429 and 5xx are service or contract anomalies that must NEVER be
+// mistaken for freshness.
+// ---------------------------------------------------------------------------
+
+{
+  // (a) 401 GREEN: the default fixture mode answers the owner login with
+  // exactly 401 — the identity is fresh and the flow authorizes.
+  const control401 = freshControl('r44-401');
+  const flow401 = await fullFlow(control401);
+  expect(control401.current === 'AUTHORIZED', 'R44: exact-401 freshness passes into AUTHORIZED');
+  const result401 = control401.launch(() => ({ rc: 0, reconciliation: { complete: true } }), { argv: flow401.argv });
+  expect(result401.outcome === 'FINISHED', 'R44: exact-401 flow finishes');
+
+  // (b) 200 established RED (category exact).
+  preflightMode = 'owner_login_allowed';
+  const control200 = freshControl('r44-200');
+  control200.materialize(FIXTURE_ENV);
+  await control200.corsPreflightProbe();
+  await expectCategoryAsync(() => control200.preflight(), 'preflight_red', 'R44-200: established identity refused');
+  expect(
+    control200.preflightRedCategories.includes('owner_identity_already_established'),
+    'R44-200: established category exact',
+  );
+  expect(control200.current === 'STOPPED' && control200.launchStarts === 0, 'R44-200: VOID, spawn=0');
+
+  // (c) 404 / 422 / 429 / 500 RED with fixed categories — a service
+  // anomaly can never pass as freshness.
+  for (const [mode, wantCategory] of [
+    ['owner_login_404', 'owner_identity_lookup_missing'],
+    ['owner_login_422', 'owner_identity_unprocessable'],
+    ['owner_login_429', 'owner_identity_rate_limited'],
+    ['owner_login_500', 'owner_identity_backend_unavailable'],
+  ]) {
+    preflightMode = mode;
+    const control = freshControl(`r44-${mode}`);
+    control.materialize(FIXTURE_ENV);
+    await control.corsPreflightProbe();
+    await expectCategoryAsync(() => control.preflight(), 'preflight_red', `R44-${mode}: non-401 refused`);
+    expect(control.preflightRedCategories.includes(wantCategory), `R44-${mode}: category exact (${wantCategory})`);
+    expect(control.current === 'STOPPED' && control.launchStarts === 0, `R44-${mode}: VOID, spawn=0`);
+  }
+  preflightMode = 'ok';
+  await greenPath('r44-restore');
+}
+
+// ---------------------------------------------------------------------------
+// R45 — DIRECT authority host gate: the direct entrypoint VOIDs before
+// authorize when the host configuration is missing, when zero host checks
+// are presented, when the host module is missing, and when the module's
+// bytes are dirty versus HEAD.
+// ---------------------------------------------------------------------------
+
+{
+  // (a) missing host configuration: the module runs transparent, the
+  // direct run VOIDs (host_preflight_not_configured), zero starts.
+  const noConfig = await runCommittedEntrypoint('r45-no-config');
+  expect(noConfig.status !== 0, 'R45: direct run without host configuration exits nonzero');
+  expect(String(noConfig.stderr).includes('host_preflight_not_configured'), 'R45: not-configured refusal category exact');
+  const noConfigRecords = ledgerRecords(noConfig.ledgerPath);
+  const noConfigVoid = noConfigRecords.find((record) => record.entry && record.entry.kind === 'void');
+  expect(
+    noConfigVoid && noConfigVoid.entry.category === 'host_preflight_not_configured',
+    `R45: not-configured void category (${noConfigVoid && noConfigVoid.entry.category})`,
+  );
+  expect(!noConfigRecords.some((record) => record.entry.kind === 'finish'), 'R45: no finish record without the host gate');
+  expect(parseSingleJsonLine(noConfig.stdout) === null, 'R45: no sealed evidence without the host gate');
+
+  // (b) zero host checks: a configured-but-empty payload fails the exact
+  // shape parser (the real module cannot produce one — its configured
+  // mode is fail-closed on the taxonomy), and the DIRECT coverage policy
+  // refuses host_checks_present = 0.
+  expectCategory(
+    () =>
+      runner.parseHostPreflightPayload({
+        schema: runner.HOST_PREFLIGHT_RESULT_SCHEMA,
+        ok: true,
+        configured: true,
+        provided_by: 'outer_authority_preflight',
+        checks: [],
+        counts: { total: 0, red: 0 },
+      }),
+    'host_preflight_payload_invalid',
+    'R45: zero-check configured payload refused',
+  );
+  expectCategory(
+    () => runner.parseHostPreflightPayload({
+      schema: runner.HOST_PREFLIGHT_RESULT_SCHEMA,
+      ok: true,
+      configured: false,
+      provided_by: 'not_the_outer_layer',
+      checks: [],
+      counts: { total: 0, red: 0 },
+    }),
+    'host_preflight_payload_invalid',
+    'R45: forged hand-off marker refused',
+  );
+  expectCategory(
+    () => runner.assertDirectAuthorityHostCoverage({ counts: { host_checks_present: 0 } }),
+    'host_preflight_incomplete',
+    'R45: zero host coverage refused by the direct policy',
+  );
+  expect(
+    runner.assertDirectAuthorityHostCoverage({ counts: { host_checks_present: 4 } }) === true,
+    'R45: full host coverage accepted by the direct policy',
+  );
+
+  // (c) missing host module.
+  const missing = await runCommittedEntrypoint('r45-missing-module', {
+    mutate: (sourceRoot) => rmSync(join(sourceRoot, 'tools', 'host-preflight.mjs')),
+  });
+  expect(missing.status !== 0, 'R45: missing host module refuses authority');
+  expect(String(missing.stderr).includes('host_preflight_module_missing'), 'R45: missing-module category exact');
+  const missingVoid = ledgerRecords(missing.ledgerPath).find((record) => record.entry && record.entry.kind === 'void');
+  expect(
+    missingVoid && missingVoid.entry.category === 'host_preflight_module_missing',
+    `R45: missing-module void category (${missingVoid && missingVoid.entry.category})`,
+  );
+
+  // (d) dirty host module bytes versus HEAD.
+  const dirty = await runCommittedEntrypoint('r45-dirty-module', {
+    mutate: (sourceRoot) =>
+      writeFileSync(join(sourceRoot, 'tools', 'host-preflight.mjs'), readFileSync(join(sourceRoot, 'tools', 'host-preflight.mjs'), 'utf8') + '\n', 'utf8'),
+  });
+  expect(dirty.status !== 0, 'R45: dirty host module refuses authority');
+  expect(String(dirty.stderr).includes('host_preflight_dirty_vs_head'), 'R45: dirty-module category exact');
+  const dirtyVoid = ledgerRecords(dirty.ledgerPath).find((record) => record.entry && record.entry.kind === 'void');
+  expect(
+    dirtyVoid && dirtyVoid.entry.category === 'host_preflight_dirty_vs_head',
+    `R45: dirty-module void category (${dirtyVoid && dirtyVoid.entry.category})`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// R46 — the runner-owned host gate end-to-end: the REAL module's four-
+// check GREEN block is accepted by the runner parser and folds green
+// through the REAL helper; a configured all-RED module through a REAL
+// direct entrypoint VOIDs before authorize (no start, no finish, no seal).
+// ---------------------------------------------------------------------------
+
+{
+  const host = await import('./host-preflight.mjs');
+
+  // (a) GREEN acceptance: REAL module block -> REAL runner parser -> REAL
+  // helper fold -> REAL direct coverage policy.
+  const greenBlock = await host.runHostPreflight({
+    pgProbe: async () => ({ ok: true, category: 'check_green' }),
+    redisProbe: async () => ({ ok: true, category: 'check_green' }),
+    alembicRevisions: async () => ({ ok: true, category: 'check_green' }),
+    portsOwnership: async () => ({ ok: true, category: 'check_green' }),
+  }, { configured: true, values: FIXTURE_VALUES });
+  expect(greenBlock.ok === true && greenBlock.configured === true, 'R46: real module four-check GREEN block');
+  runner.parseHostPreflightPayload(greenBlock);
+  expect(
+    JSON.stringify(greenBlock.checks.map((check) => check.id)) === JSON.stringify(runner.PREFLIGHT_HOST_CHECK_IDS),
+    'R46: module taxonomy byte-identical with the runner host ids',
+  );
+  const greenFold = await spawnHelperDirect({
+    schema: runner.PREFLIGHT_HELPER_INPUT_SCHEMA,
+    timeout_ms: 20000,
+    values: FIXTURE_VALUES,
+    host_preflight: { provided_by: 'outer_authority_preflight', checks: greenBlock.checks },
+  });
+  expect(
+    greenFold.status === 0 && greenFold.payload && greenFold.payload.ok === true && greenFold.payload.counts.host_checks_present === 4,
+    'R46: four-check GREEN folds green through the REAL helper',
+  );
+  runner.parsePreflightHelperPayload(greenFold.payload);
+  expect(
+    runner.assertDirectAuthorityHostCoverage(greenFold.payload) === true,
+    'R46: direct coverage policy accepts the folded four checks',
+  );
+
+  // (b) configured all-RED host through a REAL direct entrypoint: the
+  // runner spawns the REAL module itself; the RED verdict VOIDs before
+  // authorize — zero starts, no finish, no seal, no evidence payload.
+  const pidFile46 = join(SCRATCH, 'r46-authority.pid');
+  writeFileSync(pidFile46, '', 'utf8');
+  const hostRed = await runCommittedEntrypoint('r46-host-red', {
+    envPatch: {
+      J1H2C_HOST_PREFLIGHT: '1',
+      J1H2C_HOST_PGHOST: '127.0.0.1',
+      J1H2C_HOST_PGPORT: '1',
+      J1H2C_HOST_PGDATABASE: 'fixture-db',
+      J1H2C_HOST_PGUSER: 'fixture-user',
+      J1H2C_HOST_PGROLE: 'fixture-role',
+      PGPASSWORD: 'fixture-pg-password', // pragma: allowlist secret
+      J1H2C_HOST_REDIS_HOST: '127.0.0.1',
+      J1H2C_HOST_REDIS_PORT: '1',
+      J1H2C_HOST_BACKEND_DIR: SCRATCH,
+      J1H2C_HOST_PID_FILE: pidFile46,
+      J1H2C_HOST_SERVICE_TOKEN: 'authority-runtime',
+    },
+  });
+  expect(hostRed.status !== 0, 'R46: configured all-RED host VOIDs the direct run');
+  expect(String(hostRed.stderr).includes('preflight_red'), 'R46: preflight_red surfaced for the host RED');
+  const redRecords = ledgerRecords(hostRed.ledgerPath);
+  const redVoid = redRecords.find((record) => record.entry && record.entry.kind === 'void');
+  expect(
+    redVoid && typeof redVoid.entry.category === 'string' && redVoid.entry.category.startsWith('preflight_red:'),
+    `R46: host-RED void category (${redVoid && redVoid.entry.category})`,
+  );
+  expect(!redRecords.some((record) => record.entry.kind === 'finish'), 'R46: no start/finish with a RED host gate');
+  expect(!redRecords.some((record) => record.entry.kind === 'terminal_seal'), 'R46: no terminal seal with a RED host gate');
+  expect(parseSingleJsonLine(hostRed.stdout) === null, 'R46: no sealed authority evidence with a RED host gate');
 }
 
 // ---------------------------------------------------------------------------
@@ -2350,7 +3217,7 @@ if (failures.length > 0) {
   console.error(`BROWSER-AUTHORITY CONTRACT CHECK FAILED (${failures.length})`);
   process.exit(1);
 }
-console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R40, direct-process authority boundary, single canonical repo identity, case-insensitive GIT_* sanitization, real fixed Playwright child + runner-owned preflight helper).');
+console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R46, direct-process authority boundary, single canonical repo identity, case-insensitive GIT_* sanitization, real fixed Playwright child at the frozen execution root + exact-401 lifecycle preflight + runner-owned host gate requiring exactly four host checks in direct authority runs).');
 // The fixture HTTP server and undici keep-alive sockets hold the event loop;
 // the verdict above is final, so exit explicitly.
 process.exit(0);

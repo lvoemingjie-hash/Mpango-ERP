@@ -77,6 +77,8 @@ export const AUTHORITY_CHILD_RESULT_SCHEMA = 'j1h2c/browser-authority-child-resu
 export const AUTHORITY_CHILD_INPUT_SCHEMA = 'j1h2c/browser-authority-child-input/1';
 export const PREFLIGHT_HELPER_INPUT_SCHEMA = 'j1h2c/browser-authority-preflight-input/1';
 export const PREFLIGHT_HELPER_RESULT_SCHEMA = 'j1h2c/browser-authority-preflight-result/1';
+export const HOST_PREFLIGHT_INPUT_SCHEMA = 'j1h2c/host-preflight-input/1';
+export const HOST_PREFLIGHT_RESULT_SCHEMA = 'j1h2c/host-preflight-result/1';
 const GENESIS_SHA = '0'.repeat(64);
 // The authoritative child waits for a REAL 17-node serial Playwright journey
 // (up to 120s per node under the frozen config); the wrapper budget covers
@@ -84,6 +86,9 @@ const GENESIS_SHA = '0'.repeat(64);
 // return immediately — only a genuinely started journey consumes budget.
 const AUTHORITY_CHILD_TIMEOUT_MS = 1_800_000;
 const PREFLIGHT_HELPER_TIMEOUT_MS = 20_000;
+// B1-R6-R5-R1: the runner-owned host gate budget. The host module runs real
+// PG/Redis/Alembic/ps probes; the wrapper budget adds headroom for the kill.
+const HOST_PREFLIGHT_TIMEOUT_MS = 120_000;
 const AUTHORITY_CAPABILITY_BRAND = Symbol('browser-authority-capability');
 let authorityCapabilityIssued = false;
 
@@ -152,6 +157,17 @@ export function canonicalAuthorityChildPath(moduleFile = fileURLToPath(import.me
  */
 export function canonicalPreflightHelperPath(moduleFile = fileURLToPath(import.meta.url)) {
   return join(dirname(moduleFile), 'browser-authority-preflight-helper.mjs');
+}
+
+/**
+ * B1-R6-R5-R1: the canonical runner-owned HOST preflight module path — the
+ * version-controlled host gate, derived from THIS module's own location
+ * (never from a caller, the entrypoint, env, or any other source). In a
+ * DIRECT authority run the runner proves the module's committed bytes and
+ * spawns it itself; no other invocation path exists.
+ */
+export function canonicalHostPreflightPath(moduleFile = fileURLToPath(import.meta.url)) {
+  return join(dirname(moduleFile), 'host-preflight.mjs');
 }
 
 export function canonicalAuthorityChildArgv(moduleFile = fileURLToPath(import.meta.url)) {
@@ -233,6 +249,23 @@ export function assertDirectAuthorityEntrypointProcess(moduleFile = fileURLToPat
   }
   assertNoProcessInjection();
   return true;
+}
+
+/**
+ * B1-R6-R5-R1: non-throwing direct-process detection used ONLY to select
+ * the host-gate policy. Library / non-authority fixtures run the preflight
+ * transparently (host_checks_present = 0, and they can never mint
+ * authority seal/evidence); a DIRECT authority entrypoint process requires
+ * exactly the four host checks. The result is never trusted as authority —
+ * the trust boundary stays the startup directness checks and the
+ * capability minting.
+ */
+export function isDirectAuthorityEntrypointProcess(moduleFile = fileURLToPath(import.meta.url)) {
+  try {
+    return assertDirectAuthorityEntrypointProcess(moduleFile) === true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -417,10 +450,14 @@ export function parseAuthorityChildStdout(stdout, { pid, exitCode }) {
 }
 
 /**
- * The FIXED preflight check-id taxonomy (labels only, never values). The
- * host-level ids belong to the task-private execution contract that the
- * OUTER authority preflight (future Lubuntu gate) owns; the helper only
- * validates their shape when an outer layer supplies them.
+ * The FIXED preflight check-id taxonomy (labels only, never values).
+ * B1-R6-R5: `owner_identity_fresh_unregistered` replaces the contradictory
+ * `established_login_succeeds` — the retailer identity must be FRESH (login
+ * refused) before the harness beforeAll register -> setup -> login
+ * lifecycle, so the pre-run proof and the harness precondition can both
+ * hold truthfully. The host-level ids belong to the task-private execution
+ * contract that the OUTER authority preflight (future Lubuntu gate) owns;
+ * the helper only validates their shape when an outer layer supplies them.
  */
 export const PREFLIGHT_CHECK_IDS = [
   'frontend_origin_page',
@@ -430,7 +467,7 @@ export const PREFLIGHT_CHECK_IDS = [
   'identities_distinct_after_normalization',
   'invitation_pairs_present_and_distinct',
   'forged_token_not_reused',
-  'established_login_succeeds',
+  'owner_identity_fresh_unregistered',
   'unverified_login_refused',
 ];
 
@@ -506,6 +543,83 @@ export function parsePreflightHelperPayload(payload) {
     throw new BrowserAuthorityError('preflight_helper_payload_invalid');
   }
   return payload;
+}
+
+/**
+ * B1-R6-R5-R1 exact HOST preflight module payload shape. The module result
+ * must carry the fixed schema, the frozen hand-off marker, the configured
+ * flag, and EITHER the transparent shape (unconfigured: zero checks,
+ * zero counts) OR a configured block whose ids are EXACTLY the fixed host
+ * taxonomy in order, each once, with consistent counts. Any other shape is
+ * a forged or broken payload and fails closed.
+ */
+export function parseHostPreflightPayload(payload) {
+  if (
+    !exactKeys(payload, ['schema', 'ok', 'configured', 'provided_by', 'checks', 'counts']) ||
+    payload.schema !== HOST_PREFLIGHT_RESULT_SCHEMA ||
+    typeof payload.ok !== 'boolean' ||
+    typeof payload.configured !== 'boolean' ||
+    payload.provided_by !== 'outer_authority_preflight' ||
+    !Array.isArray(payload.checks) ||
+    !exactKeys(payload.counts, ['total', 'red']) ||
+    !Number.isInteger(payload.counts.total) ||
+    !Number.isInteger(payload.counts.red)
+  ) {
+    throw new BrowserAuthorityError('host_preflight_payload_invalid');
+  }
+  if (payload.configured === false) {
+    if (
+      payload.checks.length !== 0 ||
+      payload.counts.total !== 0 ||
+      payload.counts.red !== 0
+    ) {
+      throw new BrowserAuthorityError('host_preflight_payload_invalid');
+    }
+    return payload;
+  }
+  if (payload.checks.length !== PREFLIGHT_HOST_CHECK_IDS.length) {
+    throw new BrowserAuthorityError('host_preflight_payload_invalid');
+  }
+  for (const [index, check] of payload.checks.entries()) {
+    if (
+      !exactKeys(check, ['id', 'ok', 'category']) ||
+      check.id !== PREFLIGHT_HOST_CHECK_IDS[index] ||
+      typeof check.ok !== 'boolean' ||
+      typeof check.category !== 'string' ||
+      check.category.length === 0
+    ) {
+      throw new BrowserAuthorityError('host_preflight_payload_invalid');
+    }
+  }
+  const red = payload.checks.filter((check) => check.ok === false).length;
+  if (payload.counts.total !== payload.checks.length || payload.counts.red !== red) {
+    throw new BrowserAuthorityError('host_preflight_payload_invalid');
+  }
+  if (payload.ok !== (red === 0)) {
+    throw new BrowserAuthorityError('host_preflight_payload_invalid');
+  }
+  return payload;
+}
+
+/**
+ * B1-R6-R5-R1 DIRECT authority policy: a direct run MUST fold EXACTLY the
+ * four host checks into the helper verdict. host_checks_present = 0 (an
+ * unconfigured host, a transparent module result, or a module that was
+ * never invoked) can never authorize a direct authority launch. Library /
+ * non-authority fixtures never call this policy — they stay transparent
+ * and can never mint authority seal/evidence.
+ */
+export function assertDirectAuthorityHostCoverage(helperPayload) {
+  if (
+    helperPayload === null ||
+    typeof helperPayload !== 'object' ||
+    helperPayload.counts === null ||
+    typeof helperPayload.counts !== 'object' ||
+    helperPayload.counts.host_checks_present !== PREFLIGHT_HOST_CHECK_IDS.length
+  ) {
+    throw new BrowserAuthorityError('host_preflight_incomplete');
+  }
+  return true;
 }
 
 /** Canonical profile path, resolved relative to THIS module (never cwd). */
@@ -994,7 +1108,10 @@ export class ControlPlane {
     // authority file, taken at construction and re-verified at authorize and
     // launch. Any post-binding drift of the helper, child, runner,
     // entrypoint or CORS helper blocks the launch (working-tree equality,
-    // NOT HEAD equality — HEAD binding stays the profile's closure).
+    // NOT HEAD equality — HEAD binding stays the profile's closure). The
+    // host module is NOT snapshot-bound here: its binding is the dedicated
+    // HEAD-blob proof inside preflight (which also classifies a missing
+    // module precisely), and it takes no part in the launch itself.
     this.#moduleByteSnapshot = new Map(
       [
         canonicalAuthorityEntrypointPath(),
@@ -1357,11 +1474,31 @@ export class ControlPlane {
         this.stop('preflight_helper_dirty_vs_head');
         throw new BrowserAuthorityError('preflight_helper_dirty_vs_head');
       }
-      const helperInput = JSON.stringify({
+      // B1-R6-R5-R1: the runner-owned HOST gate. In a DIRECT authority run
+      // the runner derives the host module path from its own location,
+      // proves the module's working-tree bytes equal the HEAD committed
+      // blob, spawns it itself (fixed argv, shell never involved, sanitized
+      // environment, private stdin carrying only the deep-frozen
+      // materialized values) and folds the four-check block into the
+      // helper verdict. No caller, entrypoint or environment can supply
+      // host results. Library / non-authority fixtures stay transparent
+      // (host_checks_present = 0) and can never mint authority evidence.
+      let hostChecks = null;
+      if (isDirectAuthorityEntrypointProcess()) {
+        hostChecks = await this.#runHostPreflightModule();
+      }
+      const helperInputObject = {
         schema: PREFLIGHT_HELPER_INPUT_SCHEMA,
         timeout_ms: PREFLIGHT_HELPER_TIMEOUT_MS,
         values: { ...this.#materialized.input.values },
-      });
+      };
+      if (hostChecks !== null) {
+        helperInputObject.host_preflight = {
+          provided_by: 'outer_authority_preflight',
+          checks: hostChecks,
+        };
+      }
+      const helperInput = JSON.stringify(helperInputObject);
       this.#preflightHelperInvocations += 1;
       let payload;
       try {
@@ -1400,6 +1537,19 @@ export class ControlPlane {
         // Helper crash, kill (runaway) or unparseable output: fail closed.
         this.stop('preflight_helper_no_response');
         throw new BrowserAuthorityError('preflight_helper_no_response');
+      }
+      // B1-R6-R5-R1 DIRECT authority policy: exactly the four host checks
+      // must be present in the folded verdict. A direct run with
+      // host_checks_present = 0 — an unconfigured host, a transparent
+      // module result, or a module that was never invoked — VOIDs before
+      // authorize with zero starts.
+      if (hostChecks !== null) {
+        try {
+          assertDirectAuthorityHostCoverage(payload);
+        } catch (error) {
+          this.stop(error.category);
+          throw error;
+        }
       }
       if (payload.ok !== true) {
         const redCategories = payload.checks
@@ -1442,12 +1592,99 @@ export class ControlPlane {
           'preflight_helper_dirty_vs_head',
           'preflight_helper_no_response',
           'preflight_helper_payload_invalid',
+          'host_preflight_module_missing',
+          'host_preflight_dirty_vs_head',
+          'host_preflight_no_response',
+          'host_preflight_payload_invalid',
+          'host_preflight_not_configured',
+          'host_preflight_incomplete',
         ].includes(error.category)
       ) {
         this.stop('preflight_exception');
       }
       throw error;
     }
+  }
+
+  /**
+   * B1-R6-R5-R1: the runner-owned host gate — direct authority runs only.
+   * Derives the version-controlled host module path from THIS module's own
+   * location, proves the module's working-tree bytes equal its HEAD
+   * committed blob, then spawns it as a fresh node child (fixed argv
+   * [execPath, module], shell never involved, GIT-x and NODE-x-stripped
+   * environment, private stdin carrying only the deep-frozen materialized
+   * values). The exact-shape payload parser and the exactly-four-checks
+   * policy fail closed: a missing module, dirty module bytes, a crash or
+   * timeout, a forged/malformed payload, an unconfigured host (zero
+   * checks) or any RED check all land STOPPED before authorize with
+   * launchStarts untouched (0) — the authority child can never start.
+   */
+  async #runHostPreflightModule() {
+    const hostPath = canonicalHostPreflightPath();
+    if (!existsSync(hostPath)) {
+      this.stop('host_preflight_module_missing');
+      throw new BrowserAuthorityError('host_preflight_module_missing');
+    }
+    const hostWorkingSha = sha256Hex(readFileSync(hostPath));
+    const hostCommittedSha = sha256Hex(readCommittedBytesGeneric(hostPath));
+    if (hostWorkingSha !== hostCommittedSha) {
+      this.stop('host_preflight_dirty_vs_head');
+      throw new BrowserAuthorityError('host_preflight_dirty_vs_head');
+    }
+    const hostInput = JSON.stringify({
+      schema: HOST_PREFLIGHT_INPUT_SCHEMA,
+      timeout_ms: HOST_PREFLIGHT_TIMEOUT_MS,
+      values: { ...this.#materialized.input.values },
+    });
+    let payload;
+    try {
+      const hostOut = await new Promise((resolve, reject) => {
+        const child = execFile(
+          process.execPath,
+          [hostPath],
+          {
+            env: probeChildEnv(),
+            stdio: ['pipe', 'pipe', 'pipe'],
+            timeout: HOST_PREFLIGHT_TIMEOUT_MS + 5000,
+            windowsHide: true,
+          },
+          (error, stdout) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve(stdout);
+            }
+          },
+        );
+        child.stdin.write(hostInput);
+        child.stdin.end();
+      });
+      payload = parseHostPreflightPayload(JSON.parse(hostOut));
+    } catch (error) {
+      if (error instanceof BrowserAuthorityError) {
+        this.stop(error.category);
+        throw error;
+      }
+      // Module crash, kill (runaway) or unparseable output: fail closed.
+      this.stop('host_preflight_no_response');
+      throw new BrowserAuthorityError('host_preflight_no_response');
+    }
+    if (payload.configured === false || payload.checks.length === 0) {
+      // An unconfigured host (transparent module result) can never
+      // authorize a DIRECT authority launch.
+      this.stop('host_preflight_not_configured');
+      throw new BrowserAuthorityError('host_preflight_not_configured');
+    }
+    this.#ledger.append(
+      {
+        kind: 'host_preflight',
+        ok: payload.ok,
+        checks: payload.counts.total,
+        red: payload.counts.red,
+      },
+      this.#sensitiveValues(),
+    );
+    return payload.checks;
   }
 
   /** Bind argv discipline; live contract/input/profile/candidate re-checks. */
@@ -1766,6 +2003,11 @@ export class ControlPlane {
 }
 
 export function authorityCriticalPaths(moduleFile = fileURLToPath(import.meta.url)) {
+  // NOTE: the host preflight module is deliberately NOT in this list. Its
+  // binding is the dedicated preflight HEAD-blob proof
+  // (host_preflight_dirty_vs_head / host_preflight_module_missing), which
+  // runs BEFORE authorize and classifies the defect precisely; a direct run
+  // can never reach capability minting without passing it first.
   return [
     canonicalAuthorityEntrypointPath(moduleFile),
     moduleFile,

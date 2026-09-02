@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Runner-owned authority preflight helper (B1-R6-R4).
+ * Runner-owned authority preflight helper (B1-R6-R5).
  *
  * Spawned ONLY by tools/browser-authority-runner.mjs as a fresh node child
  * at the canonical module-relative path (fixed process.execPath, argv
@@ -8,6 +8,17 @@
  * intentionally self-contained — it imports nothing from the runner — so a
  * pristine process performs the checks; launcher-process mutations cannot
  * touch it, and the runner re-validates the exact output payload shape.
+ *
+ * B1-R6-R5-R1 LIFECYCLE TRUTH: the pre-run proof is
+ * `owner_identity_fresh_unregistered` — the J1H2C retailer identity is
+ * FRESH ONLY when the formal login answers EXACTLY 401 (refused). A 200
+ * proves the identity already established, and the harness registration
+ * would then conflict (409); 404/422/429/5xx and any other status are
+ * service or contract anomalies and are RED with fixed categories — never
+ * mistaken for freshness. The harness beforeAll stays the SOLE
+ * register -> setup-credential -> login lifecycle. The former pre-run
+ * established-login requirement contradicted the harness precondition and
+ * is removed.
  *
  * Inputs (exact schema, private stdin):
  *   { schema, timeout_ms, values }                              (required)
@@ -18,9 +29,10 @@
  * `host_preflight` belongs to the task-private execution contract that the
  * OUTER authority preflight (future Lubuntu gate) owns: PG/Redis/Alembic
  * reachability and authority port ownership are host-level checks this
- * helper never executes itself. When an outer layer supplies results, they
- * are validated (fixed ids, exact shape) and folded into the verdict; when
- * absent, the report is transparent (host_checks_present = 0).
+ * helper never executes itself. When an outer layer supplies results
+ * (e.g. the version-controlled tools/host-preflight.mjs result block),
+ * they are validated (fixed ids, exact shape) and folded into the verdict;
+ * when absent, the report is transparent (host_checks_present = 0).
  *
  * Output (exact schema, single stdout line, labels/booleans/categories and
  * counts ONLY — never a URL, email, password, token, or code value):
@@ -57,7 +69,7 @@ const CORE_CHECK_IDS = [
   'identities_distinct_after_normalization',
   'invitation_pairs_present_and_distinct',
   'forged_token_not_reused',
-  'established_login_succeeds',
+  'owner_identity_fresh_unregistered',
   'unverified_login_refused',
 ];
 const HOST_CHECK_IDS = [
@@ -305,7 +317,18 @@ function checkForgedToken(values) {
   return 'check_green';
 }
 
-async function checkEstablishedLogin(values, deadline) {
+/**
+ * B1-R6-R5-R1 lifecycle-compatible pre-run proof with an EXACT product
+ * contract: the retailer identity is FRESH / not established ONLY when the
+ * formal login answers precisely 401 (invalid credentials — the identity
+ * exists in no established form). A 200 proves the identity is already
+ * established (RED `owner_identity_already_established`); every OTHER
+ * answer is a service or contract anomaly that must NEVER be mistaken for
+ * freshness — 404 (lookup missing), 422 (unprocessable), 429 (rate
+ * limited), 5xx (backend unavailable) and any other status are RED with
+ * fixed categories.
+ */
+async function checkOwnerIdentityFresh(values, deadline) {
   const remaining = deadline - Date.now();
   if (remaining <= 0) return 'check_timeout';
   const status = await requestJsonStatus(
@@ -317,8 +340,13 @@ async function checkEstablishedLogin(values, deadline) {
     },
     remaining,
   );
-  if (status !== 200) return 'established_login_refused';
-  return 'check_green';
+  if (status === 401) return 'check_green';
+  if (status === 200) return 'owner_identity_already_established';
+  if (status === 404) return 'owner_identity_lookup_missing';
+  if (status === 422) return 'owner_identity_unprocessable';
+  if (status === 429) return 'owner_identity_rate_limited';
+  if (status >= 500 && status <= 599) return 'owner_identity_backend_unavailable';
+  return 'owner_identity_unexpected_status';
 }
 
 async function checkUnverifiedLogin(values, deadline) {
@@ -436,7 +464,7 @@ checks.push(
 );
 checks.push(await runCheck('forged_token_not_reused', async () => checkForgedToken(values)));
 checks.push(
-  await runCheck('established_login_succeeds', () => checkEstablishedLogin(values, deadline)),
+  await runCheck('owner_identity_fresh_unregistered', () => checkOwnerIdentityFresh(values, deadline)),
 );
 checks.push(
   await runCheck('unverified_login_refused', () => checkUnverifiedLogin(values, deadline)),

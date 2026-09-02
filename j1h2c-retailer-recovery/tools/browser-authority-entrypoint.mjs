@@ -18,8 +18,9 @@
  *
  * After the checks, this module imports the runner and executes the only
  * authority path: materialize -> isolated CORS probe -> runner-owned
- * preflight helper -> authorize -> fixed real child -> terminal seal ->
- * authority evidence.
+ * preflight (host gate + helper: a DIRECT authority run requires exactly
+ * the four runner-invoked host checks) -> authorize -> fixed real child ->
+ * terminal seal -> authority evidence.
  */
 
 // ---------------------------------------------------------------------------

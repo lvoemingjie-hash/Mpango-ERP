@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "snapshot_at": "2026-09-02T09:50:00+08:00",
+  "canonical_product_branch": "origin/product-dev-recovered",
+  "current_product_baseline": {
+    "base_sha": "24a28d76d6d9483d8101f8e0f537c148dc262859",
+    "alembic_head": "037_payment_declarations_schema",
+    "delivery_status": "PRE_PILOT_HARDENING_NOT_CUSTOMER_APPROVED"
+  },
+  "active_tracks": [
+    {
+      "id": "H2_C_RETAILER_RECOVERY",
+      "candidate": {
+        "evidence_sha": "e16f39cab7613a32bced21d1f8a5c6be6a54fe18"
+      },
+      "review": {
+        "evidence_sha": "446a42a988aeae645c93af5310f41eb6cbc82284"
+      },
+      "status": "KILO_REPORTED_PASS_CTO_ACCEPTANCE_PENDING",
+      "merged": false,
+      "next_gate": "CTO_REVIEW_THEN_LUBUNTU_SINGLE_STACK_SINGLE_PREFLIGHT_SINGLE_BROWSER"
+    },
+    {
+      "id": "SKU_CATALOG_IDENTITY",
+      "candidate": {
+        "evidence_sha": "1bd710550747327021674a8bc295a6a27d399787"
+      },
+      "review": null,
+      "status": "POST_KILO_DEFECT_FIX_INDEPENDENT_REVIEW_PENDING",
+      "merged": false,
+      "next_gate": "INDEPENDENT_REVIEW_OF_UUID_PATH_CLOSURE"
+    },
+    {
+      "id": "PRICING_R0",
+      "candidate": null,
+      "review": null,
+      "status": "FROZEN",
+      "merged": false,
+      "next_gate": "WAIT_FOR_SEPARATE_H2_C_AND_SKU_CONTROLLED_MERGES"
+    },
+    {
+      "id": "ORDER_PRICE_AND_REORDER",
+      "candidate": null,
+      "review": null,
+      "status": "NOT_STARTED",
+      "merged": false,
+      "next_gate": "WAIT_FOR_PRICING_CONTRACT"
+    }
+  ],
+  "local_workspace_snapshot": {
+    "registered_worktrees": 507,
+    "canonical_worktrees": 60,
+    "codex_managed_worktrees": 7,
+    "mpango_root_legacy_worktrees": 433,
+    "temp_legacy_worktrees": 5,
+    "other_worktrees": 2,
+    "remote_refs": 623,
+    "local_branches": 642,
+    "cleanup_status": "INVENTORIED_NOT_MOVED_OR_DELETED"
+  }
+}

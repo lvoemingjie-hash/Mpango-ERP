@@ -1,5 +1,10 @@
 # Mpango ERP System
 
+> **Canonical navigation:** Start with [`START-HERE.md`](START-HERE.md).
+> It identifies the live product baseline, in-flight work, architecture,
+> evidence tiers, operations, and workspace rules. The feature/version material
+> below is retained as project documentation and must not override current truth.
+
 **Version:** 0.2.0
 **Author:** Jeff Lee + AI Engineering
 **Description:** Multi-tenant wholesale-retail ERP system built for the African market. Supports digital operations for Kenyan wholesalers and their retailer networks.
@@ -152,4 +157,7 @@ Please follow the contracts in `docs/contracts/`:
 
 ## 📋 Changelog
 
-See [`docs/CHANGELOG_v0.2.0.md`](docs/CHANGELOG_v0.2.0.md) for version history.
+The latest committed historical changelog is
+[`docs/CHANGELOG_v0.1.9.md`](docs/CHANGELOG_v0.1.9.md). For current delivery
+truth, use [`START-HERE.md`](START-HERE.md) instead of inferring status from a
+version label.

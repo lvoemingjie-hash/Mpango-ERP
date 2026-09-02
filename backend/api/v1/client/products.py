@@ -233,15 +233,27 @@ async def get_product(
     product is a neutral 404; a sellable-unit UUID is NOT a product id and
     returns 404 (the old SKU.id ambiguity is removed).
     """
-    # Fail closed on malformed ids before any SQL (a non-UUID path id can
-    # never match catalog_products.id).
+    # Fail closed on malformed AND non-canonical ids before any SQL.
+    # R2-F1: Python's UUID() accepts brace-wrapped ({uuid}) and URN
+    # (urn:uuid:uuid) text, but asyncpg rejects those raw strings when binding
+    # a PostgreSQL UUID column — the mismatch previously surfaced as an
+    # unhandled DB error (HTTP 500). Only the canonical lowercase hyphenated
+    # form is a valid product id; every other representation is a neutral 404
+    # resolved BEFORE any db.execute, and all SQL binds the verified canonical
+    # value only.
+    raw_product_id = str(product_id)
     try:
-        UUID(str(product_id))
+        canonical_product_id = str(UUID(raw_product_id))
     except (TypeError, ValueError, AttributeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "PRODUCT_NOT_FOUND", "message": "Product not found"},
         ) from exc
+    if raw_product_id != canonical_product_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "PRODUCT_NOT_FOUND", "message": "Product not found"},
+        )
 
     # 1/2 — the product row itself (so an all-units-inactive product still
     # yields the correct PRODUCT_INACTIVE semantics instead of a false 404).
@@ -252,7 +264,7 @@ async def get_product(
                 "FROM catalog_products p "
                 "WHERE p.id = :product_id AND p.is_deleted IS NOT TRUE"
             ),
-            {"product_id": product_id},
+            {"product_id": canonical_product_id},
         )
     ).fetchone()
 
@@ -271,7 +283,7 @@ async def get_product(
     rows = (
         await db.execute(
             text(f"{_UNIT_SELECT} WHERE p.id = :product_id{_UNIT_ORDER}"),
-            {"product_id": product_id, "retailer_id": client.retailer_id},
+            {"product_id": canonical_product_id, "retailer_id": client.retailer_id},
         )
     ).fetchall()
 

@@ -431,3 +431,198 @@ class TestIsolationAndVisibility:
         assert unit["price"] is None
         assert unit["stock_level"] == "OUT_OF_STOCK"
         assert unit["can_order"] is False
+
+
+# ---------------------------------------------------------------------------
+# R2-F1: canonical product UUID path fail-closed closure
+# ---------------------------------------------------------------------------
+
+_FORBIDDEN_BODY_MARKERS = (
+    "asyncpg",
+    "sqlalchemy",
+    "DBAPIError",
+    "SELECT ",
+    "query argument",
+)
+
+
+def _assert_clean_product_not_found(resp) -> None:
+    """A malformed/non-canonical id must be a clean 404 with the exact code
+    and ZERO driver/SQL/exception detail in the body."""
+    assert resp.status_code == HTTPStatus.NOT_FOUND, (
+        f"expected clean 404, got {resp.status_code}: {resp.text[:300]}"
+    )
+    body = resp.json()
+    assert body.get("code") == "PRODUCT_NOT_FOUND", body
+    lowered = resp.text.lower()
+    for marker in _FORBIDDEN_BODY_MARKERS:
+        assert marker.lower() not in lowered, (
+            f"driver/SQL detail leaked ({marker!r}): {resp.text[:300]}"
+        )
+
+
+async def _seed_single_product(two_tenants, s2_clean_db) -> str:
+    """Seed one active product with a priced, stocked unit; return its UUID."""
+    db, _reg = s2_clean_db
+    from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
+
+    ws_a = _pool_instance.tenants["a"]["ws_id"]
+    sch_a = _pool_instance.tenants["a"]["schema"]
+    ret_a = await _resolve_binding(db, ws_a, two_tenants[5])
+    return await _seed_product(
+        db, sch_a, ret_a,
+        name=f"R2F1 Canonical {uuid.uuid4().hex[:6].upper()}",
+        units=[{"sku_code": f"R2F1-{uuid.uuid4().hex[:8].upper()}", "unit": "bottle"}],
+    )
+
+
+class TestCanonicalProductIdFailClosed:
+    """R2-F1 contract: the detail path accepts ONLY canonical lowercase
+    hyphenated UUID text; everything else is a clean 404 before any SQL."""
+
+    async def test_canonical_existing_uuid_returns_200(
+        self, r1_client, two_tenants, s2_clean_db
+    ):
+        product_id = await _seed_single_product(two_tenants, s2_clean_db)
+        token = await _login_retailer(r1_client, two_tenants)
+        resp = await r1_client.get(
+            f"/api/v1/client/products/{product_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == HTTPStatus.OK, resp.text
+        assert resp.json()["data"]["id"] == product_id
+
+    async def test_canonical_nonexistent_uuid_returns_clean_404(
+        self, r1_client, two_tenants
+    ):
+        token = await _login_retailer(r1_client, two_tenants)
+        missing = str(uuid.uuid4())
+        resp = await r1_client.get(
+            f"/api/v1/client/products/{missing}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        _assert_clean_product_not_found(resp)
+
+    async def test_noncanonical_forms_of_real_existing_uuid_still_404(
+        self, r1_client, two_tenants, s2_clean_db
+    ):
+        """{uuid}, %7Buuid%7D and urn:uuid:uuid built from a REAL product id
+        must NOT resolve to the product: each repetition is a clean 404."""
+        product_id = await _seed_single_product(two_tenants, s2_clean_db)
+        token = await _login_retailer(r1_client, two_tenants)
+
+        forms = [
+            f"{{{product_id}}}",                      # brace-wrapped
+            f"%7B{product_id}%7D",                    # percent-encoded braces (literal)
+            f"urn:uuid:{product_id}",                 # URN form
+        ]
+        for form in forms:
+            for repetition in range(3):
+                resp = await r1_client.get(
+                    f"/api/v1/client/products/{form}",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                assert resp.status_code == HTTPStatus.NOT_FOUND, (
+                    f"form={form!r} repetition={repetition}: "
+                    f"got {resp.status_code}: {resp.text[:200]}"
+                )
+                _assert_clean_product_not_found(resp)
+
+    async def test_malformed_shape_matrix_is_clean_404_422_never_500(
+        self, r1_client, two_tenants, s2_clean_db
+    ):
+        product_id = await _seed_single_product(two_tenants, s2_clean_db)
+        token = await _login_retailer(r1_client, two_tenants)
+
+        # NOTE: a literal empty path segment is unroutable (Starlette path
+        # params require >= 1 char, so "" never reaches the handler over
+        # HTTP); the empty-value fail-closed proof is the direct-call test
+        # below (test_noncanonical_ids_never_reach_db_execute includes "").
+        probes = [
+            product_id.upper(),                        # uppercase UUID
+            product_id.replace("-", ""),               # 32-hex, no hyphens
+            " ",                                       # blank value (decodes from %20)
+            "not-a-uuid",                              # plain text
+            "x" * 2048,                                # overlong value
+            "../../../etc/passwd",                     # traversal
+            "'; DROP TABLE catalog_products; --",      # SQL probe
+            f"{product_id[:-1]}z",                     # near-miss corrupted hex
+        ]
+        for probe in probes:
+            resp = await r1_client.get(
+                f"/api/v1/client/products/{probe}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code in (
+                HTTPStatus.NOT_FOUND,
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+            ), f"probe={probe[:40]!r}: got {resp.status_code}: {resp.text[:200]}"
+            assert resp.text.lower().find("asyncpg") == -1
+            assert resp.text.lower().find("sqlalchemy") == -1
+
+    async def test_noncanonical_ids_never_reach_db_execute(self):
+        """Observable fake AsyncSession: every non-canonical id raises the
+        clean 404 BEFORE any db.execute call (zero SQL issued)."""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from fastapi import HTTPException
+
+        from api.v1.client.products import get_product
+
+        fake_db = SimpleNamespace(execute=AsyncMock())
+        fake_client = SimpleNamespace(retailer_id=str(uuid.uuid4()))
+
+        canonical = str(uuid.uuid4())
+        non_canonical = [
+            f"{{{canonical}}}",
+            f"%7B{canonical}%7D",
+            f"urn:uuid:{canonical}",
+            canonical.upper(),
+            canonical.replace("-", ""),
+            "",
+            "not-a-uuid",
+            "'; DROP TABLE catalog_products; --",
+            "../../../etc/passwd",
+            "x" * 2048,
+        ]
+        for raw_id in non_canonical:
+            with pytest.raises(HTTPException) as exc_info:
+                await get_product(
+                    product_id=raw_id,
+                    client=fake_client,  # type: ignore[arg-type]
+                    _perm=None,
+                    db=fake_db,  # type: ignore[arg-type]
+                )
+            assert exc_info.value.status_code == HTTPStatus.NOT_FOUND, (
+                f"raw={raw_id[:40]!r}: expected 404, got {exc_info.value.status_code}"
+            )
+            assert exc_info.value.detail.get("code") == "PRODUCT_NOT_FOUND"
+        fake_db.execute.assert_not_awaited()
+
+    async def test_canonical_id_reaches_db_with_the_canonical_value(self):
+        """Control for the no-SQL proof: a CANONICAL id does issue SQL and the
+        bound parameter is exactly the canonical text (never the raw input)."""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from fastapi import HTTPException
+
+        from api.v1.client.products import get_product
+
+        empty_result = SimpleNamespace(fetchone=lambda: None)
+        fake_db = SimpleNamespace(execute=AsyncMock(return_value=empty_result))
+        fake_client = SimpleNamespace(retailer_id=str(uuid.uuid4()))
+
+        canonical = str(uuid.uuid4())
+        with pytest.raises(HTTPException) as exc_info:  # row absent -> 404
+            await get_product(
+                product_id=canonical,
+                client=fake_client,  # type: ignore[arg-type]
+                _perm=None,
+                db=fake_db,  # type: ignore[arg-type]
+            )
+        assert exc_info.value.status_code == HTTPStatus.NOT_FOUND
+        fake_db.execute.assert_awaited_once()
+        bound = fake_db.execute.await_args.args[1]
+        assert bound["product_id"] == canonical

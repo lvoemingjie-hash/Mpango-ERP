@@ -1,0 +1,10 @@
+CLEANUP CLOSURE (sanitized) — 2026-09-03T07:04:24+08:00
+- backend + frontend launcher processes terminated
+- task containers dc12r1r5r1v2-pg16 / dc12r1r5r1v2-redis7 removed (docker rm -f)
+- anonymous task volumes (CreatedAt 2026-09-03T06:47:12 / 06:47:34) removed
+- no custom docker network was created by this task
+- task ports 15422 / 16322 / 18122 / 15122 released (0 listeners)
+- Redis DB15 state destroyed together with the task Redis container (empty at creation, empty at teardown)
+- task credentials, authority env, contract values, maildir, raw mail spool, logs and venv destroyed (runtime scratch removed)
+- canonical repo worktree to be deregistered after this closure commit
+- protected refs unchanged: candidate 6e96434f..., kilo 7ceda02d..., baseline 24a28d76... (re-verified post-cleanup)

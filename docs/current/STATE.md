@@ -1,6 +1,6 @@
 # Current State
 
-**Snapshot:** 2026-09-02 13:03 +08:00
+**Snapshot:** 2026-09-02 14:01 +08:00
 **Machine source:** [`state.json`](state.json)
 **Canonical product branch:** `origin/product-dev-recovered`
 
@@ -21,7 +21,7 @@ Run `pwsh -File scripts/project-context.ps1 -Refresh` before starting work.
 
 | Track | Current candidate | Evidence status | Next gate |
 |---|---|---|---|
-| H2-C retailer recovery | `e16f39ca...` | Kilo reports bounded PASS at `446a42a9...`; CTO acceptance pending | CTO review, then one Lubuntu authority run |
+| H2-C retailer recovery | `e16f39ca...` | Kilo source/test/contract/mutation authenticity accepted at `446a42a9...`; browser authority not executed | One Lubuntu single-stack, single-preflight, single-browser authority run |
 | SKU catalog identity | `adfcfc82...` | Fix line plus router-oracle test correction; independent re-review pending | Independent review of the exact fix and test lineage |
 | PRICING-R0 | None | Frozen | Wait for separate H2-C and SKU merges |
 | Order-price / reorder | None | Not started | Wait for pricing contract |

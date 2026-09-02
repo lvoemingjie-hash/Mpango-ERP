@@ -1,6 +1,6 @@
 {
-  "schema_version": 3,
-  "snapshot_at": "2026-09-02T13:03:37+08:00",
+  "schema_version": 4,
+  "snapshot_at": "2026-09-02T14:01:51+08:00",
   "canonical_product_branch": "origin/product-dev-recovered",
   "current_product_baseline": {
     "base_sha": "24a28d76d6d9483d8101f8e0f537c148dc262859",
@@ -18,9 +18,9 @@
         "remote_ref": "refs/remotes/origin/reports/dc12r1-mvp-l1-j1-h2-c-i2-e2-b1-r6-r4-v1-r1-kilo-bounded-review-2026-09-02",
         "evidence_sha": "446a42a988aeae645c93af5310f41eb6cbc82284"
       },
-      "status": "KILO_REPORTED_PASS_CTO_ACCEPTANCE_PENDING",
+      "status": "KILO_SOURCE_TEST_AUTHENTICITY_ACCEPTED_BROWSER_AUTHORITY_PENDING",
       "merged": false,
-      "next_gate": "CTO_REVIEW_THEN_LUBUNTU_SINGLE_STACK_SINGLE_PREFLIGHT_SINGLE_BROWSER"
+      "next_gate": "LUBUNTU_SINGLE_STACK_SINGLE_PREFLIGHT_SINGLE_BROWSER_AUTHORITY"
     },
     {
       "id": "SKU_CATALOG_IDENTITY",
@@ -57,6 +57,11 @@
     "mpango_root_legacy_worktrees": 433,
     "temp_legacy_worktrees": 5,
     "other_worktrees": 2,
+    "top_level_project_like_paths": 48,
+    "top_level_project_like_git_markers": 20,
+    "top_level_project_like_registered_worktrees": 2,
+    "project_like_inventory_method": "NAME_HEURISTIC_AND_TOP_LEVEL_GIT_MARKER_ONLY",
+    "path_creation_gate": "scripts/validate-workspace-path.ps1",
     "remote_refs": 624,
     "local_branches": 642,
     "cleanup_status": "INVENTORIED_NOT_MOVED_OR_DELETED"

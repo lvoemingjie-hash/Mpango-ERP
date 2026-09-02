@@ -20,6 +20,22 @@ The 2026-09-02 read-only snapshot found:
 Counts are a snapshot. Run `scripts/project-context.ps1 -IncludeWorktrees` for
 current local truth.
 
+A second, name-based top-level inventory found 48 paths that look like project,
+review, evidence, runtime or worktree material. Twenty contain a top-level Git
+marker and only two are currently registered worktrees. This is a triage list,
+not proof that every path belongs to Mpango and not authorization to move it.
+
+## What must stay outside the Mpango root
+
+Do not bulk-move the user profile. Tool and operating-system state such as
+`.codex`, `.ssh`, `.docker`, `.config`, `AppData`, Desktop, Documents and
+Downloads remains in its owning location. Independent products such as Mpango
+Chat, Mpango Web or unrelated repositories should use a separate projects root,
+not be mixed into the ERP repository hierarchy.
+
+Only a path proven to be Mpango ERP task material may move into an ERP canonical
+root, and only through a separate inventory/manifest/reference-safe migration.
+
 ## Canonical roots for new work
 
 Windows:
@@ -49,6 +65,25 @@ Lubuntu:
 Codex-managed worktrees under `.codex/worktrees/` are allowed when created by
 the desktop application, but they must still be tied to a task and cleaned by
 the owning tool.
+
+## Path creation gate
+
+Before creating a new Mpango directory, validate the exact absolute target:
+
+```powershell
+pwsh -File scripts/validate-workspace-path.ps1 `
+  -Purpose worktree `
+  -Path "C:\Users\Jeff0\MPANGO ERP\worktrees\<task-id>"
+```
+
+Supported purposes are `worktree`, `evidence`, `handoff`, `scratch`, `archive`
+and `codex-managed-worktree`. The validator is read-only: it neither creates nor
+moves the target. It rejects traversal, prefix-lookalikes, root reuse and an
+existing reparse point in the proposed path. `codex-managed-worktree` is
+reserved for the desktop application; ordinary agents use `worktree`.
+
+A path rejection is `VOID_WORKSPACE_PATH_PRECHECK`. The task must stop before
+creating files. The final report records the command and result.
 
 ## Task directory contract
 
@@ -111,6 +146,7 @@ UNREGISTERED_WORKTREES=0
 UNCLASSIFIED_EXTERNAL_ARTIFACTS=0
 ACTIVE_WORK_INDEX_CURRENT=true
 SCRATCH_OUTSIDE_APPROVED_ROOTS=0
+NEW_PATH_PRECHECK_REQUIRED=true
 ```
 
 This document defines future placement and cleanup. It does not authorize moving

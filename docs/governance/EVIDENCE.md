@@ -67,11 +67,16 @@ EVIDENCE_BRANCH_OR_PATH
 OPEN_RISKS
 STOP_CONDITIONS
 NEXT_GATE
+WORKSPACE_PATH_VALIDATION
 ```
 
 Also include branch, full commit, parent, changed files, tests, report path,
 environment classification, cleanup, and whether local/remote equality was
 verified after publication.
+
+`WORKSPACE_PATH_VALIDATION` records the purpose, proposed absolute path and the
+result from `scripts/validate-workspace-path.ps1`. A failed result is a preflight
+stop; later green evidence cannot supersede files created after that failure.
 
 ## Test coverage delta
 

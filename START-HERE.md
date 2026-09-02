@@ -12,7 +12,7 @@ runtime evidence so that a commit SHA is never mistaken for a product status.
 | Merged baseline | `24a28d76d6d9483d8101f8e0f537c148dc262859` |
 | Alembic head in that baseline | `037_payment_declarations_schema` |
 | Delivery status | Pre-pilot hardening; not approved for customer delivery |
-| H2-C retailer recovery | Candidate and Kilo report exist; not merged and no accepted browser authority yet |
+| H2-C retailer recovery | Kilo source/test authenticity accepted; not merged and browser authority still pending |
 | SKU three-layer catalog | Candidate-fix line exists; not merged into the protected product baseline |
 | Pricing / order-price work | Frozen until H2-C and SKU have separate accepted merges |
 
@@ -84,7 +84,15 @@ See:
 1. Read this page; if a local `AGENTS.md` exists, follow its tool instructions.
 2. Run `pwsh -File scripts/project-context.ps1 -Refresh -IncludeWorktrees`.
 3. Confirm the live protected tip and the task's declared base SHA.
-4. Create a clean isolated worktree under the approved workspace root.
+4. Validate the proposed task path, then create a clean isolated worktree under
+   the approved workspace root:
+
+   ```powershell
+   pwsh -File scripts/validate-workspace-path.ps1 -Purpose worktree -Path "C:\Users\Jeff0\MPANGO ERP\worktrees\<task-id>"
+   ```
+
+   A rejected path is a preflight stop. Do not create Mpango task directories
+   directly under the user profile, Desktop, Downloads or a system temp root.
 5. Declare `verification_tier` and `claim_ceiling` before tests or runtime work.
 6. Read the relevant contract and current-state links, not every historical branch.
 7. Use GitNexus in the target worktree before changing code symbols.

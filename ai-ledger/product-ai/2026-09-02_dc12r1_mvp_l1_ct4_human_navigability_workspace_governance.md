@@ -119,3 +119,32 @@ permission parity and link integrity are verified directly.
 
 Deletion or physical archival of the superseded RBAC snapshot remains outside
 scope because current and historical ledgers still reference its path.
+
+## R2 Windows path gate and H2-C evidence acceptance
+
+The Windows user-profile inventory found 48 top-level names that heuristically
+look like project, review, evidence, runtime or worktree material. Twenty expose
+a top-level Git marker and only two are registered worktrees. This is a triage
+signal only: system/tool state, unrelated projects and Mpango ERP artifacts are
+not interchangeable, so no path was moved or deleted.
+
+R2 adds a read-only path creation gate for worktree, evidence, handoff, scratch,
+archive and desktop-managed worktree purposes. Positive, user-root negative and
+prefix-lookalike negative controls are required before publication. Existing
+legacy cleanup remains a separate manifest/reference-safe task.
+
+Kilo report `446a42a988aeae645c93af5310f41eb6cbc82284` was independently reconciled:
+its parent is candidate `e16f39cab7613a32bced21d1f8a5c6be6a54fe18`, its delta is exactly the review
+and findings files, and it records independently executed detect-secrets,
+static, R1-R40 and M1-M5 evidence. CTO accepts the bounded source/test/contract/
+mutation authenticity result. Browser authority remains `NOT_EXECUTED`; the
+next gate is one Lubuntu single-stack, single-preflight, single-browser run.
+
+### R2 boundaries
+
+- `WORKSPACE_MOVE_COUNT=0`;
+- `WORKSPACE_DELETE_COUNT=0`;
+- `KILO_SOURCE_TEST_AUTHENTICITY=CTO_ACCEPTED`;
+- `BROWSER_AUTHORITY=NOT_EXECUTED`;
+- `H2_C_MERGED=false`;
+- `NEXT_GATE=LUBUNTU_SINGLE_STACK_SINGLE_PREFLIGHT_SINGLE_BROWSER_AUTHORITY`.

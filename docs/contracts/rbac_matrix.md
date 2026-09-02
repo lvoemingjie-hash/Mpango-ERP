@@ -2,9 +2,18 @@
 
 ## Status
 
-This document records the current product-side MVP permission vocabulary used by route guards and tenant bootstrap code. It is a contract reference, not a promise that every named business role is fully provisioned.
+`CURRENT_CONTRACT_ENTRY`, reconciled on 2026-09-02 against product baseline
+`24a28d76d6d9483d8101f8e0f537c148dc262859`.
 
-Current tenant bootstrap paths provision an `admin` role and assign all seeded permissions to that role. Non-admin business role mappings such as sales, warehouse, and finance remain product policy examples until they are explicitly seeded and tested.
+The executable permission sets live in `backend/core/permission_registry.py`.
+Route enforcement lives in `backend/api/middleware/rbac.py` plus each route's
+`RequirePermission(...)` declaration. Bootstrap consumers must import the
+registry rather than maintain independent lists. A mismatch among this contract,
+the registry, route guards or bootstrap parity tests is a STOP-level contract
+drift finding; no one surface silently overrides the others.
+
+The versioned [RBAC matrix v0.2.0](../RBAC_MATRIX_v0.2.0.md) is retained as a
+historical implementation snapshot and is superseded by this entry.
 
 ## Permission Naming
 
@@ -69,6 +78,7 @@ Current intake route guards use `intake:read`, `intake:create`, `intake:update`,
 
 - `payments:read`
 - `payments:create`
+- `payments:confirm_declaration`
 - `finance:read`
 
 Current payment write routes use `payments:create`; payment read routes use `payments:read`. Finance invoice/receivable views also use existing order/payment permissions where the route is an order/payment projection.
@@ -76,7 +86,10 @@ Current payment write routes use `payments:create`; payment read routes use `pay
 ### Retailers, Invitations, And Pricing
 
 - `retailers:read`
+- `retailers:deactivate`
+- `retailers:reissue_credential`
 - `invitations:create`
+- `invitations:revoke`
 - `pricing:read`
 - `pricing:write`
 
@@ -96,11 +109,24 @@ Current payment write routes use `payments:create`; payment read routes use `pay
 
 These are elevated operational permissions and are not a substitute for platform identity-only operator checks on platform routes.
 
+### Retailer Operator
+
+These permissions are isolated from the wholesaler admin set and are granted to
+the seeded `retailer_operator` role:
+
+- `client:catalog:read`
+- `client:orders:read`
+- `client:orders:create`
+- `client:payments:read`
+- `client:payments:declare`
+- `client:finance:read`
+
 ## Role Mapping
 
 ### Seeded MVP Role
 
-- `admin`: all current MVP permissions listed above.
+- `admin`: all non-`client:*` permissions listed above.
+- `retailer_operator`: only the six `client:*` permissions listed above.
 
 ### Not Fully Seeded For MVP
 
@@ -110,4 +136,5 @@ The following role mappings are examples only until tenant bootstrap/owner crede
 - `warehouse`: typical read/update access to SKUs, inventory, and shipping workflows.
 - `finance`: typical read access to orders plus payment and finance permissions.
 
-Do not claim these non-admin roles are provisioned in production unless the tenant seed/bootstrap path assigns their role permissions explicitly.
+Do not claim these additional business roles are provisioned in production
+unless the tenant seed/bootstrap path assigns their role permissions explicitly.

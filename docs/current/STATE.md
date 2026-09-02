@@ -1,6 +1,6 @@
 # Current State
 
-**Snapshot:** 2026-09-02 09:50 +08:00
+**Snapshot:** 2026-09-02 13:03 +08:00
 **Machine source:** [`state.json`](state.json)
 **Canonical product branch:** `origin/product-dev-recovered`
 
@@ -22,7 +22,7 @@ Run `pwsh -File scripts/project-context.ps1 -Refresh` before starting work.
 | Track | Current candidate | Evidence status | Next gate |
 |---|---|---|---|
 | H2-C retailer recovery | `e16f39ca...` | Kilo reports bounded PASS at `446a42a9...`; CTO acceptance pending | CTO review, then one Lubuntu authority run |
-| SKU catalog identity | `1bd71055...` | Fix line after Kilo found non-canonical UUID path behavior; independent re-review pending | Independent review of the exact fix lineage |
+| SKU catalog identity | `adfcfc82...` | Fix line plus router-oracle test correction; independent re-review pending | Independent review of the exact fix and test lineage |
 | PRICING-R0 | None | Frozen | Wait for separate H2-C and SKU merges |
 | Order-price / reorder | None | Not started | Wait for pricing contract |
 
@@ -40,6 +40,15 @@ downgrade evidence on the other.
 6. Prometheus has scrape configuration, but the merged baseline has no alert rules
    or Alertmanager target.
 
+## Contract navigation status
+
+- Canonical contract index: [`docs/contracts/README.md`](../contracts/README.md).
+- RBAC contract entry: [`docs/contracts/rbac_matrix.md`](../contracts/rbac_matrix.md).
+- `docs/RBAC_MATRIX_v0.2.0.md` is a retained superseded snapshot, not the
+  current authority and not approved for deletion.
+- A current-state or architecture summary never retires an omitted contract.
+  Authority changes require explicit predecessor/successor links.
+
 ## Updating this page
 
 Update `state.json` and this page only in a bounded current-truth task. Record:
@@ -49,5 +58,7 @@ Update `state.json` and this page only in a bounded current-truth task. Record:
 - whether a candidate is merged, merely reviewed, or only reported;
 - the exact next gate;
 - any superseded status without rewriting historical reports.
+- contract links affected by the status change, including superseded predecessors.
+- active candidate/review remote refs and their exact expected SHAs.
 
 Do not copy a SHA here solely because it is the newest remote commit.

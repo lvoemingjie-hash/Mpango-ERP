@@ -77,6 +77,7 @@ See:
 - [Data ownership map](docs/architecture/DATA-MAP.md)
 - [Core product flows](docs/architecture/FLOWS.md)
 - [Current product and work status](docs/current/STATE.md)
+- [Contract library and authority index](docs/contracts/README.md)
 
 ## First ten minutes for a new contributor
 
@@ -127,3 +128,6 @@ When documents disagree, use this order:
 
 Historical reports are append-only evidence, not a navigation system. Do not
 infer current status from the newest-looking SHA or from the number of branches.
+Likewise, a contract omitted from a newer summary is not retired. New navigation
+documents must link back to the relevant contract entries and explicitly mark
+any superseded predecessor.

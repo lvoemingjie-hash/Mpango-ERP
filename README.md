@@ -132,7 +132,9 @@ All API endpoints are protected by the `RequirePermission` RBAC middleware. Perm
 - **Assigned** to roles (`admin`, `sales`, `warehouse`, `finance`)
 - **Checked** per-request from JWT token claims
 
-> See [`docs/RBAC_MATRIX_v0.2.0.md`](docs/RBAC_MATRIX_v0.2.0.md) for the full permission matrix.
+> Use [`docs/contracts/rbac_matrix.md`](docs/contracts/rbac_matrix.md) for the
+> current RBAC contract. The versioned `docs/RBAC_MATRIX_v0.2.0.md` is retained
+> as a superseded historical snapshot.
 
 ---
 
@@ -148,6 +150,9 @@ All API endpoints are protected by the `RequirePermission` RBAC middleware. Perm
 ## 📜 Development Contracts
 
 Please follow the contracts in `docs/contracts/`:
+
+- **Contract library index** (`docs/contracts/README.md`): authority, lifecycle,
+  superseded documents, and executable-source pointers
 
 - **Boot Contract** (`docs/contracts/Boot contract.md`): Production-grade L0.5 constraints
 - **API Contract** (`docs/API_CONTRACT_v0.1.7.md`): REST conventions and response formats

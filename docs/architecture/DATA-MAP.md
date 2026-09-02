@@ -83,3 +83,17 @@ Alembic is the schema authority. The current baseline has one head:
 `037_payment_declarations_schema`. A future `038` must be an exact declared
 successor, pass all-tenant preflight, fail without partial mutation, and retain
 bootstrap parity before it can become current truth.
+
+## Contract anchors
+
+This map summarizes the merged baseline; it does not replace the underlying
+contracts. Use the [contract library index](../contracts/README.md), especially:
+
+- [database contract](../contracts/database_contract.md);
+- [multi-tenancy specification](../contracts/multi_tenancy_spec.md);
+- [domain workflow contract](../contracts/domain_workflows.md);
+- [RBAC matrix](../contracts/rbac_matrix.md);
+- [tenant onboarding/provisioning contract](../contracts/tenant_onboarding_provisioning_contract.md).
+
+If a contract and the merged schema/service behavior disagree, record contract
+drift and reconcile it explicitly; do not let this summary silently supersede it.

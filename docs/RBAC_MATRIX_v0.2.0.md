@@ -1,7 +1,15 @@
 # RBAC Permission Matrix (v0.2.0)
 
+> **Status:** `HISTORICAL_SUPERSEDED_SNAPSHOT`
+> This file records the 2026-02 implementation mapping and remains referenced
+> by historical ledgers. It is not the current RBAC authority and must not be
+> deleted as an unreferenced duplicate. Use
+> [`docs/contracts/rbac_matrix.md`](contracts/rbac_matrix.md) for the current
+> contract entry and `backend/core/permission_registry.py` for the executable
+> permission sets.
+
 **Last Updated:** 2026-02-18
-**Source of Truth:** `backend/scripts/onboard_tenant.py` (lines 167-194)
+**Historical Source Reference:** `backend/scripts/onboard_tenant.py` (lines 167-194 at the time)
 **Enforcement:** `backend/api/middleware/rbac.py` → `RequirePermission` class
 
 ---

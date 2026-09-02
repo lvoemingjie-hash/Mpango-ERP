@@ -177,6 +177,8 @@ Each step keeps its own claim ceiling.
 - Frontend route map: `frontend/src/router/AppRouter.tsx`
 - Shared frontend API boundary: `frontend/src/services/api.ts`
 - Deployment composition: `docker-compose.yml`, `nginx/gateway.conf`
+- Contract authority and lifecycle index: `docs/contracts/README.md`
+- RBAC contract entry: `docs/contracts/rbac_matrix.md`
 - Current state: `docs/current/STATE.md`
 - Historical decisions: `decision-register/`, `ai-ledger/`
 

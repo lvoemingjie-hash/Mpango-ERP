@@ -50,7 +50,8 @@ moved, deleted, pruned or rewritten in this task.
 
 - H2-C candidate `e16f39ca` and Kilo report `446a42a9` are unmerged; Kilo PASS
   is reported but remains subject to CTO acceptance and a later Lubuntu runtime gate.
-- SKU candidate `1bd71055` is an unmerged post-defect fix line awaiting
+- SKU candidate `adfcfc82` is the live unmerged fix/test tip. It linearly
+  succeeds `1bd71055` with a router-oracle test correction and still awaits
   independent review.
 - Migration `038`, the three-layer catalog, PRICING-R0 and order-price/reorder
   work are not part of the protected baseline.
@@ -83,3 +84,38 @@ stale-baseline behavior checks in this task's quality gate.
 This task does not authorize workspace cleanup, branch deletion, product work,
 runtime tests, merge, deployment or customer release. The next step is an
 independent docs/tooling review followed by a separate controlled docs merge.
+
+## R1 contract graph closure
+
+The first publication exposed a navigation defect: the new summary layer did
+not link the existing `docs/contracts/` library, so valid contracts could become
+invisible without being deleted. R1 closes that defect by:
+
+- adding `docs/contracts/README.md` as the authority/lifecycle index;
+- linking `START-HERE`, architecture overview, data map and current state back
+  to the contract library;
+- adding mandatory `DOCUMENTATION_LINKAGE_DELTA` evidence;
+- reconciling the canonical RBAC contract with the executable permission
+  registry at the frozen baseline;
+- classifying `docs/RBAC_MATRIX_v0.2.0.md` as a retained historical snapshot,
+  not deleting or moving it;
+- making the read-only project-context script require the contract index.
+- binding active candidates/reviews to both remote ref names and expected SHAs,
+  after fetch exposed that the SKU branch had advanced beyond the recorded tip.
+
+GitNexus does not index the Markdown contract or the PowerShell script as code
+symbols, so no synthetic impact rating was claimed. Exact Git scope, references,
+permission parity and link integrity are verified directly.
+
+### Documentation linkage delta
+
+- `DOCUMENTATION_FILES_ADDED_OR_CHANGED=12`;
+- `PREDECESSOR_DOCUMENTS_REVIEWED=docs/contracts/rbac_matrix.md,docs/RBAC_MATRIX_v0.2.0.md`;
+- `CONTRACT_INDEX_LINKS_ADDED_OR_CHANGED=README,START-HERE,OVERVIEW,DATA-MAP,STATE`;
+- `SUPERSEDED_DOCUMENTS_AND_REASON=docs/RBAC_MATRIX_v0.2.0.md:historical_permission_and_role_snapshot`;
+- `BROKEN_LINK_SCAN_RESULT=PASS`;
+- `UNLINKED_RELEVANT_CONTRACTS=0` for the architecture, data ownership, RBAC,
+  operations and governance topics changed in CT4/R1.
+
+Deletion or physical archival of the superseded RBAC snapshot remains outside
+scope because current and historical ledgers still reference its path.

@@ -103,6 +103,7 @@ $requiredDocs = @(
     'docs/current/STATE.md',
     'docs/current/state.json',
     'docs/architecture/OVERVIEW.md',
+    'docs/contracts/README.md',
     'docs/operations/RUNBOOK.md',
     'docs/governance/EVIDENCE.md',
     'docs/navigation/ACTIVE-WORK.md',
@@ -114,6 +115,28 @@ $missingDocs = @($requiredDocs | Where-Object {
 
 $recordedBaseline = $state.current_product_baseline.base_sha
 $baselineMatches = $null -ne $protectedTip -and $recordedBaseline -eq $protectedTip
+
+$trackRefChecks = @()
+foreach ($track in $state.active_tracks) {
+    foreach ($kind in @('candidate', 'review')) {
+        $binding = $track.PSObject.Properties[$kind].Value
+        if ($null -eq $binding) { continue }
+
+        $resolved = Invoke-GitAt -Repository $repoRoot -GitArgs @(
+            'rev-parse', $binding.remote_ref
+        ) -AllowFailure
+        $actual = if ($resolved.ExitCode -eq 0) { Get-FirstLine $resolved } else { $null }
+        $trackRefChecks += [pscustomobject]@{
+            track_id = $track.id
+            kind = $kind
+            remote_ref = $binding.remote_ref
+            expected_sha = $binding.evidence_sha
+            actual_sha = $actual
+            match = $null -ne $actual -and $actual -eq $binding.evidence_sha
+        }
+    }
+}
+$activeTrackRefsMatch = @($trackRefChecks | Where-Object { -not $_.match }).Count -eq 0
 
 $result = [ordered]@{
     schema_version = $state.schema_version
@@ -130,6 +153,8 @@ $result = [ordered]@{
     alembic_head = $state.current_product_baseline.alembic_head
     delivery_status = $state.current_product_baseline.delivery_status
     active_tracks = @($state.active_tracks)
+    active_track_ref_checks = $trackRefChecks
+    active_track_refs_match = $activeTrackRefsMatch
     worktree_count = $worktrees.Count
     worktree_categories = $worktreeGroups
     remote_ref_count = $remoteRefCount
@@ -166,7 +191,11 @@ foreach ($track in $state.active_tracks) {
     } else {
         $track.candidate.evidence_sha
     }
-    Write-Output "    $($track.id): $($track.status); candidate=$candidate; next=$($track.next_gate)"
+    $candidateCheck = @($trackRefChecks | Where-Object {
+        $_.track_id -eq $track.id -and $_.kind -eq 'candidate'
+    })
+    $refMatch = if ($candidateCheck.Count -eq 0) { '-' } else { $candidateCheck[0].match }
+    Write-Output "    $($track.id): $($track.status); candidate=$candidate; ref_match=$refMatch; next=$($track.next_gate)"
 }
 
 if ($missingDocs.Count -gt 0) {
@@ -174,6 +203,9 @@ if ($missingDocs.Count -gt 0) {
 }
 if (-not $baselineMatches) {
     Write-Warning 'Recorded current truth is stale relative to the local origin ref. STOP and reconcile it.'
+}
+if (-not $activeTrackRefsMatch) {
+    Write-Warning 'One or more active-track refs drifted from recorded evidence SHAs. STOP and reconcile current truth.'
 }
 
 if ($IncludeWorktrees) {

@@ -1,6 +1,6 @@
 # Active Work Index
 
-**Snapshot:** 2026-09-02 09:50 +08:00
+**Snapshot:** 2026-09-02 13:03 +08:00
 **Live product branch:** `origin/product-dev-recovered`
 **Recorded baseline:** `24a28d76d6d9483d8101f8e0f537c148dc262859`
 
@@ -14,7 +14,7 @@ refs with `scripts/project-context.ps1 -Refresh` before acting.
 | `CURRENT_PRODUCT_BASELINE` | `24a28d76...` | Merged protected baseline | Remains frozen while candidates are reviewed |
 | `ACTIVE_H2C_CANDIDATE` | `e16f39ca...` | Unmerged retailer-recovery/browser-authority candidate | CTO review of Kilo report, then Lubuntu one-shot authority |
 | `LATEST_H2C_KILO_REPORT` | `446a42a9...` | Kilo-reported bounded PASS; not a browser PASS | CTO acceptance pending |
-| `ACTIVE_SKU_CANDIDATE` | `1bd71055...` | UUID-path closure after an independent defect finding | Independent review pending |
+| `ACTIVE_SKU_CANDIDATE` | `adfcfc82...` | UUID-path closure plus router-oracle test correction after an independent defect finding | Independent review pending |
 | `PRICING_R0` | None | Frozen | Wait for separate H2-C and SKU merges |
 | `ORDER_PRICE_REORDER` | None | Not started | Wait for pricing contract |
 

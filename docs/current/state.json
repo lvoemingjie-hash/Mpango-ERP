@@ -1,6 +1,6 @@
 {
-  "schema_version": 2,
-  "snapshot_at": "2026-09-02T09:50:00+08:00",
+  "schema_version": 3,
+  "snapshot_at": "2026-09-02T13:03:37+08:00",
   "canonical_product_branch": "origin/product-dev-recovered",
   "current_product_baseline": {
     "base_sha": "24a28d76d6d9483d8101f8e0f537c148dc262859",
@@ -11,9 +11,11 @@
     {
       "id": "H2_C_RETAILER_RECOVERY",
       "candidate": {
+        "remote_ref": "refs/remotes/origin/zcode/dc12r1-mvp-l1-j1-h2-c-i2-e2-b1-r6-r4-real-playwright-child-preflight-authority-2026-09-01",
         "evidence_sha": "e16f39cab7613a32bced21d1f8a5c6be6a54fe18"
       },
       "review": {
+        "remote_ref": "refs/remotes/origin/reports/dc12r1-mvp-l1-j1-h2-c-i2-e2-b1-r6-r4-v1-r1-kilo-bounded-review-2026-09-02",
         "evidence_sha": "446a42a988aeae645c93af5310f41eb6cbc82284"
       },
       "status": "KILO_REPORTED_PASS_CTO_ACCEPTANCE_PENDING",
@@ -23,12 +25,13 @@
     {
       "id": "SKU_CATALOG_IDENTITY",
       "candidate": {
-        "evidence_sha": "1bd710550747327021674a8bc295a6a27d399787"
+        "remote_ref": "refs/remotes/origin/zcode/dc12r1-mvp-l1-sku-r0-m1-r1-r2-f1-uuid-path-closure-2026-09-02",
+        "evidence_sha": "adfcfc822b877afcb105fd9e0972bb05858b7653"
       },
       "review": null,
-      "status": "POST_KILO_DEFECT_FIX_INDEPENDENT_REVIEW_PENDING",
+      "status": "POST_KILO_DEFECT_FIX_AND_ROUTER_ORACLE_CLOSURE_REVIEW_PENDING",
       "merged": false,
-      "next_gate": "INDEPENDENT_REVIEW_OF_UUID_PATH_CLOSURE"
+      "next_gate": "INDEPENDENT_REVIEW_OF_EXACT_FIX_AND_TEST_LINEAGE"
     },
     {
       "id": "PRICING_R0",
@@ -54,7 +57,7 @@
     "mpango_root_legacy_worktrees": 433,
     "temp_legacy_worktrees": 5,
     "other_worktrees": 2,
-    "remote_refs": 623,
+    "remote_refs": 624,
     "local_branches": 642,
     "cleanup_status": "INVENTORIED_NOT_MOVED_OR_DELETED"
   }

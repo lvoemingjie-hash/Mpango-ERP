@@ -108,6 +108,32 @@ Recommended matrix:
 | Code path or contract | Test node | New/changed/existing | Authenticity | Positive proof | Negative/falsification | Status |
 |---|---|---|---|---|---|---|
 
+## Documentation linkage delta
+
+Every task that adds or changes a navigation, architecture, state, contract or
+runbook document includes:
+
+```text
+DOCUMENTATION_FILES_ADDED_OR_CHANGED
+PREDECESSOR_DOCUMENTS_REVIEWED
+CONTRACT_INDEX_LINKS_ADDED_OR_CHANGED
+SUPERSEDED_DOCUMENTS_AND_REASON
+BROKEN_LINK_SCAN_RESULT
+UNLINKED_RELEVANT_CONTRACTS
+```
+
+Rules:
+
+1. `START-HERE`, overview, data-map and state pages summarize contracts; they do
+   not replace contracts by omission.
+2. A new canonical document must link to its predecessor and update the contract
+   index plus every higher-level navigation page that names the topic.
+3. Superseded documents remain in place until a separate reference-safe archive
+   task proves no required links, ledgers or evidence depend on their path.
+4. Deletion is never part of an incidental navigation cleanup.
+5. `UNLINKED_RELEVANT_CONTRACTS` must be `0` for a completed documentation claim,
+   or each remaining item must be an explicit finding with an owner and next gate.
+
 ## Evidence tiers inside a report
 
 Use explicit labels:

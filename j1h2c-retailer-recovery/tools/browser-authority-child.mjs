@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Fixed browser-authority child process (B1-R6-R4) — the REAL Playwright
+ * Fixed browser-authority child process (B1-R6-R5) — the REAL Playwright
  * child of the direct authority chain.
  *
  * Invocation discipline:
@@ -12,6 +12,18 @@
  *     (../node_modules/@playwright/test/cli.js, package version pinned to
  *     the frozen lockfile) — never from PATH, a shell, `pnpm exec`, or a
  *     caller-provided path;
+ *   - B1-R6-R5 EXECUTION ROOT: the canonical HARNESS ROOT — the directory
+ *     that carries the frozen playwright.config.ts, the frozen tests and
+ *     the artifacts — is derived from THIS module's own location (its
+ *     parent directory), never from the child's cwd, env, or a caller.
+ *     Playwright is launched with the FIXED `--config
+ *     <HARNESS_ROOT>/playwright.config.ts` and cwd = HARNESS_ROOT, so
+ *     starting from the repository root still selects the exact frozen
+ *     config: cross-tree specs and default-config discovery are impossible
+ *     by construction. The child's own cwd stays bound to the canonical
+ *     repository root (cwd_sha + `git rev-parse HEAD` candidate identity);
+ *     the invocation marker, the reconciliation/run artifacts and the
+ *     artifact scanner are all resolved relative to the SAME HARNESS_ROOT;
  *   - Playwright and the artifact scanner run as argv-array subprocesses
  *     with shell:false;
  *   - stdin carries the exact input schema; additional or missing fields
@@ -73,6 +85,11 @@ const NULL_CANDIDATE = '0'.repeat(40);
 
 const TOOL_DIR = dirname(fileURLToPath(import.meta.url));
 const SELF_PATH = realpathSync(fileURLToPath(import.meta.url));
+// B1-R6-R5: the canonical HARNESS ROOT, derived from THIS module's own
+// location. The frozen playwright.config.ts, the frozen tests and the
+// artifacts live here — never at the caller's cwd.
+const HARNESS_ROOT = realpathSync(join(TOOL_DIR, '..'));
+const PLAYWRIGHT_CONFIG_PATH = join(HARNESS_ROOT, 'playwright.config.ts');
 
 function sha256Hex(data) {
   return createHash('sha256').update(data, 'utf8').digest('hex');
@@ -335,6 +352,18 @@ try {
   emit(5, 'playwright_cli_unresolvable', false, 'playwright_cli_unresolvable', RESULT_PLAYWRIGHT_NEVER, liveHead);
 }
 
+// B1-R6-R5: the frozen config must exist at the HARNESS ROOT derived from
+// this module's own location. A missing config, or one that realpath-
+// resolves outside the harness root, refuses the launch BEFORE any spawn.
+let configPath;
+try {
+  configPath = realpathSync(PLAYWRIGHT_CONFIG_PATH);
+  if (!existsSync(configPath)) throw new Error('missing');
+  if (dirname(configPath).toLowerCase() !== HARNESS_ROOT.toLowerCase()) throw new Error('outside_harness_root');
+} catch {
+  emit(5, 'playwright_config_unresolvable', false, 'playwright_config_unresolvable', RESULT_PLAYWRIGHT_NEVER, liveHead);
+}
+
 const valuesByEnvName = {};
 for (const [key, field] of Object.entries(profileFields)) {
   valuesByEnvName[field.env] = valuesByKey[key];
@@ -345,7 +374,9 @@ const playwrightEnv = buildPlaywrightEnv(valuesByEnvName, valuesByEnvName);
 // 4. Atomic once-only invocation marker — BEFORE the real process starts.
 // ---------------------------------------------------------------------------
 
-const ARTIFACTS_DIR = join(cwdReal, 'artifacts');
+// B1-R6-R5: artifacts are resolved relative to the SAME HARNESS_ROOT that
+// owns the frozen config and tests — never relative to the child's cwd.
+const ARTIFACTS_DIR = join(HARNESS_ROOT, 'artifacts');
 const MARKER_PATH = join(ARTIFACTS_DIR, 'authority-invocation.json');
 const runId = sha256Hex(`${process.pid}:${Date.now()}:${Math.random()}`).slice(0, 32);
 const startedAtMs = Date.now();
@@ -386,10 +417,14 @@ try {
 
 // ---------------------------------------------------------------------------
 // 5. REAL Playwright process — argv array, shell:false, awaited exit.
+//    B1-R6-R5: fixed --config from the HARNESS ROOT and cwd = HARNESS ROOT,
+//    so launching from the repository root still selects the exact frozen
+//    config; the child's own cwd (repository root) stays the candidate/
+//    cwd_sha binding surface only.
 // ---------------------------------------------------------------------------
 
-const playwrightChild = spawn(process.execPath, [cliPath, 'test'], {
-  cwd: cwdReal,
+const playwrightChild = spawn(process.execPath, [cliPath, 'test', '--config', configPath], {
+  cwd: HARNESS_ROOT,
   env: playwrightEnv,
   stdio: ['ignore', 'ignore', 'ignore'],
   shell: false,
@@ -598,7 +633,9 @@ const scanner = spawnSync(
     '--secrets-from-env',
   ],
   {
-    cwd: cwdReal,
+    // B1-R6-R5: the scanner resolves its artifacts relative to the SAME
+    // HARNESS ROOT as the Playwright run above.
+    cwd: HARNESS_ROOT,
     env: playwrightEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: SCANNER_BUDGET_MS,

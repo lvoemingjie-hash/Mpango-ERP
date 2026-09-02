@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Runner-owned authority preflight helper (B1-R6-R4).
+ * Runner-owned authority preflight helper (B1-R6-R5).
  *
  * Spawned ONLY by tools/browser-authority-runner.mjs as a fresh node child
  * at the canonical module-relative path (fixed process.execPath, argv
@@ -8,6 +8,16 @@
  * intentionally self-contained — it imports nothing from the runner — so a
  * pristine process performs the checks; launcher-process mutations cannot
  * touch it, and the runner re-validates the exact output payload shape.
+ *
+ * B1-R6-R5 LIFECYCLE TRUTH: the pre-run proof is
+ * `owner_identity_fresh_unregistered` — the J1H2C retailer identity MUST
+ * NOT be able to log in before the run (login refused = fresh /
+ * unregistered). This is lifecycle-compatible with the harness beforeAll,
+ * which stays the SOLE register -> setup-credential -> login lifecycle: a
+ * pre-run login that SUCCEEDED would prove the identity already
+ * established, and the harness registration would then conflict (409). The
+ * former pre-run established-login requirement
+ * contradicted the harness precondition and is removed.
  *
  * Inputs (exact schema, private stdin):
  *   { schema, timeout_ms, values }                              (required)
@@ -18,9 +28,10 @@
  * `host_preflight` belongs to the task-private execution contract that the
  * OUTER authority preflight (future Lubuntu gate) owns: PG/Redis/Alembic
  * reachability and authority port ownership are host-level checks this
- * helper never executes itself. When an outer layer supplies results, they
- * are validated (fixed ids, exact shape) and folded into the verdict; when
- * absent, the report is transparent (host_checks_present = 0).
+ * helper never executes itself. When an outer layer supplies results
+ * (e.g. the version-controlled tools/host-preflight.mjs result block),
+ * they are validated (fixed ids, exact shape) and folded into the verdict;
+ * when absent, the report is transparent (host_checks_present = 0).
  *
  * Output (exact schema, single stdout line, labels/booleans/categories and
  * counts ONLY — never a URL, email, password, token, or code value):
@@ -57,7 +68,7 @@ const CORE_CHECK_IDS = [
   'identities_distinct_after_normalization',
   'invitation_pairs_present_and_distinct',
   'forged_token_not_reused',
-  'established_login_succeeds',
+  'owner_identity_fresh_unregistered',
   'unverified_login_refused',
 ];
 const HOST_CHECK_IDS = [
@@ -305,7 +316,14 @@ function checkForgedToken(values) {
   return 'check_green';
 }
 
-async function checkEstablishedLogin(values, deadline) {
+/**
+ * B1-R6-R5 lifecycle-compatible pre-run proof: the retailer identity must
+ * be FRESH / not established BEFORE the harness beforeAll registers it.
+ * A refused login (any non-200) proves freshness; a 200 login proves the
+ * identity is already established and the harness registration lifecycle
+ * could never run — RED (`owner_identity_already_established`).
+ */
+async function checkOwnerIdentityFresh(values, deadline) {
   const remaining = deadline - Date.now();
   if (remaining <= 0) return 'check_timeout';
   const status = await requestJsonStatus(
@@ -317,7 +335,7 @@ async function checkEstablishedLogin(values, deadline) {
     },
     remaining,
   );
-  if (status !== 200) return 'established_login_refused';
+  if (status === 200) return 'owner_identity_already_established';
   return 'check_green';
 }
 
@@ -436,7 +454,7 @@ checks.push(
 );
 checks.push(await runCheck('forged_token_not_reused', async () => checkForgedToken(values)));
 checks.push(
-  await runCheck('established_login_succeeds', () => checkEstablishedLogin(values, deadline)),
+  await runCheck('owner_identity_fresh_unregistered', () => checkOwnerIdentityFresh(values, deadline)),
 );
 checks.push(
   await runCheck('unverified_login_refused', () => checkUnverifiedLogin(values, deadline)),

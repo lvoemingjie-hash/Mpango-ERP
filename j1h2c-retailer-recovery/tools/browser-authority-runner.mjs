@@ -417,10 +417,14 @@ export function parseAuthorityChildStdout(stdout, { pid, exitCode }) {
 }
 
 /**
- * The FIXED preflight check-id taxonomy (labels only, never values). The
- * host-level ids belong to the task-private execution contract that the
- * OUTER authority preflight (future Lubuntu gate) owns; the helper only
- * validates their shape when an outer layer supplies them.
+ * The FIXED preflight check-id taxonomy (labels only, never values).
+ * B1-R6-R5: `owner_identity_fresh_unregistered` replaces the contradictory
+ * `established_login_succeeds` — the retailer identity must be FRESH (login
+ * refused) before the harness beforeAll register -> setup -> login
+ * lifecycle, so the pre-run proof and the harness precondition can both
+ * hold truthfully. The host-level ids belong to the task-private execution
+ * contract that the OUTER authority preflight (future Lubuntu gate) owns;
+ * the helper only validates their shape when an outer layer supplies them.
  */
 export const PREFLIGHT_CHECK_IDS = [
   'frontend_origin_page',
@@ -430,7 +434,7 @@ export const PREFLIGHT_CHECK_IDS = [
   'identities_distinct_after_normalization',
   'invitation_pairs_present_and_distinct',
   'forged_token_not_reused',
-  'established_login_succeeds',
+  'owner_identity_fresh_unregistered',
   'unverified_login_refused',
 ];
 

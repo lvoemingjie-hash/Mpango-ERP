@@ -52,6 +52,18 @@
  *      itself; the runner owns the entire preflight (no caller checks),
  *      spawns the committed-byte-bound helper process, refuses any
  *      post-binding byte drift, and the checker proves R30-R40.
+ *  [16] B1-R6-R5 execution-root + lifecycle + host-preflight truth: the
+ *      child derives the canonical HARNESS ROOT from its own location,
+ *      launches Playwright with the FIXED --config at cwd=HARNESS_ROOT
+ *      (never the caller's cwd), resolves artifacts and the scanner from
+ *      the same root, and refuses a missing frozen config; the preflight
+ *      helper proves owner_identity_fresh_unregistered (the lifecycle-
+ *      compatible pre-run proof) with no established-login requirement;
+ *      the version-controlled host-preflight module carries the frozen
+ *      host taxonomy, semantic PostgreSQL boolean parsing, parameter-safe
+ *      invitation probes (no shell, no value in SQL text), PID-ownership
+ *      proof beyond the mutable PID file, and fixed categories only; the
+ *      checker proves R41-R43.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -727,7 +739,6 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
     ['frontend_page_marker_missing', 'frontend page criterion'],
     ['maildir_not_empty', 'maildir empty criterion'],
     ['forged_token_reuse', 'forged-token uniqueness criterion'],
-    ['established_login_refused', 'established login criterion'],
     ['unverified_login_accepted', 'unverified refusal criterion'],
   ]) {
     if (!helperText.includes(needle)) fail(15, `preflight helper missing ${label}`);
@@ -748,8 +759,86 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   }
 }
 
+// [16] B1-R6-R5 execution root + lifecycle proof + host preflight -----------
+{
+  const childText = readFileSync(join(ROOT, 'tools', 'browser-authority-child.mjs'), 'utf8');
+  for (const [needle, label] of [
+    ["realpathSync(join(TOOL_DIR, '..'))", 'HARNESS_ROOT derived from the module location'],
+    ['PLAYWRIGHT_CONFIG_PATH = join(HARNESS_ROOT', 'frozen config anchored at the harness root'],
+    ['playwright_config_unresolvable', 'missing frozen config refusal'],
+    ["'test', '--config', configPath", 'fixed --config argv'],
+    ['cwd: HARNESS_ROOT', 'Playwright cwd at the harness root'],
+    ["join(HARNESS_ROOT, 'artifacts')", 'artifacts resolved from the harness root'],
+  ]) {
+    if (!childText.includes(needle)) fail(16, `child missing ${label}`);
+  }
+  if (/cwd: cwdReal/.test(childText)) {
+    fail(16, 'child still launches Playwright at the caller-bound cwd');
+  }
+  if (!/scanner[\s\S]{0,600}cwd: HARNESS_ROOT/.test(childText)) {
+    fail(16, 'artifact scanner not resolved from the harness root');
+  }
+
+  const helperText = readFileSync(join(ROOT, 'tools', 'browser-authority-preflight-helper.mjs'), 'utf8');
+  for (const [needle, label] of [
+    ['owner_identity_fresh_unregistered', 'lifecycle-compatible pre-run proof id'],
+    ['owner_identity_already_established', 'established-identity RED category'],
+    ['checkOwnerIdentityFresh', 'fresh-identity proof implementation'],
+  ]) {
+    if (!helperText.includes(needle)) fail(16, `preflight helper missing ${label}`);
+  }
+  if (helperText.includes('established_login_succeeds') || helperText.includes('established_login_refused')) {
+    fail(16, 'helper still carries the contradictory established-login proof');
+  }
+
+  const runnerText = readFileSync(join(ROOT, 'tools', 'browser-authority-runner.mjs'), 'utf8');
+  if (!runnerText.includes("'owner_identity_fresh_unregistered'")) {
+    fail(16, 'runner taxonomy missing the lifecycle-compatible id');
+  }
+  if (runnerText.includes("'established_login_succeeds'")) {
+    fail(16, 'runner taxonomy still carries the contradictory id');
+  }
+
+  const hostText = readFileSync(join(ROOT, 'tools', 'host-preflight.mjs'), 'utf8');
+  for (const [needle, label] of [
+    ["'pg_reachable',", 'host taxonomy pg id'],
+    ["'redis_reachable',", 'host taxonomy redis id'],
+    ["'alembic_head_current',", 'host taxonomy alembic id'],
+    ["'authority_ports_owned',", 'host taxonomy ports id'],
+    ['parsePgBoolean', 'semantic PostgreSQL boolean normalization'],
+    ['buildInvitationProbe', 'parameter-safe invitation probe builder'],
+    ["buildInvitationProbe(invitationCode", 'probe values strictly out of band'],
+    [":'invitation_code'", 'named SQL parameter binding'],
+    ['invitationProbeIsParameterSafe', 'SQL-text value-smuggling guard'],
+    ['checkPidOwnership', 'PID-ownership cross-proof'],
+    ['authority_ports_pid_truncated', 'truncated PID evidence RED'],
+    ['authority_ports_pid_stale', 'stale PID evidence RED'],
+    ['authority_ports_owner_mismatch', 'ownership-token mismatch RED'],
+    ['host_check_missing', 'removed host check RED'],
+    ['outer_authority_preflight', 'frozen host block hand-off marker'],
+    ['shell: false', 'no-shell subprocess discipline'],
+    ['host-preflight-result/1', 'exact host result schema'],
+  ]) {
+    if (!hostText.includes(needle)) fail(16, `host preflight module missing ${label}`);
+  }
+  if (/interpolate|exec\(|shell\s*:\s*true/.test(hostText)) {
+    fail(16, 'host preflight module contains shell-oriented execution');
+  }
+
+  const checkerText = readFileSync(join(ROOT, 'tools', 'check-browser-authority-contracts.mjs'), 'utf8');
+  for (const marker of ['R41', 'R42', 'R43']) {
+    if (!new RegExp(`// ${marker} [—-]`).test(checkerText)) {
+      fail(16, `checker missing ${marker} scenario`);
+    }
+  }
+
+  if (failures === 0) {
+    ok(16, 'execution root + lifecycle proof + host preflight anchored (HARNESS_ROOT + fixed --config + harness-root cwd/artifacts/scanner, owner_identity_fresh_unregistered, version-controlled host-preflight module with semantic booleans, parameter-safe invitations and PID ownership, R41-R43)');
+  }
+}
+
 if (failures > 0) {
   console.error(`STATIC GATE FAILED (${failures} failure(s))`);
   process.exit(1);
 }
-console.log('STATIC GATE PASSED (15/15 steps).');
+console.log('STATIC GATE PASSED (16/16 steps).');

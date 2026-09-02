@@ -1,0 +1,11 @@
+id,area,severity,status,evidence
+F1,authority.host_preflight.pg_reachable,RED,recorded,"ledger seq1 host_preflight checks=4 red=2; seq3 void preflight_red:pg_role_unresolvable started=0"
+F2,authority.host_preflight.second_red,RED,recorded_not_categorized,"4 host checks 2 RED; second fixed category not persisted (value-firewalled failure-path evidence)"
+F3,authority.preflight,VOID,recorded,"preflight ok=false red_checks=2 host_checks_present=4; plane STOPPED before authorize"
+F4,authority.playwright,NOT_RUN,by_fail_stop_design,"PLAYWRIGHT_INVOCATION_COUNT=0; REQUIRED_PASS not met"
+F5,reconciliation,NOT_REACHED,by_fail_stop_design,"reconciliation artifacts are produced by the browser run only"
+F6,artifact_scanner,NOT_REACHED,by_fail_stop_design,"scanner executes inside the authority child only"
+F7,backend_full_suite,REUSED,by_byte_identity,"backend/frontend/migrations/tests byte-identical vs 86f41b93a3aa0e3c55724b75fc2e2aa4c6dee35b; rerun prohibited and not performed"
+F8,candidate_tree,INTACT,verified,"git status --porcelain empty and git diff HEAD empty across the whole task lifetime; untracked residue only under gitignored artifacts/ and node_modules/"
+F9,stale_artifacts_residue,NOTE,preexisting,"j1h2c-retailer-recovery/artifacts/results.json+junit mtime 06:46:10 predates the 06:52-06:53 authority invocation; gitignored; untouched by the run"
+F10,cors_preflight_probe,GREEN,recorded,"ledger seq0 cors_preflight ok=true status_2xx=true allow_origin_exact=true"

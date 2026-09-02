@@ -1,0 +1,10 @@
+{
+  "schema_valid": true,
+  "profile_contract_envs_1to1": true,
+  "owner_field_sensitive": true,
+  "values_cover_all_15": true,
+  "field_count": 15,
+  "loopback_hosts_consistent": true,
+  "localhost_mixed_use": false,
+  "reconciled": true
+}

@@ -1,0 +1,9 @@
+AUTHORITY INVOCATION FACTS (sanitized; 2026-09-03T06:58:08+08:00 capture)
+- entrypoint invoked exactly once (direct process: node tools/browser-authority-entrypoint.mjs --contract <task-private> --ledger <task-private>), cwd = j1h2c-retailer-recovery at candidate 6e96434ff11375d661417b7340dcb37508531f1d
+- entrypoint stderr category: {"authority":false,"category":"preflight_red"} (rc=1)
+- ledger chain (seq: kind): 0 cors_preflight(ok=true, status_2xx=true, allow_origin_exact=true); 1 host_preflight(ok=false, checks=4, red=2); 2 preflight(ok=false, red_checks=2, host_checks_present=4); 3 void(category=preflight_red:pg_role_unresolvable, started=0)
+- PREFLIGHT_INVOCATION_COUNT=1 (runner-owned, once-only)
+- host gate: committed tools/host-preflight.mjs invoked by runner; configured=true; exactly 4 checks executed; 2 RED; first red category pg_role_unresolvable; the second red category is not persisted (value-firewalled evidence records counts only)
+- PLAYWRIGHT_INVOCATION_COUNT=0 (STOP landed before authorize; no child spawn; no browser launch)
+- authority artifacts dir at run time contained only pre-run stale residue (results.json, results-junit.xml from earlier list-mode/checker tooling, mtime 06:46:10 predating the 06:52-06:53 invocation; gitignored; untouched by the authority run)
+- no candidate tracked byte changed at any point (git status --porcelain empty; git diff HEAD empty)

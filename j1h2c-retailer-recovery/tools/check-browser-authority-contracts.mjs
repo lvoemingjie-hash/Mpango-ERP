@@ -2654,6 +2654,10 @@ function rawPostStatus(port, path, payload) {
   await new Promise((resolve) => lifecycleServer.listen(0, '127.0.0.1', resolve));
   const lifecyclePort = lifecycleServer.address().port;
   const snapshotArtifact = join(process.cwd(), 'artifacts', 'maildir-snapshot.json');
+  // runPreconditions reads the forged token from the RUNTIME environment by
+  // contract (src/env.ts); scope it to this scenario and restore afterwards.
+  const savedForgedEnv = process.env.J1H2C_FORGED_RESET_TOKEN;
+  process.env.J1H2C_FORGED_RESET_TOKEN = FIXTURE_ENV.J1H2C_FORGED_RESET_TOKEN;
   try {
     const playwrightTestEntry = createRequire(join(ROOT, 'package.json')).resolve('@playwright/test');
     const assertionsPath = loadHarnessSourceModule('src/assertions.ts', []);
@@ -2700,6 +2704,8 @@ function rawPostStatus(port, path, payload) {
   } finally {
     lifecycleServer.close();
     rmSync(snapshotArtifact, { force: true });
+    if (savedForgedEnv === undefined) delete process.env.J1H2C_FORGED_RESET_TOKEN;
+    else process.env.J1H2C_FORGED_RESET_TOKEN = savedForgedEnv;
   }
   await greenPath('r42-restore');
 }

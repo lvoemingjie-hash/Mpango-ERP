@@ -33,6 +33,12 @@ R5-R1 (M44-M46) covers the command-block-bound runbook oracle:
   M45 downgrade the marked command's HTTPS origin to http
   M46 move a required anchor outside the marked block so global prose
       presence cannot hide its absence inside the executable block
+
+R5-R2 (M47-M48) covers the exact-token runbook oracle: the static validator
+must match fixed KEY=value assignment tokens on pure assignment lines, so
+  M47 commenting out an in-block required line (literal text retained)
+  M48 renaming a required variable behind a prefix (literal suffix retained)
+must both turn the validator RED.
 """
 from __future__ import annotations
 
@@ -342,6 +348,23 @@ def main() -> int:
             (README,
              "SMTP_HOST=127.0.0.1 SMTP_PORT=<smtp-port> \\",
              "SMTP_PORT=<smtp-port> \\"),
+        ]),
+        # ---- R5-R2: exact-token runbook oracle -------------------------------
+        ("M47-marked-command-smtp-host-line-commented", [
+            # The complete literal assignment text is retained inside a shell
+            # comment; raw substring matching would stay GREEN, the exact
+            # assignment-token oracle must be RED.
+            (README,
+             "SMTP_HOST=127.0.0.1 SMTP_PORT=<smtp-port> \\",
+             "# SMTP_HOST=127.0.0.1 SMTP_PORT=<smtp-port> \\"),
+        ]),
+        ("M48-marked-command-required-var-prefixed", [
+            # The required literal suffix PUBLIC_FRONTEND_URL=https://... is
+            # still present, but behind a non-contract variable name; exact
+            # variable-name boundaries must make this RED.
+            (README,
+             "PUBLIC_FRONTEND_URL=https://skum1browser.email-links.invalid \\",
+             "DISABLED_PUBLIC_FRONTEND_URL=https://skum1browser.email-links.invalid \\"),
         ]),
     ]
 

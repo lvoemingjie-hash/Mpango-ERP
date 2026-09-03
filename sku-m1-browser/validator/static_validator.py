@@ -187,13 +187,17 @@ AUTHORITY_FORBIDDEN = {
     "playwright.config.ts": ["diagnostic-reporter"],
 }
 
-# R5: runbook run contract, bound to the uniquely marked backend command
-# block. Anchors come from the source configuration names
-# (backend/core/config.py, backend/services/email_delivery.py) and the L4
-# attempt-2 proven loopback-only production SMTP mode. Only the bytes between
-# the two single-occurrence markers are evaluated; prose elsewhere in the
-# README can never satisfy the executable contract. The forbidden token is
-# the L4 attempt-1 VOID combination: test mode never opens an SMTP connection,
+# R5-R2: runbook run contract, bound to the uniquely marked backend command
+# block. The block must reproduce the FROZEN command lines exactly and in
+# order (fixed literal grammar: shell comments, prefixed or drifted lines,
+# extra, missing or reordered lines all fail), and every required
+# environment assignment must appear as an EXACT KEY=value token on a pure
+# assignment line (a line whose first token is itself an assignment). Shell
+# comments (full-line or inline), prefixed variable names (XSMTP_HOST=,
+# DISABLED_PUBLIC_FRONTEND_URL=) and command arguments (echo SMTP_HOST=...)
+# can therefore never satisfy the contract. Prose outside the two
+# single-occurrence markers is never evaluated. The forbidden token is the
+# L4 attempt-1 VOID combination: test mode never opens an SMTP connection,
 # so it cannot feed the maildir harness
 # (VOID_ENVIRONMENT_PRECHECK__TEST_MODE_CANNOT_FEED_MAILDIR_SMTP_HARNESS).
 RUNBOOK_FILE = "README.md"
@@ -204,14 +208,29 @@ RUNBOOK_REQUIRED = [
     "EMAIL_PROVIDER=smtp",
     "EMAIL_DELIVERY_MODE=smtp",
     "SMTP_HOST=127.0.0.1",
-    "SMTP_USER=",
-    "SMTP_PASSWORD=",
+    "SMTP_USER=<sink-accepted-username>",
+    "SMTP_PASSWORD=<sink-accepted-password>",
     "SMTP_USE_TLS=0",
     "SMTP_STARTTLS=0",
-    "EMAIL_FROM=",
-    "PUBLIC_FRONTEND_URL=https://",
+    "EMAIL_FROM='b1@skum1browser.invalid'",
+    "PUBLIC_FRONTEND_URL=https://skum1browser.email-links.invalid",
 ]
 RUNBOOK_FORBIDDEN = ["MPANGO_ENV=test"]
+RUNBOOK_BLOCK_LINES = [
+    "cd backend",
+    "DATABASE_URL='postgresql://<user>:<password>@127.0.0.1:<pg-port>/<db>' \\",
+    "REDIS_URL='redis://127.0.0.1:<redis-port>/15' \\",
+    "SECRET_KEY='<freshly generated task-scoped key>' \\",
+    "MPANGO_ENV=production \\",
+    "EMAIL_PROVIDER=smtp EMAIL_DELIVERY_MODE=smtp \\",
+    "SMTP_HOST=127.0.0.1 SMTP_PORT=<smtp-port> \\",
+    "SMTP_USER=<sink-accepted-username> SMTP_PASSWORD=<sink-accepted-password> \\",
+    "SMTP_USE_TLS=0 SMTP_STARTTLS=0 \\",
+    "EMAIL_FROM='b1@skum1browser.invalid' \\",
+    "PUBLIC_FRONTEND_URL=https://skum1browser.email-links.invalid \\",
+    "<venv>/bin/python -m uvicorn api.app:app --host 127.0.0.1 --port <backend-port>",
+]
+RUNBOOK_ASSIGNMENT_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=\S+")
 
 
 def read(rel: str) -> str:
@@ -476,12 +495,16 @@ def check_no_h2c_imports(findings: list[str]) -> None:
 
 
 def check_runbook(findings: list[str]) -> None:
-    """R5-R1 run contract, evaluated ONLY inside the uniquely marked backend
-    command block: exactly one start marker, one end marker, correct order,
-    non-empty block, every required production/SMTP/TLS/loopback/sender/
-    HTTPS-origin anchor present inside the block, and the VOID test-mode
-    combination rejected inside the block. Anchors present only in prose
-    outside the block do NOT satisfy the contract."""
+    """R5-R2 run contract, evaluated ONLY inside the uniquely marked backend
+    command block. The block must equal the frozen command-line grammar, and
+    every required assignment must be an exact KEY=value token collected from
+    a pure assignment line (a line whose first token is itself an
+    assignment): shell comments (full-line or inline), prefixed variable
+    names (XSMTP_HOST=, DISABLED_PUBLIC_FRONTEND_URL=) and command arguments
+    (echo SMTP_HOST=...) can never satisfy the executable contract, and any
+    forbidden value either lands on a rejected comment line or is collected
+    and rejected explicitly — it can never leave the validator GREEN.
+    Anchors in prose outside the block are irrelevant by construction."""
     body = read(RUNBOOK_FILE)
     n_start = body.count(RUNBOOK_CMD_START)
     n_end = body.count(RUNBOOK_CMD_END)
@@ -503,15 +526,46 @@ def check_runbook(findings: list[str]) -> None:
         findings.append("runbook:markers_reversed")
         return
     block = body[start_idx:end_idx]
-    if not block.strip():
+    content_lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
+    if not content_lines:
         findings.append("runbook:command_block_empty")
         return
-    for anchor in RUNBOOK_REQUIRED:
-        if anchor not in block:
-            findings.append(f"runbook:anchor_missing_in_command_block: {anchor}")
-    for token in RUNBOOK_FORBIDDEN:
-        if token in block:
-            findings.append(f"runbook:test_mode_smtp_combo_forbidden:{token}")
+
+    # No shell comment may hide inside the executable block. The marker
+    # comments live outside the extracted bytes and are unaffected.
+    for line in content_lines:
+        if line.startswith("#"):
+            findings.append("runbook:full_line_comment_in_command_block")
+        if re.search(r"\s#", line):
+            findings.append("runbook:inline_comment_in_command_block")
+
+    # Frozen command grammar: the stripped block lines must equal the frozen
+    # lines exactly and in order, proving the frozen values and the
+    # continuation form.
+    if len(content_lines) != len(RUNBOOK_BLOCK_LINES):
+        findings.append(
+            f"runbook:command_block_line_count:{len(content_lines)}"
+            f"!={len(RUNBOOK_BLOCK_LINES)}"
+        )
+    else:
+        for idx, (got, want) in enumerate(zip(content_lines, RUNBOOK_BLOCK_LINES), 1):
+            if got != want:
+                findings.append(f"runbook:command_block_line_mismatch:{idx}")
+
+    # Exact assignment tokens: collect only from pure assignment lines, so
+    # prefixed variable names and command arguments cannot contribute.
+    collected: set[str] = set()
+    for line in content_lines:
+        tail = line[:-1].strip() if line.endswith("\\") else line
+        tokens = tail.split()
+        if tokens and all(RUNBOOK_ASSIGNMENT_TOKEN_RE.fullmatch(t) for t in tokens):
+            collected.update(tokens)
+    for required in RUNBOOK_REQUIRED:
+        if required not in collected:
+            findings.append(f"runbook:assignment_missing_in_command_block: {required}")
+    for forbidden in RUNBOOK_FORBIDDEN:
+        if forbidden in collected:
+            findings.append(f"runbook:test_mode_smtp_combo_forbidden:{forbidden}")
 
 
 EXPECTED_COMBOS = {

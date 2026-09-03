@@ -1556,11 +1556,15 @@ export class ControlPlane {
           .filter((check) => check.ok === false)
           .map((check) => check.category);
         this.preflightRedCategories = redCategories;
+        // B1-R6-R5-R2: the ledger persists ALL fixed RED categories
+        // (labels only — never raw output or any value), not just the
+        // first one that names the stop category.
         this.#ledger.append(
           {
             kind: 'preflight',
             ok: false,
             red_checks: redCategories.length,
+            red_categories: redCategories,
             host_checks_present: payload.counts.host_checks_present,
           },
           this.#sensitiveValues(),
@@ -1681,6 +1685,7 @@ export class ControlPlane {
         ok: payload.ok,
         checks: payload.counts.total,
         red: payload.counts.red,
+        red_categories: payload.checks.filter((check) => check.ok === false).map((check) => check.category),
       },
       this.#sensitiveValues(),
     );

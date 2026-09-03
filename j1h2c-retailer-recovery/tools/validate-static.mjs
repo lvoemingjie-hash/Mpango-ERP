@@ -816,6 +816,7 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
     ['host_preflight_payload_invalid', 'forged host payload RED'],
     ['host_preflight_not_configured', 'unconfigured host VOID in direct authority'],
     ['host_preflight_incomplete', 'zero host checks VOID in direct authority'],
+    ['red_categories', 'ALL red categories persisted in the ledger'],
   ]) {
     if (!runnerText.includes(needle)) fail(16, `runner missing ${label}`);
   }
@@ -839,6 +840,24 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
     ['outer_authority_preflight', 'frozen host block hand-off marker'],
     ['configured: false', 'transparent unconfigured result shape'],
     ['configured: true', 'configured result shape'],
+    ['buildPsqlInvocation', 'psql invocation builder (explicit target binding)'],
+    ['psqlTransport', 'real psql transport over the built invocation'],
+    ['stripAmbientPgEnv', 'ambient PG* environment strip'],
+    ["'-f', '-'", 'SQL through stdin preprocessing (never -c)'],
+    ["'-h',", 'explicit host binding'],
+    ["'-p',", 'explicit port binding'],
+    ["'-d',", 'explicit database binding'],
+    ["'-U',", 'explicit user binding'],
+    ['alembicRevisionsVerdict', 'alembic exactly-one-head full-ID verdict'],
+    ['alembic_multi_head', 'multi-head RED category'],
+    ['redisSessionVerdict', 'PING/SELECT 15/DBSIZE session verdict'],
+    ['redis_db15_not_empty', 'non-empty DB15 RED category'],
+    ['redis_select_failed', 'SELECT 15 refusal RED category'],
+    ['sentinelVerdict', 'sentinel reachability verdict'],
+    ['sentinel_reachable', 'reachable sentinel RED category'],
+    ['sentinelProbe', 'real sentinel 26379 probe'],
+    ['redisConversation', 'real redis socket conversation'],
+    ['defaultHostDeps', 'real dependency assembly (testable)'],
     ['shell: false', 'no-shell subprocess discipline'],
     ['host-preflight-result/1', 'exact host result schema'],
   ]) {
@@ -849,14 +868,14 @@ if (failures === 0) ok(11, 'B1-R2 D/I + B1-R3 truth anchors present');
   }
 
   const checkerText = readFileSync(join(ROOT, 'tools', 'check-browser-authority-contracts.mjs'), 'utf8');
-  for (const marker of ['R41', 'R42', 'R43', 'R44', 'R45', 'R46']) {
+  for (const marker of ['R41', 'R42', 'R43', 'R44', 'R45', 'R46', 'R47', 'R48', 'R49', 'R50', 'R51']) {
     if (!new RegExp(`// ${marker} [—-]`).test(checkerText)) {
       fail(16, `checker missing ${marker} scenario`);
     }
   }
 
   if (failures === 0) {
-    ok(16, 'execution root + lifecycle proof + host preflight anchored (HARNESS_ROOT + fixed --config + harness-root cwd/artifacts/scanner, exact-401 owner_identity_fresh_unregistered, runner-owned host gate with committed-byte proof, exactly-four-checks direct authority policy and transparent library mode, version-controlled host-preflight module with semantic booleans, parameter-safe invitations and PID ownership, R41-R46)');
+    ok(16, 'execution root + lifecycle proof + host preflight anchored (HARNESS_ROOT + fixed --config + harness-root cwd/artifacts/scanner, exact-401 owner_identity_fresh_unregistered, runner-owned host gate with committed-byte proof, exactly-four-checks direct authority policy and transparent library mode, version-controlled host-preflight module with semantic booleans, parameter-safe invitations, PID ownership, stdin psql preprocessing with explicit target binding and ambient PG* strip, alembic full-ID exactly-one-head verdict, redis PING/SELECT15/DBSIZE + sentinel-unreachable, R41-R51)');
   }
 }
 

@@ -45,6 +45,22 @@
  *     must carry the expected ownership token. A truncated, stale or
  *     foreign-owned PID file is a RED.
  *
+ * Runtime-truth contract (B1-R6-R5-R2 — closes the confirmed causes of the
+ * R5-R1 candidate's non-executable probes):
+ *   - psql SQL reaches the psql PREPROCESSOR through stdin (`psql -f -`,
+ *     SQL on the child's stdin): a `-c` argument can never process
+ *     :'variable' interpolation, so no :'placeholder' ever travels in -c;
+ *   - the connection target is EXPLICITLY bound — J1H2C_HOST_PG* become
+ *     -h/-p/-d/-U argv elements; every ambient PG* variable (any letter
+ *     case) is stripped from the child environment except the task-bound
+ *     PGPASSWORD;
+ *   - Alembic proves EXACTLY ONE heads revision and EXACTLY ONE current
+ *     revision, equal as FULL revision IDs (real IDs contain underscores;
+ *     whole-token equality, never a prefix match);
+ *   - Redis REALLY exchanges PING -> +PONG, SELECT 15 -> +OK and
+ *     DBSIZE -> :0 (task DB 15 proven EMPTY) and the sentinel on the SAME
+ *     host at 26379 must be UNREACHABLE (`sentinel_reachable` otherwise).
+ *
  * Configuration contract (host-level; the outer layer's environment):
  *   J1H2C_HOST_PREFLIGHT = '1'  — the configuration marker. When it is not
  *     exactly '1', the module emits the TRANSPARENT result
@@ -73,7 +89,7 @@
 
 import { readFileSync, readSync, realpathSync, writeSync } from 'node:fs';
 import net from 'node:net';
-import { spawnSync } from 'node:child_process';
+import childProcess from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -394,6 +410,119 @@ async function safeCheck(impl, values) {
 // reach the result payload.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// B1-R6-R5-R2 Alembic runtime truth: real alembic revision IDs contain
+// underscores (e.g. 002_phase_b2_invitation_binding) — a hex-only validator
+// rejected every REAL head. The verdict requires EXACTLY ONE heads revision,
+// EXACTLY ONE current revision, and FULL revision-ID equality (whole token,
+// never a prefix match).
+// ---------------------------------------------------------------------------
+
+const ALEMBIC_REVISION_CHARSET = /^[A-Za-z0-9_]+$/;
+
+/** First token of every non-empty line (the complete revision ID token). */
+export function alembicTokens(stdoutText) {
+  return String(stdoutText ?? '')
+    .split('\n')
+    .map((line) => line.trim().split(/\s+/)[0] ?? '')
+    .filter((token) => token.length > 0);
+}
+
+export function alembicRevisionsVerdict(headsStdout, currentStdout) {
+  const heads = alembicTokens(headsStdout);
+  if (heads.length > 1) return { ok: false, category: 'alembic_multi_head' };
+  if (heads.length !== 1 || !ALEMBIC_REVISION_CHARSET.test(heads[0])) {
+    return { ok: false, category: 'alembic_unresolvable' };
+  }
+  const currents = alembicTokens(currentStdout);
+  if (currents.length !== 1 || !ALEMBIC_REVISION_CHARSET.test(currents[0])) {
+    return { ok: false, category: 'alembic_unresolvable' };
+  }
+  if (heads[0] !== currents[0]) return { ok: false, category: 'alembic_head_diverged' };
+  return { ok: true, category: 'check_green' };
+}
+
+// ---------------------------------------------------------------------------
+// B1-R6-R5-R2 Redis runtime truth: a bare PING proves nothing about the
+// task database. The session must REALLY exchange PING -> +PONG,
+// SELECT 15 -> +OK and DBSIZE -> :0 (task DB 15 proven EMPTY), and the
+// sentinel on the SAME host at 26379 must be proven UNREACHABLE (a running
+// sentinel would let the gate drift to another node mid-run).
+// ---------------------------------------------------------------------------
+
+export function redisSessionVerdict(pingReply, selectReply, dbsizeReply) {
+  const ping = String(pingReply ?? '').trim();
+  const select = String(selectReply ?? '').trim();
+  const dbsize = String(dbsizeReply ?? '').trim();
+  if (ping !== '+PONG') return { ok: false, category: 'redis_unreachable' };
+  if (select !== '+OK') return { ok: false, category: 'redis_select_failed' };
+  if (dbsize === ':0') return { ok: true, category: 'check_green' };
+  if (/^:\d+$/.test(dbsize)) return { ok: false, category: 'redis_db15_not_empty' };
+  return { ok: false, category: 'redis_protocol_invalid' };
+}
+
+export function sentinelVerdict(sentinelReachable) {
+  return sentinelReachable === true
+    ? { ok: false, category: 'sentinel_reachable' }
+    : { ok: true, category: 'check_green' };
+}
+
+/** REAL redis conversation over one socket: PING, SELECT 15, DBSIZE. */
+export function redisConversation(host, port) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port });
+    const replies = [];
+    const commands = ['PING', 'SELECT 15', 'DBSIZE'];
+    let sent = 0;
+    let received = 0;
+    let buffer = '';
+    let settled = false;
+    const finish = (verdict) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve({ ...verdict, replies });
+    };
+    socket.setTimeout(REDIS_PING_TIMEOUT_MS, () => finish({ ok: false, category: 'redis_unreachable' }));
+    socket.on('error', () => finish({ ok: false, category: 'redis_unreachable' }));
+    socket.on('connect', () => socket.write(`${commands[sent++]}\r\n`));
+    socket.on('data', (chunk) => {
+      buffer += String(chunk);
+      let index;
+      while ((index = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, index).replace(/\r$/, '');
+        buffer = buffer.slice(index + 1);
+        if (line.length === 0) continue;
+        replies.push(line);
+        received += 1;
+        if (received < commands.length) {
+          socket.write(`${commands[sent++]}\r\n`);
+        } else {
+          finish(redisSessionVerdict(replies[0], replies[1], replies[2]));
+          return;
+        }
+      }
+    });
+  });
+}
+
+/** REAL sentinel reachability probe on the SAME host at fixed port 26379. */
+export function sentinelProbe(host) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port: 26379 });
+    let settled = false;
+    const done = (reachable) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(reachable);
+    };
+    socket.setTimeout(REDIS_PING_TIMEOUT_MS, () => done(true));
+    socket.on('error', () => done(false));
+    socket.on('connect', () => done(true));
+  });
+}
+
 function descriptorMissing(names) {
   return names.some((name) => {
     const value = process.env[name];
@@ -401,7 +530,37 @@ function descriptorMissing(names) {
   });
 }
 
-function spawnPsql({ sql, vars }) {
+// ---------------------------------------------------------------------------
+// B1-R6-R5-R2 psql invocation contract (RUNTIME TRUTH):
+//   - the SQL text travels through psql PREPROCESSING via stdin
+//     (`psql -f -` with the text on the child's stdin) — a `-c` argument
+//     can never carry `:'variable'` placeholders, because `-c` bypasses
+//     the psql preprocessor entirely;
+//   - the connection target is EXPLICITLY bound: J1H2C_HOST_PG* become
+//     -h/-p/-d/-U argv elements, so ambient PGHOST/PGDATABASE/... can
+//     never redirect the probe;
+//   - the child environment strips every ambient PG* variable (any letter
+//     case) and keeps ONLY the task-bound PGPASSWORD;
+//   - variables travel as -v name=value argv elements, values NEVER enter
+//     the SQL text (invitationProbeIsParameterSafe guards this).
+// ---------------------------------------------------------------------------
+
+/** Strip every ambient PG* variable (any letter case) except PGPASSWORD. */
+export function stripAmbientPgEnv(baseEnv) {
+  const env = {};
+  for (const [key, value] of Object.entries(baseEnv ?? {})) {
+    if (key !== 'PGPASSWORD' && /^pg/i.test(key)) continue;
+    env[key] = value;
+  }
+  return env;
+}
+
+/**
+ * Build the full psql invocation: explicit -h/-p/-d/-U from the task
+ * descriptors, -v variables out of band, and the SQL text on STDIN
+ * (`-f -`) so psql preprocessing resolves the :'name' placeholders.
+ */
+export function buildPsqlInvocation(descriptors, sql, vars = {}) {
   const argv = [
     process.env.J1H2C_HOST_PSQL_BIN ?? 'psql',
     '-X',
@@ -409,14 +568,32 @@ function spawnPsql({ sql, vars }) {
     '-t',
     '-v',
     'ON_ERROR_STOP=1',
+    '-h',
+    String(descriptors.host),
+    '-p',
+    String(descriptors.port),
+    '-d',
+    String(descriptors.database),
+    '-U',
+    String(descriptors.user),
   ];
   for (const [name, value] of Object.entries(vars ?? {})) {
     argv.push('-v', `${name}=${value}`);
   }
-  argv.push('-c', sql);
-  const result = spawnSync(argv[0], argv.slice(1), {
-    env: process.env, // PGPASSWORD reaches psql via the environment only
-    stdio: ['ignore', 'pipe', 'pipe'],
+  argv.push('-f', '-');
+  return {
+    argv,
+    input: `${sql}\n`,
+    env: stripAmbientPgEnv(process.env),
+  };
+}
+
+/** The real psql transport: argv array, shell:false, SQL on stdin. */
+export function psqlTransport(invocation) {
+  const result = childProcess.spawnSync(invocation.argv[0], invocation.argv.slice(1), {
+    input: invocation.input,
+    env: invocation.env,
+    stdio: ['pipe', 'pipe', 'pipe'],
     timeout: SPAWN_BUDGET_MS,
     encoding: 'utf8',
     windowsHide: true,
@@ -428,7 +605,22 @@ function spawnPsql({ sql, vars }) {
   return { ok: true, rows: String(result.stdout ?? '') };
 }
 
-function defaultDeps() {
+function spawnPsql({ sql, vars }) {
+  return psqlTransport(
+    buildPsqlInvocation(
+      {
+        host: process.env.J1H2C_HOST_PGHOST,
+        port: process.env.J1H2C_HOST_PGPORT,
+        database: process.env.J1H2C_HOST_PGDATABASE,
+        user: process.env.J1H2C_HOST_PGUSER,
+      },
+      sql,
+      vars,
+    ),
+  );
+}
+
+export function defaultHostDeps() {
   return {
     async pgProbe(values) {
       if (descriptorMissing(PG_DESCRIPTOR_ENV)) return { ok: false, category: 'pg_descriptor_missing' };
@@ -439,31 +631,18 @@ function defaultDeps() {
       return checkInvitationAvailability(spawnPsql, values);
     },
 
-    redisProbe() {
+    async redisProbe() {
       if (descriptorMissing(REDIS_DESCRIPTOR_ENV)) {
         return { ok: false, category: 'redis_descriptor_missing' };
       }
-      return new Promise((resolve) => {
-        const port = Number.parseInt(process.env.J1H2C_HOST_REDIS_PORT, 10);
-        if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-          resolve({ ok: false, category: 'redis_descriptor_missing' });
-          return;
-        }
-        const socket = net.connect({ host: process.env.J1H2C_HOST_REDIS_HOST, port });
-        let settled = false;
-        const finish = (category) => {
-          if (settled) return;
-          settled = true;
-          socket.destroy();
-          resolve({ ok: category === 'check_green', category });
-        };
-        socket.setTimeout(REDIS_PING_TIMEOUT_MS, () => finish('redis_unreachable'));
-        socket.on('error', () => finish('redis_unreachable'));
-        socket.on('connect', () => socket.write('PING\r\n'));
-        socket.on('data', (chunk) => {
-          finish(String(chunk).startsWith('+PONG') ? 'check_green' : 'redis_unreachable');
-        });
-      });
+      const port = Number.parseInt(process.env.J1H2C_HOST_REDIS_PORT, 10);
+      if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+        return { ok: false, category: 'redis_descriptor_missing' };
+      }
+      const session = await redisConversation(process.env.J1H2C_HOST_REDIS_HOST, port);
+      if (!session.ok) return { ok: session.ok, category: session.category };
+      const sentinel = await sentinelProbe(process.env.J1H2C_HOST_REDIS_HOST);
+      return sentinelVerdict(sentinel);
     },
 
     alembicRevisions() {
@@ -471,7 +650,7 @@ function defaultDeps() {
         return { ok: false, category: 'alembic_descriptor_missing' };
       }
       const run = (args) =>
-        spawnSync('alembic', args, {
+        childProcess.spawnSync('alembic', args, {
           cwd: process.env.J1H2C_HOST_BACKEND_DIR,
           stdio: ['ignore', 'pipe', 'ignore'],
           timeout: SPAWN_BUDGET_MS,
@@ -484,14 +663,7 @@ function defaultDeps() {
       if (heads.error || heads.status !== 0 || current.error || current.status !== 0) {
         return { ok: false, category: 'alembic_unresolvable' };
       }
-      const head = (String(heads.stdout ?? '').trim().split(/\s+/)[0] ?? '');
-      const live = (String(current.stdout ?? '').trim().split(/\s+/)[0] ?? '');
-      if (!/^[0-9a-f]+$/.test(head) || !/^[0-9a-f]+$/.test(live)) {
-        return { ok: false, category: 'alembic_unresolvable' };
-      }
-      return head === live
-        ? { ok: true, category: 'check_green' }
-        : { ok: false, category: 'alembic_head_diverged' };
+      return alembicRevisionsVerdict(String(heads.stdout ?? ''), String(current.stdout ?? ''));
     },
 
     async portsOwnership() {
@@ -519,7 +691,7 @@ function defaultDeps() {
           // Process-table cross-proof (POSIX): the PID file alone is
           // mutable and never trusted by itself — the recorded process must
           // be alive here AND its command line must carry the token.
-          const result = spawnSync('ps', ['-p', String(pid), '-ww', '-o', 'args='], {
+          const result = childProcess.spawnSync('ps', ['-p', String(pid), '-ww', '-o', 'args='], {
             stdio: ['ignore', 'pipe', 'ignore'],
             timeout: SPAWN_BUDGET_MS,
             encoding: 'utf8',
@@ -579,7 +751,7 @@ async function main() {
     failClosed();
   }
 
-  const result = await runHostPreflight(defaultDeps(), {
+  const result = await runHostPreflight(defaultHostDeps(), {
     configured: process.env.J1H2C_HOST_PREFLIGHT === CONFIG_MARKER,
     values: input.values,
   });

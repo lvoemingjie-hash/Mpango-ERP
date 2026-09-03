@@ -66,6 +66,16 @@
  *       checks, missing module, dirty module bytes all VOID before authorize
  *   R46 runner-owned host gate end-to-end: four-   -> check GREEN accepted,
  *       configured all-RED host VOIDs a REAL direct entrypoint pre-authorize
+ *   R47 psql invocation truth: stdin -f - (no -c),  -> explicit -h/-p/-d/-U
+ *       descriptor binding, ambient PG* stripped, PGPASSWORD only
+ *   R48 role + invitation queries through the      -> REAL transport with
+ *       :'placeholders' preprocessed via stdin and -v values out of band
+ *   R49 Alembic runtime truth: underscored full    -> revision IDs, exactly
+ *       one head, exactly one current, prefix match refused
+ *   R50 Redis runtime truth: PING/SELECT 15/       -> DBSIZE :0 full matrix
+ *       over a REAL socket + sentinel 26379 unreachability
+ *   R51 multiple RED categories persisted in the   -> runner ledger,
+ *       sanitized (labels only), VOID before authorize
  *
  * Every failing probe must throw the EXACT category; a probe that does not
  * throw, or throws a different category, fails this checker. After each RED
@@ -76,6 +86,7 @@
 
 import http from 'node:http';
 import https from 'node:https';
+import net from 'node:net';
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync, mkdtempSync, rmSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -3206,6 +3217,340 @@ function rawPostStatus(port, path, payload) {
   expect(!redRecords.some((record) => record.entry.kind === 'finish'), 'R46: no start/finish with a RED host gate');
   expect(!redRecords.some((record) => record.entry.kind === 'terminal_seal'), 'R46: no terminal seal with a RED host gate');
   expect(parseSingleJsonLine(hostRed.stdout) === null, 'R46: no sealed authority evidence with a RED host gate');
+  // B1-R6-R5-R2: the host gate record persists ALL its RED categories.
+  const hostGateRecord = redRecords.find((record) => record.entry && record.entry.kind === 'host_preflight');
+  expect(
+    hostGateRecord && Array.isArray(hostGateRecord.entry.red_categories) && hostGateRecord.entry.red_categories.length === 4,
+    `R46: host gate record persists all four RED categories (${hostGateRecord && JSON.stringify(hostGateRecord.entry.red_categories)})`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// R47 — psql invocation truth (B1-R6-R5-R2): the SQL text enters psql
+// PREPROCESSING via stdin (`-f -`), never via -c; the connection target is
+// EXPLICITLY bound through -h/-p/-d/-U from the J1H2C_HOST_PG* descriptors;
+// every ambient PG* variable is stripped from the child environment and
+// only the task-bound PGPASSWORD survives. Proven against the REAL
+// transport with a capturing spawnSync double (nothing is executed).
+// ---------------------------------------------------------------------------
+
+{
+  const host = await import('./host-preflight.mjs');
+  const childProcess = createRequire(import.meta.url)('node:child_process');
+  const realSpawnSync = childProcess.spawnSync;
+  const savedEnv = {};
+  for (const name of ['J1H2C_HOST_PSQL_BIN', 'PGHOST', 'PGDATABASE', 'PGUSER', 'PGOPTIONS', 'PGSERVICE', 'PGPASSWORD']) {
+    savedEnv[name] = process.env[name];
+  }
+  let captured = null;
+  try {
+    process.env.J1H2C_HOST_PSQL_BIN = 'fixture-psql';
+    process.env.PGHOST = 'ambient-evil-host';
+    process.env.PGDATABASE = 'ambient-evil-db';
+    process.env.PGUSER = 'ambient-evil-user';
+    process.env.PGOPTIONS = 'ambient-evil-options';
+    process.env.PGSERVICE = 'ambient-evil-service';
+    process.env.PGPASSWORD = FIXTURE_ENV.J1H2C_RETAILER_CURRENT_PASSWORD;
+    childProcess.spawnSync = (file, args, options) => {
+      captured = { file, args, options };
+      return { status: 0, stdout: '1\n' };
+    };
+    const invocation = host.buildPsqlInvocation(
+      { host: '10.0.0.8', port: '5433', database: 'mpango_authority', user: 'authority_role' },
+      'SELECT 1',
+      {},
+    );
+    const transported = host.psqlTransport(invocation);
+    expect(transported.ok === true, 'R47: transport returns the stubbed rows without executing anything');
+    expect(captured !== null, 'R47: spawnSync captured the real invocation shape');
+    expect(captured.file === 'fixture-psql', 'R47: psql binary from the task descriptor override');
+    const argv = captured.args;
+    const indexOf = (flag) => argv.indexOf(flag);
+    expect(indexOf('-h') >= 0 && argv[indexOf('-h') + 1] === '10.0.0.8', 'R47: host explicitly bound via -h');
+    expect(indexOf('-p') >= 0 && argv[indexOf('-p') + 1] === '5433', 'R47: port explicitly bound via -p');
+    expect(indexOf('-d') >= 0 && argv[indexOf('-d') + 1] === 'mpango_authority', 'R47: database explicitly bound via -d');
+    expect(indexOf('-U') >= 0 && argv[indexOf('-U') + 1] === 'authority_role', 'R47: user explicitly bound via -U');
+    expect(argv.includes('-c') === false, 'R47: NO -c argument (-c cannot process psql variable interpolation)');
+    const fIndex = indexOf('-f');
+    expect(fIndex >= 0 && argv[fIndex + 1] === '-', 'R47: SQL enters preprocessing via -f - (stdin)');
+    expect(captured.options.input === 'SELECT 1\n', 'R47: SQL text travels on the child stdin');
+    const childEnv = captured.options.env;
+    expect(
+      childEnv.PGHOST === undefined &&
+        childEnv.PGDATABASE === undefined &&
+        childEnv.PGUSER === undefined &&
+        childEnv.PGOPTIONS === undefined &&
+        childEnv.PGSERVICE === undefined,
+      'R47: ambient PG* stripped from the child environment',
+    );
+    expect(
+      childEnv.PGPASSWORD === FIXTURE_ENV.J1H2C_RETAILER_CURRENT_PASSWORD,
+      'R47: the task-bound PGPASSWORD survives the strip',
+    );
+    expect(
+      !JSON.stringify(captured.args).includes('ambient-evil') &&
+        !String(captured.options.input).includes('ambient-evil'),
+      'R47: no ambient target anywhere in argv or stdin',
+    );
+  } finally {
+    childProcess.spawnSync = realSpawnSync;
+    for (const [name, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// R48 — role and invitation queries through the REAL default transport:
+// :'placeholders' must reach psql preprocessing on stdin and the values
+// must travel OUT OF BAND as -v argv elements — the real interpolation
+// contract the retired -c form could never satisfy.
+// ---------------------------------------------------------------------------
+
+{
+  const host = await import('./host-preflight.mjs');
+  const childProcess = createRequire(import.meta.url)('node:child_process');
+  const realSpawnSync = childProcess.spawnSync;
+  const savedEnv = {};
+  for (const name of ['J1H2C_HOST_PGHOST', 'J1H2C_HOST_PGPORT', 'J1H2C_HOST_PGDATABASE', 'J1H2C_HOST_PGUSER', 'J1H2C_HOST_PGROLE', 'PGPASSWORD']) {
+    savedEnv[name] = process.env[name];
+  }
+  const calls = [];
+  try {
+    process.env.J1H2C_HOST_PGHOST = '10.0.0.8';
+    process.env.J1H2C_HOST_PGPORT = '5433';
+    process.env.J1H2C_HOST_PGDATABASE = 'mpango_authority';
+    process.env.J1H2C_HOST_PGUSER = 'authority_role';
+    // Deliberately DIFFERENT from the placeholder name so the
+    // value-never-in-SQL-text assertion is meaningful.
+    process.env.J1H2C_HOST_PGROLE = 'authority_roler5r2';
+    process.env.PGPASSWORD = FIXTURE_ENV.J1H2C_RETAILER_CURRENT_PASSWORD;
+    childProcess.spawnSync = (file, args, options) => {
+      calls.push({ file, args, options });
+      const input = String((options && options.input) ?? '');
+      return { status: 0, stdout: input.includes(":'authority_role'") ? 't|f|f|f|f\n' : '1\n' };
+    };
+    const outcome = await host.defaultHostDeps().pgProbe(FIXTURE_VALUES);
+    expect(outcome.ok === true && outcome.category === 'check_green', `R48: role + invitations GREEN through the REAL transport (${outcome.category})`);
+    expect(calls.length === 4, `R48: exactly four psql invocations (reach + role + one per invitation pair), got ${calls.length}`);
+    expect(calls[0].options.input === 'SELECT 1\n', 'R48: reachability probe on stdin');
+    const roleCall = calls[1];
+    expect(roleCall.options.input.includes(":'authority_role'"), 'R48: role placeholder reaches psql preprocessing via stdin');
+    expect(
+      roleCall.args.some((arg) => arg === 'authority_role=authority_roler5r2'),
+      'R48: role value travels out of band as a -v argv element',
+    );
+    expect(!roleCall.options.input.includes('authority_roler5r2'), 'R48: role value never inside the SQL text');
+    for (const [pairIndex, invitationCall] of calls.slice(2).entries()) {
+      expect(
+        invitationCall.options.input.includes(":'invitation_code'") && invitationCall.options.input.includes(":'invitation_phone'"),
+        `R48: invitation pair ${pairIndex} placeholders reach preprocessing on stdin`,
+      );
+      expect(
+        invitationCall.args.some((arg) => arg.startsWith('invitation_code=')) &&
+          invitationCall.args.some((arg) => arg.startsWith('invitation_phone=')),
+        `R48: invitation pair ${pairIndex} values travel out of band via -v`,
+      );
+      expect(
+        !invitationCall.options.input.includes(FIXTURE_VALUES.w1_verified_invitation_code) &&
+          !invitationCall.options.input.includes(FIXTURE_VALUES.w1_unverified_invitation_code) &&
+          !invitationCall.options.input.includes(FIXTURE_VALUES.w1_verified_invitation_phone) &&
+          !invitationCall.options.input.includes(FIXTURE_VALUES.w1_unverified_invitation_phone),
+        `R48: no invitation value inside the pair-${pairIndex} SQL stdin text`,
+      );
+    }
+    for (const [index, call] of calls.entries()) {
+      expect(call.args.includes('-c') === false, `R48: invocation ${index} carries no -c`);
+      const fIndex = call.args.indexOf('-f');
+      expect(fIndex >= 0 && call.args[fIndex + 1] === '-', `R48: invocation ${index} reads stdin via -f -`);
+      expect(
+        call.args.includes('-h') && call.args.includes('-p') && call.args.includes('-d') && call.args.includes('-U'),
+        `R48: invocation ${index} binds host/port/database/user explicitly`,
+      );
+    }
+  } finally {
+    childProcess.spawnSync = realSpawnSync;
+    for (const [name, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// R49 — Alembic runtime truth: real revision IDs contain underscores; the
+// verdict requires EXACTLY ONE head, EXACTLY ONE current revision and FULL
+// whole-token equality — a prefix match is never a match.
+// ---------------------------------------------------------------------------
+
+{
+  const host = await import('./host-preflight.mjs');
+  expect(
+    host.alembicRevisionsVerdict('002_phase_b2_invitation_binding (head)\n', '002_phase_b2_invitation_binding (head)\n').ok === true,
+    'R49: underscored real head == current GREEN',
+  );
+  expect(
+    host.alembicRevisionsVerdict('036_retailer_mvp_identity\n', '036_retailer_mvp_identity (head)\n').ok === true,
+    'R49: second real-shaped revision GREEN',
+  );
+  expect(
+    host.alembicRevisionsVerdict('036_a\n037_b\n', '036_a\n').category === 'alembic_multi_head',
+    'R49: multiple heads RED',
+  );
+  expect(
+    host.alembicRevisionsVerdict('036_retailer_mvp_identity\n', '002_phase_b2_invitation_binding\n').category === 'alembic_head_diverged',
+    'R49: diverged head RED',
+  );
+  expect(
+    host.alembicRevisionsVerdict('036_retailer_mvp_identity\n', '036\n').category === 'alembic_head_diverged',
+    'R49: PREFIX match refused (full revision-ID equality only)',
+  );
+  expect(
+    host.alembicRevisionsVerdict('', '036_a\n').category === 'alembic_unresolvable',
+    'R49: empty heads malformed RED',
+  );
+  expect(
+    host.alembicRevisionsVerdict('036_retailer_mvp_identity\n', '').category === 'alembic_unresolvable',
+    'R49: empty current malformed RED',
+  );
+  expect(
+    host.alembicRevisionsVerdict('036-$bad!\n', '036-$bad!\n').category === 'alembic_unresolvable',
+    'R49: malformed revision charset RED',
+  );
+  expect(
+    host.alembicRevisionsVerdict('a_b\na_b\n', 'a_b\n').category === 'alembic_multi_head',
+    'R49: duplicated head lines count as multiple heads RED',
+  );
+}
+
+// ---------------------------------------------------------------------------
+// R50 — Redis runtime truth: the session must REALLY exchange
+// PING -> +PONG, SELECT 15 -> +OK and DBSIZE -> :0, and the sentinel on
+// the SAME host at 26379 must be proven UNREACHABLE. Full matrix over the
+// REAL socket driver against a local fixture server speaking the wire
+// replies (no real Redis anywhere).
+// ---------------------------------------------------------------------------
+
+{
+  const host = await import('./host-preflight.mjs');
+
+  // Pure verdict matrix.
+  expect(host.redisSessionVerdict('+PONG', '+OK', ':0').ok === true, 'R50: PING + SELECT 15 + empty DB15 GREEN');
+  expect(host.redisSessionVerdict('-ERR boom', '+OK', ':0').category === 'redis_unreachable', 'R50: PING refusal RED');
+  expect(host.redisSessionVerdict('+WEIRD', '+OK', ':0').category === 'redis_unreachable', 'R50: wrong PING reply RED');
+  expect(host.redisSessionVerdict('+PONG', '-ERR nope', ':0').category === 'redis_select_failed', 'R50: SELECT 15 refusal RED');
+  expect(host.redisSessionVerdict('+PONG', '+WRONG', ':0').category === 'redis_select_failed', 'R50: wrong SELECT reply RED');
+  expect(host.redisSessionVerdict('+PONG', '+OK', ':5').category === 'redis_db15_not_empty', 'R50: non-empty DB15 RED');
+  expect(host.redisSessionVerdict('+PONG', '+OK', 'junk').category === 'redis_protocol_invalid', 'R50: malformed DBSIZE reply RED');
+  expect(host.sentinelVerdict(true).category === 'sentinel_reachable', 'R50: reachable sentinel RED');
+  expect(host.sentinelVerdict(false).ok === true, 'R50: unreachable sentinel GREEN');
+
+  // REAL socket driver against a local fixture server (never a real Redis).
+  async function startFakeRedis(script) {
+    const server = net.createServer((socket) => {
+      let index = 0;
+      socket.on('data', () => {
+        if (index < script.length) {
+          socket.write(`${script[index]}\r\n`);
+          index += 1;
+        }
+      });
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return { server, port: server.address().port };
+  }
+
+  // Deterministic sentinel reachability: bind 26379 ourselves; if another
+  // listener already owns the port, the sentinel is reachable either way.
+  const sentinelServer = net.createServer(() => {});
+  let sentinelBound = false;
+  await new Promise((resolve) => {
+    sentinelServer.once('error', () => resolve());
+    sentinelServer.once('listening', () => {
+      sentinelBound = true;
+      resolve();
+    });
+    sentinelServer.listen(26379, '127.0.0.1');
+  });
+  expect(
+    sentinelBound === true || (await host.sentinelProbe('127.0.0.1')) === true,
+    'R50: precondition — the sentinel endpoint on 26379 is reachable for the matrix',
+  );
+
+  const savedRedisEnv = { host: process.env.J1H2C_HOST_REDIS_HOST, port: process.env.J1H2C_HOST_REDIS_PORT };
+  process.env.J1H2C_HOST_REDIS_HOST = '127.0.0.1';
+  const probeWith = async (script) => {
+    const { server, port } = await startFakeRedis(script);
+    process.env.J1H2C_HOST_REDIS_PORT = String(port);
+    try {
+      return await host.defaultHostDeps().redisProbe();
+    } finally {
+      server.close();
+    }
+  };
+  try {
+    // The green session MUST still fall through to the sentinel proof:
+    // with 26379 reachable the verdict is sentinel_reachable, which is the
+    // semantic proof that the sentinel step really runs.
+    expect(
+      (await probeWith(['+PONG', '+OK', ':0'])).category === 'sentinel_reachable',
+      'R50: green session + reachable sentinel -> sentinel_reachable (the sentinel step really runs)',
+    );
+    expect((await probeWith(['+NOPE', '+OK', ':0'])).category === 'redis_unreachable', 'R50: real driver wrong PING RED');
+    expect((await probeWith(['+PONG', '-ERR nope', ':0'])).category === 'redis_select_failed', 'R50: real driver SELECT 15 refusal RED');
+    expect((await probeWith(['+PONG', '+OK', ':7'])).category === 'redis_db15_not_empty', 'R50: real driver non-empty DB15 RED');
+    expect((await probeWith(['+PONG', '+OK', 'junk'])).category === 'redis_protocol_invalid', 'R50: real driver malformed DBSIZE RED');
+  } finally {
+    if (savedRedisEnv.host === undefined) delete process.env.J1H2C_HOST_REDIS_HOST;
+    else process.env.J1H2C_HOST_REDIS_HOST = savedRedisEnv.host;
+    if (savedRedisEnv.port === undefined) delete process.env.J1H2C_HOST_REDIS_PORT;
+    else process.env.J1H2C_HOST_REDIS_PORT = savedRedisEnv.port;
+    sentinelServer.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// R51 — multiple RED categories are persisted in the runner ledger in full
+// (labels only), the plane VOIDs before authorize with spawn = 0, and the
+// sink stays sanitized.
+// ---------------------------------------------------------------------------
+
+{
+  preflightMode = 'frontend_down';
+  const control = freshControl('r51-multi-red');
+  control.materialize({
+    ...FIXTURE_ENV,
+    J1H2C_W2_CANONICAL_CODE: FIXTURE_ENV.J1H2C_W1_CANONICAL_CODE,
+  });
+  await control.corsPreflightProbe();
+  await expectCategoryAsync(() => control.preflight(), 'preflight_red', 'R51: multiple REDs refused');
+  expect(control.current === 'STOPPED' && control.launchStarts === 0, 'R51: VOID before authorize, spawn=0');
+  const sinkPath = join(SCRATCH, 'ledger-r51-multi-red.jsonl');
+  const records = ledgerRecords(sinkPath);
+  const failure = records.find((record) => record.entry && record.entry.kind === 'preflight' && record.entry.ok === false);
+  expect(failure !== undefined, 'R51: preflight failure record present');
+  expect(Array.isArray(failure.entry.red_categories), 'R51: red_categories persisted in the ledger');
+  expect(
+    failure.entry.red_categories.includes('frontend_origin_unreachable') &&
+      failure.entry.red_categories.includes('w1_w2_not_distinct'),
+    `R51: ALL red categories persisted (${JSON.stringify(failure.entry.red_categories)})`,
+  );
+  expect(
+    failure.entry.red_categories.length === failure.entry.red_checks,
+    'R51: red_checks count matches the persisted category list',
+  );
+  const serialized = readFileSync(sinkPath, 'utf8');
+  for (const value of [
+    FIXTURE_ENV.J1H2C_RETAILER_EMAIL,
+    FIXTURE_ENV.J1H2C_W1_CANONICAL_CODE,
+    FIXTURE_ENV.J1H2C_RETAILER_CURRENT_PASSWORD,
+    FIXTURE_ENV.J1H2C_BASE_URL,
+  ]) {
+    expect(!serialized.includes(value), 'R51: ledger stays sanitized (categories only, never values)');
+  }
+  preflightMode = 'ok';
+  await greenPath('r51-restore');
 }
 
 // ---------------------------------------------------------------------------
@@ -3217,7 +3562,7 @@ if (failures.length > 0) {
   console.error(`BROWSER-AUTHORITY CONTRACT CHECK FAILED (${failures.length})`);
   process.exit(1);
 }
-console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R46, direct-process authority boundary, single canonical repo identity, case-insensitive GIT_* sanitization, real fixed Playwright child at the frozen execution root + exact-401 lifecycle preflight + runner-owned host gate requiring exactly four host checks in direct authority runs).');
+console.log('BROWSER-AUTHORITY CONTROL-PLANE CONTRACTS PASSED (S0 + G + R1-R51, direct-process authority boundary, single canonical repo identity, case-insensitive GIT_* sanitization, real fixed Playwright child at the frozen execution root + exact-401 lifecycle preflight + runner-owned host gate requiring exactly four host checks in direct authority runs + runtime-truth psql/Alembic/Redis probes with sanitized full-RED persistence).');
 // The fixture HTTP server and undici keep-alive sockets hold the event loop;
 // the verdict above is final, so exit explicitly.
 process.exit(0);

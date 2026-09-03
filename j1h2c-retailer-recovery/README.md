@@ -386,6 +386,37 @@ accepted by the runner parser, folds green through the REAL helper and
 satisfies the direct coverage policy — and that a configured all-RED
 module through a REAL direct entrypoint VOIDs before authorize.
 
+**Runtime-truth contract (B1-R6-R5-R2).** The R5-R1 probes were not
+executable as written; four confirmed causes are closed in the module
+itself:
+- psql SQL reaches the psql PREPROCESSOR through stdin (`psql -f -` with
+  the SQL on the child's stdin) — a `-c` argument bypasses psql variable
+  interpolation entirely, so no `:'placeholder'` ever travels in `-c`;
+  values ride as `-v name=value` argv elements, never inside the SQL text;
+- the connection target is EXPLICITLY bound: `J1H2C_HOST_PG*` become
+  `-h/-p/-d/-U`, and every ambient `PG*` variable (any letter case) is
+  stripped from the child environment except the task-bound `PGPASSWORD`
+  — an ambient PGHOST/PGDATABASE can never redirect a probe;
+- Alembic proves EXACTLY ONE heads revision and EXACTLY ONE current
+  revision, equal as FULL revision IDs: real IDs contain underscores
+  (e.g. `002_phase_b2_invitation_binding`), the retired hex-only validator
+  rejected every real head, and a prefix match is never a match
+  (`alembic_multi_head` / `alembic_head_diverged` / `alembic_unresolvable`);
+- Redis REALLY exchanges `PING -> +PONG`, `SELECT 15 -> +OK` and
+  `DBSIZE -> :0` (task DB 15 proven EMPTY) over one real socket
+  conversation, and the sentinel on the SAME host at 26379 must be proven
+  UNREACHABLE (`sentinel_reachable` RED otherwise) — a bare PING proves
+  neither.
+The runner ledger persists ALL fixed RED categories of a failed preflight
+(`red_categories`, labels only — never raw output or any value) with the
+plane VOIDed before authorize and spawn = 0. R47 proves the invocation
+truth against the REAL transport with a capturing spawnSync double
+(nothing executes); R48 runs the role and invitation queries through the
+REAL default transport; R49 proves the Alembic matrix including
+prefix-match refusal; R50 proves the Redis matrix over a REAL local
+socket fixture plus deterministic sentinel reachability; R51 proves
+multi-RED sanitized persistence.
+
 **Host configuration contract (the Lubuntu gate's remaining duty).** The
 runner invokes `tools/host-preflight.mjs` itself; the outer gate's only
 role is to configure the descriptor environment (`J1H2C_HOST_PREFLIGHT=1`

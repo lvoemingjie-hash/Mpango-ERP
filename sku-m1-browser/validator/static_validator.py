@@ -19,11 +19,14 @@ Enforces, fail-closed:
   - B4 authority modes: exactly two mutually exclusive runtime modes
     (AUTHOR_DIAGNOSTIC / INDEPENDENT_AUTHORITY), fail-closed resolution,
     frozen recorded mode, append-only invocation accounting;
-  - R5 runbook run contract: the README documents the L4-proven loopback-only
-    production SMTP mode (EMAIL_PROVIDER/EMAIL_DELIVERY_MODE=smtp against the
+  - R5-R1 runbook run contract, bound to the uniquely marked backend command
+    block in the README (exactly one marker pair, correct order, non-empty):
+    inside those markers only, the L4-proven loopback-only production SMTP
+    mode is required (EMAIL_PROVIDER/EMAIL_DELIVERY_MODE=smtp against the
     127.0.0.1 sink, virtual local SMTP auth, SMTP_USE_TLS=0 SMTP_STARTTLS=0,
-    HTTPS public email-link origin) and never restores the VOID
-    test-mode + SMTP/maildir combination;
+    HTTPS public email-link origin) and the VOID test-mode + SMTP/maildir
+    combination is rejected; prose outside the block never satisfies the
+    executable contract;
   - reconciliation accounting: every node x viewport combination recorded
     exactly once, and ONE execution mode + ONE candidate SHA shared by the
     invocation ledger, the live execution contract, the authority report,
@@ -184,13 +187,18 @@ AUTHORITY_FORBIDDEN = {
     "playwright.config.ts": ["diagnostic-reporter"],
 }
 
-# R5: runbook run contract. Anchors come from the source configuration names
+# R5: runbook run contract, bound to the uniquely marked backend command
+# block. Anchors come from the source configuration names
 # (backend/core/config.py, backend/services/email_delivery.py) and the L4
-# attempt-2 proven loopback-only production SMTP mode. The forbidden token is
+# attempt-2 proven loopback-only production SMTP mode. Only the bytes between
+# the two single-occurrence markers are evaluated; prose elsewhere in the
+# README can never satisfy the executable contract. The forbidden token is
 # the L4 attempt-1 VOID combination: test mode never opens an SMTP connection,
 # so it cannot feed the maildir harness
 # (VOID_ENVIRONMENT_PRECHECK__TEST_MODE_CANNOT_FEED_MAILDIR_SMTP_HARNESS).
 RUNBOOK_FILE = "README.md"
+RUNBOOK_CMD_START = "# runbook-backend-command:start"
+RUNBOOK_CMD_END = "# runbook-backend-command:end"
 RUNBOOK_REQUIRED = [
     "MPANGO_ENV=production",
     "EMAIL_PROVIDER=smtp",
@@ -468,16 +476,41 @@ def check_no_h2c_imports(findings: list[str]) -> None:
 
 
 def check_runbook(findings: list[str]) -> None:
-    """R5 run contract: the README runbook must keep documenting the L4-proven
-    loopback-only production SMTP mode (virtual local sink auth, HTTPS public
-    email-link origin) and must never restore the VOID test-mode +
-    SMTP/maildir backend documentation."""
+    """R5-R1 run contract, evaluated ONLY inside the uniquely marked backend
+    command block: exactly one start marker, one end marker, correct order,
+    non-empty block, every required production/SMTP/TLS/loopback/sender/
+    HTTPS-origin anchor present inside the block, and the VOID test-mode
+    combination rejected inside the block. Anchors present only in prose
+    outside the block do NOT satisfy the contract."""
     body = read(RUNBOOK_FILE)
+    n_start = body.count(RUNBOOK_CMD_START)
+    n_end = body.count(RUNBOOK_CMD_END)
+    if n_start == 0:
+        findings.append("runbook:start_marker_missing")
+        return
+    if n_start > 1:
+        findings.append("runbook:start_marker_duplicated")
+        return
+    if n_end == 0:
+        findings.append("runbook:end_marker_missing")
+        return
+    if n_end > 1:
+        findings.append("runbook:end_marker_duplicated")
+        return
+    start_idx = body.index(RUNBOOK_CMD_START) + len(RUNBOOK_CMD_START)
+    end_idx = body.index(RUNBOOK_CMD_END)
+    if end_idx < start_idx:
+        findings.append("runbook:markers_reversed")
+        return
+    block = body[start_idx:end_idx]
+    if not block.strip():
+        findings.append("runbook:command_block_empty")
+        return
     for anchor in RUNBOOK_REQUIRED:
-        if anchor not in body:
-            findings.append(f"runbook:required_anchor_missing: {anchor}")
+        if anchor not in block:
+            findings.append(f"runbook:anchor_missing_in_command_block: {anchor}")
     for token in RUNBOOK_FORBIDDEN:
-        if token in body:
+        if token in block:
             findings.append(f"runbook:test_mode_smtp_combo_forbidden:{token}")
 
 

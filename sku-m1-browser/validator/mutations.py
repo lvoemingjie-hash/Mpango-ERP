@@ -27,6 +27,12 @@ R5 (M43) covers the runbook run contract: restoring the old test-mode +
 SMTP/maildir backend documentation in the README must turn the static
 validator RED (L4 VOID_ENVIRONMENT_PRECHECK__TEST_MODE_CANNOT_FEED_MAILDIR_
 SMTP_HARNESS), and the byte-exact restore must be GREEN again.
+
+R5-R1 (M44-M46) covers the command-block-bound runbook oracle:
+  M44 weaken the marked command's SMTP/TLS contract (STARTTLS back on)
+  M45 downgrade the marked command's HTTPS origin to http
+  M46 move a required anchor outside the marked block so global prose
+      presence cannot hide its absence inside the executable block
 """
 from __future__ import annotations
 
@@ -316,6 +322,26 @@ def main() -> int:
             (README,
              "MPANGO_ENV=production \\",
              "MPANGO_ENV=test \\  # old VOID test-mode combo restored by M43"),
+        ]),
+        # ---- R5-R1: command-block-bound runbook oracle ----------------------
+        ("M44-marked-command-starttls-re-enabled", [
+            (README,
+             "SMTP_USE_TLS=0 SMTP_STARTTLS=0 \\",
+             "SMTP_USE_TLS=0 SMTP_STARTTLS=1 \\  # STARTTLS re-enabled by M44"),
+        ]),
+        ("M45-marked-command-https-origin-downgraded", [
+            (README,
+             "PUBLIC_FRONTEND_URL=https://skum1browser.email-links.invalid \\",
+             "PUBLIC_FRONTEND_URL=http://skum1browser.email-links.invalid \\  # HTTPS downgraded by M45"),
+        ]),
+        ("M46-required-anchor-moved-outside-command-block", [
+            # pristine README deliberately carries a prose duplicate of the
+            # SMTP_HOST anchor; removing ONLY the in-block occurrence leaves
+            # global substring presence intact while the executable block
+            # loses the anchor — the command-block oracle must be RED.
+            (README,
+             "SMTP_HOST=127.0.0.1 SMTP_PORT=<smtp-port> \\",
+             "SMTP_PORT=<smtp-port> \\"),
         ]),
     ]
 

@@ -88,6 +88,7 @@ generated for the task and destroyed afterwards; non-default loopback
 `validate_production_secrets`):
 
 ```bash
+# runbook-backend-command:start
 cd backend
 DATABASE_URL='postgresql://<user>:<password>@127.0.0.1:<pg-port>/<db>' \
 REDIS_URL='redis://127.0.0.1:<redis-port>/15' \
@@ -100,11 +101,20 @@ SMTP_USE_TLS=0 SMTP_STARTTLS=0 \
 EMAIL_FROM='b1@skum1browser.invalid' \
 PUBLIC_FRONTEND_URL=https://skum1browser.email-links.invalid \
 <venv>/bin/python -m uvicorn api.app:app --host 127.0.0.1 --port <backend-port>
+# runbook-backend-command:end
 ```
+
+The two `runbook-backend-command` markers delimit the ONLY executable backend
+invocation this runbook authorizes; `validator/static_validator.py` extracts
+exactly the bytes between them and enforces the run contract there. Prose
+elsewhere in this file can never satisfy or weaken that executable contract.
 
 - `SMTP_USE_TLS=0 SMTP_STARTTLS=0`: the local sink is plaintext and advertises
   no STARTTLS; the backend otherwise attempts STARTTLS by default
   (`backend/services/email_delivery.py`).
+- `SMTP_HOST=127.0.0.1` pins outbound SMTP to the loopback sink; this prose
+  mention is documentation only and can never satisfy the executable contract
+  enforced inside the marked block.
 - `PUBLIC_FRONTEND_URL` must be an absolute HTTPS origin (enforced by
   `backend/core/config.py` production validation). It is used only to build
   the absolute verification/setup links inside emails; the harness extracts
@@ -130,7 +140,7 @@ pnpm install --frozen-lockfile
 npx playwright test --list          # read-only; exactly 4 executions listed
 python3 validator/static_validator.py --allow-missing-reconciliation   # GREEN
 npx tsc -p tsconfig.json --noEmit   # clean
-python3 validator/mutations.py      # all 43 mutations RED, restores byte-identical
+python3 validator/mutations.py      # all 46 mutations RED, restores byte-identical
 python3 validator/reconciliation_truth_tests.py
 ```
 

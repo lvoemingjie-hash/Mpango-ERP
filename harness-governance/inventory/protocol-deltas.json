@@ -313,13 +313,20 @@
   "sku-m1-browser/README.md",
   "sku-m1-browser/validator/static_validator.py",
   "sku-m1-browser/validator/mutations.py",
-  "harness-governance/inventory/protocol-deltas.json"
+  "harness-governance/inventory/protocol-deltas.json",
+  "backend/services/sku_integrity.py",
+  "backend/tests/sku_b2_serialization_mutations.py",
+  "backend/tests/test_sku_b2_catalog_serialization.py",
+  "backend/tests/test_sku_r1_client_catalog_contract.py",
+  "backend/tests/test_sku_r1_multipackaging_closure.py",
+  "frontend/src/pages/client/ProductListPage.tsx",
+  "frontend/src/tests/ClientMultipackaging.test.tsx"
  ],
  "base_sha": "24a28d76d6d9483d8101f8e0f537c148dc262859",
  "owner": "cto",
- "reason": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A1-R5 secret-baseline and browser-runbook reproducibility closure: reconcile .secrets.baseline with the 15 audited L5 non-production findings (3 loopback test database URLs, 2 candidate-SHA report hashes, 7 pnpm integrity hashes, 3 local browser fixture credentials; unclassified=0, verified_real=0, additions-only); repin the browser runbook to the L4 attempt-2 loopback-only production SMTP mode (virtual local sink auth, HTTPS public email-link origin) and forbid the L4-VOID test-mode + maildir combination via a new static-validator runbook check and mutation M43 (43rd gate).",
+ "reason": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A1-R5 secret-baseline and browser-runbook reproducibility closure (R5 + R5-R1): reconcile .secrets.baseline with the 15 audited L5 non-production findings (3 loopback test database URLs, 2 candidate-SHA report hashes, 7 pnpm integrity hashes, 3 local browser fixture credentials; unclassified=0, verified_real=0, additions-only); repin the browser runbook to the L4 attempt-2 loopback-only production SMTP mode (virtual local sink auth, HTTPS public email-link origin) and forbid the L4-VOID test-mode + maildir combination via the command-block-bound static-validator runbook check and mutations M43-M46 (46 gates); and close the cumulative BASE-to-candidate semantic registration for the R1/F1 catalog product/test paths and the R5 metadata/runbook paths that this single delta authorizes.",
  "approval_ref": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A1-R5",
  "date": "2026-09-03",
- "notes": "Single-use authorization bound to BASE 24a28d76d6d9483d8101f8e0f537c148dc262859. affected_paths enumerate exactly this round's protection paths; no directories, no wildcards, no future authorization. The backend/.hypothesis cache blob is restored to its BASE blob (2dff79357d58803cf4c3e5bd6a6d8b5a4b5b1a15) and is a BASE-blob revert, not a governance authorization."
+ "notes": "Single-use authorization bound to BASE 24a28d76d6d9483d8101f8e0f537c148dc262859. affected_paths enumerate exactly the five R5 protection paths plus the seven already-changed R1/F1 cumulative paths requiring semantic registration in the BASE-bound structural comparison; no directories, no wildcards, no future authorization. The backend/.hypothesis cache blob is restored to its BASE blob (2dff79357d58803cf4c3e5bd6a6d8b5a4b5b1a15) and is a BASE-blob revert, not a governance authorization."
 }
 ]

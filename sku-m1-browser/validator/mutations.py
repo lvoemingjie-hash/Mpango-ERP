@@ -22,6 +22,11 @@ selected unit, and the returned identity equaling the chosen unit:
   M34 enable reporter only for author mode
   M35 let --list write evidence
   M36 relabel author evidence independent
+
+R5 (M43) covers the runbook run contract: restoring the old test-mode +
+SMTP/maildir backend documentation in the README must turn the static
+validator RED (L4 VOID_ENVIRONMENT_PRECHECK__TEST_MODE_CANNOT_FEED_MAILDIR_
+SMTP_HARNESS), and the byte-exact restore must be GREEN again.
 """
 from __future__ import annotations
 
@@ -32,6 +37,7 @@ from pathlib import Path
 
 HARNESS = Path(__file__).resolve().parents[1]
 VALIDATOR = HARNESS / "validator" / "static_validator.py"
+README = HARNESS / "README.md"
 ID_SPEC = HARNESS / "tests" / "catalog-id-001.spec.ts"
 HIST_SPEC = HARNESS / "tests" / "catalog-hist-001.spec.ts"
 CONFIG = HARNESS / "playwright.config.ts"
@@ -304,6 +310,12 @@ def main() -> int:
             (HIST_SPEC,
              "  await expect(productContainer).toBeVisible({ timeout: 30_000 });",
              "  // hist product-container anchor removed by M42"),
+        ]),
+        # ---- R5: runbook run contract ---------------------------------------
+        ("M43-runbook-test-mode-smtp-combo-restored", [
+            (README,
+             "MPANGO_ENV=production \\",
+             "MPANGO_ENV=test \\  # old VOID test-mode combo restored by M43"),
         ]),
     ]
 

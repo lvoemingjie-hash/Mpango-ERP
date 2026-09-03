@@ -303,5 +303,23 @@
   "owner": "cto",
   "reason": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A3 test-contract and backend-authority closure: (1) bounded digest-bound manifest transport replaces the single ET1_RUNNER_REQUIRED_NODES env string (460KB full manifests failed execve E2BIG at MAX_ARG_STRLEN 131072) — runner writes one canonical LF-terminated sorted transport file, binds its raw-byte SHA-256, child independently re-derives the digest and enforces canonical form (missing/substituted/truncated/duplicate/reordered fail closed), runner JIT re-verifies bytes at collect/authorize/launch and removes the file on every exit path; truth tests + 6 R4 mutations (+6, gate 108 RED / 9 GREEN) added, pristine seed helpers of prior rounds transport-bound; manifest parse switched to LF-only splitting so node IDs carrying embedded CR bytes survive; (2) 61 STALE_TEST_CONTRACT nodes from the V2 authority run reconciled test-only (038 head assertions, genuine pre-038 migration fixtures, catalog-identity SKU/order-item seeds, AST guards accepting exactly the InventoryRepository.ensure_stock_row apply-phase delegation); (3) two volatile parametrized node IDs stabilized (xlsx-bytes and uuid params) so frozen manifests can bind at all; zero product behavior change; no skip/deselect/xfail; H2-C/PRICING/ORDER-PRICE/REORDER untouched.",
   "approval_ref": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A3 task directive (BASE 24a28d76; candidate 8cef1fff)"
- }
+ },
+ {
+ "delta_id": "PD-2026-09-03-SKU-R0-M1-R1-A1-R5",
+ "kind": "governance",
+ "affected_ids": [],
+ "affected_paths": [
+  ".secrets.baseline",
+  "sku-m1-browser/README.md",
+  "sku-m1-browser/validator/static_validator.py",
+  "sku-m1-browser/validator/mutations.py",
+  "harness-governance/inventory/protocol-deltas.json"
+ ],
+ "base_sha": "24a28d76d6d9483d8101f8e0f537c148dc262859",
+ "owner": "cto",
+ "reason": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A1-R5 secret-baseline and browser-runbook reproducibility closure: reconcile .secrets.baseline with the 15 audited L5 non-production findings (3 loopback test database URLs, 2 candidate-SHA report hashes, 7 pnpm integrity hashes, 3 local browser fixture credentials; unclassified=0, verified_real=0, additions-only); repin the browser runbook to the L4 attempt-2 loopback-only production SMTP mode (virtual local sink auth, HTTPS public email-link origin) and forbid the L4-VOID test-mode + maildir combination via a new static-validator runbook check and mutation M43 (43rd gate).",
+ "approval_ref": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A1-R5",
+ "date": "2026-09-03",
+ "notes": "Single-use authorization bound to BASE 24a28d76d6d9483d8101f8e0f537c148dc262859. affected_paths enumerate exactly this round's protection paths; no directories, no wildcards, no future authorization. The backend/.hypothesis cache blob is restored to its BASE blob (2dff79357d58803cf4c3e5bd6a6d8b5a4b5b1a15) and is a BASE-blob revert, not a governance authorization."
+}
 ]

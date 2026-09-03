@@ -57,23 +57,63 @@ docker run -d --name sku_b1_redis7 --network sku-b1-net \
 cd backend && DATABASE_URL=... alembic upgrade head   # must reach 038_catalog_identity_vertical_slice
 ```
 
-## 2. Local SMTP sink (maildir — no production email)
+## 2. Local SMTP sink (loopback-only maildir — no production email)
 
 ```bash
 python3 sku-m1-browser/tools/smtp_sink.py --port <smtp-port> \
   --maildir sku-m1-browser/results/maildir
 ```
 
-## 3. Backend (real process, dev_sink-free SMTP)
+The sink binds `127.0.0.1` only, advertises `AUTH LOGIN`, and accepts ANY
+username/password (`235 Authentication successful` unconditionally — see
+`tools/smtp_sink.py`). The `SMTP_USER` / `SMTP_PASSWORD` values below are
+therefore virtual local placeholders accepted by the sink; they are never real
+mailbox credentials and no external mailbox is contacted.
+
+## 3. Backend (real process; loopback-only production SMTP mode)
+
+Backend source (`backend/services/email_delivery.py`) sends SMTP **only** when
+`MPANGO_ENV` is `production`; in the other modes mail is recorded in an
+in-process development list that the maildir harness cannot read. The
+test-mode + maildir combination was classified VOID at L4 attempt-1
+(`VOID_ENVIRONMENT_PRECHECK__TEST_MODE_CANNOT_FEED_MAILDIR_SMTP_HARNESS`:
+signup 202, zero SMTP connections, provisioning timeout) and MUST NOT be
+restored. `validator/static_validator.py` rejects that combination in this
+runbook (`runbook:test_mode_smtp_combo_forbidden`).
+
+The L4 attempt-2 proven configuration is production SMTP mode with every
+endpoint pinned to loopback (production-required `SECRET_KEY` freshly
+generated for the task and destroyed afterwards; non-default loopback
+`DATABASE_URL` / `REDIS_URL` per `backend/core/config.py`
+`validate_production_secrets`):
 
 ```bash
 cd backend
-DATABASE_URL=... REDIS_URL=redis://127.0.0.1:<redis-port>/15 \
-SMTP_HOST=127.0.0.1 SMTP_PORT=<smtp-port> EMAIL_PROVIDER=smtp EMAIL_DELIVERY_MODE=smtp \
-EMAIL_FROM='b1@skum1browser.invalid' PUBLIC_FRONTEND_URL=http://127.0.0.1:<frontend-port> \
-MPANGO_ENV=test REPORTING_USER_PASSWORD=... \
+DATABASE_URL='postgresql://<user>:<password>@127.0.0.1:<pg-port>/<db>' \
+REDIS_URL='redis://127.0.0.1:<redis-port>/15' \
+SECRET_KEY='<freshly generated task-scoped key>' \
+MPANGO_ENV=production \
+EMAIL_PROVIDER=smtp EMAIL_DELIVERY_MODE=smtp \
+SMTP_HOST=127.0.0.1 SMTP_PORT=<smtp-port> \
+SMTP_USER=<sink-accepted-username> SMTP_PASSWORD=<sink-accepted-password> \
+SMTP_USE_TLS=0 SMTP_STARTTLS=0 \
+EMAIL_FROM='b1@skum1browser.invalid' \
+PUBLIC_FRONTEND_URL=https://skum1browser.email-links.invalid \
 <venv>/bin/python -m uvicorn api.app:app --host 127.0.0.1 --port <backend-port>
 ```
+
+- `SMTP_USE_TLS=0 SMTP_STARTTLS=0`: the local sink is plaintext and advertises
+  no STARTTLS; the backend otherwise attempts STARTTLS by default
+  (`backend/services/email_delivery.py`).
+- `PUBLIC_FRONTEND_URL` must be an absolute HTTPS origin (enforced by
+  `backend/core/config.py` production validation). It is used only to build
+  the absolute verification/setup links inside emails; the harness extracts
+  only the token parameter (`src/provision.ts`) and the browser navigates
+  exclusively to `B1_FRONTEND_BASE_URL`, so a synthetic `.invalid` origin is
+  used and no public host is contacted.
+- The whole runtime stays loopback-only: PG, Redis, backend, frontend and the
+  SMTP sink all bind `127.0.0.1`; no external mailbox or production resource
+  is used.
 
 ## 4. Production-built frontend (real process)
 
@@ -90,7 +130,7 @@ pnpm install --frozen-lockfile
 npx playwright test --list          # read-only; exactly 4 executions listed
 python3 validator/static_validator.py --allow-missing-reconciliation   # GREEN
 npx tsc -p tsconfig.json --noEmit   # clean
-python3 validator/mutations.py      # all 42 mutations RED, restores byte-identical
+python3 validator/mutations.py      # all 43 mutations RED, restores byte-identical
 python3 validator/reconciliation_truth_tests.py
 ```
 

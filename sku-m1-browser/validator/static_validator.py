@@ -19,6 +19,11 @@ Enforces, fail-closed:
   - B4 authority modes: exactly two mutually exclusive runtime modes
     (AUTHOR_DIAGNOSTIC / INDEPENDENT_AUTHORITY), fail-closed resolution,
     frozen recorded mode, append-only invocation accounting;
+  - R5 runbook run contract: the README documents the L4-proven loopback-only
+    production SMTP mode (EMAIL_PROVIDER/EMAIL_DELIVERY_MODE=smtp against the
+    127.0.0.1 sink, virtual local SMTP auth, SMTP_USE_TLS=0 SMTP_STARTTLS=0,
+    HTTPS public email-link origin) and never restores the VOID
+    test-mode + SMTP/maildir combination;
   - reconciliation accounting: every node x viewport combination recorded
     exactly once, and ONE execution mode + ONE candidate SHA shared by the
     invocation ledger, the live execution contract, the authority report,
@@ -178,6 +183,27 @@ AUTHORITY_FORBIDDEN = {
     "src/authority-reporter.ts": ["AUTHOR_DIAGNOSTIC_ONLY", "B3_AUTHOR_DIAGNOSTIC"],
     "playwright.config.ts": ["diagnostic-reporter"],
 }
+
+# R5: runbook run contract. Anchors come from the source configuration names
+# (backend/core/config.py, backend/services/email_delivery.py) and the L4
+# attempt-2 proven loopback-only production SMTP mode. The forbidden token is
+# the L4 attempt-1 VOID combination: test mode never opens an SMTP connection,
+# so it cannot feed the maildir harness
+# (VOID_ENVIRONMENT_PRECHECK__TEST_MODE_CANNOT_FEED_MAILDIR_SMTP_HARNESS).
+RUNBOOK_FILE = "README.md"
+RUNBOOK_REQUIRED = [
+    "MPANGO_ENV=production",
+    "EMAIL_PROVIDER=smtp",
+    "EMAIL_DELIVERY_MODE=smtp",
+    "SMTP_HOST=127.0.0.1",
+    "SMTP_USER=",
+    "SMTP_PASSWORD=",
+    "SMTP_USE_TLS=0",
+    "SMTP_STARTTLS=0",
+    "EMAIL_FROM=",
+    "PUBLIC_FRONTEND_URL=https://",
+]
+RUNBOOK_FORBIDDEN = ["MPANGO_ENV=test"]
 
 
 def read(rel: str) -> str:
@@ -439,6 +465,20 @@ def check_no_h2c_imports(findings: list[str]) -> None:
         for pattern in ("j1h2b", "forgot-reset", "h2-c/", "h2c"):
             if pattern in body.lower() and "h2c_reference" not in pattern:
                 findings.append(f"h2c_import:{rel}:{pattern}")
+
+
+def check_runbook(findings: list[str]) -> None:
+    """R5 run contract: the README runbook must keep documenting the L4-proven
+    loopback-only production SMTP mode (virtual local sink auth, HTTPS public
+    email-link origin) and must never restore the VOID test-mode +
+    SMTP/maildir backend documentation."""
+    body = read(RUNBOOK_FILE)
+    for anchor in RUNBOOK_REQUIRED:
+        if anchor not in body:
+            findings.append(f"runbook:required_anchor_missing: {anchor}")
+    for token in RUNBOOK_FORBIDDEN:
+        if token in body:
+            findings.append(f"runbook:test_mode_smtp_combo_forbidden:{token}")
 
 
 EXPECTED_COMBOS = {
@@ -732,6 +772,7 @@ def main() -> int:
     check_authority_mode(findings)
     check_runtime_lifecycle(findings)
     check_no_h2c_imports(findings)
+    check_runbook(findings)
     check_reconciliation(findings, args.allow_missing_reconciliation, args.require_mode)
 
     if findings:

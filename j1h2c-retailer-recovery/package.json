@@ -1,0 +1,21 @@
+{
+  "name": "j1h2c-retailer-recovery-harness",
+  "private": true,
+  "version": "1.0.0",
+  "description": "DC-12R1-MVP-L1-J1-H2-C-R1-R2-R1-B1 frozen Playwright harness for the retailer password-recovery discovery protocol: 15 browser-authoritative nodes (HC01-HC10, HC12-HC16); 2 static-class nodes (HC11, HC17) reconciled separately at runtime, never faked as browser PASS.",
+  "type": "module",
+  "scripts": {
+    "test:list": "playwright test --list",
+    "typecheck": "tsc --noEmit",
+    "validate:static": "node tools/validate-static.mjs",
+    "check:neutrality": "node tools/check-neutrality.mjs",
+    "scan:artifacts": "node tools/scan-artifacts.mjs --artifacts-dir artifacts --maildir-root $J1H2C_MAILDIR_ROOT --secrets-from-env",
+    "check:runtime-contracts": "node tools/check-runtime-contracts.mjs",
+    "check:browser-authority": "node tools/check-browser-authority-contracts.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1",
+    "@types/node": "22.10.5",
+    "typescript": "5.7.3"
+  }
+}

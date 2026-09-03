@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -219,6 +219,18 @@ export function ClientLoginPage() {
           >
             {isSubmitting ? 'Signing in...' : 'Sign In'}
           </button>
+
+          {/* H2-C-R1: retailer recovery discovery entry. Only a valid portal
+              (isValidPortal) shows the entry; the normalized code travels in
+              the query string to the public forgot-password page. */}
+          <p className="text-center text-sm">
+            <Link
+              to={`/retailer/forgot-password?w=${portalCode}`}
+              className="font-medium text-primary-600 hover:text-primary-500"
+            >
+              Forgot password?
+            </Link>
+          </p>
         </form>
       </div>
     </div>

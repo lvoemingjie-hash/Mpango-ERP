@@ -495,16 +495,18 @@ def check_no_h2c_imports(findings: list[str]) -> None:
 
 
 def check_runbook(findings: list[str]) -> None:
-    """R5-R2 run contract, evaluated ONLY inside the uniquely marked backend
-    command block. The block must equal the frozen command-line grammar, and
-    every required assignment must be an exact KEY=value token collected from
-    a pure assignment line (a line whose first token is itself an
-    assignment): shell comments (full-line or inline), prefixed variable
-    names (XSMTP_HOST=, DISABLED_PUBLIC_FRONTEND_URL=) and command arguments
-    (echo SMTP_HOST=...) can never satisfy the executable contract, and any
-    forbidden value either lands on a rejected comment line or is collected
-    and rejected explicitly — it can never leave the validator GREEN.
-    Anchors in prose outside the block are irrelevant by construction."""
+    """R5-R3 run contract, evaluated ONLY inside the uniquely marked backend
+    command block. The RAW physical block must equal the frozen command
+    grammar byte-for-byte (boundary newlines and every physical line
+    included), so an inserted blank line inside the backslash continuation
+    chain — as much as comments, prefixes, drift, reordering or extra lines —
+    can never pass. Secondary stripped/tokenized checks (comment rejection,
+    exact KEY=value assignment tokens on pure assignment lines, forbidden
+    values) run only after the literal comparison. Shell comments, prefixed
+    variable names and command arguments can never satisfy the executable
+    contract, and any forbidden value either lands on a rejected comment line
+    or is collected and rejected explicitly. Anchors in prose outside the
+    block are irrelevant by construction."""
     body = read(RUNBOOK_FILE)
     n_start = body.count(RUNBOOK_CMD_START)
     n_end = body.count(RUNBOOK_CMD_END)
@@ -526,31 +528,30 @@ def check_runbook(findings: list[str]) -> None:
         findings.append("runbook:markers_reversed")
         return
     block = body[start_idx:end_idx]
-    content_lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
-    if not content_lines:
+    if not block.strip():
         findings.append("runbook:command_block_empty")
         return
 
-    # No shell comment may hide inside the executable block. The marker
-    # comments live outside the extracted bytes and are unaffected.
+    # R5-R3 physical-line grammar: the RAW extracted block must equal the
+    # frozen block byte-for-byte, including its boundary newlines and every
+    # physical line. A blank line inserted between backslash-continued
+    # environment lines breaks the shell continuation chain and must never be
+    # filtered away before this comparison; whitespace-only lines, extra,
+    # removed or reordered lines, comments, prefixes and value drift all make
+    # this check RED.
+    expected_block = "\n" + "\n".join(RUNBOOK_BLOCK_LINES) + "\n"
+    if block != expected_block:
+        findings.append("runbook:command_block_literal_mismatch")
+
+    # Derived lines are secondary: they feed only the already-existing
+    # comment rejection and exact assignment-token checks below and are
+    # never the authority for physical-line equality.
+    content_lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
     for line in content_lines:
         if line.startswith("#"):
             findings.append("runbook:full_line_comment_in_command_block")
         if re.search(r"\s#", line):
             findings.append("runbook:inline_comment_in_command_block")
-
-    # Frozen command grammar: the stripped block lines must equal the frozen
-    # lines exactly and in order, proving the frozen values and the
-    # continuation form.
-    if len(content_lines) != len(RUNBOOK_BLOCK_LINES):
-        findings.append(
-            f"runbook:command_block_line_count:{len(content_lines)}"
-            f"!={len(RUNBOOK_BLOCK_LINES)}"
-        )
-    else:
-        for idx, (got, want) in enumerate(zip(content_lines, RUNBOOK_BLOCK_LINES), 1):
-            if got != want:
-                findings.append(f"runbook:command_block_line_mismatch:{idx}")
 
     # Exact assignment tokens: collect only from pure assignment lines, so
     # prefixed variable names and command arguments cannot contribute.

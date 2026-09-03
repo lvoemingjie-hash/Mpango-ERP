@@ -39,6 +39,10 @@ must match fixed KEY=value assignment tokens on pure assignment lines, so
   M47 commenting out an in-block required line (literal text retained)
   M48 renaming a required variable behind a prefix (literal suffix retained)
 must both turn the validator RED.
+
+R5-R3 (M49) covers the physical-line runbook oracle: inserting one blank
+physical line inside the backslash continuation chain must turn the
+validator RED because the raw block no longer equals the frozen grammar.
 """
 from __future__ import annotations
 
@@ -365,6 +369,16 @@ def main() -> int:
             (README,
              "PUBLIC_FRONTEND_URL=https://skum1browser.email-links.invalid \\",
              "DISABLED_PUBLIC_FRONTEND_URL=https://skum1browser.email-links.invalid \\"),
+        ]),
+        # ---- R5-R3: physical-line runbook oracle ----------------------------
+        ("M49-blank-line-breaks-continuation-chain", [
+            # One blank physical line between backslash-continued environment
+            # lines breaks the shell continuation chain; every non-empty
+            # command line is unchanged. The raw-block literal comparison
+            # must be RED.
+            (README,
+             "MPANGO_ENV=production \\\nEMAIL_PROVIDER=smtp EMAIL_DELIVERY_MODE=smtp \\",
+             "MPANGO_ENV=production \\\n\nEMAIL_PROVIDER=smtp EMAIL_DELIVERY_MODE=smtp \\"),
         ]),
     ]
 

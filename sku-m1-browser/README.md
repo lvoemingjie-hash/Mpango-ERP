@@ -140,7 +140,7 @@ pnpm install --frozen-lockfile
 npx playwright test --list          # read-only; exactly 4 executions listed
 python3 validator/static_validator.py --allow-missing-reconciliation   # GREEN
 npx tsc -p tsconfig.json --noEmit   # clean
-python3 validator/mutations.py      # all 46 mutations RED, restores byte-identical
+python3 validator/mutations.py      # all 49 mutations RED, restores byte-identical
 python3 validator/reconciliation_truth_tests.py
 ```
 

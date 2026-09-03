@@ -14,6 +14,7 @@ from models.catalog_product import CatalogProduct
 from models.sku import SKU
 from repositories.inventory_repository import InventoryRepository
 from repositories.sku_repository import SKURepository
+from services.sku_integrity import flush_skus_or_409
 
 
 class IntakeApplyService:
@@ -160,7 +161,16 @@ class IntakeApplyService:
                 created_by=user_id,
                 updated_by=user_id,
             )
-            sku = await self._sku_repo.create(db, sku=sku)
+            # R5-F2: the friendly SKU_CODE_EXISTS precheck above is UX only.
+            # The insert flushes through the shared named-constraint guard so
+            # a concurrent duplicate SKU code surfaces as exactly one rolled
+            # back SKU_EXISTS / 409 — never a raw IntegrityError. The losing
+            # transaction rolls back whole (product, SKU, stock and intake
+            # audit mutations together); unrelated IntegrityErrors propagate
+            # unchanged.
+            db.add(sku)
+            await flush_skus_or_409(db, sku_code=prepared["sku_code"])
+            await db.refresh(sku)
             await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
             prepared["row"].target_sku_id = sku.id
             prepared["row"].apply_status = "applied"

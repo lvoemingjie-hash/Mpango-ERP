@@ -12,16 +12,12 @@ R1 (M37-M42) covers the product-level multipackaging oracle: containment
 (exactly one product container), packaging inside that same container,
 selection switching the selected sellable_unit_id, stock following the
 selected unit, and the returned identity equaling the chosen unit:
-  M27 remove mode exclusivity
-  M28 map independent mode to AUTHOR_DIAGNOSTIC
-  M29 allow no-mode execution
-  M30 delete ledger mode comparison
-  M31 delete reconciliation mode comparison
-  M32 permit cross-mode second invocation
-  M33 permit candidate-SHA ledger drift
-  M34 enable reporter only for author mode
-  M35 let --list write evidence
-  M36 relabel author evidence independent
+  M37 remove product-container uniqueness
+  M38 remove the in-container packaging assertion
+  M39 remove the selected-unit switch assertion
+  M40 remove the selected-stock update assertion
+  M41 remove the returned-identity check
+  M42 remove the hist product-container anchor
 
 R5 (M43) covers the runbook run contract: restoring the old test-mode +
 SMTP/maildir backend documentation in the README must turn the static

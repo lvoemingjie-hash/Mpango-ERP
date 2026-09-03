@@ -608,6 +608,20 @@ def test_real_pg16_bootstrap_rolls_back_unsafe_missing_stock_reconciliation() ->
                 engine.dispose()
 
 
+def _sanitized_stream_tail(stream: bytes, limit: int = 4000) -> str:
+    """Sanitized tail of a child-process stream for failure diagnostics.
+
+    URL credentials are masked and known environment secret values are
+    replaced before the text ever reaches an assertion message."""
+    text_out = stream.decode("utf-8", errors="replace")[-limit:]
+    text_out = re.sub(r"(://[^:/\s\"':]+:)[^@/\s\"']+", r"\1***", text_out)
+    for name in ("POSTGRES_PASSWORD", "REPORTING_USER_PASSWORD", "SECRET_KEY", "DATABASE_URL"):
+        value = os.environ.get(name)
+        if value:
+            text_out = text_out.replace(value, "***")
+    return text_out.strip() or "<empty>"
+
+
 def test_real_pg16_demo_seeder_uses_canonical_catalog_identity() -> None:
     source_url = os.environ["TEST_DATABASE_URL"]
     with temporary_database_url(source_url, "skum1demoseed") as db_url:
@@ -622,12 +636,17 @@ def test_real_pg16_demo_seeder_uses_canonical_catalog_identity() -> None:
             [sys.executable, "scripts/seed_demo_data.py"],
             cwd=BACKEND_DIR,
             env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             timeout=180,
             check=False,
         )
-        assert result.returncode == 0, "demo seeder failed in the throwaway database"
+        assert result.returncode == 0, (
+            "demo seeder failed in the throwaway database\n"
+            f"returncode={result.returncode}\n"
+            f"--- seeder stdout (sanitized tail) ---\n{_sanitized_stream_tail(result.stdout)}\n"
+            f"--- seeder stderr (sanitized tail) ---\n{_sanitized_stream_tail(result.stderr)}"
+        )
 
         engine = create_engine(_sync_url(db_url), future=True)
         schema = "t_a0000000000040008000000000000001"

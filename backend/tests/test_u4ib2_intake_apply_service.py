@@ -402,14 +402,14 @@ async def test_mid_apply_failure_rolls_back_sku_writes_and_audit(async_session, 
     workspace_id = await _create_ready_workspace(async_session)
 
     from api.v1 import intake
+    from services import intake_apply_service as intake_apply_module
+    from services.sku_integrity import flush_skus_or_409 as real_guard
 
-    original_create = intake.intake_apply_service._sku_repo.create
-
-    async def _create_then_fail_once(db, *, sku):
-        await original_create(db, sku=sku)
+    async def _flush_then_fail_once(db, *, sku_code):
+        await real_guard(db, sku_code=sku_code)
         raise RuntimeError("forced mid-apply failure")
 
-    monkeypatch.setattr(intake.intake_apply_service._sku_repo, "create", _create_then_fail_once)
+    monkeypatch.setattr(intake_apply_module, "flush_skus_or_409", _flush_then_fail_once)
 
     async with _client_for(permissions=["intake:update", "skus:import"]) as client:
         response = await client.post(APPLY_PATH.format(workspace_id=workspace_id))
@@ -425,6 +425,176 @@ async def test_mid_apply_failure_rolls_back_sku_writes_and_audit(async_session, 
         "not_applied",
         "not_applied",
     ]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_intake_apply_sku_code_races_deterministically(async_session, monkeypatch):
+    """R5-F2 P2-01 — deterministic real-PG two-session intake SKU race.
+
+    Two independent sessions/connections apply two ready workspaces of the
+    same tenant carrying the SAME new SKU code. Both friendly existing-code
+    prechecks pass; both executions synchronize on a wrapper around the
+    imported ``flush_skus_or_409`` immediately before the real shared guarded
+    flush, and the wrapper delegates to the real guard unchanged.
+
+    Deterministic outcome per race:
+      - exactly one success and exactly one 409 with detail code SKU_EXISTS
+      - zero raw IntegrityError / 500 leakage
+      - exactly one product, one SKU and one zero-quantity stock row
+      - no orphan or duplicate stock rows
+      - the losing workspace/audit mutations roll back whole
+      - the losing session is immediately reusable
+    Both scheduling orders run with repeated deterministic cases; no sleeps.
+    """
+    import asyncio
+
+    from database.session import AsyncSessionLocal
+    from fastapi import HTTPException
+    from services import intake_apply_service as intake_apply_module
+    from services.intake_apply_service import IntakeApplyService
+    from sqlalchemy.exc import IntegrityError
+    from services.sku_integrity import flush_skus_or_409 as real_guard
+
+    service = IntakeApplyService()
+    orders = (("workspace_a", "workspace_b"), ("workspace_b", "workspace_a"))
+    iterations_per_order = 3
+    loser_session_by_label: dict[str, object] = {}
+
+    for order in orders:
+        for iteration in range(iterations_per_order):
+            await _reset_apply_tables(async_session)
+            code = f"R5F2RACE-{iteration:02d}"
+            ids = {
+                "workspace_a": await _create_ready_workspace(
+                    async_session,
+                    rows=[{"sku_code": code, "name": "Intake Race Alpha", "unit": "piece", "category": "dry"}],
+                ),
+                "workspace_b": await _create_ready_workspace(
+                    async_session,
+                    rows=[{"sku_code": code, "name": "Intake Race Beta", "unit": "piece", "category": "dry"}],
+                ),
+            }
+
+            # Synchronization point: both executions park here AFTER their
+            # friendly existing-code prechecks and release together into the
+            # real guarded flush, which is delegated to UNCHANGED.
+            arrivals = {"count": 0}
+            gate = asyncio.Event()
+
+            async def barred_flush(db, *, sku_code):
+                arrivals["count"] += 1
+                if arrivals["count"] == 1:
+                    await gate.wait()
+                else:
+                    gate.set()
+                return await real_guard(db, sku_code=sku_code)
+
+            monkeypatch.setattr(intake_apply_module, "flush_skus_or_409", barred_flush)
+
+            outcomes: dict[str, tuple[str, object]] = {}
+            integrity_leaks: list[IntegrityError] = []
+
+            async def run_apply(label: str, session) -> None:
+                try:
+                    await service.apply_workspace(
+                        session,
+                        tenant_id=uuid.UUID(TEST_TENANT_ID),
+                        workspace_id=ids[label],
+                        user_id=uuid.UUID(TEST_USER_ID),
+                    )
+                    await session.commit()
+                    outcomes[label] = ("success", None)
+                except HTTPException as exc:
+                    await session.rollback()
+                    outcomes[label] = ("sku_exists_409", exc)
+                    loser_session_by_label[label] = session
+                except IntegrityError as exc:  # must never happen
+                    await session.rollback()
+                    outcomes[label] = ("integrity_error", exc)
+                    integrity_leaks.append(exc)
+
+            sessions = {label: AsyncSessionLocal() for label in ids}
+            try:
+                for session in sessions.values():
+                    session.info["tenant_schema"] = TEST_TENANT_SCHEMA
+                    session.info["tenant_id"] = TEST_TENANT_ID
+                    await session.execute(
+                        text(f'SET search_path TO "{TEST_TENANT_SCHEMA}", public')
+                    )
+
+                tasks = [
+                    asyncio.create_task(run_apply(order[0], sessions[order[0]])),
+                    asyncio.create_task(run_apply(order[1], sessions[order[1]])),
+                ]
+                await asyncio.gather(*tasks)
+
+                assert sorted(outcome for outcome, _ in outcomes.values()) == [
+                    "sku_exists_409",
+                    "success",
+                ], f"order={order} iteration={iteration}: outcomes {outcomes}"
+                assert not integrity_leaks, f"raw IntegrityError leaked: {integrity_leaks}"
+
+                loser_label = next(
+                    label for label, (outcome, _) in outcomes.items() if outcome == "sku_exists_409"
+                )
+                exc = outcomes[loser_label][1]
+                assert exc.status_code == 409, f"expected 409, got {exc.status_code}"
+                assert isinstance(exc.detail, dict) and exc.detail.get("code") == "SKU_EXISTS", exc.detail
+
+                # Exactly one product, one SKU and one zero-quantity stock row
+                # for the raced code; no orphan or duplicate stock anywhere.
+                state = await _catalog_stock_state(async_session)
+                assert state == {
+                    "products": 1, "units": 1, "stocks": 1,
+                    "orphan_units": 0, "nonzero_stocks": 0,
+                }, f"order={order} iteration={iteration}: {state}"
+                quantities = (
+                    await async_session.execute(
+                        text(
+                            f'SELECT i.quantity_on_hand FROM "{TEST_TENANT_SCHEMA}".inventory_stocks i '
+                            f'JOIN "{TEST_TENANT_SCHEMA}".skus s ON s.id = i.sku_id '
+                            "WHERE s.sku_code = :code"
+                        ),
+                        {"code": code},
+                    )
+                ).scalars().all()
+                assert quantities == [0], (
+                    f"expected exactly one zero-quantity stock row, got {quantities}"
+                )
+
+                # The winner is applied; the loser rolled back whole.
+                winner_label = next(label for label in ids if label != loser_label)
+                winner_audit = await _workspace_audit(async_session, ids[winner_label])
+                assert winner_audit["apply_status"] == "applied"
+                assert [
+                    row["apply_status"] for row in await _row_audit(async_session, ids[winner_label])
+                ] == ["applied"]
+                loser_audit = await _workspace_audit(async_session, ids[loser_label])
+                assert loser_audit["apply_status"] == "not_applied"
+                assert loser_audit["applied_at"] is None
+                loser_rows = await _row_audit(async_session, ids[loser_label])
+                assert [row["apply_status"] for row in loser_rows] == ["not_applied"]
+                assert all(row["target_sku_id"] is None for row in loser_rows)
+
+                # The losing session is immediately reusable: a real query
+                # works on the very session that took the 409 (it is closed
+                # only afterwards, so no transaction leaks past the test).
+                loser_session = loser_session_by_label[loser_label]
+                reused = (
+                    await loser_session.execute(
+                        text(
+                            f'SELECT apply_status FROM "{TEST_TENANT_SCHEMA}".intake_workspaces '
+                            "WHERE id = :workspace_id"
+                        ),
+                        {"workspace_id": ids[loser_label]},
+                    )
+                ).scalar_one()
+                assert reused == "not_applied", (
+                    "loser session must be immediately reusable after the 409"
+                )
+            finally:
+                for session in sessions.values():
+                    await session.close()
 
 
 @pytest.mark.asyncio

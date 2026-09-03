@@ -19,7 +19,7 @@
 | `sku-m1-browser/tests/catalog-id-001.spec.ts` | frozen node CATALOG-ID-001 |
 | `sku-m1-browser/tests/catalog-hist-001.spec.ts` | frozen node CATALOG-HIST-001 |
 | `sku-m1-browser/validator/static_validator.py` | static fail-closed validator (manifest, anchors, no-mock, nav allowlist, H2-C ban, DB-seed ban) |
-| `sku-m1-browser/validator/mutations.py` | 10 mutations + pristine/restore controls |
+| `sku-m1-browser/validator/mutations.py` | 49 mutations + pristine/restore controls (M43-M49 guard the frozen runbook oracle: the marked backend command block must reproduce the frozen grammar byte-for-byte with exact KEY=value assignment tokens — test-mode combo, STARTTLS, HTTPS origin, block containment, prefixes and blank-line continuation breaks all fail closed) |
 | `sku-m1-browser/tools/smtp_sink.py` | local SMTP->maildir sink (stdlib only) |
 | `sku-m1-browser/tools/scan_artifacts.py` | sanitized artifact scanner |
 | `sku-m1-browser/README.md` | execution runbook + independent verifier handoff |

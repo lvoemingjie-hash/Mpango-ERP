@@ -13,6 +13,10 @@ Every SKU insertion path routes its flush through :func:`flush_skus_or_409`:
 - ``CatalogProductService.add_sellable_unit``
 - ``SKUService.create_sku``
 - ``ImportService`` apply (bulk SKU creation)
+- ``IntakeApplyService.apply_workspace`` (staged intake rows → official SKUs;
+  the friendly ``SKU_CODE_EXISTS`` precheck is UX only, a flush-time race
+  rolls the losing transaction back whole and surfaces as exactly one
+  ``SKU_EXISTS`` / 409)
 
 Unrelated IntegrityErrors (check constraints, FKs, other unique indexes) are
 explicitly NOT classified as SKU_EXISTS; they propagate unchanged so they can

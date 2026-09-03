@@ -540,13 +540,15 @@ class TestCanonicalProductIdFailClosed:
     async def test_handler_reachable_malformed_ids_are_exact_product_not_found(
         self, r1_client, two_tenants, s2_clean_db
     ):
-        """HANDLER_REACHABLE class: each probe MATCHES the route (verified by
-        route-matching probe evidence: an unauthenticated variant of each form
-        reaches the auth dependency, i.e. 401 — never the generic routing 404),
-        so get_product executes and MUST answer an exact clean 404.
+        """HANDLER_REACHABLE class: each probe matches the product detail
+        route and reaches get_product, which MUST answer an exact clean 404
+        PRODUCT_NOT_FOUND.
 
         422 is NOT acceptable for any of these: the handler's contract is a
-        neutral PRODUCT_NOT_FOUND for every malformed/non-canonical id."""
+        neutral PRODUCT_NOT_FOUND for every malformed/non-canonical id.
+        Router-level rejections of unrelated paths are covered separately
+        (see test_router_rejected_probes_never_reach_get_product) and are NOT
+        a PRODUCT_NOT_FOUND handler proof."""
         product_id = await _seed_single_product(two_tenants, s2_clean_db)
         token = await _login_retailer(r1_client, two_tenants)
 

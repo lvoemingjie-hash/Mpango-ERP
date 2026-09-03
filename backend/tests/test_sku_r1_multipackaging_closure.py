@@ -42,7 +42,8 @@ os.environ.setdefault(
     "postgresql://r1_auth:r1auth-4uJm7Kk8Ll2Z@127.0.0.1:17751/test_r1_multipack_backend",
 )
 os.environ.setdefault("MPANGO_ENV", "test")
-os.environ.setdefault("REPORTING_USER_PASSWORD", "R1Rep-8gHj2Nn5Mm9Q")
+# R5-F2 P2-02: no REPORTING_USER_PASSWORD literal here — pytest's canonical
+# conftest.py resolves that test-only environment before test-module import.
 
 from fastapi import HTTPException  # noqa: E402
 from sqlalchemy import text  # noqa: E402
@@ -240,18 +241,28 @@ async def test_race_loser_session_is_immediately_usable_and_parent_row_rolled_ba
     # The loser session is immediately usable: a fresh product persists.
     loser_session = session_a if outcomes["a"] == "sku_exists_409" else session_b
     survivor_code = f"R1AFTER-{uuid.uuid4().hex[:8].upper()}"
-    product = await _SERVICE.create_product(
+    survivor_product = await _SERVICE.create_product(
         loser_session, request=_product_create(survivor_code, name="R1 After Juice"), actor_id=None
     )
     await loser_session.commit()
-    assert str(product.id), "loser session must remain fully usable after 409"
 
-    # Exactly ONE persisted SKU row for the raced code.
+    # Exactly ONE persisted SKU row for the raced code. The survivor product
+    # written through the reused loser session must be durably persisted --
+    # verified by id through an independent session.
     async with _session_maker(engine)() as check:
         raced_rows = (
             await check.execute(
                 text(f"SELECT COUNT(*) FROM \"{tenant_db}\".skus WHERE sku_code = :c"),
                 {"c": code},
+            )
+        ).scalar_one()
+        survivor_rows = (
+            await check.execute(
+                text(
+                    f"SELECT COUNT(*) FROM \"{tenant_db}\".catalog_products "
+                    "WHERE id = :pid"
+                ),
+                {"pid": str(survivor_product.id)},
             )
         ).scalar_one()
         usable_products = (
@@ -265,6 +276,10 @@ async def test_race_loser_session_is_immediately_usable_and_parent_row_rolled_ba
     assert raced_rows == 1, f"expected exactly 1 persisted SKU row for the raced code, got {raced_rows}"
     assert usable_products == 1, (
         f"loser's parent product must be rolled back; expected 1 product, got {usable_products}"
+    )
+    assert survivor_rows == 1, (
+        "the product written through the reused loser session must be durably persisted; "
+        f"got {survivor_rows}"
     )
 
     await session_a.close()
@@ -461,8 +476,51 @@ async def test_product_listing_groups_units_and_orders_deterministically(engine,
     assert all(u["sellable_unit_id"] for u in beta["units"])
 
     alpha = next(item for item in r1_items if item["name"] == f"R1 Alpha {suffix}")
-    assert alpha["stock_level"] == StockLevel.OUT_OF_STOCK  # no stock rows yet
+    assert alpha["stock_level"] == StockLevel.OUT_OF_STOCK  # the service creates an idempotent zero-quantity stock row
     assert alpha["in_stock"] is False and alpha["can_order"] is False
 
     await session.rollback()
     await session.close()
+
+
+# ---------------------------------------------------------------------------
+# P2-02 — secret hygiene: no direct REPORTING_USER_PASSWORD default
+# ---------------------------------------------------------------------------
+
+
+def test_module_sets_no_reporting_user_password_default():
+    """R5-F2 P2-02: this module must never introduce an os.environ
+    setdefault/assignment for the reporting password.
+
+    Pytest's canonical conftest.py resolves that test-only environment before
+    test-module import, so a module-level default is both redundant and a
+    secret-hygiene defect. The inspected key is constructed here instead of
+    embedding a second direct assignment."""
+    import ast
+    from pathlib import Path
+
+    key = "_".join(("REPORTING", "USER", "PASSWORD"))
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    offenders: list[int] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "setdefault"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == key
+        ):
+            offenders.append(node.lineno)
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if (
+                    isinstance(target, ast.Subscript)
+                    and isinstance(target.slice, ast.Constant)
+                    and target.slice.value == key
+                ):
+                    offenders.append(node.lineno)
+    assert not offenders, (
+        f"direct REPORTING_USER_PASSWORD environ default/assignment must stay out of "
+        f"this module (conftest.py owns it); found at lines {offenders}"
+    )

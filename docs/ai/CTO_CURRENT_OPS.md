@@ -1,10 +1,11 @@
 # CTO Current Ops
 
-**Last updated:** 2026-08-30
+**Last updated:** 2026-09-04
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Current reviewed product-code baseline:** `d9dc2e4130ea87a57d433dfadeb2f2736576fac6` (the accepted DC-12R1-MVP-L1-HE2-ET1-R3-A1-M1 controlled governance merge; before new controlled work, fetch the live protected tip, require this baseline to be its ancestor, then freeze that live tip)
-**HE2 R3+A1 status: MERGED_AND_INDEPENDENTLY_RUNTIME_VERIFIED** - controlled merge `d9dc2e41` has parents `cdb39e96` and `483b8ab0`; its tree is identical to source `483b8ab0`. Accepted evidence: Kilo cumulative governance review `db87f0d3`, Lubuntu fresh-runtime authority-profile final `6fb1e31e`, and merge report `1017be0c`. The authority runner now binds backend CWD/temp-DB inputs and profile-authorized Alembic head/parent lineage; it does not merge migration `038` or any SKU product code.
+**Current reviewed product-code baseline:** `bd2373cbfeafde07f1771aba2089f0d1b5f0cd3f` (the accepted DC-12R1-MVP-L1-J1-H2-C-I2-E2-B1-R6-R5-R2-M1 controlled H2-C merge; before new controlled work, fetch the live protected tip, require this baseline to be its ancestor, then freeze that live tip)
+**H2-C status: MERGED_AND_INDEPENDENTLY_BROWSER_VERIFIED** - controlled merge `bd2373cb` has parents `24a28d76` and approved source `ddba2d3e`; its tree `29a1c39a` is identical to the reviewed source tree. Accepted evidence: Kilo source/test authenticity review `3db164dd`, Lubuntu single-stack authoritative browser final `da6bf9e7` (15 browser + 2 static PASS, reconciliation gap 0), two-stage merge-readiness rehearsal `ba65ecf6`, and merge report `76b837f8`. The prior `42c5d328` candidate and its corrected VOID evidence remain historical and are superseded for current H2-C acceptance.
+**HE2 R3+A1 status: MERGED_AND_INDEPENDENTLY_RUNTIME_VERIFIED** - controlled merge `d9dc2e41` has parents `cdb39e96` and `483b8ab0`; it is an ancestor of the current tip. Accepted evidence: Kilo cumulative governance review `db87f0d3`, Lubuntu fresh-runtime authority-profile final `6fb1e31e`, and merge report `1017be0c`. The authority runner now binds backend CWD/temp-DB inputs and profile-authorized Alembic head/parent lineage; it does not merge migration `038` or any SKU product code.
 **H2-B status: MERGED_AND_BROWSER_VERIFIED** - controlled merge `436d61e2` has parents `6e9470a1` and `25626f4d`; its tree is identical to the reviewed source `25626f4d`. Accepted evidence: source `25626f4d`, Kilo review `d6289a6b`, backend authority `90f96e3f` (3773 collected / 3710 passed / 48 skipped / 15 xfailed / zero red), browser E1 `04134016` (24/24 browser PASS, 29-node inventory gap=0), and merge report `c400b7c5`.
 **Accepted J1-H2-A-R2 merge:** `6e9470a1daa5d6eece29724316fdd8aef6b737c1` - parents `c5b66d26` and `bf574cf9`; it is now an ancestor of the current tip, not the tip itself.
 **Accepted R4-C1-R1 merge:** `a29f8db02365737c64d0d8d442e8ef48a8a19d6d` - parents `9067e38f` and `f51c109`; merge tree identical to the independently reviewed source; fresh-runtime browser matrix `162/162`; now an ancestor, not the current tip.
@@ -20,14 +21,16 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `d9dc2e41` is the current reviewed baseline. It carries accepted
+- `bd2373cb` is the current reviewed baseline. It carries accepted
   Contracts A-D, H7 setup/dependency reconciliation, PW1 auth/rate-limit/cache/
   permission closures, the R4-C1-R1 responsive MainLayout closure, the J1
   friction-audit merge lineage, the J1-H2-A-R2 credential closure, and the
   H2-B password-recovery/test-hygiene closure, plus the merged HE2 authority
-  controls through R3+A1. New controlled work must fetch and verify the live
-  protected tip exactly; do not silently branch from an older ancestor.
-- The earlier merges `6e9470a1`, `c5b66d26`, `a29f8db0`, `9067e38f`,
+  controls through R3+A1 and the H2-C retailer recovery/discovery closure. New
+  controlled work must fetch and verify the live protected tip exactly; do not
+  silently branch from an older ancestor.
+- The earlier merges `24a28d76`, `d9dc2e41`, `6e9470a1`, `c5b66d26`,
+  `a29f8db0`, `9067e38f`,
   `ea990826`, `a6ef3aac`, `d796dcb0`, and `adcc7f28` are ANCESTORS of the
   current tip, not the tip itself. Do not branch from or reference them as the
   current baseline.
@@ -90,12 +93,40 @@ in `ai-ledger/`.
   protected profile bytes, exact head/declared-parent lineage, runner/child
   cross-checks, and fail-closed drift detection. It authorizes validation of a
   future exact `038 -> 037` SKU migration; it does not add that migration.
+- H2-C (merged at `bd2373cb`, MERGED_AND_INDEPENDENTLY_BROWSER_VERIFIED)
+  closes retailer password-recovery discovery and return routing:
+  - a valid supplier portal exposes the public forgot-password entry;
+  - missing or invalid supplier context remains neutral and makes no recovery
+    API call;
+  - reset links carry canonical supplier context in the fragment without
+    query-string or storage leakage;
+  - forged, legacy, mobile, double-submit, neutrality, and artifact-scanner
+    paths are covered by the accepted 15-browser + 2-static authority run.
 
 ## Latest Accepted Evidence
 
+H2-C controlled product merge and independent browser verification:
+
+`origin/product-dev-recovered@bd2373cb` is the current reviewed baseline.
+
+- Approved source: `ddba2d3e`; merge tree `29a1c39a` equals the reviewed
+  source tree and the merge has parents `24a28d76` and `ddba2d3e`.
+- Kilo source/test authenticity review: `3db164dd`.
+- Lubuntu authoritative browser evidence: `da6bf9e7` - one task-private stack,
+  one preflight, one Playwright authority launch, 15 browser + 2 static PASS,
+  zero FAIL/NOT_RUN/PENDING, reconciliation gap 0, and clean artifact scan.
+- Backend authority evidence `ef33a882` reported 3784 collected with zero red
+  and was reused for the final source by byte identity; it was not rerun by the
+  controlled merge task.
+- Two-stage merge-readiness rehearsal: `ba65ecf6`; controlled merge report:
+  `76b837f8`.
+- `REMOTE_PUSH_SUCCEEDED=true`; `REMOTE_ENFORCEMENT_NOT_VERIFIED=true`.
+- This is merged-source and local authority evidence, not deployment, VPS,
+  HTTPS, real-device, customer-readiness, or release approval.
+
 HE2 R3+A1 controlled governance merge and independent authority verification:
 
-`origin/product-dev-recovered@d9dc2e41` is the current reviewed baseline.
+`origin/product-dev-recovered` includes `d9dc2e41` as an accepted ancestor.
 
 - Approved source: `483b8ab0`; merge tree equals the reviewed source tree.
 - Kilo cumulative governance review: `db87f0d3` - independently executed
@@ -111,8 +142,7 @@ HE2 R3+A1 controlled governance merge and independent authority verification:
 
 H2-B password-recovery controlled merge and independent verification:
 
-`origin/product-dev-recovered@436d61e2` is the current reviewed product-code
-baseline.
+`origin/product-dev-recovered` includes `436d61e2` as an accepted ancestor.
 
 - Approved source: `25626f4d`; merge tree equals the reviewed source tree.
 - Kilo source review: `d6289a6b`.
@@ -123,8 +153,8 @@ baseline.
 - Controlled merge report: `c400b7c5`.
 - Retained known debt for this lineage: full-suite post-state 4/0/29
   test-hygiene residue (externally attributed; module net contribution zero);
-  `RT0` remains `BLOCKED_BY_H2_C`; `REMOTE_ENFORCEMENT_NOT_VERIFIED`; no
-  deployment, VPS, or real-device acceptance is claimed.
+  `REMOTE_ENFORCEMENT_NOT_VERIFIED`; no deployment, VPS, or real-device
+  acceptance is claimed. The later H2-C merge closes the former RT0 blocker.
 
 R4-C1-R1 responsive MainLayout controlled merge and browser verification:
 
@@ -241,15 +271,13 @@ Post-merge validation:
   files that run after the closed module; the module's net contribution is
   zero and replaying it on a dirty database restores 0/0/0. Unfixed, tracked,
   non-blocking.
-- `RT0` remains `BLOCKED_BY_H2_C` (retailer discovery layer missing); no API
-  bypass of the missing retailer UI is permitted.
-- H2-C integration candidate `42c5d328` is not merged. Its Lubuntu run was
-  corrected by `31adf492` to `VOID_ENVIRONMENT_PRECHECK`; browser execution
-  was NOT_RUN. It requires a new baseline integration and valid authority run.
-- SKU-R0-M1 is an authorized parallel V3 work line on baseline `d9dc2e41`, but
-  it currently has no frozen candidate. Migration `038`, three-layer catalog
-  product code, full-suite evidence, browser evidence, and independent final
-  review all remain unaccepted.
+- The old H2-C candidate `42c5d328` and correction `31adf492` remain historical
+  VOID evidence only. They do not qualify or weaken the accepted H2-C chain
+  merged at `bd2373cb`.
+- SKU-R0-M1 remains the active V3 convergence line. Frozen candidate
+  `c05c5ff1` is not an ancestor of the current baseline and still requires
+  evidence-integrity disposition, current-baseline integration, independent
+  final review, and controlled merge. Migration `038` is not in the baseline.
 - `REMOTE_ENFORCEMENT_NOT_VERIFIED`: remote/server-side enforcement has not
   been verified.
 - Nothing is deployed: no VPS deployment and no real-device acceptance have
@@ -552,19 +580,20 @@ review path, not the current gate state.
 
 ## Active Phase
 
-**Active gate:** dual-line pre-delivery execution (see
+**Active gate:** SKU convergence after H2-C completion (see
 `docs/planning/2026-08-26_mvp_pre_delivery_execution_queue.md`).
 
-The current baseline is `d9dc2e41`. Two bounded product lines may progress in
-parallel, and both must close before the pricing implementation chain begins:
+The current baseline is `bd2373cb`. H2-C is closed. The remaining product
+convergence line must close before the pricing implementation chain begins:
 
-1. `H2-C` closure: re-integrate the retailer discovery candidate on the current
-   baseline, pass a valid backend authority run, then execute its reviewed
-   browser inventory. `RT0` remains blocked until this line merges.
+1. `H2-C` (completed): source `ddba2d3e` independently reviewed and browser-
+   verified, then merged at `bd2373cb`; the former RT0 discovery blocker is
+   closed.
 2. `SKU-R0-M1-R1`: Codex-L leads the customer-centered
    `CatalogProduct -> SellableUnit -> CatalogOffer boundary` vertical slice;
-   OpenCode2 supplies independent source/runtime/browser review. No candidate
-   exists yet and no pricing semantics are authorized.
+   an independent reviewer supplies source/runtime/browser review. Candidate
+   `c05c5ff1` remains outside the current baseline; no pricing semantics are
+   authorized.
 3. `PRICING-R0` (freeze base/special-price/order-price/reorder contracts after
    H2-C and stable catalog identity are accepted)
 4. `PRICING-R1` (SKU base price + per-retailer special price)
@@ -607,9 +636,10 @@ Standing boundaries:
    `c5b66d26` and the J1-H2-A-R2 credential closure merged as `6e9470a1`.
 9. **MVP-L1-J1-H2-B (completed):** wholesaler password recovery and
    test-hygiene closure merged and browser-verified as `436d61e2`.
-10. **Pre-delivery queue (active dual line):** `H2-C` and `SKU-R0-M1-R1` run
-    as separately gated parallel lines; after both merge, continue with
-    `PRICING-R0` → `PRICING-R1` → `ORDER-PRICE-R1` → `REORDER-R1` → first-use
+10. **Pre-delivery queue (active SKU convergence):** `H2-C` is completed at
+    `bd2373cb`; after `SKU-R0-M1-R1` is independently accepted and merged on
+    the current baseline, continue with `PRICING-R0` → `PRICING-R1` →
+    `ORDER-PRICE-R1` → `REORDER-R1` → first-use
     onboarding → full business journey / VPS / real-device final acceptance.
     Details and frozen pricing inputs live in
     `docs/planning/2026-08-26_mvp_pre_delivery_execution_queue.md`.
@@ -624,14 +654,15 @@ Standing boundaries:
 
 ## Agent Assignment
 
-- **Zcode/Windows product line:** close H2-C baseline integration and bounded
-  corrections under explicit CTO gates.
+- **Zcode/Windows product line:** H2-C delivery is closed; support current-
+  baseline documentation, bounded review, and later pricing work only under
+  explicit CTO gates.
 - **Codex-L SKU supervisor:** own SKU-M1 architecture, implementation, internal
   review and candidate evidence within the frozen product/package boundary.
 - **OpenCode2:** independently review SKU source, migration, tests, fresh
   runtime and browser evidence; it must not inherit Codex-L's PASS claims.
 - **All product agents:** start from a fetched, clean, isolated worktree at
-  current baseline `d9dc2e41`; no self-reported PASS is merge authority.
+  current baseline `bd2373cb`; no self-reported PASS is merge authority.
 - **Journey observer:** for the onboarding and final-acceptance queue entries,
   record workflow time, clicks, assistance, API-only steps, dead ends, and
   abandonment risk without coaching away product friction.
@@ -654,7 +685,7 @@ Stop and report to the CTO if:
 
 - fetched `origin/product-dev-recovered` is not exactly the authorized task
   base or does not descend from reviewed baseline
-  `d9dc2e4130ea87a57d433dfadeb2f2736576fac6`, or that
+  `bd2373cbfeafde07f1771aba2089f0d1b5f0cd3f`, or that
   baseline does not descend from the J1-H2-A-R2 merge
   `6e9470a1daa5d6eece29724316fdd8aef6b737c1`, the R4-C1-R1 merge
   `a29f8db02365737c64d0d8d442e8ef48a8a19d6d`, or accepted Contract D merge

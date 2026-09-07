@@ -521,12 +521,14 @@ async def stock_on_hand(db, *, sku_code: str) -> Decimal:
     return Decimal(str(row))
 
 
-async def adjustment_movements(db, *, sku_code: str) -> dict[str, dict]:
-    """Adjustment movements keyed by their journal reason (adjustment identity).
+async def adjustment_movements(db, *, sku_code: str) -> list[dict]:
+    """Raw adjustment movement rows for one SKU (list, never reason-keyed).
 
-    Ordering is deliberately NOT derived from timestamps: callers identify
-    each adjustment by the unique reason it was written with and check the
-    before/after algebra without guessing execution order.
+    R2 (CTO F2): the rows are returned UNMODIFIED — no dict-by-reason
+    construction that would silently collapse duplicate journal rows. Row
+    count and per-reason multiplicity are part of the invariant and are
+    checked by assert_adjustment_chain, which both the real concurrency test
+    and the guard controls call (single shared implementation).
     """
     rows = (
         await db.execute(
@@ -540,4 +542,106 @@ async def adjustment_movements(db, *, sku_code: str) -> dict[str, dict]:
             {"code": sku_code},
         )
     ).mappings().all()
-    return {str(r["reason"]): dict(r) for r in rows}
+    return [dict(r) for r in rows]
+
+
+def assert_adjustment_chain(
+    movements: list[dict],
+    *,
+    initial: Decimal,
+    final_observed: Decimal,
+    expected: list[tuple[str, Decimal]],
+) -> None:
+    """Shared inventory-adjustment invariant (CTO F2): single implementation.
+
+    Verifies the journal against the observed final stock WITHOUT inferring
+    execution order from timestamps, and WITHOUT collapsing duplicate rows:
+
+    1. raw row count equals the number of expected adjustments (duplicate or
+       missing rows rejected);
+    2. every expected reason appears exactly once, no unknown reasons
+       (duplicate-reason rows rejected);
+    3. every row satisfies before + delta == after;
+    4. the delta multiset matches;
+    5. chain linkage, order-free: exactly one row starts from `initial`; its
+       `after` equals `initial + delta` and must equal the other row's
+       `before`; the other row ends exactly at `final_observed`. This accepts
+       both legal serial orders (A then B: 10→15, 15→22; B then A: 10→17,
+       17→22) and rejects the lost-update journal (two rows starting from
+       10, neither ending at the observed final);
+    6. initial + total raw delta == final_observed.
+
+    Called by the real concurrent-adjustment test (rows from the database)
+    and by the guard controls (synthetic rows) so both exercise the exact
+    same acceptance/rejection logic.
+    """
+    from collections import Counter
+
+    expected_reasons = [reason for reason, _ in expected]
+    expected_deltas = sorted(delta for _, delta in expected)
+
+    assert len(movements) == len(expected), (
+        "INVARIANT_R0_STOCK_MOVEMENT_SET: expected exactly "
+        f"{len(expected)} adjustment movements, got {len(movements)} raw rows "
+        f"({[str(r.get('reason')) for r in movements]}). Duplicate or missing "
+        "journal rows must be rejected, not deduplicated away."
+    )
+    reason_counts = Counter(str(row.get("reason")) for row in movements)
+    assert reason_counts == Counter(expected_reasons), (
+        "INVARIANT_R0_STOCK_MOVEMENT_SET: adjustment reasons must each appear "
+        f"exactly once {expected_reasons!r}, got {dict(reason_counts)!r}. "
+        "Duplicate journal rows for one adjustment identity are a double "
+        "economic effect and must be rejected."
+    )
+
+    for reason, delta in expected:
+        row = next(r for r in movements if str(r.get("reason")) == reason)
+        qty, before, after = (
+            Decimal(row["qty"]),
+            Decimal(row["q_before"]),
+            Decimal(row["q_after"]),
+        )
+        assert qty == delta, (
+            f"INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: {reason!r} journaled delta "
+            f"{qty}, expected {delta}."
+        )
+        assert before + qty == after, (
+            f"INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: {reason!r} row violates "
+            f"before+delta=after ({before} + {qty} != {after})."
+        )
+
+    deltas = sorted(Decimal(row["qty"]) for row in movements)
+    assert deltas == expected_deltas, (
+        "INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: journal delta multiset must be "
+        f"{expected_deltas}, got {deltas}."
+    )
+
+    starters = [row for row in movements if Decimal(row["q_before"]) == initial]
+    assert len(starters) == 1, (
+        "INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: exactly one adjustment may "
+        f"compute from the initial value {initial}, got {len(starters)} rows "
+        f"starting there ({[str(r['q_before']) for r in movements]}). Two "
+        "rows starting from the stale initial value is the lost-update shape."
+    )
+    first = starters[0]
+    second = next(row for row in movements if row is not first)
+    assert Decimal(first["q_after"]) == initial + Decimal(first["qty"]), (
+        "INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: the initial-value row must end "
+        f"at initial+delta ({initial} + {first['qty']}), got {first['q_after']}."
+    )
+    assert Decimal(second["q_before"]) == Decimal(first["q_after"]), (
+        "INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: the second adjustment must "
+        f"compute from the first row's committed result {first['q_after']}, "
+        f"got {second['q_before']}."
+    )
+    assert Decimal(second["q_after"]) == final_observed, (
+        "INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: the last committed row must end "
+        f"at the observed final stock {final_observed}, got "
+        f"{second['q_after']}. Journal and current value contradict each "
+        "other."
+    )
+    assert initial + sum(deltas) == final_observed, (
+        "INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: initial + total journal delta "
+        f"({initial} + {sum(deltas)}) must equal the observed final stock "
+        f"{final_observed}."
+    )

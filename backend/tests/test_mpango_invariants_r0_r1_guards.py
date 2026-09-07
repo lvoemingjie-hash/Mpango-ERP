@@ -12,13 +12,17 @@ themselves, so their verdicts are evidence, not assumption:
   whitespace variants — must yield MockAuthStrategy, and staging variants
   must yield JwtAuthStrategy. This is what makes the revocation suite's
   "we exercised real JWT" claim checkable instead of an env-string guess.
-- Assertion-logic controls (R1 acceptance effectiveness): the concurrent
-  return/adjustment invariants are fed synthetic CORRECT outcomes — both
-  valid fix shapes (serialize the duplicate, or reject it with the
+- Assertion-logic controls (R1 acceptance effectiveness; R2 per CTO F2):
+  the concurrent return invariants are fed synthetic CORRECT outcomes —
+  both valid fix shapes (serialize the duplicate, or reject it with the
   documented 409) and a correct single-effect economics snapshot — and must
-  ACCEPT them; broken shapes must be REJECTED. These are test-level controls
-  only: they demonstrate the assertions accept correct behavior, they are
-  NOT a product-fix proof.
+  ACCEPT them; broken shapes must be REJECTED. The adjustment invariant is
+  validated through the REAL shared assert_adjustment_chain helper (the same
+  function the concurrent RED test runs against database rows): legal
+  B→A and A→A→… serial orders accepted (B→A: 10→17→22; A→B: 10→15→22);
+  duplicate-reason rows, dict-collapsed duplicates, unknown reasons, missing
+  movements, wrong finals, wrong single-row algebra and the lost-update
+  journal all REJECTED. Test-level controls only — not a product-fix proof.
 
 No product code is imported beyond auth.factory / the guard function; no
 database connection is opened.
@@ -224,47 +228,153 @@ def test_r0_assertion_logic_rejects_double_economic_effect():
         )
 
 
-def test_r0_assertion_logic_accepts_correct_adjustment_algebra():
-    """[ASSERTION CONTROL] Correct order-free adjustment chain must be accepted.
+# ---------------------------------------------------------------------------
+# Adjustment-algebra controls (R2, CTO F2): ALL call the real shared helper
+# assert_adjustment_chain (the exact function the concurrent RED test uses)
+# with synthetic row shapes — no parallel assertion implementation.
+# ---------------------------------------------------------------------------
 
-    Correct fix shape (either commit order): starts {10,17}, endings {17,22},
-    per-row before+delta=after, deltas {5,7}, final 22.
+_REASON_A = "r0-race-A-delta-5"
+_REASON_B = "r0-race-B-delta-7"
+_EXPECTED = [(_REASON_A, Decimal("5")), (_REASON_B, Decimal("7"))]
+
+
+def _row(reason, qty, before, after):
+    return {"reason": reason, "qty": str(qty), "q_before": str(before), "q_after": str(after)}
+
+
+def test_r0_assertion_chain_accepts_b_then_a_serial_order():
+    """[ASSERTION CONTROL] Legal B→A chain (10→17→22, final 22) accepted."""
+    from tests.mpango_invariants_r0_support import assert_adjustment_chain
+
+    rows = [_row(_REASON_B, 7, 10, 17), _row(_REASON_A, 5, 17, 22)]
+    assert_adjustment_chain(
+        rows, initial=Decimal("10"), final_observed=Decimal("22"), expected=_EXPECTED
+    )
+
+
+def test_r0_assertion_chain_accepts_a_then_b_serial_order():
+    """[ASSERTION CONTROL] Legal A→B chain (10→15→22, final 22) also accepted.
+
+    R2: the barrier test schedules B first, but the shared helper must not
+    bake that schedule in — the reverse legal order is accepted too.
     """
-    movements = {
-        "r0-race-A-delta-5": {"qty": "5", "q_before": "17", "q_after": "22"},
-        "r0-race-B-delta-7": {"qty": "7", "q_before": "10", "q_after": "17"},
-    }
-    rows = list(movements.values())
-    starts = sorted(Decimal(r["q_before"]) for r in rows)
-    ends = sorted(Decimal(r["q_after"]) for r in rows)
-    deltas = sorted(Decimal(r["qty"]) for r in rows)
-    assert starts == [Decimal("10"), Decimal("17")]
-    assert ends == [Decimal("17"), Decimal("22")]
-    assert deltas == [Decimal("5"), Decimal("7")]
-    for r in rows:
-        assert Decimal(r["q_before"]) + Decimal(r["qty"]) == Decimal(r["q_after"])
-    assert Decimal("10") + sum(deltas) == Decimal("22")
+    from tests.mpango_invariants_r0_support import assert_adjustment_chain
+
+    rows = [_row(_REASON_A, 5, 10, 15), _row(_REASON_B, 7, 15, 22)]
+    assert_adjustment_chain(
+        rows, initial=Decimal("10"), final_observed=Decimal("22"), expected=_EXPECTED
+    )
 
 
-def test_r0_assertion_logic_rejects_lost_update_algebra():
-    """[ASSERTION CONTROL] The baseline's lost-update journal must be rejected.
+def test_r0_assertion_chain_rejects_duplicate_reason_rows():
+    """[ASSERTION CONTROL] (CTO F2 false-green) Three raw rows, A duplicated.
 
-    Both discriminating checks from the RED test fire: the journal shape is
-    wrong (two movements both starting from 10) and the journal total does
-    not explain the observed final stock (10 + 12 = 22, observed 15).
+    The CTO diagnostic shape: raw delta sum 17, dict-by-reason would collapse
+    this to two rows and wrongly accept. The shared helper must reject on the
+    RAW row count before any algebra.
     """
-    movements = {
-        "r0-race-A-delta-5": {"qty": "5", "q_before": "10", "q_after": "15"},
-        "r0-race-B-delta-7": {"qty": "7", "q_before": "10", "q_after": "17"},
-    }
-    rows = list(movements.values())
-    final_observed = Decimal("15.00")  # baseline actual, as read from the DB
-    starts = sorted(Decimal(r["q_before"]) for r in rows)
-    ends = sorted(Decimal(r["q_after"]) for r in rows)
-    shape_rejected = starts != [Decimal("10"), Decimal("17")] or ends != [
-        Decimal("17"),
-        Decimal("22"),
+    from tests.mpango_invariants_r0_support import assert_adjustment_chain
+
+    rows = [
+        _row(_REASON_A, 5, 10, 15),
+        _row(_REASON_A, 5, 15, 20),  # duplicate identity — must be rejected
+        _row(_REASON_B, 7, 20, 27),
     ]
-    total_rejected = (Decimal("10") + sum(Decimal(r["qty"]) for r in rows)) != final_observed
-    assert shape_rejected, "starts/ends shape must reject the lost-update journal"
-    assert total_rejected, "initial+total delta must contradict the observed final stock"
+    with pytest.raises(AssertionError, match="INVARIANT_R0_STOCK_MOVEMENT_SET"):
+        assert_adjustment_chain(
+            rows, initial=Decimal("10"), final_observed=Decimal("27"), expected=_EXPECTED
+        )
+
+
+def test_r0_assertion_chain_rejects_duplicate_collapsed_to_two():
+    """[ASSERTION CONTROL] (CTO F2) Exact diagnostic rows: A(10→15), A(15→20),
+    B(20→27). A {reason: row} dict collapses these to A(15→20) + B(20→27) —
+    two plausible-looking rows whose deltas still sum with the initial to the
+    observed final. The shared helper rejects the collapsed snapshot anyway:
+    no row starts at the initial value, so the order-free chain check fails
+    (INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA). Feeding the helper the RAW three
+    rows instead rejects even earlier on INVARIANT_R0_STOCK_MOVEMENT_SET.
+    """
+    from tests.mpango_invariants_r0_support import assert_adjustment_chain
+
+    rows = [
+        _row(_REASON_A, 5, 10, 15),
+        _row(_REASON_A, 5, 15, 20),
+        _row(_REASON_B, 7, 20, 27),
+    ]
+    # Simulate the old dict collapse: what a {reason: row} snapshot held.
+    collapsed = {r["reason"]: r for r in rows}
+    assert len(collapsed) == 2 and len(rows) == 3  # the blind spot, documented
+    with pytest.raises(AssertionError, match="INVARIANT_R0_STOCK_MOVEMENT"):
+        assert_adjustment_chain(
+            list(collapsed.values()),
+            initial=Decimal("10"),
+            final_observed=Decimal("27"),
+            expected=_EXPECTED,
+        )
+    # Raw rows are rejected even earlier, on the movement-set check.
+    with pytest.raises(AssertionError, match="INVARIANT_R0_STOCK_MOVEMENT_SET"):
+        assert_adjustment_chain(
+            rows, initial=Decimal("10"), final_observed=Decimal("27"), expected=_EXPECTED
+        )
+
+
+def test_r0_assertion_chain_rejects_unknown_reason():
+    """[ASSERTION CONTROL] A movement with an unexpected reason is rejected."""
+    from tests.mpango_invariants_r0_support import assert_adjustment_chain
+
+    rows = [_row("r0-unknown-source", 5, 10, 15), _row(_REASON_B, 7, 15, 22)]
+    with pytest.raises(AssertionError, match="INVARIANT_R0_STOCK_MOVEMENT_SET"):
+        assert_adjustment_chain(
+            rows, initial=Decimal("10"), final_observed=Decimal("22"), expected=_EXPECTED
+        )
+
+
+def test_r0_assertion_chain_rejects_missing_movement():
+    """[ASSERTION CONTROL] Only one journal row for two adjustments → reject."""
+    from tests.mpango_invariants_r0_support import assert_adjustment_chain
+
+    rows = [_row(_REASON_B, 7, 10, 17)]
+    with pytest.raises(AssertionError, match="INVARIANT_R0_STOCK_MOVEMENT_SET"):
+        assert_adjustment_chain(
+            rows, initial=Decimal("10"), final_observed=Decimal("17"), expected=_EXPECTED
+        )
+
+
+def test_r0_assertion_chain_rejects_wrong_final_value():
+    """[ASSERTION CONTROL] Correct journal but wrong observed final → reject."""
+    from tests.mpango_invariants_r0_support import assert_adjustment_chain
+
+    rows = [_row(_REASON_B, 7, 10, 17), _row(_REASON_A, 5, 17, 22)]
+    with pytest.raises(AssertionError, match="INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA"):
+        assert_adjustment_chain(
+            rows, initial=Decimal("10"), final_observed=Decimal("11"), expected=_EXPECTED
+        )
+
+
+def test_r0_assertion_chain_rejects_wrong_single_row_algebra():
+    """[ASSERTION CONTROL] A row violating before+delta=after → reject."""
+    from tests.mpango_invariants_r0_support import assert_adjustment_chain
+
+    rows = [_row(_REASON_B, 7, 10, 17), _row(_REASON_A, 5, 17, 21)]  # 17+5 != 21
+    with pytest.raises(AssertionError, match="INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA"):
+        assert_adjustment_chain(
+            rows, initial=Decimal("10"), final_observed=Decimal("21"), expected=_EXPECTED
+        )
+
+
+def test_r0_assertion_chain_rejects_lost_update_journal():
+    """[ASSERTION CONTROL] The baseline lost-update journal must be rejected.
+
+    Two rows both starting from the stale initial 10 (10→15 and 10→17) with
+    observed final 15: no row chains on the other's result and the journal
+    total (12) does not explain the observed final.
+    """
+    from tests.mpango_invariants_r0_support import assert_adjustment_chain
+
+    rows = [_row(_REASON_A, 5, 10, 15), _row(_REASON_B, 7, 10, 17)]
+    with pytest.raises(AssertionError, match="INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA"):
+        assert_adjustment_chain(
+            rows, initial=Decimal("10"), final_observed=Decimal("15"), expected=_EXPECTED
+        )

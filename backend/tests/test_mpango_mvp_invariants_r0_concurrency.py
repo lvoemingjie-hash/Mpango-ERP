@@ -56,6 +56,7 @@ from tests.mpango_invariants_r0_support import (
     R0Token,
     TenantIdentity,
     adjustment_movements,
+    assert_adjustment_chain,
     cancel_and_wait,
     r0_task_database,  # noqa: F401 - session fixture via usefixtures (ownership proof)
     seed_sku_with_stock,
@@ -202,13 +203,25 @@ def _assert_single_economic_effect(snap: dict, *, final_stock: Decimal, context:
 async def _return_outcome(order_id: str, token, db):
     """Run one real return request and classify its outcome.
 
+    R2 (CTO F1): the transaction decision mirrors the real HTTP middleware
+    (api/middleware/auth.py finalize_tenant_context(success=status<400)) —
+    a successful request COMMITS inside this helper, a rejected one ROLLS
+    BACK before the exception is classified OUTSIDE the transaction. The
+    outer tenant_session context therefore never commits partial state from
+    a failed request: a legitimate implementation that stages writes and
+    then rejects the duplicate with 409 is not misjudged as a double
+    economic effect.
+
     Returns ("success", response) or ("http_rejected", HTTPException).
     Anything else propagates — unknown failures must fail the test, never be
     swallowed into a "pass".
     """
     try:
-        return ("success", await order_routes.return_order(order_id=order_id, token=token, db=db))
+        response = await order_routes.return_order(order_id=order_id, token=token, db=db)
+        await db.commit()
+        return ("success", response)
     except HTTPException as exc:
+        await db.rollback()
         return ("http_rejected", exc)
 
 
@@ -266,7 +279,7 @@ async def test_r0_control_single_adjustment_and_failed_adjustment_rollback():
             assert await stock_on_hand(db, sku_code="R0-CTL") == Decimal("17.00")
             movements = await adjustment_movements(db, sku_code="R0-CTL")
             assert len(movements) == 1
-            (movement_row,) = movements.values()
+            movement_row = movements[0]
             assert Decimal(movement_row["qty"]) == Decimal("7")
 
         # Failing adjustment: full rollback of value and journal entry.
@@ -396,6 +409,173 @@ async def test_r0_harness_control_task_exception_rolls_back_and_cleans():
 
 
 # ---------------------------------------------------------------------------
+# 2b. CONTROL (R2, CTO F1): a rejected request must roll back, never commit
+# ---------------------------------------------------------------------------
+
+_PROBE_REFERENCE = "r0-harness-probe"
+_PROBE_REASON = "r0-staging-write"
+
+
+async def _probe_movement_count(db, *, schema: str) -> int:
+    return int(
+        (
+            await db.execute(
+                text(
+                    'SELECT count(*) FROM inventory_movements '
+                    'WHERE reference_type = :ref'
+                ),
+                {"ref": _PROBE_REFERENCE},
+            )
+        ).scalar_one()
+    )
+
+
+async def _insert_probe_write(db, *, sku_id, order_id) -> None:
+    """Stage a harmless probe row INSIDE the request's transaction.
+
+    If the failing request's transaction is committed (the F1 harness bug)
+    this row survives and is detected; when the transaction is rolled back
+    like the real HTTP middleware would, the row never exists.
+    """
+    await db.execute(
+        text(
+            "INSERT INTO inventory_movements "
+            "(sku_id, movement_type, quantity, quantity_before, quantity_after, "
+            "reason, reference_type, reference_id) "
+            "VALUES (:sku, 'r0_probe', 0, 0, 0, :reason, :ref, :oid)"
+        ),
+        {"sku": sku_id, "reason": _PROBE_REASON, "ref": _PROBE_REFERENCE, "oid": order_id},
+    )
+
+
+@pytest.mark.integration
+async def test_r0_control_rejected_return_rolls_back_staging_write():
+    """[CONTROL — expected PASS] (R2, CTO F1 regression) 409 means rollback.
+
+    正常对照: harness/transaction behaviour — a request that stages a write
+    and is then rejected with the documented 409 must leave NO surviving
+    write (the helper rolls back before classifying, mirroring
+    finalize_tenant_context(success=False)); the following real request
+    commits and yields exactly one economic effect; an UNKNOWN (non-HTTP)
+    exception is never swallowed, propagates, rolls back and cleans up.
+    目标缺陷: none (control for the R1 harness gap where the outer context
+    committed a rejected request's staged writes).
+    环境前提: task-owned database; the rejecting route is a fixture wrapper
+    (staged write + documented 409) run through the SAME _return_outcome
+    helper the real concurrent test uses.
+    执行入口: _return_outcome + real return_order route (phase 2), fixture
+    wrapper (phases 1/3).
+    未覆盖范围: product 409 paths (the baseline currently double-executes
+    instead of rejecting; rejection acceptance is proven at assertion level
+    in the guards controls and structurally here).
+    """
+    identity = await TenantIdentity().create()
+    user_id = uuid.uuid4()
+    try:
+        async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+            sku_id = await seed_sku_with_stock(
+                db,
+                sku_code="R0-BOX",
+                quantity_on_hand=Decimal("10"),
+                price=Decimal("100.00"),
+                retailer_id=identity.retailer_id,
+            )
+        token = R0Token(
+            tenant_id=identity.wholesaler_id, tenant_schema=identity.schema, user_id=user_id
+        )
+
+        # ---- Phase 1: documented 409 with a staged write -> no survival ----
+        order_id = await _create_confirmed_order(identity=identity, user_id=user_id)
+        await _pay_full_cash(identity=identity, user_id=user_id, order_id=order_id)
+        await _fulfill(identity=identity, user_id=user_id, order_id=order_id)
+
+        original_return = order_routes.return_order
+
+        async def staging_then_reject(order_id, token, db):  # noqa: ANN001
+            await _insert_probe_write(db, sku_id=sku_id, order_id=order_id)
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "INVALID_STATE_TRANSITION", "message": "duplicate return"},
+            )
+
+        order_routes.return_order = staging_then_reject
+        try:
+            async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+                kind, payload = await _return_outcome(order_id, token, db)
+        finally:
+            order_routes.return_order = original_return
+        assert kind == "http_rejected"
+        assert payload.status_code == 409
+        assert payload.detail["code"] == "INVALID_STATE_TRANSITION"
+
+        async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+            assert await _probe_movement_count(db, schema=identity.schema) == 0, (
+                "INVARIANT_R0_REJECTED_REQUEST_WROTE: a request rejected with "
+                "the documented 409 must roll back its staged writes (the real "
+                "HTTP middleware commits only <400 responses); a surviving "
+                "probe row means the harness committed a failed transaction."
+            )
+
+        # ---- Phase 2: the other request commits; single economic effect ----
+        async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+            kind2, payload2 = await _return_outcome(order_id, token, db)
+        assert kind2 == "success"
+        async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+            snap = await _refund_snapshot(db, order_id=order_id)
+            final_stock = await stock_on_hand(db, sku_code="R0-BOX")
+            probe_count = await _probe_movement_count(db, schema=identity.schema)
+        assert snap["order_status"] == "returned"
+        _assert_single_economic_effect(
+            snap, final_stock=final_stock, context="R2 rejected-then-committed control"
+        )
+        assert probe_count == 0, (
+            "INVARIANT_R0_REJECTED_REQUEST_WROTE: the rejected request's "
+            "staged write must still be absent after the succeeding request "
+            "commits."
+        )
+
+        # ---- Phase 3: UNKNOWN exception propagates, rolls back, cleans ----
+        order2 = await _create_confirmed_order(identity=identity, user_id=user_id)
+        await _pay_full_cash(identity=identity, user_id=user_id, order_id=order2)
+        await _fulfill(identity=identity, user_id=user_id, order_id=order2)
+
+        async def staging_then_boom(order_id, token, db):  # noqa: ANN001
+            await _insert_probe_write(db, sku_id=sku_id, order_id=order_id)
+            raise RuntimeError("r0 unknown harness failure")
+
+        order_routes.return_order = staging_then_boom
+        try:
+            # The unknown exception must ESCAPE the transaction context (so
+            # the session rolls back exactly like the middleware would) and
+            # be caught OUTSIDE it — catching it inside the context would
+            # turn the context's normal exit into a commit (the very F1 bug
+            # this control exists to prevent).
+            with pytest.raises(RuntimeError, match="r0 unknown harness failure"):
+                async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+                    await _return_outcome(order2, token, db)
+        finally:
+            order_routes.return_order = original_return
+
+        async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+            assert await _probe_movement_count(db, schema=identity.schema) == 0, (
+                "INVARIANT_R0_REJECTED_REQUEST_WROTE: an unknown exception must "
+                "propagate (never swallowed) and roll its staged writes back."
+            )
+            status2 = (
+                await db.execute(
+                    text("SELECT status::text FROM orders WHERE id = :oid"),
+                    {"oid": order2},
+                )
+            ).scalar_one()
+        assert status2 == "fulfilled", (
+            "CONTROL: the order facing the unknown failure must remain "
+            f"fulfilled after rollback, got {status2}."
+        )
+    finally:
+        await identity.drop()
+
+
+# ---------------------------------------------------------------------------
 # 3. TARGET-DEFECT RED: concurrent adjustments must not lose an update
 # ---------------------------------------------------------------------------
 
@@ -420,17 +600,20 @@ async def test_r0_red_concurrent_stock_adjustments_no_lost_update():
     connection. HTTP dependency layer not covered (documented probe boundary).
     未覆盖范围: POST /inventory/adjust HTTP/RBAC layer; multi-worker timing.
 
-    Movement verification is order-free (R1): each movement is identified by
-    the unique reason it was written with; per-row before+delta=after must
-    hold, the delta multiset must be {5,7}, exactly one movement may start
-    from the initial value and one from the other adjustment's committed
-    result, and initial + total delta must equal the final stock. Timestamps
-    are never used to infer execution order.
+    Movement verification (R2, CTO F2): the RAW movement rows are checked by
+    the shared assert_adjustment_chain helper (support module) — raw row
+    count and per-reason multiplicity first (duplicate journal rows are
+    rejected, never deduplicated away), then per-row before+delta=after, the
+    delta multiset, and order-free chain linkage that accepts BOTH legal
+    serial orders (A→B: 10→15, 15→22; B→A: 10→17, 17→22) against the
+    observed final stock. Timestamps are never used to infer order.
 
     Expected RED failure names:
       INVARIANT_R0_STOCK_LOST_UPDATE — final on-hand must be 22.00
-      INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA — movements must be mutually
-          consistent with the final value (order-free form).
+      INVARIANT_R0_STOCK_MOVEMENT_SET — exactly two rows, each reason once
+          (duplicates/missing/unknown rejected)
+      INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA — rows must chain
+          initial→…→final (order-free form).
     """
     identity = await TenantIdentity().create()
     try:
@@ -482,51 +665,15 @@ async def test_r0_red_concurrent_stock_adjustments_no_lost_update():
             "adjustment path recomputes from a stale identity-map object "
             "instead of the post-lock row (inventory_service.py:388)."
         )
-        assert set(movements) == {REASON_A, REASON_B}, (
-            f"INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: expected exactly two "
-            f"identifiable adjustments {REASON_A!r} and {REASON_B!r}, got "
-            f"{sorted(movements)!r}"
-        )
-        row_a = movements[REASON_A]
-        row_b = movements[REASON_B]
-        rows = {"A(+5)": row_a, "B(+7)": row_b}
-        for label, row in rows.items():
-            qty, before, after = (
-                Decimal(row["qty"]),
-                Decimal(row["q_before"]),
-                Decimal(row["q_after"]),
-            )
-            assert qty == (Decimal("5") if label.startswith("A") else Decimal("7")), (
-                f"INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: {label} journaled {qty}"
-            )
-            assert before + qty == after, (
-                f"INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: {label} row violates "
-                f"before+delta=after ({before} + {qty} != {after})"
-            )
-        deltas = sorted(
-            Decimal(row["qty"]) for row in rows.values()
-        )
-        assert deltas == [Decimal("5"), Decimal("7")], (
-            f"INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: delta multiset must be "
-            f"[5, 7], got {deltas}"
-        )
-        # Order-free chain: exactly one movement starts from the initial 10
-        # and one starts from the other adjustment's committed result 17;
-        # endings must be the complementary values.
-        starts = sorted(Decimal(row["q_before"]) for row in rows.values())
-        ends = sorted(Decimal(row["q_after"]) for row in rows.values())
-        assert starts == [Decimal("10"), Decimal("17")], (
-            "INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: one adjustment must compute "
-            f"from the initial 10 and one from the other's committed 17, got "
-            f"starts {starts}."
-        )
-        assert ends == [Decimal("17"), Decimal("22")], (
-            "INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: adjustment endings must be "
-            f"17 and 22, got {ends}."
-        )
-        assert Decimal("10") + sum(deltas) == final, (
-            "INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA: initial + total journal "
-            f"delta must equal the final stock (10 + {sum(deltas)} != {final})."
+        # R2 (CTO F2): shared invariant helper over the RAW movement rows —
+        # no reason-keyed dedup; row count, per-reason multiplicity, per-row
+        # algebra and order-free chain linkage (accepts A→B and B→A) are all
+        # checked against the observed final stock.
+        assert_adjustment_chain(
+            movements,
+            initial=Decimal("10"),
+            final_observed=final,
+            expected=[(REASON_A, Decimal("5")), (REASON_B, Decimal("7"))],
         )
     finally:
         await identity.drop()
@@ -621,9 +768,10 @@ async def test_r0_red_concurrent_full_return_single_economic_effect():
 
     Expected RED failure names (baseline double-executes, so the economic
     assertions fire):
-      INVARIANT_R0_DOUBLE_RETURN_CASH — refund cash must total −100 once
-      INVARIANT_R0_DOUBLE_RETURN_RESTOCK — exactly one positive movement
-      INVARIANT_R0_DOUBLE_RETURN_STOCK — on-hand must return to 10.00
+      INVARIANT_R0_DOUBLE_RETURN — exactly one economic effect required;
+      raised by the shared _assert_single_economic_effect helper (refund
+      cash/revenue, restock count and final stock are each named in the
+      message).
     """
     identity = await TenantIdentity().create()
     user_id = uuid.uuid4()

@@ -1,7 +1,16 @@
-"""MPANGO-MVP-INVARIANTS-R0 — revocation & refresh regression candidates (known-RED).
+"""MPANGO-MVP-INVARIANTS-R0-R1 — revocation & refresh regression candidates (known-RED).
 
-Converts the external architecture review's revocation counterexamples into
-formal pytest cases on the frozen baseline bd2373cbfeafde07f1771aba2089f0d1b5f0cd3f.
+R1 revision of the R0 candidate (same product invariants on frozen baseline
+bd2373cbfeafde07f1771aba2089f0d1b5f0cd3f). R1 changes in this file:
+
+- The real-JWT claim is now verified, not assumed: setup proves (a) MPANGO_ENV
+  does not normalize to 'test' under the product's own strip().lower()
+  handling, and (b) the strategy instance actually bound to the app's
+  AuthenticationMiddleware is JwtAuthStrategy. Companion unit controls in
+  test_mpango_invariants_r0_r1_guards.py cover 'test'/'TEST'/whitespace
+  variants so a Mock run can never be misreported as real-JWT evidence.
+- Runs write only to a proven task-owned database (r0_task_database session
+  fixture) and tenants are registered for cleanup before creation.
 
 THIS FILE IS A REGRESSION CANDIDATE, NOT A GREEN MERGE CANDIDATE:
 tests marked [TARGET-DEFECT RED] assert the access-revocation invariants the
@@ -17,9 +26,9 @@ External evidence (AI_REPORT_INBOX/external-architecture-2026-09-06):
   refresh_nonexistent_principal_issued=true
 
 Environment premises:
-- Task-exclusive disposable loopback PostgreSQL (guard enforced).
-- MPANGO_ENV must NOT be "test" (MockAuthStrategy would bypass the real JWT
-  middleware); run with MPANGO_ENV=staging as the external lab did.
+- Task-exclusive disposable loopback PostgreSQL 16 (ownership guard enforced).
+- MPANGO_ENV must not normalize to "test" (MockAuthStrategy would bypass the
+  real JWT middleware); run with MPANGO_ENV=staging as the external lab did.
 - REDIS_URL must point at an unreachable throwaway address so no existing
   Redis instance is touched.
 - Access tokens are signed with the test process SECRET_KEY via the product's
@@ -45,33 +54,29 @@ from models import User
 from schemas.auth import RefreshTokenRequest
 
 from tests.mpango_invariants_r0_support import (
-    assert_loopback_test_database,
-    bootstrap_tenant,
-    drop_tenant,
-    new_tenant_identity,
+    TenantIdentity,
+    r0_task_database,  # noqa: F401 - session fixture via usefixtures (ownership proof)
     require_jwt_auth_strategy,
-    seed_public_tenant_rows,
     tenant_session,
 )
 
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("r0_task_database")]
+
 
 def setup_module(module) -> None:  # noqa: ANN001
-    assert_loopback_test_database()
     require_jwt_auth_strategy()
 
 
 async def _seed_tenant_user(
     *,
-    schema: str,
-    wholesaler_id: uuid.UUID,
-    retailer_id: uuid.UUID,
+    identity: TenantIdentity,
     email: str,
     password: str = "R0SyntheticPassword9!",
 ) -> uuid.UUID:
     """Create one active user with skus:read via the real tenant tables."""
     from models import Permission, Role
 
-    async with tenant_session(schema, wholesaler_id) as db:
+    async with tenant_session(identity.schema, identity.wholesaler_id) as db:
         perm = (
             await db.execute(text("SELECT id FROM permissions WHERE code = 'skus:read' LIMIT 1"))
         ).scalar_one_or_none()
@@ -96,9 +101,10 @@ async def _seed_tenant_user(
 
 
 async def _set_user_flags(
-    *, schema: str, user_id: uuid.UUID, is_active: bool | None = None, is_deleted: bool | None = None
+    *, identity: TenantIdentity, user_id: uuid.UUID,
+    is_active: bool | None = None, is_deleted: bool | None = None,
 ) -> None:
-    async with tenant_session(schema, uuid.UUID(int=0)) as db:
+    async with tenant_session(identity.schema) as db:
         if is_active is not None:
             await db.execute(
                 text("UPDATE users SET is_active = :v WHERE id = :u"),
@@ -111,27 +117,40 @@ async def _set_user_flags(
             )
 
 
-async def _set_tenant_status(wholesaler_id: uuid.UUID, status: str) -> None:
+async def _set_tenant_status(identity: TenantIdentity, status: str) -> None:
     from database.session import AsyncSessionLocal
 
     async with AsyncSessionLocal() as db:
         await db.execute(
             text("UPDATE public.wholesalers SET status = :s WHERE id = :w"),
-            {"s": status, "w": wholesaler_id},
+            {"s": status, "w": identity.wholesaler_id},
         )
         await db.commit()
 
 
-def _bearer(user_id: uuid.UUID, wholesaler_id: uuid.UUID, schema: str) -> str:
+def _bearer(user_id: uuid.UUID, identity: TenantIdentity) -> str:
     return create_contextual_token(
-        str(user_id), ["r0_admin"], str(wholesaler_id), schema, token_type="access"
+        str(user_id), ["r0_admin"], str(identity.wholesaler_id), identity.schema,
+        token_type="access",
     )
 
 
-def _refresh(user_id: uuid.UUID, wholesaler_id: uuid.UUID, schema: str) -> str:
+def _refresh(user_id: uuid.UUID, identity: TenantIdentity) -> str:
     return create_contextual_token(
-        str(user_id), ["r0_admin"], str(wholesaler_id), schema, token_type="refresh"
+        str(user_id), ["r0_admin"], str(identity.wholesaler_id), identity.schema,
+        token_type="refresh",
     )
+
+
+@pytest.fixture
+async def http_client():
+    from main import app
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://invariants-r0.invalid",
+    ) as client:
+        yield client
 
 
 async def _assert_refresh_refused(token: str, invariant_name: str, scenario: str) -> None:
@@ -161,35 +180,6 @@ async def _assert_refresh_refused(token: str, invariant_name: str, scenario: str
     )
 
 
-@pytest.fixture
-async def http_client():
-    from main import app
-
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
-        base_url="http://invariants-r0.invalid",
-    ) as client:
-        yield client
-
-
-class TenantEnv:
-    def __init__(self, wholesaler_id, retailer_id, schema):
-        self.wholesaler_id = wholesaler_id
-        self.retailer_id = retailer_id
-        self.schema = schema
-
-
-async def _make_env() -> TenantEnv:
-    wholesaler_id, retailer_id, schema = new_tenant_identity()
-    await bootstrap_tenant(schema)
-    await seed_public_tenant_rows(wholesaler_id=wholesaler_id, retailer_id=retailer_id)
-    return TenantEnv(wholesaler_id, retailer_id, schema)
-
-
-async def _drop_env(env: TenantEnv) -> None:
-    await drop_tenant(env.schema, wholesaler_id=env.wholesaler_id, retailer_id=env.retailer_id)
-
-
 # ---------------------------------------------------------------------------
 # 1. CONTROL: active user + active tenant can access
 # ---------------------------------------------------------------------------
@@ -200,28 +190,24 @@ async def test_r0_control_active_user_active_tenant_can_access(http_client):
 
     正常对照: active user, active tenant, valid contextual token → HTTP 200.
     目标缺陷: none (control).
-    环境前提: MPANGO_ENV=staging (real JwtAuthStrategy), unreachable Redis.
+    环境前提: real JwtAuthStrategy proven by setup guard; unreachable Redis.
     执行入口: GET /api/v1/skus through the full HTTP middleware stack.
     未覆盖范围: token issuance (synthetic signing material, not the login
     endpoint), Nginx/TLS, browser.
     """
-    env = await _make_env()
+    identity = await TenantIdentity().create()
     try:
         user_id = await _seed_tenant_user(
-            schema=env.schema,
-            wholesaler_id=env.wholesaler_id,
-            retailer_id=env.retailer_id,
-            email=f"r0-{uuid.uuid4().hex[:8]}@example.com",
+            identity=identity, email=f"r0-{uuid.uuid4().hex[:8]}@example.com"
         )
         response = await http_client.get(
-            "/api/v1/skus",
-            headers={"Authorization": "Bearer " + _bearer(user_id, env.wholesaler_id, env.schema)},
+            "/api/v1/skus", headers={"Authorization": "Bearer " + _bearer(user_id, identity)}
         )
         assert response.status_code == 200, (
             f"CONTROL: active user in active tenant must get 200, got {response.status_code}: {response.text[:300]}"
         )
     finally:
-        await _drop_env(env)
+        await identity.drop()
 
 
 # ---------------------------------------------------------------------------
@@ -239,24 +225,20 @@ async def test_r0_control_deactivated_user_denied(http_client):
     执行入口: GET /api/v1/skus through the full HTTP middleware stack.
     未覆盖范围: token issuance (synthetic).
     """
-    env = await _make_env()
+    identity = await TenantIdentity().create()
     try:
         user_id = await _seed_tenant_user(
-            schema=env.schema,
-            wholesaler_id=env.wholesaler_id,
-            retailer_id=env.retailer_id,
-            email=f"r0-{uuid.uuid4().hex[:8]}@example.com",
+            identity=identity, email=f"r0-{uuid.uuid4().hex[:8]}@example.com"
         )
-        await _set_user_flags(schema=env.schema, user_id=user_id, is_active=False)
+        await _set_user_flags(identity=identity, user_id=user_id, is_active=False)
         response = await http_client.get(
-            "/api/v1/skus",
-            headers={"Authorization": "Bearer " + _bearer(user_id, env.wholesaler_id, env.schema)},
+            "/api/v1/skus", headers={"Authorization": "Bearer " + _bearer(user_id, identity)}
         )
         assert response.status_code == 401, (
             f"CONTROL: deactivated user must be denied 401, got {response.status_code}"
         )
     finally:
-        await _drop_env(env)
+        await identity.drop()
 
 
 # ---------------------------------------------------------------------------
@@ -286,18 +268,14 @@ async def test_r0_red_soft_deleted_user_in_active_tenant_denied(http_client):
 
     Expected RED failure name: INVARIANT_R0_SOFT_DELETED_USER_ACCESS.
     """
-    env = await _make_env()
+    identity = await TenantIdentity().create()
     try:
         user_id = await _seed_tenant_user(
-            schema=env.schema,
-            wholesaler_id=env.wholesaler_id,
-            retailer_id=env.retailer_id,
-            email=f"r0-{uuid.uuid4().hex[:8]}@example.com",
+            identity=identity, email=f"r0-{uuid.uuid4().hex[:8]}@example.com"
         )
-        await _set_user_flags(schema=env.schema, user_id=user_id, is_deleted=True)
+        await _set_user_flags(identity=identity, user_id=user_id, is_deleted=True)
         response = await http_client.get(
-            "/api/v1/skus",
-            headers={"Authorization": "Bearer " + _bearer(user_id, env.wholesaler_id, env.schema)},
+            "/api/v1/skus", headers={"Authorization": "Bearer " + _bearer(user_id, identity)}
         )
         assert response.status_code == 401, (
             "INVARIANT_R0_SOFT_DELETED_USER_ACCESS: a soft-deleted user in an "
@@ -306,7 +284,7 @@ async def test_r0_red_soft_deleted_user_in_active_tenant_denied(http_client):
             "deletion (resolve_tenant_context never checks is_deleted)."
         )
     finally:
-        await _drop_env(env)
+        await identity.drop()
 
 
 # ---------------------------------------------------------------------------
@@ -333,18 +311,14 @@ async def test_r0_red_active_user_in_suspended_tenant_denied(http_client):
 
     Expected RED failure name: INVARIANT_R0_SUSPENDED_TENANT_ACCESS.
     """
-    env = await _make_env()
+    identity = await TenantIdentity().create()
     try:
         user_id = await _seed_tenant_user(
-            schema=env.schema,
-            wholesaler_id=env.wholesaler_id,
-            retailer_id=env.retailer_id,
-            email=f"r0-{uuid.uuid4().hex[:8]}@example.com",
+            identity=identity, email=f"r0-{uuid.uuid4().hex[:8]}@example.com"
         )
-        await _set_tenant_status(env.wholesaler_id, "suspended")
+        await _set_tenant_status(identity, "suspended")
         response = await http_client.get(
-            "/api/v1/skus",
-            headers={"Authorization": "Bearer " + _bearer(user_id, env.wholesaler_id, env.schema)},
+            "/api/v1/skus", headers={"Authorization": "Bearer " + _bearer(user_id, identity)}
         )
         assert response.status_code == 401, (
             "INVARIANT_R0_SUSPENDED_TENANT_ACCESS: an active user in a "
@@ -353,7 +327,7 @@ async def test_r0_red_active_user_in_suspended_tenant_denied(http_client):
             "checks public.wholesalers.status."
         )
     finally:
-        await _drop_env(env)
+        await identity.drop()
 
 
 # ---------------------------------------------------------------------------
@@ -387,11 +361,19 @@ async def test_r0_red_refresh_nonexistent_principal_no_session():
     ghost_user = uuid.uuid4()
     wholesaler_id = uuid.uuid4()
     schema = "t_" + wholesaler_id.hex  # tenant need not exist for this case
-    await _assert_refresh_refused(
-        _refresh(ghost_user, wholesaler_id, schema),
-        "INVARIANT_R0_REFRESH_NONEXISTENT_PRINCIPAL",
-        "a principal with no user row",
-    )
+    ghost = TenantIdentity()
+    ghost.wholesaler_id = wholesaler_id
+    ghost.schema = schema
+    try:
+        await _assert_refresh_refused(
+            _refresh(ghost_user, ghost),
+            "INVARIANT_R0_REFRESH_NONEXISTENT_PRINCIPAL",
+            "a principal with no user row",
+        )
+    finally:
+        # Nothing was created for the ghost tenant; drop() is a safe no-op
+        # (IF EXISTS) that removes any partial public rows by UUID.
+        await ghost.drop()
 
 
 # ---------------------------------------------------------------------------
@@ -417,17 +399,13 @@ async def test_r0_red_refresh_soft_deleted_user_no_session():
 
     Expected RED failure name: INVARIANT_R0_REFRESH_DELETED_USER.
     """
-    env = await _make_env()
+    identity = await TenantIdentity().create()
     try:
-        email = f"r0-{uuid.uuid4().hex[:8]}@example.com"
         user_id = await _seed_tenant_user(
-            schema=env.schema,
-            wholesaler_id=env.wholesaler_id,
-            retailer_id=env.retailer_id,
-            email=email,
+            identity=identity, email=f"r0-{uuid.uuid4().hex[:8]}@example.com"
         )
-        old_refresh = _refresh(user_id, env.wholesaler_id, env.schema)
-        await _set_user_flags(schema=env.schema, user_id=user_id, is_deleted=True)
+        old_refresh = _refresh(user_id, identity)
+        await _set_user_flags(identity=identity, user_id=user_id, is_deleted=True)
 
         await _assert_refresh_refused(
             old_refresh,
@@ -435,7 +413,7 @@ async def test_r0_red_refresh_soft_deleted_user_no_session():
             "a soft-deleted user (row exists, is_deleted=true)",
         )
     finally:
-        await _drop_env(env)
+        await identity.drop()
 
 
 # ---------------------------------------------------------------------------
@@ -458,16 +436,13 @@ async def test_r0_red_refresh_suspended_tenant_no_session():
 
     Expected RED failure name: INVARIANT_R0_REFRESH_SUSPENDED_TENANT.
     """
-    env = await _make_env()
+    identity = await TenantIdentity().create()
     try:
         user_id = await _seed_tenant_user(
-            schema=env.schema,
-            wholesaler_id=env.wholesaler_id,
-            retailer_id=env.retailer_id,
-            email=f"r0-{uuid.uuid4().hex[:8]}@example.com",
+            identity=identity, email=f"r0-{uuid.uuid4().hex[:8]}@example.com"
         )
-        old_refresh = _refresh(user_id, env.wholesaler_id, env.schema)
-        await _set_tenant_status(env.wholesaler_id, "suspended")
+        old_refresh = _refresh(user_id, identity)
+        await _set_tenant_status(identity, "suspended")
 
         await _assert_refresh_refused(
             old_refresh,
@@ -475,7 +450,7 @@ async def test_r0_red_refresh_suspended_tenant_no_session():
             "an active user of a suspended tenant",
         )
     finally:
-        await _drop_env(env)
+        await identity.drop()
 
 
 # ---------------------------------------------------------------------------
@@ -494,18 +469,15 @@ async def test_r0_control_refresh_live_subject_issues_usable_session(http_client
     执行入口: api.v1.auth.refresh_token handler + GET /api/v1/skus.
     未覆盖范围: rotation/replay policy (single-use refresh is not implemented).
     """
-    env = await _make_env()
+    identity = await TenantIdentity().create()
     try:
         user_id = await _seed_tenant_user(
-            schema=env.schema,
-            wholesaler_id=env.wholesaler_id,
-            retailer_id=env.retailer_id,
-            email=f"r0-{uuid.uuid4().hex[:8]}@example.com",
+            identity=identity, email=f"r0-{uuid.uuid4().hex[:8]}@example.com"
         )
         from api.v1.auth import refresh_token
 
         response = await refresh_token(
-            RefreshTokenRequest(refresh_token=_refresh(user_id, env.wholesaler_id, env.schema))
+            RefreshTokenRequest(refresh_token=_refresh(user_id, identity))
         )
         assert response.success is True and response.data.access_token, (
             "CONTROL: refresh for a live subject must succeed"
@@ -522,4 +494,4 @@ async def test_r0_control_refresh_live_subject_issues_usable_session(http_client
             f"CONTROL: refreshed access token must be usable (200), got {probe.status_code}"
         )
     finally:
-        await _drop_env(env)
+        await identity.drop()

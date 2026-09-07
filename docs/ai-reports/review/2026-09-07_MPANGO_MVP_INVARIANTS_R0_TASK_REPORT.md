@@ -1,165 +1,163 @@
 # MPANGO-MVP-INVARIANTS-R0 任务报告（测试候选）
 
+> **R1 修订版（2026-09-07）**：本文件在 R0 候选（29bd720d）基础上按 CTO 修订指令
+> （MPANGO-MVP-INVARIANTS-R0-R1）以普通后继提交修订。R0 原文见 git 历史。
+> R1 变更：任务归属证明、JWT 策略实证、退货双请求收集、流水身份核对（不用时间戳猜顺序）、
+> 异常/超时清理路径、事故措辞修正（§10）、"确认无账簿"降级为源码观察（§5）、节点映射（§1b）。
+> 修订历史：R0 报告为初版；本版为 R1；未 amend/rebase/force-push。
+
 日期：2026-09-07。执行者：Windows ZCode。
-性质：产品缺陷复现与回归测试候选。**本候选包含已知失败（命名 RED）回归测试，不是绿色合并候选，不能直接集成。** 未修改任何产品实现、生产 schema/迁移、HE2/R9 或 .secrets.baseline；未合并、未部署。
+性质：产品缺陷复现与回归测试候选。**本候选包含已知失败（命名 RED）回归测试，不是绿色合并候选，不能直接集成。** 未修改任何产品实现、共享 conftest、生产 schema/迁移、依赖、HE2/R9、SKU 候选或 .secrets.baseline；未合并、未部署。
 
 ## 0. 基线与候选
 
 | 项 | 值 |
 |---|---|
-| 预期基线 | bd2373cbfeafde07f1771aba2089f0d1b5f0cd3f |
-| `git fetch --all --prune` 后 `origin/product-dev-recovered` | bd2373cbfeafde07f1771aba2089f0d1b5f0cd3f（一致，无漂移） |
-| worktree | `C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_mpango_mvp_invariants_r0_2026-09-07` |
-| 任务分支 | `zcode/mpango-mvp-invariants-r0-2026-09-07`（自基线新建，普通推送，未合并） |
+| 产品基线 | bd2373cbfeafde07f1771aba2089f0d1b5f0cd3f（`origin/product-dev-recovered` 复核一致） |
+| R0 候选（本任务 BASE） | 29bd720d4267ca3516377a32eef90658cdb109ba（远端/local 核验一致） |
+| worktree（R1） | `C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_mpango_mvp_invariants_r0_r1_2026-09-07` |
+| 任务分支（R1） | `zcode/mpango-mvp-invariants-r0-r1-2026-09-07`（自 BASE 普通提交，普通推送，未合并） |
 | 候选 SHA | 见推送记录（分支 HEAD）；报告自身不引用自 commit 前的 SHA |
 
-fetch 期间唯一远端变化：`reports/lubuntu-validation` 前移（9c14ecc4→22648346），与产品基线分支无关，不影响本任务。
+## 1. 测试清单与覆盖的真实产品路径
 
-## 1. 新增测试与覆盖的真实产品路径
+文件（相对 `backend/tests/`）：
+- `mpango_invariants_r0_support.py` — 共享夹具：任务归属证明（容器标签/镜像/端口映射/库名用户/引擎/实况探针/迁移 head 七重核验，任一不符在写入前拒绝）、JWT 策略实证（产品同款 strip().lower() 归一 + 应用中间件实际绑定实例类型核对）、受监督后台任务（超时→取消→等待）、TenantIdentity（先登记清理后创建，半途失败自清理）。
+- `test_mpango_mvp_invariants_r0_concurrency.py` — 6 节点（3 对照 + 2 命名 RED + 1 双请求 RED，其中 2 个为清理路径对照）。
+- `test_mpango_mvp_invariants_r0_revocation.py` — 8 节点（3 对照 + 5 命名 RED）。
+- `test_mpango_invariants_r0_r1_guards.py` — 18 节点（守卫负控 + JWT 工厂正反例 + 断言逻辑正反例），不连数据库。
 
-新增 3 个文件（均为新增，无产品文件改动）：
+每个产品路径测试 docstring 按"正常对照 / 目标缺陷 / 环境前提 / 执行入口 / 未覆盖范围"五段声明。
 
-- `backend/tests/mpango_invariants_r0_support.py` — 共享夹具：loopback 数据库守卫（拒绝非本机库）、JWT 策略守卫（拒绝 MPANGO_ENV=test 的 Mock 路径）、用产品自身 `scripts/bootstrap_tenant_schema.bootstrap` 建租户 schema、逐测试唯一租户与清理。
-- `backend/tests/test_mpango_mvp_invariants_r0_concurrency.py` — 4 个测试（2 对照 + 2 命名 RED）。
-- `backend/tests/test_mpango_mvp_invariants_r0_revocation.py` — 8 个测试（3 对照 + 5 命名 RED）。
-
-每个测试 docstring 按"正常对照 / 目标缺陷 / 环境前提 / 执行入口 / 未覆盖范围"五段声明。
-
-| 测试 | 结果 | 真实产品路径 |
+| 节点 | 结果 | 真实产品路径 |
 |---|---|---|
-| test_r0_control_single_adjustment_and_failed_adjustment_rollback | PASS | `InventoryService.adjust_stock`（POST /api/v1/inventory/adjust 调用的同一服务函数）：单次调整生效、失败调整全额回滚（值与流水均不残留） |
-| test_r0_red_concurrent_stock_adjustments_no_lost_update | **RED** `INVARIANT_R0_STOCK_LOST_UPDATE`（10+7+5 → 实际 15.00） | 同上，两个真实连接 + asyncio 事件屏障：A 读后暂停 → B 提交 → A 恢复 |
-| test_r0_control_single_full_return_single_economic_effect | PASS | 订单全生命周期真实入口：`create_order`/`confirm_order`/`pay_order`（CanonicalPaymentService）/`fulfill_order`/`return_order`（OrderService.transition + restock_on_return）路由函数；单次退货恰一次经济效果 |
-| test_r0_red_concurrent_full_return_single_economic_effect | **RED** `INVARIANT_R0_DOUBLE_RETURN_CASH`（refund cash −200.0000） | 同上生命周期 + 两个真实连接在 `return_order` 路由预读取处确定性交错 |
-| test_r0_control_active_user_active_tenant_can_access | PASS | 完整 HTTP 栈（JWT 中间件 → resolve_tenant_context → RBAC → GET /api/v1/skus），ASGITransport |
-| test_r0_control_deactivated_user_denied | PASS | 同上；证明 is_active=false 已被拒绝，缺口在 is_deleted/租户状态 |
-| test_r0_red_soft_deleted_user_in_active_tenant_denied | **RED** `INVARIANT_R0_SOFT_DELETED_USER_ACCESS`（200） | 同上；软删状态与产品 `soft_delete_user` 写入一致（is_deleted=true、is_active 保持 true） |
-| test_r0_red_active_user_in_suspended_tenant_denied | **RED** `INVARIANT_R0_SUSPENDED_TENANT_ACCESS`（200） | 同上；租户状态置 suspended（仓库当前无写该状态的 API 入口） |
-| test_r0_red_refresh_nonexistent_principal_no_session | **RED** `INVARIANT_R0_REFRESH_NONEXISTENT_PRINCIPAL` | `api.v1.auth.refresh_token`（POST /api/v1/auth/refresh 处理器，无认证依赖属产品现状） |
-| test_r0_red_refresh_soft_deleted_user_no_session | **RED** `INVARIANT_R0_REFRESH_DELETED_USER` | 同上；用户行真实存在后软删 |
-| test_r0_red_refresh_suspended_tenant_no_session | **RED** `INVARIANT_R0_REFRESH_SUSPENDED_TENANT` | 同上；活跃用户 + suspended 租户 |
-| test_r0_control_refresh_live_subject_issues_usable_session | PASS | refresh 对活主体签发的新 access token 在 HTTP 路由上真实可用（证明 RED 案例唯一变量是主体存续） |
+| control_single_adjustment_and_failed_adjustment_rollback | PASS | `InventoryService.adjust_stock`（POST /api/v1/inventory/adjust 调用的同一服务函数）：单次调整生效、失败调整值与流水均不残留 |
+| red_concurrent_stock_adjustments_no_lost_update | **RED** `INVARIANT_R0_STOCK_LOST_UPDATE`（10+7+5 → 实测 15.00） | 同上，两条真实连接 + 事件屏障；流水按 reason 身份核对、代数断言与时间戳无关 |
+| harness_control_barrier_timeout_cancels_and_rolls_back | PASS | 夹具安全：屏障永不释放 → GUARD_HARNESS_TIMEOUT、任务取消并等待、事务回滚无残留、锁无泄漏、teardown 成功 |
+| harness_control_task_exception_rolls_back_and_cleans | PASS | 夹具安全：屏障释放后调整以 409 失败 → 类型化异常传播、回滚干净、teardown 成功 |
+| control_single_full_return_single_economic_effect | PASS | 订单全生命周期真实入口 create/confirm/pay(Canonical)/fulfill/return(OrderService+restock)；单次退货恰一次经济效果 |
+| red_concurrent_full_return_single_economic_effect | **RED** `INVARIANT_R0_DOUBLE_RETURN`（refund cash −200.0000） | 同上生命周期 + 两个真实连接在 return 路由预读取处确定性交错；**两个请求结果均被收集分类**（成功 / 409 INVALID_STATE_TRANSITION 均可接受，任意异常即失败），经济断言无论如何都执行 |
+| control_active_user_active_tenant_can_access | PASS | 完整 HTTP 栈（JWT 中间件 → resolve_tenant_context → RBAC → GET /api/v1/skus） |
+| control_deactivated_user_denied | PASS | 同上；is_active=false 已被拒绝，缺口精确在 is_deleted/租户状态 |
+| red_soft_deleted_user_in_active_tenant_denied | **RED** `INVARIANT_R0_SOFT_DELETED_USER_ACCESS`（200） | 同上；软删状态与产品 soft_delete_user 写入一致 |
+| red_active_user_in_suspended_tenant_denied | **RED** `INVARIANT_R0_SUSPENDED_TENANT_ACCESS`（200） | 同上；租户 suspended（仓库无写该状态的 API 入口） |
+| red_refresh_nonexistent_principal_no_session | **RED** `INVARIANT_R0_REFRESH_NONEXISTENT_PRINCIPAL` | `api.v1.auth.refresh_token`（POST /auth/refresh 处理器） |
+| red_refresh_soft_deleted_user_no_session | **RED** `INVARIANT_R0_REFRESH_DELETED_USER` | 同上；用户行真实存在后软删 |
+| red_refresh_suspended_tenant_no_session | **RED** `INVARIANT_R0_REFRESH_SUSPENDED_TENANT` | 同上；活跃用户 + suspended 租户 |
+| control_refresh_live_subject_issues_usable_session | PASS | refresh 活主体新 token 在 HTTP 路由真实可用（RED 案例唯一变量是主体存续） |
+| guards 文件 18 节点 | PASS | 见 §4/§5/§6 |
 
-## 2. 基线 PASS/RED 汇总
+## 1b. 旧 12 节点 → 新 32 节点映射
 
-完整运行（任务独占 PostgreSQL 16，真实服务与真实数据库，无 SQL mock，无 sleep）：**12 个测试，5 PASS（全部对照），7 命名 RED（全部为目标缺陷复现）**。多次运行结果确定一致。运行明细见 `2026-09-07_MPANGO_MVP_INVARIANTS_R0_RUN_LOG.md`。
+| R0 节点 | R1 后继 |
+|---|---|
+| concurrency::control_single_adjustment_and_failed_adjustment_rollback | 同名保留（改用归属守卫/TenantIdentity） |
+| concurrency::red_concurrent_stock_adjustments_no_lost_update | 同名保留（流水核对改为 reason 身份 + 无序代数断言） |
+| concurrency::control_single_full_return_single_economic_effect | 同名保留（共享 _assert_single_economic_effect） |
+| concurrency::red_concurrent_full_return_single_economic_effect | 同名保留（双请求收集分类 + 经济断言恒执行） |
+| revocation 8 节点 | 同名保留（JWT 实证守卫 + TenantIdentity 清理） |
+| （无） | +2 harness_control_*（清理路径） |
+| （无） | +18 guards（守卫负控 3、JWT 工厂 9、断言逻辑 6） |
 
-## 3. 业务写入口表（二.1 交付）
+计数从"5 PASS + 7 RED"变为"**25 PASS + 7 产品命名 RED**（共 32；7 个 RED 全部为产品目标缺陷，18 个 guards 与 2 个 harness 对照为 R1 新增验收/安全能力）"。
 
-事实来源：基线源码直接阅读 + 只读探查。事务所有者统一说明：租户路由经 `get_tenant_db_session`，commit 由认证中间件 `finalize_tenant_context(success=2xx)` 持有；路由/服务一般只 flush。public 路由用 `get_db_session`，部分端点自 commit。
+## 2. 最终完整运行结果
 
-| 动作 | 路由 | 服务/CRUD | 加锁位置 | 流水/旁路写入 | 既有测试 |
-|---|---|---|---|---|---|
-| 创建订单 | POST /api/v1/orders（orders.py:354） | 路由内校验绑定/服务端解价 → `crud.order.create_order`（crud/order.py:323） | 无 | 无 | 各 schema 契约测试 |
-| 确认 | POST /api/v1/orders/{id}/confirm（orders.py:590） | 预读取（无锁）→ `crud.confirm_order`（crud/order.py:387）+ `InventoryService.reserve_on_confirm` | 库存行 `FOR UPDATE + populate_existing`（inventory_service.py:53） | inventory_reservations + stocks；**不写 ledger_entries**（OrderService CONFIRMED 记账分支未被此入口调用） | test_s5d5 等（种入 confirmed 单，未见真实入口记账断言） |
-| 收款 | POST /api/v1/orders/{id}/pay（orders.py:649） | `_get_order_by_id_for_update`（FOR UPDATE，orders.py:220）→ `CanonicalPaymentService.confirm_payment`（skip_prechecks=True，锁定单传入） | 订单行 FOR UPDATE；幂等键两次预查 + 唯一约束 | payments；OrderService PAID 时按整单额记 cash/receivable（order_service.py:290）；credit 记绑定余额 ±；到 PAID 后 `update_cash_transfer_to_completed`（payment_repository.py:234） | test_dc11d（并发回放）、test_dc12r1_s3_s2b_i2a |
-| 履约 | POST /api/v1/orders/{id}/fulfill（orders.py:894） | 预读取 → `db.expire(order)` 强制重读 → OrderService.transition(FULFILLED) → `deduct_on_fulfillment` | 订单行 FOR UPDATE（对象已 expire）；库存行 FOR UPDATE + populate_existing | inventory_movements（deduction）、reservations→consumed | 部分 |
-| 取消（供应商） | POST /api/v1/orders/{id}/cancel（orders.py:988） | **预读取（无锁）**，`release_reservation` 由旧状态决定 → `crud.cancel_order`（crud/order.py:495）+ `release_on_cancel` | 无订单锁；库存行 FOR UPDATE + populate_existing | reservations→released | 无并发用例 |
-| 取消（零售商） | POST /api/v1/client/orders/{id}/cancel（client/orders.py:381） | 双键归属读取（无锁）→ 同一 `crud.cancel_order` | 同上 | 同上 | 少量 |
-| 退货 | POST /api/v1/orders/{id}/return（orders.py:1048） | **预读取（无锁）**→ OrderService.transition(RETURNED)（FOR UPDATE 但无 populate_existing，order_service.py:96）→ `restock_on_return` | 库存行 FOR UPDATE（无 populate_existing，inventory_service.py:549） | ledger_entries（reference_type='refund'：revenue +、cash −）+ inventory_movements（restock） | 无并发用例 |
-| 申报确认 | POST /api/v1/declarations/{id}/confirm（declarations.py:298） | `PaymentDeclarationService.confirm_declaration`（payment_declaration_service.py:167）：声明行 FOR UPDATE → `CanonicalPaymentService.confirm_payment(force_completed=True, allocate_receipt=True)` | 声明行 + 绑定行 + 订单行 FOR UPDATE | payment_declarations、payments（completed+收据）、orders、receipt_sequences | test_dc12r1_s3_s2b_i2b |
-| 库存调整 | POST /api/v1/inventory/adjust（inventory.py:176） | `InventoryService.adjust_stock`（inventory_service.py:388） | 库存行 FOR UPDATE **无 populate_existing（缺陷点）** | inventory_movements（adjustment） | 本轮新增 |
-| 用户停用 | PUT /api/v1/users/{id}（users.py:172） | `update_user`（is_active） | 无 | users | 少量 |
-| 用户删除（软） | DELETE /api/v1/users/{id}（users.py:228） | `soft_delete_user`（crud/user.py:307）：is_deleted=true，**不动 is_active** | 无 | users | 少量 |
-| 租户停用 | **无 API 入口**（全仓无写 public.wholesalers.status 的路由；platform v0 只读） | — | — | — | 无 |
-| refresh | POST /api/v1/auth/refresh（auth.py:450） | 纯重签：decode → 按 claims 重发 access+refresh，**零数据库校验** | 无 | 无 | 本轮新增 RED |
-| logout | POST /api/v1/auth/logout（auth.py:550） | 无状态，无服务端撤销（docstring 自认 MVP） | 无 | 无 | 无 |
-| 密码重置 | POST /api/v1/auth/reset-password（auth.py:844） | `PasswordResetService.consume_reset`（password_reset_service.py:305）：重置令牌行 FOR UPDATE、跨 schema 扇出改密 | 重置令牌行 FOR UPDATE | users.password_hash（多 schema 副本） | test_dc12r1_j1_h2b |
+命令见 §8；退出码 **1**（存在预期 RED 时的正常退出码）；耗时 ≈60s；多次运行（开发期 6 次定向 + 2 次完整）结果确定一致。
 
-## 4. 两个付款入口调查（二.3 交付）
+分类：
+- **产品命名 RED（7，全部预期）**：并发调整丢失更新 15.00≠22；并发退货 −200/2 次回补；软删用户 200；停用租户 200；refresh ×3 照发会话。
+- **生命周期/焦点对照 PASS（5）**：单次调整+失败回滚；单次退货单次效果；活跃访问；is_active=false 拒绝；活主体 refresh 可用。
+- **清理路径对照 PASS（2）**：屏障超时取消回滚；任务异常回滚清理。
+- **守卫/断言逻辑单测 PASS（18）**：归属负控 3、JWT 工厂 9、断言逻辑 6。
+- **未执行断言**：无（无 skip/xfail；取消撞收款/部分现金/赊销退货按任务指令未设断言，见 PENDING_DECISIONS 文档）。
 
-**`CanonicalPaymentService.confirm_payment`（canonical_payment_service.py:163）——唯一在线付款写入口：**
+运行后核查：任务库 `t_%` schema = 0、public.wholesalers/retailers = 0（各测试 finally 自清理，含 RED 测试）。
 
-- 订单状态校验：非 confirmed/partially_paid 拒绝（:273-278）；PAID 单仅接受 cash/transfer 回款且有 credit exposure（:243-264）；credit 规则（单一、无先行现金、金额=整单，:279-298）。
-- 订单行锁：`_get_order_by_id_for_update` FOR UPDATE（:115-121, :215）。
-- 幂等：`get_by_idempotency_key` 预查 + replay 返回（:200-236）+ 数据库唯一约束兜底（路由层 IntegrityError 恢复，orders.py:842）。
-- 状态推进 pending→completed：非 credit 的 cash/transfer 在订单到 PAID 后由 `update_cash_transfer_to_completed`（payment_repository.py:234）批量置 completed（canonical :366-367）；credit 回款与 force_completed（申报确认）直接以 completed 落库；否则为 **pending**（草稿收款形态）。
-- 余额更新：credit 销售加绑定余额（:351-357）；credit 回款减余额（:337-343，走 `PaymentService._apply_outstanding_balance_delta`）。
-- 记账：通过 `OrderService.transition`，PAID 时按整单额记 cash/receivable（order_service.py:290-309）；PARTIALLY_PAID 不记账（部分现金 40 无账簿即源于此）。
+## 3. 业务写入口表
 
-**`PaymentService.create_payment`（payment_service.py:56）——当前不可达的旁路实现：**
+见 R0 版本（本文件 git 历史）第 3 节，R1 无产品源码变化，入口表不变。要点重述：确认（CRUD+预留，无订单锁）、收款（订单锁+Canonical 全防线）、履约（expire+OrderService+deduct）、取消（预读无锁+CRUD）、退货（预读无锁+OrderService 无 populate_existing+restock）、申报确认（声明行锁+Canonical force_completed）、库存调整（FOR UPDATE 无 populate_existing）、用户停用/软删（无锁）、租户停用（无 API 入口）、refresh（零 DB 校验）、logout（无撤销）、密码重置（改密不撤销会话）。
 
-- HTTP 入口 `POST /api/v1/payments` 已在路由层直接禁用（payments.py:91-97，恒 409 PAYMENT_WRITE_PATH_DISABLED 并指向订单付款入口）。
-- 全仓生产代码无其他调用者（仅 Canonical 复用其 `_apply_outstanding_balance_delta`；grep 证实）。
-- 与 canonical 的差异：**无订单状态检查**（draft 也能建 payment——CTO D02 的"草稿付款风险"在该函数源码层面成立，但因路由禁用当前不可达）、**无订单行锁**、**无订单状态推进、无任何 ledger 写入**、transfer 直接 completed 否则 pending、credit 加余额、幂等键仅查重不与状态机联动。
-- 结论（含证据边界）：本轮未重放"演练库四笔零收款有现金账订单"的写入溯源——**不能**用该演练库现象证明任何一条路径是写入来源（CTO D01 裁定维持）。源码层面可证的是：canonical 入口有完整状态门 + 幂等 + 状态推进；`create_payment` 是缺同 等 防线的残留实现。修复方向是收敛/删除旁路实现，而不是新造状态机。
+## 4. 任务归属证明（R1 §一.1）
 
-## 5. 外部结论的证实 / 修正 / 仍缺证据
+pytest 运行必须导出：`TEST_DATABASE_URL`、`DATABASE_URL`（两者必须相同目标）、`MPANGO_INVARIANTS_R0_PG_CONTAINER`、`MPANGO_INVARIANTS_R0_PG_OWNER`。会话夹具 `r0_task_database` 在**任何写入之前**依次核验：
 
-**已证实（本轮独立复现，命名 RED）：**
-1. 库存并发丢失更新：10+7+5 → 15.00（外部 15 一致）；失败回滚本身正常（对照 PASS）。
-2. 并发完整退货双计：refund cash −200、revenue +200（外部一致）；对照单次退货恰 −100/+100、restock 1 次。
-3. 软删用户（is_active 保持 true）在活跃租户持旧 token 访问 GET /api/v1/skus → 200。
-4. 活跃用户在 suspended 租户 → 200。
-5. refresh 对不存在主体/软删用户/停用租户均照发新会话（外部"refresh_nonexistent_principal_issued"扩展到三个场景）。
-6. deactivate（is_active=false）路径现状已正确拒绝（外部报告未单独重跑的活跃租户软删 HTTP 场景，本轮补齐；同时证明缺口精确在 is_deleted 与租户状态，不是整个解析器）。
-7. 生命周期对照证实：确认入口不产生任何 ledger（外部"确认绕过记账"的源码事实，本轮以真实入口对照测试固化观察基础）。
+1. 四个环境变量齐备（缺一拒绝）；
+2. TEST_DATABASE_URL == DATABASE_URL（迁移/bootstrap/pytest 同一目标，拒绝分叉）；
+3. URL host 必须 loopback、库名非空；
+4. owner 标签必须 `zcode-mvp-invariants-*` 命名空间；
+5. `docker inspect`：声明的容器存在、`mpango.owner` 标签与声明一致、镜像为 postgres:16、5432 映射为 `127.0.0.1:<URL端口>`、容器 `POSTGRES_DB`/`POSTGRES_USER` 与 URL 一致（拒绝指向既有库）；
+6. 活动引擎（database.session.async_engine）host/port/database 与核验目标一致；
+7. 实况探针：`current_database()` 一致、`version()` 为 PostgreSQL 16。
 
-**修正/收窄：** 无。本轮结果与外部报告及 CTO D01/D02 裁定一致，未发现需修正的外部结论。补充证据边界：并发测试直接调用路由函数，绕过 HTTP 依赖层（与外部探针同一边界）；撤权测试走完整 HTTP 栈，但 access token 为测试进程签名材料签发（非登录端点产出）。
+迁移由该夹具执行：`alembic upgrade head` 子进程显式注入已核验的 DATABASE_URL（REPORTING_USER_PASSWORD 缺失即拒绝），完成后核对 `public.alembic_version` == `037_payment_declarations_schema`。**alembic.ini 默认地址不可能被使用**（env.py 仅在 DATABASE_URL 存在时覆盖，而守卫保证它必存在且指向任务容器）。
 
-**仍缺证据（留给下一轮）：** 平台身份 guard 与 platform_operators 实时校验；密码重置后旧 refresh 会话的实际存活链（本轮未写该组合测试）；logout 无撤销的端到端影响；多 worker/重启下的中间件幂等（进程内字典）；PostgreSQL 15 生产版本对照（本轮用 16，与外部一致；根因在 ORM 层，与版本无关，但未做 15 验证）。
+负控演练（记录于 RUN_LOG，未随库提交）：声明错误容器 → `GUARD_REFUSED_DATABASE_OWNERSHIP`，零写入；MPANGO_ENV=test → `GUARD_REFUSED_MOCK_AUTH`，零写入；大小写/空白变体 → 产品 Settings 直接拒绝启动（见 §5）。
 
-## 6. 证据保留：取消撞收款 / 部分现金 / 赊销退货（二.4 交付）
+## 5. JWT 实证（R1 §一.2）
 
-三项**未转为断言型测试**（任务指令：预期结果待业务合同决定，不自行规定）。外部已复现证据保留于 `AI_REPORT_INBOX/external-architecture-2026-09-06/`（counterexamples.json / supplementary-probes.json），本轮源码定位如下，待业务决定事项详见 `2026-09-07_MPANGO_MVP_INVARIANTS_R0_PENDING_DECISIONS.md`：
+- 守卫用与产品 `auth.factory` 完全相同的归一化（`os.getenv("MPANGO_ENV","production").strip().lower()`）判断 test 归一 → 拒绝（覆盖 `test`/`TEST`/` test `/`\tTest` 等变体）。
+- 随后核对**应用中间件实际绑定的策略实例**：遍历 `app.user_middleware` 定位 `AuthenticationMiddleware`，断言其 `strategy` 实例类型名为 `JwtAuthStrategy` 且非 `MockAuthStrategy`（app.py:84 绑定点）。HTTP 证据因此绑定到真实运行路径，而非环境字符串。
+- 工厂单测（guards 文件 9 节点）证明：所有 test 归一变体 → MockAuthStrategy；staging/production 变体 → JwtAuthStrategy。
+- 事实记录：产品两层行为不一致——`core.config.Settings` 的 Literal 校验对 `TEST`/` test ` 等变体直接拒绝启动，仅精确小写 `test` 能到达工厂 Mock 分支；守卫按更严格方向（归一判断）处理，宁可多拒。此不一致为源码观察，留产品线参考。
 
-1. **取消撞收款**：取消路由用预读对象判断释放预留（orders.py:1012）并无锁调 `crud_cancel_order`；收款事务在其间提交后订单仍转 cancelled（外部 counterexamples.json：state=cancelled, payment=100）。待决定：已有收款（部分/全额）时取消的合法性与经济后果（原路退回/转预收/拒绝取消）。
-2. **部分现金不入账**：PARTIALLY_PAID 不产生任何 ledger；到 PAID 按整单额补记（order_service.py:290）。待决定："已收现金必须逐笔可核对"与"整单结清时点"的记账政策（含确认时点收入/应收）。
-3. **赊销退货**：完整退货固定记 revenue +/cash −（ledger_service.py:319-359），不冲应收、不清绑定余额（外部 supplementary-probes.json：outstanding 仍 100、cash −100、实收 0）。待决定：未收应收冲销 vs 应退款 vs 实际退款三分事实及绑定余额清算规则。
+## 6. 正确结果对照与断言逻辑单测（R1 §三"正确结果能否被接受"）
 
-## 7. 修复建议与最小涉及范围
+guards 文件 6 节点直接验证断言与分类逻辑本身（合成输入，不涉产品、不连库）：
+- 退货结果契约：`[成功,成功]` 与 `[成功,409 INVALID_STATE_TRANSITION]` 均被接受；`[成功,500]` 被拒绝（OUTCOME_CONTRACT）。
+- 单次经济效果快照：正确的 −100/+100、1 次回补、库存 10 被接受；基线双计形态（−200/2 次/11）被拒绝。
+- 调整流水代数：正确链（起点 {10,17}、终点 {17,22}、Δ{5,7}、10+12=22）被接受；丢失更新日志形态（双起点 10）结合实测终值 15 被拒绝。
 
-| 优先 | 缺陷 | 最小修复面 | 是否依赖 SKU/业务合同 |
-|---|---|---|---|
-| 1 | refresh/撤权失效链 | `api/v1/auth.py` refresh 增加主体/租户/会话校验；`api/context/tenant.py` resolve_tenant_context 增加 is_deleted 与租户状态检查（或 `crud/user.py get_user_with_permissions` 过滤 is_deleted）；users 表需会话版本/撤销载体（迁移） | **不依赖**（策略细节：撤销即时性 vs TTL 由所有者确认即可开工） |
-| 2 | 库存调整丢失更新 | `inventory_service.py adjust_stock`（:415）与 `restock_on_return`（:549）补 `populate_existing=True`（照 :58 既有模式）；或改条件原子 UPDATE | **不依赖** |
-| 3 | 并发退货双计 | `order_service.transition` 锁读补 populate_existing；退货/冲销分配业务唯一标识 + 唯一约束（涉及 orders/ledger 迁移） | 状态读新鲜度修复**不依赖**；业务唯一键形态需与退货政策协调，但可先落"订单一次性退货"唯一键 |
-| 4 | 取消撞收款 | 取消入口改锁后读 + 原状态条件更新，共享命令边界 | **部分依赖**：技术防护（锁后拒绝）不依赖；"有收款能否取消"必须等业务合同 |
-| 5 | 部分现金/确认记账/赊销退货语义 | ledger_service/order_service 记账时点与事实表 | **依赖**：必须等业务/会计决策（D04） |
-| 6 | 付款旁路收敛 | 删除或显式废弃 `PaymentService.create_payment`（当前不可达） | **不依赖**（纯收敛） |
+这些是**测试级对照，证明断言能接受正确行为**；不冒充产品修复通过，本轮未修改产品、未要求转绿。旧缺陷保持被抓住：7 个命名 RED 在基线上原样复现（实测值与 R0/外部证据一致），断言未向错误结果妥协。
 
-优先级 1/2 即外部报告建议顺序 1-2 的 Windows 产品线部分；3-5 与 SKU 路径/迁移协调（CTO：共同订单/库存路径不未经协调同时修改）。
+## 7. 证据保留与待业务决定
+
+不变，见 `2026-09-07_MPANGO_MVP_INVARIANTS_R0_PENDING_DECISIONS.md`（取消撞收款/部分现金/赊销退货三项不设断言）。补充措辞规范：**"确认入口不产生账簿"为源码观察**（orders.py:590 走 CRUD+预留、未调用 OrderService CONFIRMED 记账分支），对照测试未对确认后账簿状态作任何断言；断言化须待业务合同决定收入/应收时点后进行。
 
 ## 8. 精确命令与运行环境
 
 ```bash
-# 任务独占 PostgreSQL（一次性，任务结束已删除；口令为合成 disposable 值，仅存在于
-# 运行时环境与已删除容器，不在仓库内留存）
-docker run -d --name mpango-zcode-inv-r0-20260907-pg --label mpango.owner=zcode-mvp-invariants-r0 \
-  -e POSTGRES_USER=inv_r0_lab -e POSTGRES_PASSWORD=<synthetic-disposable-password> -e POSTGRES_DB=inv_r0_lab \
-  -p 127.0.0.1::5432 postgres:16-alpine     # 实际映射 127.0.0.1:61310
+# 任务独占 PostgreSQL（一次性；任务结束已删除）
+docker run -d --name mpango-zcode-inv-r0r1-20260907-pg --label mpango.owner=zcode-mvp-invariants-r0-r1 \
+  -e POSTGRES_USER=inv_r0r1_lab -e POSTGRES_PASSWORD=<synthetic-disposable-password> -e POSTGRES_DB=inv_r0r1_lab \
+  -p 127.0.0.1::5432 postgres:16-alpine     # 实际映射 127.0.0.1:52639
 
-# 公共迁移（一次性）
-cd backend && DATABASE_URL=postgresql://inv_r0_lab:<synthetic-disposable-password>@127.0.0.1:61310/inv_r0_lab \
-  REPORTING_USER_PASSWORD=<synthetic-disposable-password> MPANGO_ENV=staging \
-  <venv>/python -m alembic upgrade head     # → 037_payment_declarations_schema
+# 运行环境（仓库外 env 脚本注入；口令为合成 disposable 值，不随分支提交）
+#   TEST_DATABASE_URL = DATABASE_URL = postgresql://inv_r0r1_lab:<pw>@127.0.0.1:52639/inv_r0r1_lab
+#   MPANGO_INVARIANTS_R0_PG_CONTAINER = mpango-zcode-inv-r0r1-20260907-pg
+#   MPANGO_INVARIANTS_R0_PG_OWNER     = zcode-mvp-invariants-r0-r1
+#   MPANGO_ENV=staging  REDIS_URL=redis://127.0.0.1:1/15  SECRET_KEY=<64hex>
+#   PUBLIC_FRONTEND_URL=http://127.0.0.1:1  REPORTING_USER_PASSWORD=<synthetic>
+source /c/Users/Jeff0/MPANGO\ ERP/_zcode_mvp_invariants_r0r1_env.sh
 
-# 测试运行（两个文件，一次完整运行 ≈50s）
-cd backend && TEST_DATABASE_URL=$DATABASE_URL DATABASE_URL=$DATABASE_URL \
-  MPANGO_ENV=staging REDIS_URL=redis://127.0.0.1:1/15 SECRET_KEY=<64hex> \
-  PUBLIC_FRONTEND_URL=http://127.0.0.1:1 REPORTING_USER_PASSWORD=<synthetic-disposable-password> \
-  <venv>/python -m pytest tests/test_mpango_mvp_invariants_r0_concurrency.py \
-                          tests/test_mpango_mvp_invariants_r0_revocation.py
+# 测试运行（迁移由会话夹具对已核验目标执行，不再手工 alembic）
+cd backend && <venv>/python -m pytest \
+  tests/test_mpango_invariants_r0_r1_guards.py \
+  tests/test_mpango_mvp_invariants_r0_concurrency.py \
+  tests/test_mpango_mvp_invariants_r0_revocation.py
+# 退出码：0=全绿（本轮预期不出现）；1=存在产品命名 RED（本轮 32 节点，25 PASS / 7 RED）
 ```
 
-运行时：Python 3.12.10、SQLAlchemy 2.0.45、asyncpg 0.31.0、FastAPI 0.128.0、pytest 8.4.2、pytest-asyncio 0.26.0、PostgreSQL 16-alpine（专用容器）。依赖版本与外部审查运行时一致。venv 在仓库外（`C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv`），不随分支提交。测试文件含环境守卫：数据库 host 非 loopback 或 MPANGO_ENV=test（Mock 策略）时直接失败，防误指向既有环境。
+运行时：Python 3.12.10、SQLAlchemy 2.0.45、asyncpg 0.31.0、FastAPI 0.128.0、pytest 8.4.2、pytest-asyncio 0.26.0、PostgreSQL 16-alpine（任务容器）。venv 复用 R0 的仓库外环境（`_zcode_mvp_invariants_r0_venv`，依赖与基线 requirements 一致，未改动）。
 
-## 9. GitNexus 流程记录
+## 9. GitNexus 流程记录（R1）
 
-- 编辑前 impact：`gitnexus analyze --skip-agents-md`（worktree）成功建索引；`gitnexus impact/context` 查询失败："Trying to read a database file with a different version. Database file version: 42, Current build storage version: 40"（与 CTO 2026-09-07 审阅记录的同一不兼容）。以直接源码阅读替代：本候选仅新增测试文件，未触碰任何产品符号；各测试触达的产品入口已在第 1/3 节逐一列出。
-- 提交前 detect_changes：CLI 1.5.3 无该子命令（历史记录中的 detect_changes 为 MCP 工具面）。以 `git status --porcelain` + `git diff --stat` 逐文件核对替代，staged 内容 = 5 个新文件（3 测试 + 2 文档 + 运行日志），无产品文件。
+- `gitnexus analyze --skip-agents-md` 对 R1 worktree 建立索引成功（`gitnexus status`：Indexed commit 29bd720 == Current commit，up-to-date）；但 `gitnexus impact adjust_stock` 等图查询失败："Trying to read a database file with a different version. Database file version: 42, Current build storage version: 40"——与 R0 及 CTO 2026-09-07 记录的同一不兼容，且在全新索引上仍复现，说明是 CLI 构建与存储格式版本错位，不是索引过期。
+- `gitnexus impact/context` 查询：与 R0/CTO 记录相同的存储版本不兼容（file version 42 vs build 40）即失败。如实报告：本轮未获得符号级影响图，不以文件计数冒充影响分析，不以过期图宣布零风险。替代：直接源码阅读——本候选改动全部位于 `backend/tests/`（3 个测试文件 + 1 个支持模块 + 1 个新守卫单测文件）与 `docs/`（3 个报告文件），不触碰任何产品符号；测试触达的产品入口已在 §1 表格逐行列出。
+- 提交前变更核对：CLI 无 detect-changes 子命令（历史记录中的 detect_changes 为 MCP 工具面）。以 `git status --porcelain` + 暂存 diff 逐文件核对替代，staged 内容仅限上述 8 个任务文件，无产品文件。
 
-## 10. 事故记录（如实）
+## 10. 事故记录（R1 措辞修正）
 
-一次 `alembic upgrade head` 因仅导出 TEST_DATABASE_URL 未导出 DATABASE_URL，回退到 alembic.ini 硬编码地址（127.0.0.1:5432 既有 mpango_erp 库）。只读核查确认该库当时已在 head 037，命令为无操作（no output 的 upgrade），**未产生任何变更**。随后修正环境变量并仅对任务库执行迁移。既有环境全程未被写入、重置或清理。
+**迁移命令误指向既有数据库（2026-09-07，R0 轮）。** R0 期间一次手工 `alembic upgrade head` 因只导出 TEST_DATABASE_URL 未导出 DATABASE_URL，按 alembic.ini 默认地址连到了 127.0.0.1:5432 的既有 mpango_erp 库。当时核对的证据：该库 `public.alembic_version` 读数为 037（与任务目标 head 相同）；命令输出没有任何 "Running upgrade" 行、也没有报错。**但仅凭 head=037 不能断定"绝无变更"**——无法排除该命令在既有库上产生其他写入或副作用的可能性，且当时未留存该库的完整前后对照。故按"变更情况未知"处理：该既有库是否受到任何影响，证据不足，不作无变更声明；该命令未被重放。R1 后的流程消除了这类风险：迁移不再手工执行，由归属证明通过后的会话夹具对显式核验目标执行。既有环境全程未被写入、重置或清理（本轮及 R0 轮的容器操作仅涉及各自任务独占容器）。
 
 ## 11. 资源清理结果
 
-- 容器 `mpango-zcode-inv-r0-20260907-pg`：标签核验 `mpango.owner=zcode-mvp-invariants-r0` 后 `docker rm -f` + 匿名卷删除（见下方清理命令输出记录）。
-- 测试自清理：全部租户 schema（DROP CASCADE）与 public 行删除，运行后核查 `t_%` schema = 0、wholesalers/retailers = 0。
-- 未触碰：mpango_postgres、dc12r1_*、mpango_redis、mpango_prod_* 等全部既有容器/库/卷；外部审查目录与其 lab-venv 只读未用。
-- venv 目录保留（仓库外，供复核重跑）；如需删除：`rm -rf "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv"`。
+- 容器 `mpango-zcode-inv-r0r1-20260907-pg`：标签核验 `mpango.owner=zcode-mvp-invariants-r0-r1` 后删除（含匿名卷）。
+- 测试自清理：全部租户 schema 与 public 行删除，最终运行后核查 `t_%`=0、wholesalers/retailers=0（RED 测试同样清理）。
+- 安全演练证明拒绝路径零写入（错误容器/test 环境两种演练后 schema 数均为 0）。
+- 未触碰：mpango_postgres、dc12r1_*、mpango_redis、mpango_prod_* 等全部既有容器/库/卷；外部审查目录只读未用。
+- venv 与 env 脚本保留在仓库外（`_zcode_mvp_invariants_r0_venv`、`_zcode_mvp_invariants_r0r1_env.sh`，后者含合成 disposable 口令）；如需删除：`rm -rf` 两者即可。
 
 ## 12. 停止点
 
-按任务指令：完成测试候选提交与普通推送后停止，交 CTO 审查。不自动修产品、不合并、不部署。本轮明确不能作为绿色合并候选：7 个命名 RED 是对基线真实缺陷的固化复现，修复后应原样转绿，不得修改预期。
+按任务指令：R1 候选普通推送后停止，交 CTO 最终审查。不合并、不部署、不自行启动产品修复。本候选仍不能作为绿色合并候选：7 个命名 RED 是对基线真实缺陷的固化复现，修复后应原样转绿，不得修改预期。

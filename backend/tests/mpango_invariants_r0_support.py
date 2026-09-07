@@ -1,77 +1,352 @@
-"""Shared fixtures/helpers for MPANGO-MVP-INVARIANTS-R0 regression candidates.
+"""Shared fixtures/helpers for MPANGO-MVP-INVARIANTS-R0(-R1) regression candidates.
 
-Task: MPANGO-MVP-INVARIANTS-R0 (branch zcode/mpango-mvp-invariants-r0-2026-09-07)
+R1 revision (branch zcode/mpango-mvp-invariants-r0-r1-2026-09-07) adds, without
+changing the product-facing invariants:
 
-Scope and method (mirrors the external review probes, but as pytest):
-- Task-exclusive disposable PostgreSQL is provided OUTSIDE this repo via
-  TEST_DATABASE_URL. A loopback guard below refuses non-local database hosts
-  so the suite can never point at a shared/rehearsal deployment.
-- Tenant schemas are created through the product's own provisioning DDL
-  (scripts.bootstrap_tenant_schema.bootstrap) on a fresh, uniquely named
-  schema per test, then dropped on teardown.
-- No SQL results are mocked. Concurrency interleave points are scheduled by
-  pausing a repository/route read with asyncio events across two real
-  database sessions/connections (deterministic barriers, no sleeps).
-- Direct route-function calls bypass FastAPI dependency authorization (same
-  documented limitation as the external review probes); the revocation tests
-  exercise the real HTTP stack (JWT middleware + RBAC + tenant context) via
-  ASGITransport instead.
+- TASK-DATABASE OWNERSHIP PROOF: a run may only write to a database that is
+  provably owned by this task. Loopback is necessary but NOT sufficient: the
+  run must declare the exact container (MPANGO_INVARIANTS_R0_PG_CONTAINER) and
+  its owner label (MPANGO_INVARIANTS_R0_PG_OWNER), and the guard verifies via
+  `docker inspect` that the label, image (postgres:16), loopback port mapping
+  and POSTGRES_DB/POSTGRES_USER all match the configured URL, that
+  TEST_DATABASE_URL and DATABASE_URL name the SAME target, that the live
+  engine is bound to that same target, and that a live probe lands on the
+  declared database+port. Migrations are run by this module's session fixture
+  with that verified URL — never via the alembic.ini default. Any mismatch,
+  missing config, or non-task container refuses BEFORE any write.
+- JWT STRATEGY PROOF: the guard normalizes MPANGO_ENV exactly like the product
+  (strip().lower()) and verifies the strategy instance actually bound to the
+  app's AuthenticationMiddleware is JwtAuthStrategy (not any Mock variant).
+  Unit-level negative controls cover 'test'/'TEST'/whitespace variants.
+- CLEANUP HARDENING: supervised background tasks (timeout -> cancel -> await),
+  rollback verified before test data is deleted, and partial tenant creation
+  is cleaned up on failure.
+
+Product-facing assertions are unchanged from R0: the known product defects
+must keep failing (named RED), and assertions must accept correct behavior.
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import os
+import subprocess
+import sys
 import uuid
 from contextlib import asynccontextmanager
 from decimal import Decimal
+from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
 from sqlalchemy import text
 
-from database.session import AsyncSessionLocal
+from database.session import AsyncSessionLocal, async_engine
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+BASELINE_MIGRATION_HEAD = "037_payment_declarations_schema"
+SUPERVISE_TIMEOUT_S = 30.0
+
+CONTAINER_ENV_VAR = "MPANGO_INVARIANTS_R0_PG_CONTAINER"
+OWNER_LABEL_ENV_VAR = "MPANGO_INVARIANTS_R0_PG_OWNER"
+OWNER_LABEL_PREFIX = "zcode-mvp-invariants"
 
 
-def assert_loopback_test_database() -> str:
-    """Refuse to run against a non-loopback database host.
+class GuardRefused(RuntimeError):
+    """Raised when the environment fails a pre-write guard. Never retry."""
 
-    This suite writes and drops schemas; it must only ever run against a
-    task-exclusive disposable local database (see task directive: existing
-    rehearsal databases must never be touched).
-    """
-    url = os.environ.get("DATABASE_URL", "")
-    host = urlparse(url.replace("postgresql+asyncpg://", "postgresql://", 1)).hostname
-    if host not in LOOPBACK_HOSTS:
-        pytest.fail(
-            "MPANGO_INVARIANTS_R0_ENV_GUARD: DATABASE_URL host "
-            f"'{host}' is not loopback. This suite requires a task-exclusive "
-            "local PostgreSQL (set TEST_DATABASE_URL)."
+
+# ---------------------------------------------------------------------------
+# Task-database ownership proof
+# ---------------------------------------------------------------------------
+
+def _docker_inspect(container: str) -> dict:
+    try:
+        raw = subprocess.run(
+            ["docker", "inspect", "--format", "{{json .}}", container],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
         )
-    return url
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise GuardRefused(f"GUARD_REFUSED_DATABASE_OWNERSHIP: docker inspect failed: {exc}") from exc
+    if raw.returncode != 0:
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: declared task container "
+            f"'{container}' does not exist (docker inspect rc={raw.returncode})."
+        )
+    return json.loads(raw.stdout)
 
+
+def verify_task_database_ownership_sync() -> str:
+    """Pre-write ownership proof (sync part). Returns the verified DB URL.
+
+    Refuses (before any write) when: config missing, TEST_DATABASE_URL and
+    DATABASE_URL disagree, the container is not the declared labeled task
+    container, image/port/db/user do not match the URL, or the live engine is
+    bound to a different target.
+    """
+    container = os.environ.get(CONTAINER_ENV_VAR, "").strip()
+    owner_label = os.environ.get(OWNER_LABEL_ENV_VAR, "").strip()
+    test_url = os.environ.get("TEST_DATABASE_URL", "").strip()
+    db_url = os.environ.get("DATABASE_URL", "").strip()
+
+    missing = [
+        name
+        for name, value in (
+            (CONTAINER_ENV_VAR, container),
+            (OWNER_LABEL_ENV_VAR, owner_label),
+            ("TEST_DATABASE_URL", test_url),
+            ("DATABASE_URL", db_url),
+        )
+        if not value
+    ]
+    if missing:
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: missing required environment: "
+            f"{', '.join(missing)}. This suite only runs against a declared, "
+            "task-owned disposable database."
+        )
+    if test_url != db_url:
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: TEST_DATABASE_URL and "
+            "DATABASE_URL name different targets; migration, bootstrap and "
+            "pytest must all use one explicit target."
+        )
+
+    parsed = urlparse(test_url.replace("postgresql+asyncpg://", "postgresql://", 1))
+    host = parsed.hostname
+    port = parsed.port or 5432
+    dbname = (parsed.path or "").lstrip("/")
+    if host not in LOOPBACK_HOSTS:
+        raise GuardRefused(
+            f"GUARD_REFUSED_DATABASE_OWNERSHIP: URL host '{host}' is not loopback."
+        )
+    if not dbname:
+        raise GuardRefused("GUARD_REFUSED_DATABASE_OWNERSHIP: URL has no database name.")
+
+    if not owner_label.startswith(OWNER_LABEL_PREFIX):
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: owner label must be a "
+            f"{OWNER_LABEL_PREFIX}-* task label, got {owner_label!r}."
+        )
+
+    info = _docker_inspect(container)
+    labels = (info.get("Config") or {}).get("Labels") or {}
+    if labels.get("mpango.owner") != owner_label:
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: container "
+            f"'{container}' label mpango.owner={labels.get('mpango.owner')!r} "
+            f"does not match declared owner {owner_label!r}."
+        )
+    config = info.get("Config") or {}
+    image_name = str(config.get("Image") or "")
+    if not image_name.startswith("postgres:16"):
+        raise GuardRefused(
+            f"GUARD_REFUSED_DATABASE_OWNERSHIP: container image '{image_name}' "
+            "is not postgres:16."
+        )
+    mapping = (info.get("NetworkSettings") or {}).get("Ports") or {}
+    port_bindings = mapping.get("5432/tcp") or []
+    mapped = {b.get("HostIp"): b.get("HostPort") for b in port_bindings}
+    if mapped.get("127.0.0.1") != str(port):
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: container 5432 mapping "
+            f"{mapped} does not match URL host/port (127.0.0.1:{port})."
+        )
+    env_pairs = dict(
+        item.split("=", 1) for item in (config.get("Env") or []) if "=" in item
+    )
+    if env_pairs.get("POSTGRES_DB") != dbname:
+        raise GuardRefused(
+            f"GUARD_REFUSED_DATABASE_OWNERSHIP: container POSTGRES_DB "
+            f"{env_pairs.get('POSTGRES_DB')!r} != URL database {dbname!r}; "
+            "refusing to write into an unexpected (possibly pre-existing) database."
+        )
+    if env_pairs.get("POSTGRES_USER") != (parsed.username or ""):
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: container POSTGRES_USER does "
+            "not match URL user."
+        )
+
+    engine_url = async_engine.url
+    if (
+        str(engine_url.host) != host
+        or int(engine_url.port or 5432) != port
+        or str(engine_url.database) != dbname
+    ):
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: live engine target "
+            f"({engine_url.host}:{engine_url.port}/{engine_url.database}) does "
+            f"not match the verified task target ({host}:{port}/{dbname})."
+        )
+    return test_url
+
+
+async def verify_task_database_live(db_url: str) -> None:
+    """Live probe inside the declared database.
+
+    Port identity is established by the docker port-mapping + engine-URL
+    checks in verify_task_database_ownership_sync (the only wire path from
+    the declared host port leads to the declared container); inside the
+    database we verify the database name and the server major version so a
+    stale or foreign cluster behind the same port cannot pass silently.
+    """
+    parsed = urlparse(db_url.replace("postgresql+asyncpg://", "postgresql://", 1))
+    dbname = (parsed.path or "").lstrip("/")
+    async with AsyncSessionLocal() as probe:
+        row = (
+            await probe.execute(text("SELECT current_database(), version()"))
+        ).one()
+        if row[0] != dbname:
+            raise GuardRefused(
+                "GUARD_REFUSED_DATABASE_OWNERSHIP: live connection landed on "
+                f"db={row[0]!r}, expected {dbname!r}."
+            )
+        if not str(row[1]).startswith("PostgreSQL 16."):
+            raise GuardRefused(
+                "GUARD_REFUSED_DATABASE_OWNERSHIP: server is "
+                f"{str(row[1]).split(',')[0]!r}, expected a PostgreSQL 16 "
+                "cluster matching the declared postgres:16 task container."
+            )
+
+
+def run_public_migrations() -> None:
+    """Upgrade the verified task database to the baseline migration head.
+
+    The URL comes exclusively from the ownership-verified DATABASE_URL env —
+    the alembic.ini default address is never used (env.py overrides from the
+    environment, and the guard refuses to run without it).
+    """
+    backend_dir = Path(__file__).resolve().parents[1]
+    reporting_password = os.environ.get("REPORTING_USER_PASSWORD", "").strip()
+    if not reporting_password:
+        raise GuardRefused(
+            "GUARD_REFUSED_MIGRATION: REPORTING_USER_PASSWORD must be set for "
+            "migration 011; refusing to run migrations with incomplete config."
+        )
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=str(backend_dir),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=300,
+        env={**os.environ, "DATABASE_URL": os.environ["DATABASE_URL"]},
+    )
+    if result.returncode != 0:
+        raise GuardRefused(
+            "GUARD_REFUSED_MIGRATION: alembic upgrade head failed against the "
+            f"declared task target:\n{result.stdout}\n{result.stderr}"
+        )
+
+
+@pytest.fixture(scope="session")
+async def r0_task_database():
+    """Session fixture: prove ownership, probe, migrate; no writes before all three."""
+    db_url = verify_task_database_ownership_sync()
+    await verify_task_database_live(db_url)
+    run_public_migrations()
+    async with AsyncSessionLocal() as probe:
+        head = (
+            await probe.execute(text("SELECT version_num FROM public.alembic_version"))
+        ).scalar_one()
+    if head != BASELINE_MIGRATION_HEAD:
+        raise GuardRefused(
+            f"GUARD_REFUSED_MIGRATION: task database head is {head!r}, expected "
+            f"{BASELINE_MIGRATION_HEAD!r} (baseline mismatch)."
+        )
+    yield db_url
+
+
+# ---------------------------------------------------------------------------
+# JWT strategy proof
+# ---------------------------------------------------------------------------
 
 def require_jwt_auth_strategy() -> None:
-    """The revocation tests exercise the real JWT middleware.
+    """Prove the HTTP tests run the real JwtAuthStrategy, not a Mock variant.
 
-    MPANGO_ENV=test swaps in MockAuthStrategy (auth/factory.py), which would
-    silently bypass the production auth path. Run with MPANGO_ENV=staging.
+    Normalizes MPANGO_ENV exactly like auth.factory (strip().lower()) and then
+    inspects the strategy instance actually bound to the app's
+    AuthenticationMiddleware.
     """
-    env = os.environ.get("MPANGO_ENV", "")
-    if env == "test":
+    env_raw = os.environ.get("MPANGO_ENV", "")
+    # auth.factory: os.getenv("MPANGO_ENV", "production").strip().lower()
+    if env_raw.strip().lower() == "test":
         pytest.fail(
-            "MPANGO_INVARIANTS_R0_ENV_GUARD: MPANGO_ENV=test selects "
-            "MockAuthStrategy. Run these tests with MPANGO_ENV=staging so the "
-            "real JwtAuthStrategy is exercised."
+            f"GUARD_REFUSED_MOCK_AUTH: MPANGO_ENV={env_raw!r} normalizes to "
+            "'test' and selects MockAuthStrategy. Run with MPANGO_ENV=staging "
+            "so the real JwtAuthStrategy is exercised."
+        )
+    from api.middleware.auth import AuthenticationMiddleware
+    from auth.strategies.mock import MockAuthStrategy
+    from main import app
+
+    bound = None
+    for middleware in getattr(app, "user_middleware", []):
+        if middleware.cls is AuthenticationMiddleware:
+            bound = (middleware.kwargs or {}).get("strategy")
+            break
+    if bound is None:
+        pytest.fail(
+            "GUARD_REFUSED_MOCK_AUTH: could not locate the strategy instance "
+            "bound to AuthenticationMiddleware on the app under test."
+        )
+    strategy_type = type(bound)
+    if isinstance(bound, MockAuthStrategy) or strategy_type.__name__ != "JwtAuthStrategy":
+        pytest.fail(
+            f"GUARD_REFUSED_MOCK_AUTH: app middleware strategy is "
+            f"{strategy_type.__module__}.{strategy_type.__name__}, expected "
+            "JwtAuthStrategy. HTTP evidence would not represent real auth."
         )
 
+
+# ---------------------------------------------------------------------------
+# Supervised background execution and cleanup
+# ---------------------------------------------------------------------------
+
+async def supervise(awaitable, *, timeout: float = SUPERVISE_TIMEOUT_S, label: str):
+    """Run `awaitable` as a task; on timeout cancel it, await its end, fail.
+
+    Ensures no test leaves a running task (holding a session/transaction)
+    behind, so teardown never races live work. Expected test-level errors
+    (e.g. HTTPException) propagate to the caller for explicit classification.
+    """
+    task = asyncio.ensure_future(awaitable)
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+    except asyncio.TimeoutError:
+        await cancel_and_wait(task)
+        raise AssertionError(
+            f"GUARD_HARNESS_TIMEOUT: {label} did not finish within {timeout}s; "
+            "the task was cancelled and awaited. The barrier/deadlock is a "
+            "harness fault — do not ignore."
+        )
+    except BaseException:
+        await cancel_and_wait(task)
+        raise
+
+
+async def cancel_and_wait(task) -> None:
+    """Cancel a task and wait until it fully finishes (best-effort)."""
+    if task is None or task.done():
+        return
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+
+
+# ---------------------------------------------------------------------------
+# Tenant fixtures
+# ---------------------------------------------------------------------------
 
 class R0Token:
     """Minimal TokenPayload stand-in for direct route-function calls.
 
     Direct route calls do not resolve Depends(), so no signature check runs
     here (documented limitation, same as external review probes). HTTP tests
-    use real signed tokens via core.security.create_contextual_token.
+    use real signed tokens via core.security.create_contextual_token and the
+    real middleware stack.
     """
 
     def __init__(self, *, tenant_id: uuid.UUID, tenant_schema: str, user_id: uuid.UUID):
@@ -79,27 +354,6 @@ class R0Token:
         self.tenant_schema = tenant_schema
         self.user_id = str(user_id)
         self.roles = ["invariants_r0_admin"]
-
-
-async def run_public_migrations_once() -> None:
-    """Upgrade the public schema to the baseline migration head (037)."""
-    import subprocess
-    import sys
-    from pathlib import Path
-
-    backend_dir = Path(__file__).resolve().parents[1]
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=str(backend_dir),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    if result.returncode != 0:
-        pytest.fail(
-            "MPANGO_INVARIANTS_R0_ENV_GUARD: public alembic upgrade head "
-            f"failed:\n{result.stdout}\n{result.stderr}"
-        )
 
 
 async def bootstrap_tenant(schema: str) -> None:
@@ -170,7 +424,12 @@ async def seed_public_tenant_rows(
 
 
 async def drop_tenant(schema: str, *, wholesaler_id: uuid.UUID, retailer_id: uuid.UUID) -> None:
-    """Best-effort teardown of one synthetic tenant (schema + public rows)."""
+    """Best-effort teardown of one synthetic tenant (schema + public rows).
+
+    Callers MUST have cancelled/joined all background tasks and closed their
+    sessions first (supervise/cancel_and_wait guarantee this) so no live
+    transaction can re-create rows after the drop.
+    """
     async with AsyncSessionLocal() as db:
         await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
         await db.execute(
@@ -182,12 +441,38 @@ async def drop_tenant(schema: str, *, wholesaler_id: uuid.UUID, retailer_id: uui
         await db.commit()
 
 
-def new_tenant_identity() -> tuple[uuid.UUID, uuid.UUID, str]:
-    """Return (wholesaler_id, retailer_id, schema) with a unique schema name."""
-    wholesaler_id = uuid.uuid4()
-    retailer_id = uuid.uuid4()
-    return wholesaler_id, retailer_id, "t_" + wholesaler_id.hex
+class TenantIdentity:
+    """A tenant identity registered for cleanup BEFORE any creation happens."""
 
+    def __init__(self):
+        self.wholesaler_id = uuid.uuid4()
+        self.retailer_id = uuid.uuid4()
+        self.schema = "t_" + self.wholesaler_id.hex
+        self.created = False
+
+    async def create(self) -> "TenantIdentity":
+        try:
+            await bootstrap_tenant(self.schema)
+            await seed_public_tenant_rows(
+                wholesaler_id=self.wholesaler_id, retailer_id=self.retailer_id
+            )
+        except BaseException:
+            # Partial bootstrap must not leak: the schema may exist with a
+            # subset of tables; public rows may exist. Drop what was created.
+            await self.drop()
+            raise
+        self.created = True
+        return self
+
+    async def drop(self) -> None:
+        await drop_tenant(
+            self.schema, wholesaler_id=self.wholesaler_id, retailer_id=self.retailer_id
+        )
+
+
+# ---------------------------------------------------------------------------
+# Seeding / snapshot helpers
+# ---------------------------------------------------------------------------
 
 async def seed_sku_with_stock(
     db,
@@ -236,17 +521,23 @@ async def stock_on_hand(db, *, sku_code: str) -> Decimal:
     return Decimal(str(row))
 
 
-async def adjustment_movements(db, *, sku_code: str) -> list[dict]:
+async def adjustment_movements(db, *, sku_code: str) -> dict[str, dict]:
+    """Adjustment movements keyed by their journal reason (adjustment identity).
+
+    Ordering is deliberately NOT derived from timestamps: callers identify
+    each adjustment by the unique reason it was written with and check the
+    before/after algebra without guessing execution order.
+    """
     rows = (
         await db.execute(
             text(
                 "SELECT m.quantity::text AS qty, m.quantity_before::text AS q_before, "
-                "m.quantity_after::text AS q_after, m.created_at, m.id "
+                "m.quantity_after::text AS q_after, m.reason, m.id "
                 "FROM inventory_movements m JOIN skus k ON k.id = m.sku_id "
                 "WHERE k.sku_code = :code AND m.movement_type = 'adjustment' "
-                "ORDER BY m.created_at, m.id"
+                "ORDER BY m.id"
             ),
             {"code": sku_code},
         )
     ).mappings().all()
-    return [dict(r) for r in rows]
+    return {str(r["reason"]): dict(r) for r in rows}

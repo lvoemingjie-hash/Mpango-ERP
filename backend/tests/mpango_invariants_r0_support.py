@@ -54,6 +54,10 @@ CONTAINER_ENV_VAR = "MPANGO_INVARIANTS_R0_PG_CONTAINER"
 OWNER_LABEL_ENV_VAR = "MPANGO_INVARIANTS_R0_PG_OWNER"
 OWNER_LABEL_PREFIX = "zcode-mvp-invariants"
 REDIS_CONTAINER_ENV_VAR = "MPANGO_INVARIANTS_R0_REDIS_CONTAINER"
+# F1 role-closure contract: the migration identity gets its own explicit
+# connection declaration. It must never fall back to the run-session URL,
+# the run user, alembic.ini, or any host default.
+MIGRATION_URL_ENV_VAR = "MPANGO_INVARIANTS_R0_MIGRATION_DATABASE_URL"
 
 
 @dataclass(frozen=True)
@@ -355,13 +359,59 @@ def _docker_inspect(container: str) -> dict:
     return json.loads(raw.stdout)
 
 
-def verify_task_database_ownership_sync() -> str:
-    """Pre-write ownership proof (sync part). Returns the verified DB URL.
+def _parse_pg_url(url: str):
+    """Parse a postgres URL into (host, port, dbname, username)."""
+    parsed = urlparse(url.replace("postgresql+asyncpg://", "postgresql://", 1))
+    return (
+        parsed.hostname,
+        parsed.port or 5432,
+        (parsed.path or "").lstrip("/"),
+        parsed.username or "",
+    )
 
-    Refuses (before any write) when: config missing, TEST_DATABASE_URL and
-    DATABASE_URL disagree, the container is not the declared labeled task
-    container, image/port/db/user do not match the URL, or the live engine is
-    bound to a different target.
+
+def _assert_engine_binding(engine_url, *, host: str, port: int, dbname: str, username: str) -> None:
+    """The live application/test engine must point at the verified task target
+    AS THE DECLARED RUN USER (F1 role closure: an engine bound to the
+    bootstrap/migration identity or to an undeclared user must be refused)."""
+    if (
+        str(engine_url.host) != host
+        or int(engine_url.port or 5432) != port
+        or str(engine_url.database) != dbname
+    ):
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: live engine target "
+            f"({engine_url.host}:{engine_url.port}/{engine_url.database}) does "
+            f"not match the verified task target ({host}:{port}/{dbname})."
+        )
+    if str(engine_url.username or "") != username:
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: live engine user "
+            f"{engine_url.username!r} is not the declared test-session user "
+            f"{username!r}; the application engine must never run as the "
+            "bootstrap/migration identity or an undeclared role."
+        )
+
+
+def verify_task_database_ownership_sync() -> str:
+    """Pre-write ownership proof (sync part). Returns the verified RUN URL.
+
+    F1 role-closure contract (three identities):
+
+    - container bootstrap / migration identity: ``POSTGRES_USER`` of the task
+      container, bound to ``MPANGO_INVARIANTS_R0_MIGRATION_DATABASE_URL``;
+    - test-session identity: the user in ``TEST_DATABASE_URL`` (==
+      ``DATABASE_URL``); must be a DIFFERENT, non-privileged role;
+    - reporting identity: ``reporting_role`` / ``reporting_user`` created by
+      migration 011 (read-only; not used by this suite's connections).
+
+    Refuses (before any write) when: any declaration missing,
+    TEST_DATABASE_URL != DATABASE_URL, non-loopback host, missing db name,
+    owner label outside the task namespace, container label/image/port/db
+    mismatch, the migration URL does not bind to the same task container
+    target (host/port/db) with the container POSTGRES_USER, the run user
+    equals the bootstrap/migration user, or the live engine is not bound to
+    the declared run user and target.
     """
     container = os.environ.get(CONTAINER_ENV_VAR, "").strip()
     owner_label = os.environ.get(OWNER_LABEL_ENV_VAR, "").strip()
@@ -387,25 +437,59 @@ def verify_task_database_ownership_sync() -> str:
     if test_url != db_url:
         raise GuardRefused(
             "GUARD_REFUSED_DATABASE_OWNERSHIP: TEST_DATABASE_URL and "
-            "DATABASE_URL name different targets; migration, bootstrap and "
-            "pytest must all use one explicit target."
+            "DATABASE_URL name different targets; the test session must use "
+            "one explicit target."
         )
 
-    parsed = urlparse(test_url.replace("postgresql+asyncpg://", "postgresql://", 1))
-    host = parsed.hostname
-    port = parsed.port or 5432
-    dbname = (parsed.path or "").lstrip("/")
+    host, port, dbname, run_user = _parse_pg_url(test_url)
     if host not in LOOPBACK_HOSTS:
         raise GuardRefused(
             f"GUARD_REFUSED_DATABASE_OWNERSHIP: URL host '{host}' is not loopback."
         )
     if not dbname:
         raise GuardRefused("GUARD_REFUSED_DATABASE_OWNERSHIP: URL has no database name.")
+    if not run_user:
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: TEST_DATABASE_URL has no user; "
+            "the test-session role must be explicitly declared."
+        )
 
     if not owner_label.startswith(OWNER_LABEL_PREFIX):
         raise GuardRefused(
             "GUARD_REFUSED_DATABASE_OWNERSHIP: owner label must be a "
             f"{OWNER_LABEL_PREFIX}-* task label, got {owner_label!r}."
+        )
+
+    # --- F1 role closure: the migration identity declaration. These checks
+    # deliberately sit after the original refusals (same messages preserved)
+    # and before any docker inspect / subprocess work.
+    migration_url = os.environ.get(MIGRATION_URL_ENV_VAR, "").strip()
+    if not migration_url:
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: missing required environment: "
+            f"{MIGRATION_URL_ENV_VAR}. Migrations must run under an explicit, "
+            "declared bootstrap/migration identity URL — never the run "
+            "session, alembic.ini or host defaults."
+        )
+    mig_host, mig_port, mig_dbname, mig_user = _parse_pg_url(migration_url)
+    if mig_host not in LOOPBACK_HOSTS:
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: migration URL host "
+            f"'{mig_host}' is not loopback."
+        )
+    if (mig_host, mig_port, mig_dbname) != (host, port, dbname):
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: migration URL target "
+            f"({mig_host}:{mig_port}/{mig_dbname}) differs from the run "
+            f"session target ({host}:{port}/{dbname}); both connections must "
+            "bind to the SAME task container, port and database (usernames "
+            "may differ)."
+        )
+    if run_user == mig_user:
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: the test-session user equals "
+            f"the migration/bootstrap user {mig_user!r}; the run identity "
+            "must be a separate, non-privileged role."
         )
 
     info = _docker_inspect(container)
@@ -440,60 +524,298 @@ def verify_task_database_ownership_sync() -> str:
             f"{env_pairs.get('POSTGRES_DB')!r} != URL database {dbname!r}; "
             "refusing to write into an unexpected (possibly pre-existing) database."
         )
-    if env_pairs.get("POSTGRES_USER") != (parsed.username or ""):
+    if env_pairs.get("POSTGRES_USER") != mig_user:
         raise GuardRefused(
-            "GUARD_REFUSED_DATABASE_OWNERSHIP: container POSTGRES_USER does "
-            "not match URL user."
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: container POSTGRES_USER "
+            f"{env_pairs.get('POSTGRES_USER')!r} must bind the "
+            "bootstrap/migration identity, but the migration URL user is "
+            f"{mig_user!r}."
         )
 
-    engine_url = async_engine.url
-    if (
-        str(engine_url.host) != host
-        or int(engine_url.port or 5432) != port
-        or str(engine_url.database) != dbname
-    ):
-        raise GuardRefused(
-            "GUARD_REFUSED_DATABASE_OWNERSHIP: live engine target "
-            f"({engine_url.host}:{engine_url.port}/{engine_url.database}) does "
-            f"not match the verified task target ({host}:{port}/{dbname})."
-        )
+    _assert_engine_binding(
+        async_engine.url, host=host, port=port, dbname=dbname, username=run_user
+    )
     return test_url
 
 
-async def verify_task_database_live(db_url: str) -> None:
-    """Live probe inside the declared database.
+def _sanitize_connection_output(raw: str, migration_url: str) -> str:
+    """Strip credentials from subprocess output before it enters any message.
 
-    Port identity is established by the docker port-mapping + engine-URL
-    checks in verify_task_database_ownership_sync (the only wire path from
-    the declared host port leads to the declared container); inside the
-    database we verify the database name and the server major version so a
-    stale or foreign cluster behind the same port cannot pass silently.
+    Removes the migration URL's password substring (when present) and any
+    postgres URL with an embedded password; usernames/hosts/ports stay for
+    diagnosis. Public reports and logs must never carry connection passwords.
     """
-    parsed = urlparse(db_url.replace("postgresql+asyncpg://", "postgresql://", 1))
-    dbname = (parsed.path or "").lstrip("/")
+    sanitized = raw
+    parsed = urlparse(migration_url)
+    if parsed.password:
+        sanitized = sanitized.replace(parsed.password, "***")
+    import re as _re
+
+    sanitized = _re.sub(
+        r"(postgresql(\+asyncpg)?://[^:\s/@]+:)[^@\s]+(@)", r"\1***\3", sanitized
+    )
+    return sanitized
+
+
+async def _live_identity_probe(db_url: str) -> dict:
+    """Open ONE connection on the given URL and return its live identity facts:
+    current_database, session_user, current_user, server version."""
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    url = db_url
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    engine = create_async_engine(url)
+    try:
+        async with engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    text("SELECT current_database(), session_user, current_user, version()")
+                )
+            ).one()
+        return {
+            "database": row[0],
+            "session_user": row[1],
+            "current_user": row[2],
+            "version": str(row[3]),
+        }
+    finally:
+        await engine.dispose()
+
+
+async def verify_migration_identity_live(migration_url: str) -> dict:
+    """Live proof that the migration connection really is the declared
+    bootstrap/migration identity on the declared task database (F1 role
+    closure). Returns the identity facts (also used as evidence in the
+    integration test / ledger)."""
+    _, _, dbname, mig_user = _parse_pg_url(migration_url)
+    facts = await _live_identity_probe(migration_url)
+    if facts["database"] != dbname:
+        raise GuardRefused(
+            "GUARD_REFUSED_MIGRATION_IDENTITY: migration connection landed on "
+            f"db={facts['database']!r}, expected {dbname!r}."
+        )
+    if facts["session_user"] != mig_user or facts["current_user"] != mig_user:
+        raise GuardRefused(
+            "GUARD_REFUSED_MIGRATION_IDENTITY: migration connection identity "
+            f"is session_user={facts['session_user']!r} "
+            f"current_user={facts['current_user']!r}, expected the declared "
+            f"bootstrap/migration user {mig_user!r}."
+        )
+    if not facts["version"].startswith("PostgreSQL 16."):
+        raise GuardRefused(
+            "GUARD_REFUSED_MIGRATION_IDENTITY: server is "
+            f"{facts['version'].split(',')[0]!r}, expected a PostgreSQL 16 "
+            "cluster matching the declared postgres:16 task container."
+        )
+    return facts
+
+
+async def verify_run_identity_live(db_url: str) -> dict:
+    """Pre-migration readiness: the RUN connection must really be the declared
+    test-session role, non-privileged, with no role memberships (so it can
+    never SET ROLE into the bootstrap identity). pg_roles does not depend on
+    migrations, so this runs before the migration step."""
+    _, _, dbname, run_user = _parse_pg_url(db_url)
+    facts = await _live_identity_probe(db_url)
+    if facts["database"] != dbname:
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: live connection landed on "
+            f"db={facts['database']!r}, expected {dbname!r}."
+        )
+    if not facts["version"].startswith("PostgreSQL 16."):
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: server is "
+            f"{facts['version'].split(',')[0]!r}, expected a PostgreSQL 16 "
+            "cluster matching the declared postgres:16 task container."
+        )
+    if facts["session_user"] != run_user or facts["current_user"] != run_user:
+        raise GuardRefused(
+            "GUARD_REFUSED_RUN_ROLE: run connection identity is "
+            f"session_user={facts['session_user']!r} "
+            f"current_user={facts['current_user']!r}, expected the declared "
+            f"test-session user {run_user!r} (no SET ROLE / identity switch "
+            "is permitted)."
+        )
     async with AsyncSessionLocal() as probe:
-        row = (
-            await probe.execute(text("SELECT current_database(), version()"))
+        role = (
+            await probe.execute(
+                text(
+                    "SELECT rolcanlogin, rolsuper, rolcreatedb, "
+                    "rolcreaterole, rolreplication FROM pg_roles "
+                    "WHERE rolname = :u"
+                ),
+                {"u": run_user},
+            )
+        ).first()
+        if role is None:
+            raise GuardRefused(
+                f"GUARD_REFUSED_RUN_ROLE: declared run user {run_user!r} has "
+                "no pg_roles row."
+            )
+        caps = dict(zip(("login", "super", "createdb", "createrole", "replication"), role))
+        if not caps["login"]:
+            raise GuardRefused(
+                f"GUARD_REFUSED_RUN_ROLE: run user {run_user!r} cannot log in."
+            )
+        forbidden = [k for k in ("super", "createdb", "createrole", "replication") if caps[k]]
+        if forbidden:
+            raise GuardRefused(
+                f"GUARD_REFUSED_RUN_ROLE: run user {run_user!r} must not hold "
+                f"privileged attributes {forbidden}; the test session must be "
+                "an ordinary role."
+            )
+        memberships = (
+            await probe.execute(
+                text(
+                    "SELECT r.rolname FROM pg_auth_members m "
+                    "JOIN pg_roles r ON r.oid = m.roleid "
+                    "JOIN pg_roles ru ON ru.oid = m.member "
+                    "WHERE ru.rolname = :u"
+                ),
+                {"u": run_user},
+            )
+        ).scalars().all()
+        if memberships:
+            raise GuardRefused(
+                f"GUARD_REFUSED_RUN_ROLE: run user {run_user!r} must have no "
+                f"role memberships (found {sorted(memberships)!r}); a "
+                "membership (e.g. in the bootstrap role) would allow SET "
+                "ROLE privilege escalation."
+            )
+    facts["capabilities"] = caps
+    facts["memberships"] = []
+    return facts
+
+
+async def verify_run_privileges_post_migration(db_url: str) -> None:
+    """Post-migration readiness: prove the run role actually holds every
+    privilege the real fixtures consume (CTO: five boolean role flags prove
+    nothing about usability). Each probe names the consuming code path; the
+    full list and rationale live in REPAIR_LEDGER §privileges. Refusal here
+    happens BEFORE any business assertion."""
+    _, _, _, run_user = _parse_pg_url(db_url)
+
+    def refuse(detail: str) -> GuardRefused:
+        return GuardRefused(
+            "GUARD_REFUSED_RUN_ROLE_PRIVILEGES: the run role lacks a "
+            "privilege the real fixtures consume; provisioning per "
+            "REPAIR_LEDGER §privileges is incomplete — refusing before any "
+            f"business write. {detail}"
+        )
+
+    async with AsyncSessionLocal() as probe:
+        # Database-level CREATE — TenantIdentity.create -> CREATE SCHEMA.
+        has = (
+            await probe.execute(
+                text("SELECT has_database_privilege(:u, current_database(), 'CREATE')"),
+                {"u": run_user},
+            )
+        ).scalar_one()
+        if not has:
+            raise refuse("missing CREATE on database (tenant schema creation).")
+
+        # public schema USAGE+CREATE — scripts/bootstrap_tenant_schema
+        # CREATE OR REPLACE FUNCTION public.prevent_ledger_modification().
+        usage, create = (
+            await probe.execute(
+                text(
+                    "SELECT has_schema_privilege(:u, 'public', 'USAGE'), "
+                    "has_schema_privilege(:u, 'public', 'CREATE')",
+                ),
+                {"u": run_user},
+            )
         ).one()
-        if row[0] != dbname:
-            raise GuardRefused(
-                "GUARD_REFUSED_DATABASE_OWNERSHIP: live connection landed on "
-                f"db={row[0]!r}, expected {dbname!r}."
+        if not (usage and create):
+            raise refuse("missing USAGE/CREATE on schema public (bootstrap function replace).")
+
+        # Public rows — support.seed_public_tenant_rows / drop_tenant
+        # INSERT/UPDATE/DELETE/SELECT on wholesalers, retailers, bindings.
+        for table in (
+            "public.wholesalers",
+            "public.retailers",
+            "public.wholesaler_retailer_bindings",
+        ):
+            for priv in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+                has = (
+                    await probe.execute(
+                        text(f"SELECT has_table_privilege(:u, '{table}', '{priv}')"),
+                        {"u": run_user},
+                    )
+                ).scalar_one()
+                if not has:
+                    raise refuse(f"missing {priv} on {table} (public tenant rows).")
+
+        # alembic_version SELECT — the fixture's own head verification.
+        has = (
+            await probe.execute(
+                text("SELECT has_table_privilege(:u, 'public.alembic_version', 'SELECT')"),
+                {"u": run_user},
             )
-        if not str(row[1]).startswith("PostgreSQL 16."):
-            raise GuardRefused(
-                "GUARD_REFUSED_DATABASE_OWNERSHIP: server is "
-                f"{str(row[1]).split(',')[0]!r}, expected a PostgreSQL 16 "
-                "cluster matching the declared postgres:16 task container."
+        ).scalar_one()
+        if not has:
+            raise refuse("missing SELECT on public.alembic_version (head verification).")
+
+        # Public sequences — any serial defaults consumed by writes.
+        missing_seqs = (
+            await probe.execute(
+                text(
+                    "SELECT count(*) FROM information_schema.sequences s "
+                    "JOIN pg_namespace n ON n.nspname = s.sequence_schema "
+                    "WHERE n.nspname = 'public' AND NOT has_sequence_privilege("
+                    ":u, quote_ident(s.sequence_schema) || '.' || s.sequence_name, 'USAGE')"
+                ),
+                {"u": run_user},
             )
+        ).scalar_one()
+        if missing_seqs:
+            raise refuse(f"{missing_seqs} public sequence(s) lack USAGE for the run role.")
+
+        # Ledger-immutability function: bootstrap must be able to CREATE OR
+        # REPLACE it, which requires EXECUTE *and* ownership (PG refuses
+        # replacement by a non-owner).
+        owner = (
+            await probe.execute(
+                text(
+                    "SELECT pg_get_userbyid(p.proowner) FROM pg_proc p "
+                    "JOIN pg_namespace n ON n.oid = p.pronamespace "
+                    "WHERE n.nspname = 'public' "
+                    "AND p.proname = 'prevent_ledger_modification'"
+                )
+            )
+        ).scalar_one_or_none()
+        if owner is None:
+            raise refuse("public.prevent_ledger_modification() missing after migration.")
+        if owner != run_user:
+            raise refuse(
+                "public.prevent_ledger_modification() is owned by "
+                f"{owner!r}; the bootstrap path replaces it via CREATE OR "
+                "REPLACE which requires ownership by the run role."
+            )
+        has = (
+            await probe.execute(
+                text(
+                    "SELECT has_function_privilege(:u, "
+                    "'public.prevent_ledger_modification()', 'EXECUTE')",
+                ),
+                {"u": run_user},
+            )
+        ).scalar_one()
+        if not has:
+            raise refuse("missing EXECUTE on public.prevent_ledger_modification().")
 
 
-def run_public_migrations() -> None:
+def run_public_migrations(migration_url: str) -> None:
     """Upgrade the verified task database to the baseline migration head.
 
-    The URL comes exclusively from the ownership-verified DATABASE_URL env —
-    the alembic.ini default address is never used (env.py overrides from the
-    environment, and the guard refuses to run without it).
+    F1 role closure: migrations run ONLY in a subprocess whose DATABASE_URL
+    is the declared migration URL (bootstrap/migration identity). The parent
+    process environment, the application engine and AsyncSessionLocal stay
+    bound to the test-session role throughout — no global env switching. The
+    alembic.ini default address is never used (env.py overrides DATABASE_URL
+    from the child env, and the guard refuses to run without the explicit
+    migration URL). Subprocess output is sanitized before it can reach any
+    exception message or public report.
     """
     backend_dir = Path(__file__).resolve().parents[1]
     reporting_password = os.environ.get("REPORTING_USER_PASSWORD", "").strip()
@@ -509,30 +831,116 @@ def run_public_migrations() -> None:
         text=True,
         encoding="utf-8",
         timeout=300,
-        env={**os.environ, "DATABASE_URL": os.environ["DATABASE_URL"]},
+        env={**os.environ, "DATABASE_URL": migration_url},
     )
     if result.returncode != 0:
         raise GuardRefused(
-            "GUARD_REFUSED_MIGRATION: alembic upgrade head failed against the "
-            f"declared task target:\n{result.stdout}\n{result.stderr}"
+            "GUARD_REFUSED_MIGRATION: alembic upgrade head failed under the "
+            "declared migration identity against the declared task target "
+            "(connection credentials sanitized):\n"
+            f"{_sanitize_connection_output(result.stdout or '', migration_url)}\n"
+            f"{_sanitize_connection_output(result.stderr or '', migration_url)}"
         )
+
+
+async def align_fixture_object_ownership(migration_url: str) -> None:
+    """Post-migration ownership alignment on the MIGRATION identity.
+
+    The product tenant bootstrap (running as the test-session role) executes
+    ``CREATE OR REPLACE FUNCTION public.prevent_ledger_modification()``;
+    PostgreSQL refuses replacement by a non-owner, so the function created
+    by migration 010 under the migration identity must be owned by the run
+    role before any bootstrap runs. This is the COMPLETE list of public
+    objects the bootstrap replaces (scripts/bootstrap_tenant_schema.py has
+    exactly one public-function replacement); it is executed idempotently on
+    the migration connection right after the real migrations, with the
+    rationale recorded in REPAIR_LEDGER §privileges. No REASSIGN OWNED, no
+    cross-database shortcuts, no inheritance.
+    """
+    import re as _re
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    _, _, _, run_user = _parse_pg_url(os.environ["TEST_DATABASE_URL"])
+    if not _re.fullmatch(r"[a-z_][a-z0-9_]*", run_user):
+        # Identifier-safety gate (the value originates from a declared URL;
+        # still refused defensively before it reaches DDL).
+        raise GuardRefused(
+            f"GUARD_REFUSED_RUN_ROLE: run user {run_user!r} is not a plain "
+            "identifier; refusing DDL ownership alignment."
+        )
+    url = migration_url
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    engine = create_async_engine(url)
+    try:
+        async with engine.begin() as conn:
+            exists = (
+                await conn.execute(
+                    text(
+                        "SELECT 1 FROM pg_proc p JOIN pg_namespace n "
+                        "ON n.oid = p.pronamespace WHERE n.nspname = 'public' "
+                        "AND p.proname = 'prevent_ledger_modification'"
+                    )
+                )
+            ).scalar_one_or_none()
+            if exists:
+                await conn.execute(
+                    text(f'ALTER FUNCTION public.prevent_ledger_modification() OWNER TO "{run_user}"')
+                )
+    finally:
+        await engine.dispose()
 
 
 @pytest.fixture(scope="session")
 async def r0_task_database():
-    """Session fixture: prove ownership, probe, migrate; no writes before all three."""
+    """Session fixture: prove ownership + role contract, migrate, verify
+    readiness; no business writes before every stage passes.
+
+    Stage order (each failure keeps ALL database-dependent tests out of their
+    bodies and is reported as a sanitized GuardRefused category):
+    1. verify_task_database_ownership_sync — declarations, container binding,
+       migration/run same-target binding, run != bootstrap, engine binding;
+    2. verify_migration_identity_live — migration URL really is the declared
+       bootstrap identity on the declared database;
+    3. verify_run_identity_live — run connection really is the declared
+       non-privileged, membership-free test-session role;
+    4. run_public_migrations — real 001..037 via the migration subprocess;
+    4b. align_fixture_object_ownership — migration identity transfers the
+        bootstrap-replaced public function to the run role (idempotent);
+    5. head verification via the RUN connection;
+    6. verify_run_privileges_post_migration — the run role really holds every
+       privilege the fixtures consume.
+    """
     db_url = verify_task_database_ownership_sync()
-    await verify_task_database_live(db_url)
-    run_public_migrations()
-    async with AsyncSessionLocal() as probe:
-        head = (
-            await probe.execute(text("SELECT version_num FROM public.alembic_version"))
-        ).scalar_one()
-    if head != BASELINE_MIGRATION_HEAD:
+    migration_url = os.environ[MIGRATION_URL_ENV_VAR].strip()
+    await verify_migration_identity_live(migration_url)
+    await verify_run_identity_live(db_url)
+    run_public_migrations(migration_url)
+    await align_fixture_object_ownership(migration_url)
+    try:
+        async with AsyncSessionLocal() as probe:
+            head = (
+                await probe.execute(text("SELECT version_num FROM public.alembic_version"))
+            ).scalar_one()
+        if head != BASELINE_MIGRATION_HEAD:
+            raise GuardRefused(
+                f"GUARD_REFUSED_MIGRATION: task database head is {head!r}, expected "
+                f"{BASELINE_MIGRATION_HEAD!r} (baseline mismatch)."
+            )
+        await verify_run_privileges_post_migration(db_url)
+    except GuardRefused:
+        raise
+    except Exception as exc:
+        # A run role that cannot even read alembic_version / probe its own
+        # privileges is under-provisioned: refuse with a named category
+        # instead of leaking a raw driver error, and keep every business
+        # test out of its body.
         raise GuardRefused(
-            f"GUARD_REFUSED_MIGRATION: task database head is {head!r}, expected "
-            f"{BASELINE_MIGRATION_HEAD!r} (baseline mismatch)."
-        )
+            "GUARD_REFUSED_RUN_ROLE_PRIVILEGES: the run connection could not "
+            "complete post-migration readiness (head verification / privilege "
+            "probes) — likely missing object privileges; refusing before any "
+            f"business write. Driver category: {type(exc).__name__}."
+        ) from exc
     yield db_url
 
 

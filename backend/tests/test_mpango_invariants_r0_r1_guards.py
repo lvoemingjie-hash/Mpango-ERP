@@ -1060,3 +1060,73 @@ async def test_r1_guard_redis_eviction_delete_helper_refuses_missing_pool_before
 
     assert premise.startswith("refused-ownership(")
     assert "connection_pool" in premise
+
+
+# ---------------------------------------------------------------------------
+# F1 role closure (CTO-AUTH-...-F1-DB-FIXTURE-ROLE-CLOSURE-2026-09-08):
+# declaration-level negatives for the migration-identity contract. All three
+# exercise the REAL verify_task_database_ownership_sync and refuse BEFORE any
+# docker inspect or subprocess work (no Redis/DB needed).
+# ---------------------------------------------------------------------------
+
+def _f1_declare_base_env(monkeypatch, *, migration_url):
+    from tests.mpango_invariants_r0_support import MIGRATION_URL_ENV_VAR
+
+    monkeypatch.setenv(CONTAINER_ENV_VAR, "any-task-container")
+    monkeypatch.setenv(OWNER_LABEL_ENV_VAR, "zcode-mvp-invariants-f1-role-closure")
+    run_url = "postgresql://inv_run@127.0.0.1:52639/inv_f1_lab"
+    monkeypatch.setenv("TEST_DATABASE_URL", run_url)
+    monkeypatch.setenv("DATABASE_URL", run_url)
+    monkeypatch.delenv(MIGRATION_URL_ENV_VAR, raising=False)
+    if migration_url:
+        monkeypatch.setenv(MIGRATION_URL_ENV_VAR, migration_url)
+
+
+def test_f1_guard_refuses_missing_migration_url(monkeypatch):
+    """[GUARD CONTROL] No declared migration identity URL → refuse before
+    docker/subprocess (never fall back to the run session or alembic.ini)."""
+    from tests.mpango_invariants_r0_support import (
+        MIGRATION_URL_ENV_VAR,
+        verify_task_database_ownership_sync,
+    )
+
+    assert MIGRATION_URL_ENV_VAR == "MPANGO_INVARIANTS_R0_MIGRATION_DATABASE_URL"
+    _f1_declare_base_env(monkeypatch, migration_url=None)
+    with pytest.raises(GuardRefused, match=MIGRATION_URL_ENV_VAR):
+        verify_task_database_ownership_sync()
+
+
+def test_f1_guard_refuses_migration_target_mismatch(monkeypatch):
+    """[GUARD CONTROL] Migration URL bound to a different database than the
+    run session → refuse (same container/port/database is mandatory)."""
+    from tests.mpango_invariants_r0_support import (
+        verify_task_database_ownership_sync,
+    )
+
+    _f1_declare_base_env(
+        monkeypatch,
+        migration_url="postgresql://inv_boot@127.0.0.1:52639/other_db",
+    )
+    with pytest.raises(GuardRefused, match="SAME task container"):
+        verify_task_database_ownership_sync()
+
+
+def test_f1_guard_refuses_run_user_equal_to_bootstrap(monkeypatch):
+    """[GUARD CONTROL] Test-session user equal to the migration/bootstrap
+    user → refuse (the run identity must be a separate role)."""
+    from tests.mpango_invariants_r0_support import (
+        MIGRATION_URL_ENV_VAR,
+        verify_task_database_ownership_sync,
+    )
+
+    run_url = "postgresql://inv_boot@127.0.0.1:52639/inv_f1_lab"
+    monkeypatch.setenv(CONTAINER_ENV_VAR, "any-task-container")
+    monkeypatch.setenv(OWNER_LABEL_ENV_VAR, "zcode-mvp-invariants-f1-role-closure")
+    monkeypatch.setenv("TEST_DATABASE_URL", run_url)
+    monkeypatch.setenv("DATABASE_URL", run_url)
+    monkeypatch.setenv(
+        MIGRATION_URL_ENV_VAR,
+        "postgresql://inv_boot@127.0.0.1:52639/inv_f1_lab",
+    )
+    with pytest.raises(GuardRefused, match="migration/bootstrap user"):
+        verify_task_database_ownership_sync()

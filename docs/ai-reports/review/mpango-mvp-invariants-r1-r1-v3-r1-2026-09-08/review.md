@@ -111,3 +111,6 @@ NOT_RUN_THIS_ROUND
 
 ## BROWSER_RUNTIME
 NOT_RUN
+
+## CTO Review Addendum
+See `cto_review_addendum.md` for the F1/F2/F3 corrections and the evidence-completeness notes.

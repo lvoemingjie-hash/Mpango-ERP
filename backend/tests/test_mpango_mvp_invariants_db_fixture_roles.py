@@ -52,6 +52,7 @@ from sqlalchemy import text
 
 from tests.mpango_invariants_r0_support import (
     CONTAINER_ENV_VAR,
+    MIGRATION_LOG_ENV_VAR,
     MIGRATION_URL_ENV_VAR,
     OWNER_LABEL_ENV_VAR,
     GuardRefused,
@@ -102,21 +103,42 @@ class _LaunchCounter:
     execution); every other subprocess call — e.g. the guard's own
     ``docker inspect`` — is delegated to the real implementation so the
     wrong-target refusals stay backed by real container evidence.
+
+    R1 (CTO F1): the candidate's ``run_public_migrations`` calls
+    ``subprocess.run(argv, ...)`` POSITIONALLY — ``__call__`` receives
+    ``args == (argv,)``. The argv is unpacked from the FIRST positional
+    argument (or the ``args=`` keyword); anything else (empty/malformed)
+    is delegated uncounted rather than guessed at, so no call shape can be
+    miscounted as a migration or silently swallowed.
     """
 
     def __init__(self, original_run):
         self.launches = 0
+        self.delegated = 0
         self._original_run = original_run
 
-    def _is_migration(self, argv) -> bool:
-        argv = list(argv or [])
+    @staticmethod
+    def _extract_argv(args, kwargs):
+        argv = kwargs.get("args")
+        if argv is None and len(args) == 1:
+            argv = args[0]
+        elif argv is None:
+            argv = None
+        return argv
+
+    @classmethod
+    def _is_migration(cls, args, kwargs) -> bool:
+        argv = cls._extract_argv(args, kwargs)
+        if not isinstance(argv, (list, tuple)):
+            return False
+        argv = list(argv)
         return len(argv) >= 3 and argv[1:3] == ["-m", "alembic"]
 
     def __call__(self, *args, **kwargs):
-        argv = kwargs.get("args") if kwargs.get("args") is not None else args
-        if self._is_migration(argv):
+        if self._is_migration(args, kwargs):
             self.launches += 1
             return _Completed()
+        self.delegated += 1
         return self._original_run(*args, **kwargs)
 
 
@@ -387,7 +409,7 @@ async def test_f1_guard_engine_bound_to_foreign_user_refuses():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.integration
-def test_f1_migration_subprocess_env_carries_only_migration_url():
+def test_f1_migration_subprocess_env_carries_only_migration_url(monkeypatch):
     """[CONTRACT — expected PASS] The migration subprocess receives the
     migration URL as its DATABASE_URL; the parent environment is untouched.
 
@@ -397,6 +419,7 @@ def test_f1_migration_subprocess_env_carries_only_migration_url():
     """
     import tests.mpango_invariants_r0_support as support
 
+    monkeypatch.delenv(MIGRATION_LOG_ENV_VAR, raising=False)
     migration_url = os.environ[MIGRATION_URL_ENV_VAR].strip()
     parent_before = dict(os.environ)
     captured = {}
@@ -426,25 +449,239 @@ def test_f1_migration_subprocess_env_carries_only_migration_url():
     )
 
 
-@pytest.mark.integration
-def test_f1_migration_failure_is_sanitized_named_refusal():
-    """[CONTRACT — expected PASS via refusal] A failing migration surfaces as
-    a named GUARD_REFUSED_MIGRATION whose text carries NO credentials."""
+# ---------------------------------------------------------------------------
+# 5. SANITIZATION (CTO F2): the refusal CONTENT must carry no task secret
+# ---------------------------------------------------------------------------
 
-    class _Failed:
-        returncode = 1
-        stdout = "ok-prefix"
-        stderr = "boom postgresql://mig:s3cr3tpw@127.0.0.1:1/db failed"  # pragma: allowlist secret
+_SYNTH_MIG_PW = "s3cr3tpw"  # pragma: allowlist secret  -- synthetic; these nodes
+_SYNTH_REP_PW = "repPw9xZ"  # pragma: allowlist secret  -- prove it gets stripped
 
+
+def _synthetic_secret_env(monkeypatch, *, migration_url, reporting_pw):
+    """Declare a fully synthetic task env for sanitizer-content tests."""
+    monkeypatch.setenv(MIGRATION_URL_ENV_VAR, migration_url)
+    monkeypatch.setenv("TEST_DATABASE_URL", "postgresql://run:runpw@127.0.0.1:1/inv")  # pragma: allowlist secret
+    monkeypatch.setenv("DATABASE_URL", "postgresql://run:runpw@127.0.0.1:1/inv")  # pragma: allowlist secret
+    monkeypatch.setenv("REPORTING_USER_PASSWORD", reporting_pw)
+
+
+class _Failed:
+    returncode = 1
+
+    def __init__(self, stdout, stderr):
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _capture_refusal(monkeypatch, *, result, migration_url) -> str:
+    """Run the REAL run_public_migrations against a fake subprocess result
+    and return the FULL exception text for content assertions. The evidence
+    log env is removed so fake results never pollute the task's migration
+    evidence file."""
     import tests.mpango_invariants_r0_support as support
 
-    # Intentional fake credential: this node verifies the sanitizer strips
-    # exactly this password shape from failure output.
-    migration_url = "postgresql://mig:s3cr3tpw@127.0.0.1:5432/inv"  # pragma: allowlist secret
+    monkeypatch.delenv(MIGRATION_LOG_ENV_VAR, raising=False)
+
     original_run = support.subprocess.run
-    support.subprocess.run = lambda *a, **k: _Failed()
+    support.subprocess.run = lambda *a, **k: result
     try:
-        with pytest.raises(GuardRefused, match="GUARD_REFUSED_MIGRATION"):
+        with pytest.raises(GuardRefused) as excinfo:
             run_public_migrations(migration_url)
+        return str(excinfo.value)
     finally:
         support.subprocess.run = original_run
+
+
+@pytest.mark.integration
+def test_f1_sanitization_url_password_absent_from_refusal(monkeypatch):
+    """[CONTRACT — expected PASS] Both output channels: the migration URL's
+    password (raw AND URL-encoded form) must be absent from the refusal text
+    while the category stays GUARD_REFUSED_MIGRATION."""
+    url = f"postgresql://mig:{_SYNTH_MIG_PW}@127.0.0.1:5432/inv"
+    from urllib.parse import quote_plus
+
+    encoded = quote_plus(_SYNTH_MIG_PW)
+    _synthetic_secret_env(monkeypatch, migration_url=url, reporting_pw=_SYNTH_REP_PW)
+    text = _capture_refusal(
+        monkeypatch,
+        result=_Failed(
+            stdout=f"running against {url} ...",
+            stderr=f"connect failed for postgresql://mig:{encoded}@127.0.0.1:5432/inv",
+        ),
+        migration_url=url,
+    )
+    assert "GUARD_REFUSED_MIGRATION" in text
+    assert _SYNTH_MIG_PW not in text and encoded not in text, (
+        "F1_SANITIZATION: the migration URL password (raw or URL-encoded) "
+        f"must not survive in the refusal text: {text[:200]!r}"
+    )
+    assert "mig:s3cr3tpw" not in text, (
+        "F1_SANITIZATION: URL user:password shape must be redacted."
+    )
+
+
+@pytest.mark.integration
+def test_f1_sanitization_reporting_password_absent_from_refusal(monkeypatch):
+    """[CONTRACT — expected PASS] An INDEPENDENT reporting password (as
+    embedded by migration 011's CREATE USER ... PASSWORD SQL in an error)
+    must be absent from the refusal text."""
+    url = f"postgresql://mig:{_SYNTH_MIG_PW}@127.0.0.1:5432/inv"
+    _synthetic_secret_env(monkeypatch, migration_url=url, reporting_pw=_SYNTH_REP_PW)
+    text = _capture_refusal(
+        monkeypatch,
+        result=_Failed(
+            stdout="alembic running 011_s6_p_reporting_role",
+            stderr=(
+                "sqlalchemy.exc.ProgrammingError: ... CREATE USER "
+                f"reporting_user WITH PASSWORD '{_SYNTH_REP_PW}' ... failed"
+            ),
+        ),
+        migration_url=url,
+    )
+    assert "GUARD_REFUSED_MIGRATION" in text
+    assert _SYNTH_REP_PW not in text, (
+        "F1_SANITIZATION: REPORTING_USER_PASSWORD (SQL-embedded form) must "
+        f"not survive in the refusal text: {text[:200]!r}"
+    )
+
+
+@pytest.mark.integration
+def test_f1_sanitization_timeout_branch_sanitized(monkeypatch):
+    """[CONTRACT — expected PASS] The TIMEOUT exit follows the same strategy:
+    partial output carried by TimeoutExpired is sanitized and categorized —
+    constructed offline (no long-running process is started)."""
+    import subprocess as _subprocess
+
+    url = f"postgresql://mig:{_SYNTH_MIG_PW}@127.0.0.1:5432/inv"
+    _synthetic_secret_env(monkeypatch, migration_url=url, reporting_pw=_SYNTH_REP_PW)
+    expired = _subprocess.TimeoutExpired(
+        cmd=["python", "-m", "alembic", "upgrade", "head"],
+        timeout=300,
+    )
+    expired.stdout = f"partial stdout ... {url} ..."
+    expired.stderr = f"partial stderr ... password '{_SYNTH_REP_PW}' ..."
+    import tests.mpango_invariants_r0_support as support
+
+    monkeypatch.delenv(MIGRATION_LOG_ENV_VAR, raising=False)
+    original_run = support.subprocess.run
+
+    def raise_timeout(*a, **k):
+        raise expired
+
+    support.subprocess.run = raise_timeout
+    try:
+        with pytest.raises(GuardRefused) as excinfo:
+            run_public_migrations(url)
+        text = str(excinfo.value)
+    finally:
+        support.subprocess.run = original_run
+    assert "GUARD_REFUSED_MIGRATION" in text and "TIMED OUT" in text
+    assert _SYNTH_MIG_PW not in text and _SYNTH_REP_PW not in text, (
+        "F1_SANITIZATION: the timeout exit must sanitize partial output the "
+        f"same way as the rc!=0 branch: {text[:200]!r}"
+    )
+
+# ---------------------------------------------------------------------------
+# 6. COUNTER FORMS (CTO F1) and REAL fixture-order wrong-target proof
+# ---------------------------------------------------------------------------
+
+class _NoIODelegate:
+    """Offline sentinel executor: records delegations, executes nothing."""
+
+    def __init__(self):
+        self.delegated = 0
+
+    def __call__(self, *args, **kwargs):
+        self.delegated += 1
+        return _Completed()
+
+
+def test_f1_counter_records_positional_argv_migration_call():
+    """[COUNTER — expected PASS] ``subprocess.run(argv, ...)`` (the form the
+    candidate's run_public_migrations actually uses) counts as ONE migration
+    launch and does NOT reach the delegate."""
+    counter = _LaunchCounter(_NoIODelegate())
+    argv = [r"C:\python\python.exe", "-m", "alembic", "upgrade", "head"]
+    counter(argv, cwd="x", capture_output=True)
+    assert counter.launches == 1, (
+        f"F1_COUNTER: positional-argv migration call must count 1, got {counter.launches}"
+    )
+    assert counter.delegated == 0, (
+        "F1_COUNTER: a counted migration must NOT be forwarded to the real executor."
+    )
+
+
+def test_f1_counter_records_keyword_args_migration_call():
+    """[COUNTER — expected PASS] ``subprocess.run(args=argv, ...)`` counts
+    the same way."""
+    counter = _LaunchCounter(_NoIODelegate())
+    argv = ["/usr/bin/python", "-m", "alembic", "upgrade", "head"]
+    counter(args=argv, cwd="x")
+    assert counter.launches == 1 and counter.delegated == 0
+
+
+def test_f1_counter_delegates_non_migration_once():
+    """[COUNTER — expected PASS] A non-migration command (docker inspect
+    shape) is delegated exactly once and never counted as a migration."""
+    delegate = _NoIODelegate()
+    counter = _LaunchCounter(delegate)
+    counter(["docker", "inspect", "--format", "{{json .}}", "c"], capture_output=True)
+    counter(args=["docker", "ps"], text=True)
+    assert counter.launches == 0
+    assert counter.delegated == 2 and delegate.delegated == 2
+
+
+def test_f1_counter_malformed_shapes_delegate_uncounted():
+    """[COUNTER — expected PASS] Unclassifiable call shapes delegate (never
+    guessed into the migration bucket, never swallowed)."""
+    delegate = _NoIODelegate()
+    counter = _LaunchCounter(delegate)
+    counter()
+    counter(args=None)
+    counter("python")  # bare string, not an argv list
+    counter(args=42)
+    assert counter.launches == 0, "malformed shapes must never count as migrations"
+    assert counter.delegated == 4
+
+
+@pytest.mark.integration
+async def test_f1_wrong_target_refused_before_migration_in_real_fixture_order(monkeypatch):
+    """[ORDERING — expected PASS via refusal] The REAL fixture stage order:
+    the guard refuses a wrong migration target BEFORE any migration launch.
+
+    Drives ``_r0_task_database_stages`` — the exact function pytest executes
+    for the session fixture — under a mutated (wrong-database) migration URL
+    with an offline launch sentinel. The refusal must surface as the
+    ownership GuardRefused with ZERO migration launches; the sentinel also
+    proves docker inspect delegations may happen (guard evidence) while the
+    migration never starts. The wrong target never reaches any real
+    database. NOTE (scope): this counts launches from the start of the REAL
+    stage sequence — it does not claim anything about other pytest sessions.
+    """
+    import tests.mpango_invariants_r0_support as support
+    from tests.mpango_invariants_r0_support import _r0_task_database_stages
+
+    snapshot = _env_snapshot()
+    sentinel = _LaunchCounter(_NoIODelegate())
+    original_run = support.subprocess.run
+    support.subprocess.run = sentinel
+    base = snapshot[MIGRATION_URL_ENV_VAR]
+    # Mutate to a wrong DATABASE on the same host/port (binding violation).
+    mutated = base.rsplit("/", 1)[0] + "/definitely_not_the_task_db"
+    assert mutated != base
+    monkeypatch.setenv(MIGRATION_URL_ENV_VAR, mutated)
+    try:
+        with pytest.raises(GuardRefused, match="GUARD_REFUSED_DATABASE_OWNERSHIP"):
+            stages = _r0_task_database_stages()
+            try:
+                await stages.__anext__()
+            finally:
+                await stages.aclose()
+        assert sentinel.launches == 0, (
+            "F1_ORDERING: through the REAL fixture stage order, a wrong "
+            "migration target must be refused BEFORE any migration launch "
+            f"(launches={sentinel.launches})."
+        )
+    finally:
+        support.subprocess.run = original_run
+        _restore_env(snapshot)

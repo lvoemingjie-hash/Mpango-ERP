@@ -161,3 +161,101 @@ Kilo 对旧 SHA 的 PASS 不自动覆盖。
 | V3 原始 matrix_A.log/preflight.json 字节 | NOT_PROVEN（本机不存在，§10；仅提供 blob 定位与脱敏副本） |
 | reporting 身份只读行为 | NOT_PROVEN（011 合同，属其自身套件） |
 | Kilo 独立复核 | NOT_PROVEN（NEXT_GATE 本身） |
+
+
+---
+
+# R1 修复轮（CTO-AUTH-MPANGO-MVP-INVARIANTS-F1-DB-ROLE-R1-COUNTER-REDACTION-2026-09-09）
+
+BASE=`c75d1f7e7aed8617321e233eade8b4884dbd3896`；分支
+`zcode/mpango-mvp-invariants-f1-db-fixture-role-closure-r1-2026-09-09`；工作树
+`worktrees/zcode_mpango_mvp_invariants_f1_r1_2026-09-09`。实际变更恰两个代码路径
+（`git diff --name-only c75d1f7e`：support 与 db_fixture_roles 测试文件；guards 本轮零字节变化，
+54 nodeid 平凡保留）；台账本节为第三个提交路径。产品/迁移/角色架构/Redis F1 语义零改动。
+
+## R1-1 两项修复
+
+- **F1 计数器**：`_LaunchCounter._is_migration` 改为类方法，从首个位置参数或 `args=` 关键字
+  正确解包 argv；不可分类形态（空/裸串/非列表）一律委托不计——不猜、不吞。四种调用形态单测：
+  位置 argv 计 1 且委托 0；`args=` 同；非迁移命令恰委托（docker inspect 形态×2 → delegated=2）；
+  畸形×4 全部委托且 launches=0。
+- **F1 真实次序**：夹具主体拆为 `_r0_task_database_stages()`（pytest 驱动的同一函数，
+  `r0_task_database = pytest.fixture(...)($stages)` 重注册，nodeid/行为不变）。新节点
+  `test_f1_wrong_target_refused_before_migration_in_real_fixture_order` 以离线哨兵
+  （零 I/O 委托）+ 错库迁移 URL 直驱真实阶段序列：GuardRefused 先于任何迁移启动
+  （launches=0；docker inspect 委托可发生=守卫证据）。**计数范围声明**：该零计数仅针对
+  本次直驱的阶段序列起点至拒绝，不外推为"整次 pytest 无迁移/无写入"；全文件其余节点的
+  session 夹具在测试体之前已按真实次序完成。
+- **F2 脱敏**：`_task_known_secrets()` 汇集迁移/运行 URL 口令与 REPORTING_USER_PASSWORD
+  的原文及 quote/quote_plus 编码形态；`_sanitize_connection_output` 全部替换 + 既有
+  postgres-URL 形状正则。**超时出口同策略**：TimeoutExpired 携带的 stdout/stderr（bytes
+  解码）同样脱敏并归入 GUARD_REFUSED_MIGRATION(TIMED OUT)。内容断言套件（3 节点）：
+  URL 口令原文+编码形态在 stdout/stderr 双通道均不存在且类别准确；独立 reporting 口令
+  （SQL 内嵌形态）不存在；超时分支部分输出脱敏。测试直呼一律移除 MIGRATION_LOG env，
+  假结果不污染证据文件。
+
+## R1-2 正控重做（新鲜空库，指令 7）
+
+容器 `mpango-zcode-inv-f1r1-pg`（标签 zcode-mvp-invariants-f1-role-closure）。前态证明：
+DROP/CREATE DATABASE 后 `public` 表数=0。夹具以迁移身份真实执行 alembic：证据快照
+`r1/migration_output_sanitized_fresh_001_to_037_SNAPSHOT.txt`——恰一块、**37 条
+Running upgrade**（链首 `-> 001_initial_schema`、链尾 `036 -> 037_payment_declarations_schema`）、
+rc=0、零口令残留（对四项任务口令 grep=0）。随后运行身份完成建租户/读写/清理
+（run2/run5：17/17 PASS，F1 EVIDENCE 两身份行），运行后残留 t_%=0、wholesalers=0。
+run5 为最终字节绑定运行。不把幂等 no-op 当作完整迁移证据（快照仅取自空库首迁）。
+
+## R1-3 运行记账（原始日志 `evidence-root/r1/`，不覆盖上轮原件）
+
+| # | 范围 | 结果 |
+|---|---|---|
+| 1 | 新文件（修复后首跑，全新库） | 17 PASS |
+| 2 | 新文件（重建空库后，采集干净迁移证据） | 17 PASS；日志恰 1 块 37 升级 rc=0 |
+| 3 | guards | 54 PASS（基线 51 差集=0） |
+| 4 | 四文件聚焦（中期字节） | 90P+1 已知 RED+2 前提 SKIP |
+| 5 | 新文件（最终字节，重建空库） | 17 PASS；快照留存 |
+| 6 | 四文件聚焦（最终字节） | **90 PASS + 1 已知双退 RED + 2 缓存前提 SKIP** |
+
+变异（隔离材料 /tmp/f1r1_bak；恢复 sha256：support `f5cf7dec…`、测试 `db899f5b…`）：
+MA 恢复旧计数器（argv=args 整体）→ 两计数节点语义 RED（"must count 1, got 0"）；
+MB 迁移前置到守卫之前 → 次序节点 RED（"launches=1"）；MC 脱敏器退化为原样返回 →
+三个内容断言节点全 RED。恢复后字节一致，17/17 回绿。首次 MA 运行漏 source env
+（setup ERROR 非语义），已带 env 重做并如实保留两份记录。
+
+## R1-4 术语与证据边界更正（遵 CTO §3）
+
+- 上轮"弱迁移身份"载体的准确表述：**只读事务/数据库条件拒绝 DDL** 的迁移失败传播证明，
+  不是"撤销 CREATEROLE 后仍正确拒绝"的角色属性负控；PG16 禁止降权 bootstrap 超级用户
+  （证据保留）。不再尝试属性级复现。
+- head==037 不能反推该次执行了全部 001..037；本轮空库前态+37 条升级链+rc=0 快照即为
+  该独立证据（Kilo 复核可依同法）。
+- run8/run10（上轮）与 run5/run6（本轮）生命周期结论保留为作者开发证据。
+- GitNexus：本任务 CLI 索引 impact 记录 0 上游（`r1/gitnexus_r1.txt`）；**CTO MCP compare
+  的 4 files/71 symbols/0 processes/low 及 run_public_migrations 3 直接调用者、
+  _sanitize_connection_output 4 上游为更完整的真实调用链**，予以采纳，不以前者否定。
+  detect-changes：CLI 无该子命令，且本执行会话无 GitNexus MCP 工具面（如实记录），
+  以 `git diff --name-only` 唯一路径集 + 暂存逐文件核对替代。
+
+## R1-5 提交前条目化自查（本次实际于提交前完成）
+
+| 项 | 判定 | 证据位置 |
+|---|---|---|
+| F1 修复：两种合法调用计数=1、委托=0 | PASS | run1/2/5 含 4 计数节点；MA 变异 RED（计数 0≠1） |
+| 非迁移命令恰委托一次 | PASS | `test_f1_counter_delegates_non_migration_once`（delegated=2/2） |
+| 畸形形态不漏入真实迁移执行 | PASS | `malformed_shapes_delegate_uncounted`（launches=0, delegated=4） |
+| 真实夹具次序：守卫先于迁移 | PASS | ordering 节点（launches=0）；MB 变异 RED（launches=1） |
+| 计数阶段范围已声明 | PASS | 节点 docstring + R1-1 计数范围声明 |
+| 脱敏：三类口令/双通道/超时出口 | PASS | 三个内容断言节点；MC 变异全 RED |
+| 超时出口同策略（离线构造） | PASS | timeout 节点（无长耗时进程） |
+| 不以测试豁免掩盖实际输出问题 | PASS | pragma 仅用于测试内合成样例字面量；support 实现无豁免 |
+| 新鲜空库正控+完整迁移链证据 | PASS | R1-2 快照（0 表前态、37 升级、rc=0、零口令） |
+| 既有 guard/F1 语义保留 | PASS | run3 54/54；基线 51 差集=0；本轮 guards 零字节变化 |
+| 范围（恰 2 代码路径+台账） | PASS | `changed_paths_r1.txt`；产品面 diff 为空 |
+| 真实 hook/diff-check/编码/baseline | PASS | `detect_secrets_r1.txt`（canary rc=1、正式 rc=0、f49c8622 不变）；提交流程核对 |
+| 全量后端/正式 V3 | NOT_PROVEN（未授权，未执行） |
+| 角色属性级迁移弱化 | NOT_PROVEN（PG16 结构性不可能，术语已更正） |
+| Kilo 独立复核 | NOT_PROVEN（NEXT_GATE） |
+
+## R1-6 资源
+
+容器 `mpango-zcode-inv-f1r1-pg`（标签核验）在报告核验后删除；/tmp 变异备份与口令文件已清；
+env/regrants/provision 存 `r1/`（合成口令，不入库）；上轮 evidence-root 原件零覆盖。

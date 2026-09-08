@@ -58,6 +58,9 @@ REDIS_CONTAINER_ENV_VAR = "MPANGO_INVARIANTS_R0_REDIS_CONTAINER"
 # connection declaration. It must never fall back to the run-session URL,
 # the run user, alembic.ini, or any host default.
 MIGRATION_URL_ENV_VAR = "MPANGO_INVARIANTS_R0_MIGRATION_DATABASE_URL"
+# Optional task-evidence capture of the sanitized real migration output
+# (off by default; never read by the product, only by the task env).
+MIGRATION_LOG_ENV_VAR = "MPANGO_INVARIANTS_R0_MIGRATION_LOG"
 
 
 @dataclass(frozen=True)
@@ -538,17 +541,55 @@ def verify_task_database_ownership_sync() -> str:
     return test_url
 
 
+def _task_known_secrets() -> list:
+    """Every task-known credential that could appear in migration output.
+
+    R1 (CTO F2): not only the migration URL password — also the RUN session
+    URL password and REPORTING_USER_PASSWORD (migration 011 embeds the latter
+    in ``CREATE USER ... PASSWORD '<pw>'`` SQL that can surface in error
+    output). Each secret is collected in raw AND URL-encoded forms
+    (quote/quote_plus), because passwords travel encoded inside URLs.
+    """
+    from urllib.parse import quote, quote_plus
+    from urllib.parse import urlparse as _urlparse
+
+    secrets = []
+    for url in (
+        os.environ.get(MIGRATION_URL_ENV_VAR, ""),
+        os.environ.get("TEST_DATABASE_URL", ""),
+        os.environ.get("DATABASE_URL", ""),
+    ):
+        if not url:
+            continue
+        password = _urlparse(
+            url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        ).password
+        if password:
+            secrets.append(password)
+    reporting_password = os.environ.get("REPORTING_USER_PASSWORD", "")
+    if reporting_password:
+        secrets.append(reporting_password)
+    forms = []
+    for secret in secrets:
+        forms.append(secret)
+        forms.append(quote(secret, safe=""))
+        forms.append(quote_plus(secret))
+    # Longest first so overlapping encodings collapse cleanly.
+    return sorted({f for f in forms if f}, key=len, reverse=True)
+
+
 def _sanitize_connection_output(raw: str, migration_url: str) -> str:
     """Strip credentials from subprocess output before it enters any message.
 
-    Removes the migration URL's password substring (when present) and any
-    postgres URL with an embedded password; usernames/hosts/ports stay for
-    diagnosis. Public reports and logs must never carry connection passwords.
+    R1 (CTO F2): removes EVERY task-known secret — migration/run URL
+    passwords, REPORTING_USER_PASSWORD, and their URL-encoded forms — plus
+    any postgres URL with an embedded password (shape-level catch).
+    Usernames/hosts/ports/categories stay for diagnosis; public reports and
+    logs must never carry connection passwords.
     """
     sanitized = raw
-    parsed = urlparse(migration_url)
-    if parsed.password:
-        sanitized = sanitized.replace(parsed.password, "***")
+    for secret in _task_known_secrets():
+        sanitized = sanitized.replace(secret, "***")
     import re as _re
 
     sanitized = _re.sub(
@@ -816,6 +857,12 @@ def run_public_migrations(migration_url: str) -> None:
     from the child env, and the guard refuses to run without the explicit
     migration URL). Subprocess output is sanitized before it can reach any
     exception message or public report.
+
+    R1 (CTO F2): sanitization covers every task-known secret (migration/run
+    URL passwords, REPORTING_USER_PASSWORD, URL-encoded forms); the TIMEOUT
+    exit follows the same strategy (partial output sanitized); an optional
+    off-by-default task-evidence env captures the sanitized real migration
+    output for the task's evidence root.
     """
     backend_dir = Path(__file__).resolve().parents[1]
     reporting_password = os.environ.get("REPORTING_USER_PASSWORD", "").strip()
@@ -824,15 +871,38 @@ def run_public_migrations(migration_url: str) -> None:
             "GUARD_REFUSED_MIGRATION: REPORTING_USER_PASSWORD must be set for "
             "migration 011; refusing to run migrations with incomplete config."
         )
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=str(backend_dir),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=300,
-        env={**os.environ, "DATABASE_URL": migration_url},
-    )
+    migration_log = os.environ.get(MIGRATION_LOG_ENV_VAR, "").strip()
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            cwd=str(backend_dir),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=300,
+            env={**os.environ, "DATABASE_URL": migration_url},
+        )
+    except subprocess.TimeoutExpired as expired:
+        partial = ""
+        for chunk in (getattr(expired, "stdout", None), getattr(expired, "stderr", None)):
+            if chunk:
+                if isinstance(chunk, bytes):
+                    chunk = chunk.decode("utf-8", errors="replace")
+                partial += "\n" + chunk
+        raise GuardRefused(
+            "GUARD_REFUSED_MIGRATION: alembic upgrade head TIMED OUT under "
+            "the declared migration identity (connection credentials "
+            f"sanitized):{_sanitize_connection_output(partial, migration_url)}"
+        ) from expired
+    if migration_log:
+        try:
+            with open(migration_log, "a", encoding="utf-8") as handle:
+                handle.write(_sanitize_connection_output(result.stdout or "", migration_url))
+                handle.write("\n--- stderr ---\n")
+                handle.write(_sanitize_connection_output(result.stderr or "", migration_url))
+                handle.write("\n--- rc=%d ---\n" % result.returncode)
+        except OSError:
+            pass
     if result.returncode != 0:
         raise GuardRefused(
             "GUARD_REFUSED_MIGRATION: alembic upgrade head failed under the "
@@ -891,8 +961,7 @@ async def align_fixture_object_ownership(migration_url: str) -> None:
         await engine.dispose()
 
 
-@pytest.fixture(scope="session")
-async def r0_task_database():
+async def _r0_task_database_stages():
     """Session fixture: prove ownership + role contract, migrate, verify
     readiness; no business writes before every stage passes.
 
@@ -942,6 +1011,12 @@ async def r0_task_database():
             f"business write. Driver category: {type(exc).__name__}."
         ) from exc
     yield db_url
+
+
+# Registered session fixture: the SAME stage function pytest drives (nodeids
+# and behavior unchanged; the bare name stays directly drivable for the
+# ordering counterexample).
+r0_task_database = pytest.fixture(scope="session")(_r0_task_database_stages)
 
 
 # ---------------------------------------------------------------------------

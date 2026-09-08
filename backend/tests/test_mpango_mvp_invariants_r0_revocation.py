@@ -414,13 +414,16 @@ async def _delete_sku_list_cache_keys(keys: list) -> str:
         from core.cache import get_redis_client
 
         client = await get_redis_client()
-        await client.ping()
     except Exception as exc:
         return f"cache-unreachable({type(exc).__name__})"
     try:
-        verify_task_redis_ownership_sync()
+        verify_task_redis_ownership_sync(client)
     except GuardRefused as refused:
         return f"refused-ownership({refused})"
+    try:
+        await client.ping()
+    except Exception as exc:
+        return f"cache-unreachable({type(exc).__name__})"
     try:
         removed = await client.delete(*keys)
         return f"deleted={int(removed)}"
@@ -887,9 +890,10 @@ async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_cli
     环境前提 (explicit cache-isolation premise): between the two listings the
     EXACT shared cache key (skus_list:1:10:None:<q>) is deleted on the
     task-owned Redis via _delete_sku_list_cache_keys — which FIRST proves the
-    Redis belongs to this task (verify_task_redis_ownership_sync: declared
-    container + owner label + redis:* image + 127.0.0.1 port mapping against
-    REDIS_URL) and then deletes ONLY the named key (no SCAN, no wildcards).
+    actual cached client/pool binding (host/port/db/scheme) against the
+    declared target (verify_task_redis_ownership_sync: declared container +
+    owner label + redis:* image + 127.0.0.1 port mapping against REDIS_URL)
+    and then deletes ONLY the named key (no SCAN, no wildcards).
     If ownership cannot be proven while the cache IS reachable, the premise
     cannot be established safely and the node SKIPs (fail-closed: no
     deletion on an unproven Redis). If the cache is unreachable, the

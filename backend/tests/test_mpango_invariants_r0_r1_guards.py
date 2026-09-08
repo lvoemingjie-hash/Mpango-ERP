@@ -38,6 +38,7 @@ database connection is opened.
 from __future__ import annotations
 
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
@@ -592,6 +593,95 @@ def _clear_redis_ownership_env(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
 
+class _FakeRedisClient:
+    def __init__(
+        self,
+        *,
+        host="127.0.0.1",
+        port=60212,
+        db=15,
+        ssl=None,
+        connection_class_name="Connection",
+        include_connection_kwargs=True,
+        ping_exc=None,
+        delete_result=1,
+    ):
+        self.ping_calls = 0
+        self.delete_calls = 0
+        self.delete_args = None
+        self.scan_calls = 0
+        self.scan_iter_calls = 0
+        self.keys_calls = 0
+        self._ping_exc = ping_exc
+        self._delete_result = delete_result
+        self.connection_pool = SimpleNamespace()
+        if include_connection_kwargs:
+            kwargs = {}
+            if host is not None:
+                kwargs["host"] = host
+            if port is not None:
+                kwargs["port"] = port
+            if db is not None:
+                kwargs["db"] = db
+            if ssl is not None:
+                kwargs["ssl"] = ssl
+            self.connection_pool.connection_kwargs = kwargs
+        self.connection_pool.connection_class = type(connection_class_name, (), {})
+
+    async def ping(self):
+        self.ping_calls += 1
+        if self._ping_exc is not None:
+            raise self._ping_exc
+        return True
+
+    async def delete(self, *keys):
+        self.delete_calls += 1
+        self.delete_args = keys
+        if callable(self._delete_result):
+            return self._delete_result(*keys)
+        return self._delete_result
+
+    def scan(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        self.scan_calls += 1
+        return 0, []
+
+    def scan_iter(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        self.scan_iter_calls += 1
+        return iter(())
+
+    def keys(self, *args, **kwargs):  # noqa: ANN002, ANN003
+        self.keys_calls += 1
+        return []
+
+
+def _redis_docker_inspect(
+    *,
+    owner_label: str,
+    image: str = "redis:7-alpine",
+    host_ip: str = "127.0.0.1",
+    host_port: str = "60212",
+):
+    return {
+        "Config": {
+            "Labels": {"mpango.owner": owner_label},
+            "Image": image,
+        },
+        "NetworkSettings": {
+            "Ports": {
+                "6379/tcp": [
+                    {"HostIp": host_ip, "HostPort": host_port},
+                ]
+            }
+        },
+    }
+
+
+def _bind_redis_guard_env(monkeypatch, *, redis_url: str = "redis://127.0.0.1:60212/15"):
+    monkeypatch.setenv("MPANGO_INVARIANTS_R0_REDIS_CONTAINER", "mpango-r1-redis")
+    monkeypatch.setenv("MPANGO_INVARIANTS_R0_PG_OWNER", "zcode-mvp-invariants-r1-r1")
+    monkeypatch.setenv("REDIS_URL", redis_url)
+
+
 def test_r1_guard_redis_eviction_guard_refuses_missing_config(monkeypatch):
     """[GUARD CONTROL] No declared Redis container / owner / URL → refuse
     before any deletion."""
@@ -601,8 +691,9 @@ def test_r1_guard_redis_eviction_guard_refuses_missing_config(monkeypatch):
     )
 
     _clear_redis_ownership_env(monkeypatch)
+    client = object()
     with pytest.raises(GuardRefused, match="GUARD_REFUSED_REDIS_OWNERSHIP"):
-        verify_task_redis_ownership_sync()
+        verify_task_redis_ownership_sync(client)
 
 
 def test_r1_guard_redis_eviction_guard_refuses_non_task_owner_label(monkeypatch):
@@ -616,8 +707,19 @@ def test_r1_guard_redis_eviction_guard_refuses_non_task_owner_label(monkeypatch)
     monkeypatch.setenv("MPANGO_INVARIANTS_R0_REDIS_CONTAINER", "some-redis")
     monkeypatch.setenv("MPANGO_INVARIANTS_R0_PG_OWNER", "someone-elses-task")
     monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:6379/15")
+    client = _FakeRedisClient(port=6379, db=15)
+    from tests import mpango_invariants_r0_support as support
+
+    monkeypatch.setattr(
+        support,
+        "_docker_inspect",
+        lambda container: _redis_docker_inspect(
+            owner_label="someone-elses-task",
+            host_port="6379",
+        ),
+    )
     with pytest.raises(GuardRefused, match="owner label"):
-        verify_task_redis_ownership_sync()
+        verify_task_redis_ownership_sync(client)
 
 
 def test_r1_guard_redis_eviction_guard_refuses_non_loopback_url(monkeypatch):
@@ -632,8 +734,9 @@ def test_r1_guard_redis_eviction_guard_refuses_non_loopback_url(monkeypatch):
     monkeypatch.setenv("MPANGO_INVARIANTS_R0_REDIS_CONTAINER", "some-redis")
     monkeypatch.setenv("MPANGO_INVARIANTS_R0_PG_OWNER", "zcode-mvp-invariants-r1-r1")
     monkeypatch.setenv("REDIS_URL", "redis://shared-cache.internal:6379/15")
+    client = _FakeRedisClient()
     with pytest.raises(GuardRefused, match="not loopback"):
-        verify_task_redis_ownership_sync()
+        verify_task_redis_ownership_sync(client)
 
 
 def test_r1_guard_sku_list_cache_key_shape_is_exact():
@@ -645,3 +748,315 @@ def test_r1_guard_sku_list_cache_key_shape_is_exact():
     assert _sku_list_cache_key("R1ISOSHAREDAB12CD34") == (
         "skus_list:1:10:None:R1ISOSHAREDAB12CD34"
     )
+
+
+def test_r1_guard_redis_ownership_accepts_normalized_loopback_binding(monkeypatch):
+    """[GUARD CONTROL] The real ownership helper accepts the bound client
+    when the declared URL and the actual client pool resolve to the same
+    loopback target, even if one side uses localhost and the other uses
+    127.0.0.1."""
+    from tests import mpango_invariants_r0_support as support
+
+    _clear_redis_ownership_env(monkeypatch)
+    _bind_redis_guard_env(monkeypatch, redis_url="redis://localhost:60212/15")
+    monkeypatch.setattr(
+        support,
+        "_docker_inspect",
+        lambda container: _redis_docker_inspect(
+            owner_label="zcode-mvp-invariants-r1-r1",
+            host_port="60212",
+        ),
+    )
+    client = _FakeRedisClient(host="127.0.0.1", port=60212, db=15)
+
+    verified = support.verify_task_redis_ownership_sync(client)
+
+    assert verified == "127.0.0.1:60212"
+    assert client.ping_calls == 0
+    assert client.delete_calls == 0
+
+
+@pytest.mark.parametrize(
+    "client_kwargs, expected_fragment",
+    [
+        ({"port": 60213}, "port"),
+        ({"db": 14}, "db"),
+        ({"ssl": True}, "scheme"),
+    ],
+)
+def test_r1_guard_redis_ownership_refuses_client_binding_mismatches(
+    monkeypatch, client_kwargs, expected_fragment
+):
+    """[GUARD CONTROL] A cached client that binds to the wrong host/port/db
+    or TLS mode must be refused before any network I/O."""
+    from tests import mpango_invariants_r0_support as support
+
+    _clear_redis_ownership_env(monkeypatch)
+    _bind_redis_guard_env(monkeypatch)
+    monkeypatch.setattr(
+        support,
+        "_docker_inspect",
+        lambda container: _redis_docker_inspect(
+            owner_label="zcode-mvp-invariants-r1-r1",
+            host_port="60212",
+        ),
+    )
+    client = _FakeRedisClient(**client_kwargs)
+
+    with pytest.raises(GuardRefused, match=expected_fragment):
+        support.verify_task_redis_ownership_sync(client)
+
+
+@pytest.mark.parametrize(
+    "client_kwargs, expected_fragment",
+    [
+        ({"host": None, "port": 60212, "db": 15}, "missing host"),
+        ({"host": "127.0.0.1", "port": None, "db": 15}, "missing port"),
+        ({"host": "127.0.0.1", "port": 60212, "db": None}, "missing db"),
+    ],
+)
+def test_r1_guard_redis_ownership_refuses_incomplete_client_binding(
+    monkeypatch, client_kwargs, expected_fragment
+):
+    """[GUARD CONTROL] A client pool that cannot resolve host/port/db must
+    be rejected before the helper can proceed to any ping/delete."""
+    from tests import mpango_invariants_r0_support as support
+
+    _clear_redis_ownership_env(monkeypatch)
+    _bind_redis_guard_env(monkeypatch)
+    monkeypatch.setattr(
+        support,
+        "_docker_inspect",
+        lambda container: _redis_docker_inspect(
+            owner_label="zcode-mvp-invariants-r1-r1",
+            host_port="60212",
+        ),
+    )
+    client = _FakeRedisClient(**client_kwargs)
+
+    with pytest.raises(GuardRefused, match=expected_fragment):
+        support.verify_task_redis_ownership_sync(client)
+
+
+def test_r1_guard_redis_ownership_refuses_missing_connection_pool(monkeypatch):
+    """[GUARD CONTROL] A client with no connection_pool attribute must be
+    rejected before any cache I/O."""
+    from tests import mpango_invariants_r0_support as support
+
+    _clear_redis_ownership_env(monkeypatch)
+    _bind_redis_guard_env(monkeypatch)
+    monkeypatch.setattr(
+        support,
+        "_docker_inspect",
+        lambda container: _redis_docker_inspect(
+            owner_label="zcode-mvp-invariants-r1-r1",
+            host_port="60212",
+        ),
+    )
+    client = object()
+
+    with pytest.raises(GuardRefused, match="no connection_pool"):
+        support.verify_task_redis_ownership_sync(client)
+
+
+def test_r1_guard_redis_ownership_refuses_missing_connection_kwargs(monkeypatch):
+    """[GUARD CONTROL] A pool with no readable connection_kwargs must be
+    rejected before any cache I/O."""
+    from tests import mpango_invariants_r0_support as support
+
+    _clear_redis_ownership_env(monkeypatch)
+    _bind_redis_guard_env(monkeypatch)
+    monkeypatch.setattr(
+        support,
+        "_docker_inspect",
+        lambda container: _redis_docker_inspect(
+            owner_label="zcode-mvp-invariants-r1-r1",
+            host_port="60212",
+        ),
+    )
+    client = _FakeRedisClient(include_connection_kwargs=False)
+
+    with pytest.raises(GuardRefused, match="connection_kwargs"):
+        support.verify_task_redis_ownership_sync(client)
+
+
+@pytest.mark.parametrize(
+    "inspect_kwargs, expected_fragment",
+    [
+        ({"owner_label": "someone-elses-task"}, "does not match declared owner"),
+        ({"image": "postgres:16-alpine"}, "is not redis:*"),
+        ({"host_port": "60213"}, "does not match REDIS_URL host/port"),
+    ],
+)
+def test_r1_guard_redis_ownership_refuses_docker_metadata_mismatches(
+    monkeypatch, inspect_kwargs, expected_fragment
+):
+    """[GUARD CONTROL] Label/image/loopback mapping mismatches on the task
+    container must refuse after the client binding matches."""
+    from tests import mpango_invariants_r0_support as support
+
+    _clear_redis_ownership_env(monkeypatch)
+    _bind_redis_guard_env(monkeypatch)
+
+    def _inspect(container):  # noqa: ANN001
+        payload = {"owner_label": "zcode-mvp-invariants-r1-r1"}
+        payload.update(inspect_kwargs)
+        return _redis_docker_inspect(**payload)
+
+    monkeypatch.setattr(
+        support,
+        "_docker_inspect",
+        _inspect,
+    )
+    client = _FakeRedisClient()
+
+    with pytest.raises(GuardRefused, match=expected_fragment):
+        support.verify_task_redis_ownership_sync(client)
+
+
+@pytest.mark.asyncio
+async def test_r1_guard_redis_eviction_delete_helper_accepts_bound_client_and_exact_key(
+    monkeypatch,
+):
+    """[GUARD CONTROL] The real deletion helper accepts a bound client,
+    pings once after ownership proof, deletes exactly the computed key, and
+    never touches scan-style APIs."""
+    from tests import mpango_invariants_r0_support as support
+    from tests.test_mpango_mvp_invariants_r0_revocation import (
+        _delete_sku_list_cache_keys,
+    )
+
+    _clear_redis_ownership_env(monkeypatch)
+    _bind_redis_guard_env(monkeypatch, redis_url="redis://localhost:60212/15")
+    monkeypatch.setattr(
+        support,
+        "_docker_inspect",
+        lambda container: _redis_docker_inspect(
+            owner_label="zcode-mvp-invariants-r1-r1",
+            host_port="60212",
+        ),
+    )
+    client = _FakeRedisClient(host="127.0.0.1", port=60212, db=15)
+    async def fake_get_redis_client():
+        return client
+
+    monkeypatch.setattr("core.cache.get_redis_client", fake_get_redis_client)
+    key = "skus_list:1:10:None:R1ISOSHAREDAB12CD34"
+
+    premise = await _delete_sku_list_cache_keys([key])
+
+    assert premise == "deleted=1"
+    assert client.ping_calls == 1
+    assert client.delete_calls == 1
+    assert client.delete_args == (key,)
+    assert client.scan_calls == 0
+    assert client.scan_iter_calls == 0
+    assert client.keys_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_r1_guard_redis_eviction_delete_helper_refuses_cached_client_binding_mismatch_before_ping(
+    monkeypatch,
+):
+    """[GUARD CONTROL] The actual deletion helper must refuse a cached
+    client whose pool points at the wrong Redis target before ping/delete."""
+    from tests import mpango_invariants_r0_support as support
+    from tests.test_mpango_mvp_invariants_r0_revocation import (
+        _delete_sku_list_cache_keys,
+    )
+
+    _clear_redis_ownership_env(monkeypatch)
+    _bind_redis_guard_env(monkeypatch)
+    monkeypatch.setattr(
+        support,
+        "_docker_inspect",
+        lambda container: _redis_docker_inspect(
+            owner_label="zcode-mvp-invariants-r1-r1",
+            host_port="60212",
+        ),
+    )
+    client = _FakeRedisClient(port=60213)
+    async def fake_get_redis_client():
+        return client
+
+    monkeypatch.setattr("core.cache.get_redis_client", fake_get_redis_client)
+
+    premise = await _delete_sku_list_cache_keys(["skus_list:1:10:None:R1ISOSHAREDAB12CD34"])
+
+    assert premise.startswith("refused-ownership(")
+    assert "port" in premise
+    assert client.ping_calls == 0
+    assert client.delete_calls == 0
+    assert client.scan_calls == 0
+    assert client.scan_iter_calls == 0
+    assert client.keys_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_r1_guard_redis_eviction_delete_helper_reports_unreachable_after_proven_binding(
+    monkeypatch,
+):
+    """[GUARD CONTROL] Once ownership is proven, a ping failure is reported
+    as cache-unreachable and still performs zero deletions."""
+    from tests import mpango_invariants_r0_support as support
+    from tests.test_mpango_mvp_invariants_r0_revocation import (
+        _delete_sku_list_cache_keys,
+    )
+
+    _clear_redis_ownership_env(monkeypatch)
+    _bind_redis_guard_env(monkeypatch)
+    monkeypatch.setattr(
+        support,
+        "_docker_inspect",
+        lambda container: _redis_docker_inspect(
+            owner_label="zcode-mvp-invariants-r1-r1",
+            host_port="60212",
+        ),
+    )
+    client = _FakeRedisClient(ping_exc=ConnectionError("boom"))
+    async def fake_get_redis_client():
+        return client
+
+    monkeypatch.setattr("core.cache.get_redis_client", fake_get_redis_client)
+
+    premise = await _delete_sku_list_cache_keys(["skus_list:1:10:None:R1ISOSHAREDAB12CD34"])
+
+    assert premise == "cache-unreachable(ConnectionError)"
+    assert client.ping_calls == 1
+    assert client.delete_calls == 0
+    assert client.scan_calls == 0
+    assert client.scan_iter_calls == 0
+    assert client.keys_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_r1_guard_redis_eviction_delete_helper_refuses_missing_pool_before_ping(
+    monkeypatch,
+):
+    """[GUARD CONTROL] If the cached client cannot expose a pool binding,
+    the helper refuses before ping/delete and reports ownership failure."""
+    from tests import mpango_invariants_r0_support as support
+    from tests.test_mpango_mvp_invariants_r0_revocation import (
+        _delete_sku_list_cache_keys,
+    )
+
+    _clear_redis_ownership_env(monkeypatch)
+    _bind_redis_guard_env(monkeypatch)
+    monkeypatch.setattr(
+        support,
+        "_docker_inspect",
+        lambda container: _redis_docker_inspect(
+            owner_label="zcode-mvp-invariants-r1-r1",
+            host_port="60212",
+        ),
+    )
+    client = object()
+    async def fake_get_redis_client():
+        return client
+
+    monkeypatch.setattr("core.cache.get_redis_client", fake_get_redis_client)
+
+    premise = await _delete_sku_list_cache_keys(["skus_list:1:10:None:R1ISOSHAREDAB12CD34"])
+
+    assert premise.startswith("refused-ownership(")
+    assert "connection_pool" in premise

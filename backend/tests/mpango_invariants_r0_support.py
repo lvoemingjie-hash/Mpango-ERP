@@ -28,15 +28,18 @@ must keep failing (named RED), and assertions must accept correct behavior.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import os
 import subprocess
 import sys
 import uuid
+from collections.abc import Mapping
+from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from sqlalchemy import text
@@ -53,17 +56,218 @@ OWNER_LABEL_PREFIX = "zcode-mvp-invariants"
 REDIS_CONTAINER_ENV_VAR = "MPANGO_INVARIANTS_R0_REDIS_CONTAINER"
 
 
-def verify_task_redis_ownership_sync() -> str:
+@dataclass(frozen=True)
+class RedisTargetBinding:
+    """Canonical Redis target binding used by the ownership guard."""
+
+    scheme: str
+    host: str
+    port: int
+    db: int
+
+
+def _coerce_int_field(
+    value: object,
+    *,
+    field_name: str,
+    context: str,
+    minimum: int,
+) -> int:
+    try:
+        coerced = int(value)
+    except (TypeError, ValueError) as exc:
+        raise GuardRefused(
+            f"GUARD_REFUSED_REDIS_OWNERSHIP: {context} {field_name} "
+            f"{value!r} is not a valid integer."
+        ) from exc
+    if coerced < minimum:
+        raise GuardRefused(
+            f"GUARD_REFUSED_REDIS_OWNERSHIP: {context} {field_name} "
+            f"{coerced} is below the minimum allowed value {minimum}."
+        )
+    return coerced
+
+
+def _coerce_bool_field(value: object, *, field_name: str, context: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return bool(value)
+    raise GuardRefused(
+        f"GUARD_REFUSED_REDIS_OWNERSHIP: {context} {field_name} {value!r} "
+        "is not a valid boolean flag."
+    )
+
+
+def _normalize_loopback_host(host: object, *, context: str) -> str:
+    raw = str(host or "").strip()
+    if not raw:
+        raise GuardRefused(
+            f"GUARD_REFUSED_REDIS_OWNERSHIP: {context} host is missing."
+        )
+    lowered = raw.lower()
+    if lowered == "localhost":
+        return "127.0.0.1"
+    try:
+        ip = ipaddress.ip_address(lowered)
+    except ValueError as exc:
+        raise GuardRefused(
+            f"GUARD_REFUSED_REDIS_OWNERSHIP: {context} host {raw!r} is not "
+            "loopback; use an explicit loopback literal or localhost."
+        ) from exc
+    if not ip.is_loopback:
+        raise GuardRefused(
+            f"GUARD_REFUSED_REDIS_OWNERSHIP: {context} host {raw!r} is not loopback."
+        )
+    return "127.0.0.1" if ip.version == 4 else "::1"
+
+
+def _describe_redis_url_target(redis_url: str) -> RedisTargetBinding:
+    parsed = urlparse(redis_url.strip())
+    scheme = (parsed.scheme or "").strip().lower()
+    if scheme not in {"redis", "rediss", "redis+ssl"}:
+        raise GuardRefused(
+            "GUARD_REFUSED_REDIS_OWNERSHIP: REDIS_URL scheme must be "
+            "redis:// or rediss://."
+        )
+    host = parsed.hostname
+    if host is None:
+        raise GuardRefused(
+            "GUARD_REFUSED_REDIS_OWNERSHIP: REDIS_URL host is missing."
+        )
+    if parsed.port is None:
+        raise GuardRefused(
+            "GUARD_REFUSED_REDIS_OWNERSHIP: REDIS_URL port is missing."
+        )
+    db_path = (parsed.path or "").lstrip("/")
+    if not db_path:
+        raise GuardRefused(
+            "GUARD_REFUSED_REDIS_OWNERSHIP: REDIS_URL database index is missing."
+        )
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    tls = scheme in {"rediss", "redis+ssl"}
+    if "ssl" in query:
+        tls = _coerce_bool_field(
+            query["ssl"][-1], field_name="ssl", context="declared REDIS_URL query"
+        )
+    canonical_scheme = "rediss" if tls else "redis"
+    return RedisTargetBinding(
+        scheme=canonical_scheme,
+        host=_normalize_loopback_host(host, context="declared REDIS_URL"),
+        port=_coerce_int_field(
+            parsed.port,
+            field_name="port",
+            context="declared REDIS_URL",
+            minimum=1,
+        ),
+        db=_coerce_int_field(
+            db_path,
+            field_name="db",
+            context="declared REDIS_URL",
+            minimum=0,
+        ),
+    )
+
+
+def _describe_redis_client_target(client: object) -> RedisTargetBinding:
+    pool = getattr(client, "connection_pool", None)
+    if pool is None:
+        raise GuardRefused(
+            "GUARD_REFUSED_REDIS_OWNERSHIP: Redis client has no connection_pool."
+        )
+    connection_kwargs = getattr(pool, "connection_kwargs", None)
+    if not isinstance(connection_kwargs, Mapping):
+        raise GuardRefused(
+            "GUARD_REFUSED_REDIS_OWNERSHIP: Redis client connection_pool "
+            "does not expose readable connection_kwargs."
+        )
+    missing = [
+        name
+        for name in ("host", "port", "db")
+        if name not in connection_kwargs or connection_kwargs.get(name) in (None, "")
+    ]
+    if missing:
+        raise GuardRefused(
+            "GUARD_REFUSED_REDIS_OWNERSHIP: Redis client binding is incomplete; "
+            f"missing {', '.join(missing)}."
+        )
+    connection_class = getattr(pool, "connection_class", None)
+    class_name = getattr(connection_class, "__name__", "")
+    ssl_flag = None
+    if "ssl" in connection_kwargs:
+        ssl_flag = _coerce_bool_field(
+            connection_kwargs.get("ssl"),
+            field_name="ssl",
+            context="Redis client binding",
+        )
+    class_tls = class_name == "SSLConnection"
+    if ssl_flag is False and class_tls:
+        raise GuardRefused(
+            "GUARD_REFUSED_REDIS_OWNERSHIP: Redis client binding connection "
+            "class and ssl flag disagree."
+        )
+    tls = class_tls or bool(ssl_flag)
+    return RedisTargetBinding(
+        scheme="rediss" if tls else "redis",
+        host=_normalize_loopback_host(
+            connection_kwargs.get("host"), context="Redis client binding"
+        ),
+        port=_coerce_int_field(
+            connection_kwargs.get("port"),
+            field_name="port",
+            context="Redis client binding",
+            minimum=1,
+        ),
+        db=_coerce_int_field(
+            connection_kwargs.get("db"),
+            field_name="db",
+            context="Redis client binding",
+            minimum=0,
+        ),
+    )
+
+
+def _redis_binding_mismatch_message(
+    actual: RedisTargetBinding, declared: RedisTargetBinding
+) -> str:
+    mismatches = []
+    for field_name in ("scheme", "host", "port", "db"):
+        actual_value = getattr(actual, field_name)
+        declared_value = getattr(declared, field_name)
+        if actual_value != declared_value:
+            mismatches.append(
+                f"{field_name}={actual_value!r} does not match declared "
+                f"{declared_value!r}"
+            )
+    if not mismatches:
+        return ""
+    return (
+        "GUARD_REFUSED_REDIS_OWNERSHIP: cached Redis client binding "
+        f"{actual!r} does not match declared target {declared!r}; "
+        + "; ".join(mismatches)
+    )
+
+
+def verify_task_redis_ownership_sync(client: object) -> str:
     """Pre-deletion ownership proof for the task Redis (CTO R1-R2 remediation).
 
     Any cache-key deletion must happen ONLY on a provably task-owned Redis.
-    Returns the verified ``host:port`` of the declared instance. Refuses
-    BEFORE any deletion when:
+    The proof binds the actual client/pool that will be used for deletion to
+    the declared task target BEFORE any network I/O. Returns the verified
+    ``host:port`` of the declared instance. Refuses BEFORE any deletion when:
 
     1. MPANGO_INVARIANTS_R0_REDIS_CONTAINER / owner label / REDIS_URL missing;
-    2. REDIS_URL host is not loopback;
-    3. owner label outside the ``zcode-mvp-invariants`` namespace;
-    4. docker inspect: label mismatch, image not ``redis:*``, or the 6379
+    2. the cached client's actual pool target cannot be resolved or does not
+       match the declared target (host, port, db, scheme/TLS);
+    3. REDIS_URL host is not loopback;
+    4. owner label outside the ``zcode-mvp-invariants`` namespace;
+    5. docker inspect: label mismatch, image not ``redis:*``, or the 6379
        mapping is not ``127.0.0.1:<REDIS_URL port>``.
 
     Same discipline as verify_task_database_ownership_sync: a mismatch,
@@ -89,13 +293,11 @@ def verify_task_redis_ownership_sync() -> str:
             f"{', '.join(missing)}. Cache-key deletion requires a declared, "
             "task-owned Redis instance."
         )
-    parsed = urlparse(redis_url)
-    host = parsed.hostname
-    port = parsed.port or 6379
-    if host not in LOOPBACK_HOSTS:
-        raise GuardRefused(
-            f"GUARD_REFUSED_REDIS_OWNERSHIP: REDIS_URL host {host!r} is not loopback."
-        )
+    declared = _describe_redis_url_target(redis_url)
+    actual = _describe_redis_client_target(client)
+    mismatch = _redis_binding_mismatch_message(actual, declared)
+    if mismatch:
+        raise GuardRefused(mismatch)
     if not owner_label.startswith(OWNER_LABEL_PREFIX):
         raise GuardRefused(
             "GUARD_REFUSED_REDIS_OWNERSHIP: owner label must be a "
@@ -118,12 +320,12 @@ def verify_task_redis_ownership_sync() -> str:
     mapping = (info.get("NetworkSettings") or {}).get("Ports") or {}
     port_bindings = mapping.get("6379/tcp") or []
     mapped = {b.get("HostIp"): b.get("HostPort") for b in port_bindings}
-    if mapped.get("127.0.0.1") != str(port):
+    if mapped.get("127.0.0.1") != str(declared.port):
         raise GuardRefused(
             "GUARD_REFUSED_REDIS_OWNERSHIP: container 6379 mapping "
-            f"{mapped} does not match REDIS_URL host/port (127.0.0.1:{port})."
+            f"{mapped} does not match REDIS_URL host/port (127.0.0.1:{declared.port})."
         )
-    return f"{host}:{port}"
+    return f"{declared.host}:{declared.port}"
 
 
 class GuardRefused(RuntimeError):

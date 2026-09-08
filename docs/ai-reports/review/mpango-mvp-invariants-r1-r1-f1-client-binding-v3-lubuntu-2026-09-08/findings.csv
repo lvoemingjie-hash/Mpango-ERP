@@ -1,0 +1,2 @@
+finding_id,category,severity,status,evidence,details
+F1-ENV-0001,environment-precheck,high,STOP,"evidence/preflight.json; evidence/manifests/range_manifest.json","Stock postgres:16-alpine could not be reduced to the required non-superuser minimal-privilege state. The bootstrap role alteration path failed with 'permission denied to alter role' and 'The bootstrap user must have the SUPERUSER attribute.', so the fresh-runtime focused matrices were not started."

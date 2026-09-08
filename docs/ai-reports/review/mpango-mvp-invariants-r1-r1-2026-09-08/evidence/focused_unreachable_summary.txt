@@ -1,0 +1,3 @@
+SKIPPED [1] tests\test_mpango_mvp_invariants_r0_revocation.py:985: INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED: premise absent — the sku-list cache is unreachable (fail-open), so the cross-tenant same-key cache leak cannot be reproduced in this run. This diagnostic only means anything with a reachable cache.
+FAILED tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_red_concurrent_full_return_single_economic_effect
+====== 1 failed, 51 passed, 1 skipped, 186 warnings in 115.20s (0:01:55) ======

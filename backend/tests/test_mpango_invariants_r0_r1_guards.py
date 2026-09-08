@@ -437,3 +437,141 @@ def test_r0_assertion_chain_rejects_lost_update_journal():
         assert_adjustment_chain(
             rows, initial=Decimal("10"), final_observed=Decimal("15"), expected=_EXPECTED
         )
+
+
+# ---------------------------------------------------------------------------
+# R1-R1 (CTO F1/F3): semantic counterexamples against the REAL shared
+# revocation/isolation assertion helpers.
+#
+# The helpers are imported from the revocation test module — the EXACT
+# functions the real HTTP tests call. Each counterexample feeds a broken
+# shape and the shared helper must REJECT it, proving no other condition can
+# mask the target branch (no control-only copy of any assertion logic).
+# ---------------------------------------------------------------------------
+
+class _FakeResponse:
+    """Minimal response stand-in carrying only what the shared helpers read
+    (status_code / json() / text) — the helpers' logic is NOT reimplemented."""
+
+    def __init__(self, status_code, body):
+        self.status_code = status_code
+        self._body = body
+        self.text = str(body)
+
+    def json(self):
+        return self._body
+
+
+def test_r1_guard_isolation_assertion_rejects_mixed_tenant_results():
+    """[ASSERTION CONTROL] A listing page mixing two tenants' same-code rows
+    must be REJECTED by the real shared isolation assertion."""
+    from tests.test_mpango_mvp_invariants_r0_revocation import (
+        assert_listing_exactly_own_tenant,
+    )
+
+    body = {
+        "data": {
+            "items": [
+                {"id": "11111111-1111-1111-1111-111111111111",
+                 "sku_code": "R1SHARED", "name": "MARKER-TENANT-A"},
+                {"id": "22222222-2222-2222-2222-222222222222",
+                 "sku_code": "R1SHARED", "name": "MARKER-TENANT-B"},
+            ]
+        }
+    }
+    with pytest.raises(AssertionError, match="CONTROL_R1_ISOLATION"):
+        assert_listing_exactly_own_tenant(
+            body,
+            own_sku_id="11111111-1111-1111-1111-111111111111",
+            own_name_marker="MARKER-TENANT-A",
+            shared_code="R1SHARED",
+            label="guard-mixed",
+        )
+
+
+def test_r1_guard_isolation_assertion_rejects_foreign_tenant_result():
+    """[ASSERTION CONTROL] A listing containing ONLY the other tenant's
+    same-code record must be REJECTED by the real shared isolation
+    assertion (record identity, not the business code, decides)."""
+    from tests.test_mpango_mvp_invariants_r0_revocation import (
+        assert_listing_exactly_own_tenant,
+    )
+
+    body = {
+        "data": {
+            "items": [
+                {"id": "22222222-2222-2222-2222-222222222222",
+                 "sku_code": "R1SHARED", "name": "MARKER-TENANT-B"},
+            ]
+        }
+    }
+    with pytest.raises(AssertionError, match="CONTROL_R1_ISOLATION"):
+        assert_listing_exactly_own_tenant(
+            body,
+            own_sku_id="11111111-1111-1111-1111-111111111111",
+            own_name_marker="MARKER-TENANT-A",
+            shared_code="R1SHARED",
+            label="guard-foreign",
+        )
+
+
+def test_r1_guard_refresh_refusal_assertion_rejects_masked_code():
+    """[ASSERTION CONTROL] A 401 carrying a DIFFERENT rejection code must be
+    rejected by the shared decoupled-refusal assertion — a masked target
+    branch (e.g. the tenant branch answering instead of the subject branch)
+    can never satisfy it."""
+    from tests.test_mpango_mvp_invariants_r0_revocation import (
+        assert_refresh_refused_with_code,
+    )
+
+    with pytest.raises(AssertionError, match="must not mask"):
+        assert_refresh_refused_with_code(
+            _FakeResponse(401, {"code": "TENANT_NOT_FOUND", "message": "x"}),
+            expected_code="PRINCIPAL_NOT_FOUND",
+            label="guard-masked-code",
+        )
+
+
+def test_r1_guard_refresh_refusal_assertion_rejects_token_bearing_401():
+    """[ASSERTION CONTROL] A 401 whose body carries session material must be
+    rejected by the shared decoupled-refusal assertion."""
+    from tests.test_mpango_mvp_invariants_r0_revocation import (
+        assert_refresh_refused_with_code,
+    )
+
+    with pytest.raises(AssertionError, match="session material"):
+        assert_refresh_refused_with_code(
+            _FakeResponse(
+                401,
+                {"code": "PRINCIPAL_NOT_FOUND",
+                 "data": {"access_token": "forged-but-present"}},
+            ),
+            expected_code="PRINCIPAL_NOT_FOUND",
+            label="guard-token-bearing",
+        )
+
+
+def test_r1_guard_no_issuance_assertion_rejects_issuer_use_and_tokens():
+    """[ASSERTION CONTROL] The shared zero-issuance assertion must reject
+    BOTH broken shapes: an issuer that was invoked, and a fault response
+    that still carries session material."""
+    from tests.test_mpango_mvp_invariants_r0_revocation import (
+        assert_refresh_fault_carries_no_issuance,
+    )
+
+    with pytest.raises(AssertionError, match="must not be invoked"):
+        assert_refresh_fault_carries_no_issuance(
+            _FakeResponse(500, {"code": "INTERNAL_SERVER_ERROR"}),
+            issuer_calls=1,
+            label="guard-issuer-called",
+        )
+    with pytest.raises(AssertionError, match="session material"):
+        assert_refresh_fault_carries_no_issuance(
+            _FakeResponse(
+                500,
+                {"code": "INTERNAL_SERVER_ERROR",
+                 "data": {"refresh_token": "leaked"}},
+            ),
+            issuer_calls=0,
+            label="guard-token-leak",
+        )

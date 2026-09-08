@@ -180,3 +180,12 @@ POST /api/v1/inventory/adjust（HTTP：RBAC+日志后调服务）
    与 5 行 wholesalers——来源为既有失败/错误测试文件的临时租户（29 个 alembic ERROR 类为主），
    另 1 行 PW1R3RL 源自一次被 timeout 终止的 pytest 进程（无法执行 teardown；夹具清理本身经
    前后计数核验无缺陷）。任务库为一次性容器，最终随容器删除；未触碰任何既有库。
+
+---
+
+## 勘误指针（R1-R1，2026-09-08）
+
+本记录 §5.7 的"全量差分……无未解释回归"结论受两处证据局限（skip 差未逐节点、pw1r3 限流 Redis
+不可达），已由 R1-R1 冻结差分以最终字节闭合：
+`docs/ai-reports/review/mpango-mvp-invariants-r1-r1-2026-09-08/`（SELF_REVIEW §D/F、
+NODE_RECONCILIATION §6-§7）。原文保留作为当时结论来源。

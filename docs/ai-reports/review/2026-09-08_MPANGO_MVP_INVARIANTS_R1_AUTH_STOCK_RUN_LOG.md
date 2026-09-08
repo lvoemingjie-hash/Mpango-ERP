@@ -165,3 +165,75 @@ Redis**（容器 `mpango-zcode-inv-r1fix-20260908-redis`，redis:7-alpine，标�
 | 提交前核查 | `git diff --cached --check` 干净；detect-secrets hook（--baseline）退出 0、
   baseline 字节未变（sha256 f49c8622…16bf）；UTF-8/无 BOM 12 文件通过 |
 | 变更文件 | 恰为任务记录 §1 范围表所列（产品 3 + 测试 4 + 报告 5；support 零字节变化） |
+
+---
+
+## 勘误（R1-R1，2026-09-08）
+
+本日志 §四中"skip 计数差 19……拟源于 BASE 第二序运行时任务库已携候选运行残留、条件跳过评估不同"
+为推测（-rfE 无 skip 节点清单）；"pw1r3 文件级复跑"不足以代表最终字节差分；且该轮 pw1r3 的
+限流 Redis（PW1R3_TEST_REDIS_URL）实际不可达。以上由 R1-R1 冻结差分替代，证据见
+`mpango-mvp-invariants-r1-r1-2026-09-08/` 目录（含该轮两份原始全量日志的文件级 skip 复核：
+19 差全部位于 test_s3b_fresh_tenant_live_runtime_proof.py 的 t_u1r1_test 预置租户前提）。
+
+---
+
+# 八、R1-R1 测试与差分证据闭合（2026-09-08，CTO-AUTH-MVP-INVARIANTS-R1-R1-2026-09-08）
+
+分支：`zcode/mpango-mvp-invariants-r1-r1-test-evidence-closure-2026-09-08`（BASE a516d2b3）；
+worktree：`worktrees/zcode_mpango_mvp_invariants_r1_r1_2026-09-08`；BASE 差分树：
+`worktrees/zcode_mpango_mvp_invariants_r1r1_base_ref`（1485c3f5，detached，干净）。
+任务容器（候选/差分/开发各独立，全部带 `mpango.owner=zcode-mvp-invariants-r1-r1` 标签）与
+仓库外 env 脚本路径见 `mpango-mvp-invariants-r1-r1-2026-09-08/FILES_MANIFEST.md`。
+
+## F1/F3 实现（仅测试与支持模块，产品零改动）
+
+- F1：隔离对照重设计——两租户**同查询参数、同 sku_code**，以记录 id + 租户特征名区分，共享断言
+  `assert_listing_exactly_own_tenant` 唯一实现（真实 HTTP 测试与 guards 反例同函数）；显式缓存隔离
+  前提（两次列表之间按前缀清理任务自有 Redis 的 `skus_list:*`，产品路径不动）；缓存可达同键跨租户
+  风险另列**有界诊断节点**（断言正确不变量，可达时命名 RED，不可达时显式 SKIP）；两租户均执行
+  refresh 并核对 subject/tenant_id/tenant_schema。
+- F3：错误签名节点解耦重写（claims 取自真实签发 token 仅换签名键；录制哨兵证明主体查询未达；
+  code==INVALID_REFRESH_TOKEN）；新增活租户缺用户（code==PRINCIPAL_NOT_FOUND）与主体查询有界故障
+  （dependency_override 仅注入 `{schema}.users` SELECT；issuer 计数==0、无 token、非 2xx；解除后
+  正常签发）两节点；共享拒绝/零签发断言 + guards 5 个语义反例（喂坏形状必须拒绝）。
+- 证伪（开发期，隔离材料）：FM1 移除 refresh 校验调用 → 缺用户/DB 故障两节点 RED；FM2
+  decode_token 注入 verify_signature=False → 错误签名节点 RED；恢复后 sha256 字节一致且复绿。
+
+## F2 冻结差分
+
+VOID-1（环境准备缺失：全新容器未预迁移 → 早期套件 416E/139F 撞未迁移库）按纪律归档
+（`_frozen_cand_VOID1.log`，容器已删），显式准备步骤（归属守卫夹具迁移 + head 037 核验 + 对照
+节点 PASS）后重执行一次。冻结结果：
+
+| 运行 | 汇总 | 退出码 |
+|---|---|---|
+| 候选（a516d2b3+冻结测试字节） | **18F / 3692P / 69S / 15x / 43E**，1427.26s | 1 |
+| BASE（1485c3f5，detached 干净树） | **19F / 3684P / 69S / 15x / 37E**，1378.69s | 1 |
+
+逐节点对账（NODE_RECONCILIATION.md）：共享节点唯一状态变化 = 丢失更新 RED→PASSED；FAILED 差仅此
+一项；ERROR 差 = 恰 6 个候选新增撤权节点（既有收集期 MPANGO_ENV 泄漏机制，两侧同构）；SKIP 集合
+两侧恒等（69/69，原因全录）；上轮 19-skip 差经旧日志文件级复核全部归因 test_s3b（t_u1r1_test
+库态继承），与字节无关。未解释新失败/错误/跳过 = 0，STOP 判据未触发。
+
+聚焦冻结（撤权文件权威证据，无污染进程）：不可达前提 51P + 1 已知 RED + 1 SKIP（诊断前提缺失）；
+可达前提 51P + 2 命名 RED（双退 + INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED，登记风险复现）。
+
+## GitNexus / detect_changes
+
+`gitnexus analyze` 本 worktree 索引成功（测试字节定稿后）；`impact` 对三个共享断言助手查询均
+0 上游/LOW；`gitnexus detect-changes` 在 CLI 1.5.3 不存在（`unknown command`，与前两轮记录一致的
+MCP-only 面）——如实披露，以 `git status`/staged diff 逐文件核对替代，不以文件计数冒充图分析。
+
+## 提交与推送记录
+
+| 项 | 值 |
+|---|---|
+| 提交 1（测试+支持+本目录证据+勘误） | 见 `git log`（父 = a516d2b3） |
+| 提交 2+（纯报告：RUN_LOG/最终报告） | 单列普通后继提交，不与运行字节混合 |
+| local==remote | 推送后 `git rev-parse HEAD` == `git ls-remote`（本文件不预写 SHA） |
+
+## 资源与清理
+
+冻结/差分容器（cand/base pg+redis，ID 见 RUN_IDENTITY）与开发容器在报告核验后按标签删除（含卷）；
+BASE 差分工作树移除；env 脚本（合成口令）留仓库外可删；VOID-1 材料归档保留。

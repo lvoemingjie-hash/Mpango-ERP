@@ -120,3 +120,18 @@
 - 开放风险：并发重复退货（已知 RED）；停用租户无 HTTP 写入口（测试直写状态，与外部探针同法）；
   sku 列表缓存键租户维度缺失；全量套件 MPANGO_ENV 模块级泄漏（测试卫生）。
 - NEXT_GATE：CTO 审查 → 风险相称的独立验证。不自行合并/部署。
+
+---
+
+## 勘误（R1-R1，2026-09-08；保留原结论来源，原文未改）
+
+1. **撤回过强结论**：本报告 §FOCUSED_SUITE / FULL_SUITE 中"skip 计数差 19……归因 BASE 第二序运行
+   的库态差异"为无节点级证据的推测，且"无任何由本修复引入的未解释回归"的表述超出了当时证据
+   （pw1r3 文件级复跑不能代表最终字节的完整差分；该轮全量的 pw1r3 限流 Redis 实际不可达
+   （PW1R3_TEST_REDIS_URL 默认 26379），fail-open 下 6 个 bucket/burst 节点的"通过"不构成真实限流
+   证据，`test_101st_anonymous...` 的失败亦为该环境前提所致而非既有产品缺陷）。上述归因与结论由
+   R1-R1 冻结差分替代：`docs/ai-reports/review/mpango-mvp-invariants-r1-r1-2026-09-08/`
+   （EXPECTED_SET / RUN_IDENTITY_* / NODE_RECONCILIATION / SELF_REVIEW）。
+2. **运行字节绑定澄清**：上轮全量运行的库为聚焦运行预迁移过的同一容器（迁移由聚焦套件的归属夹具
+   先行完成）；全量套件自身不提供早期迁移。R1-R1 冻结差分改用全新容器 + 显式准备步骤（见该目录
+   EXPECTED_SET §环境准备），VOID-1 事故记录同存。

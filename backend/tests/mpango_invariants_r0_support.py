@@ -481,12 +481,18 @@ async def seed_sku_with_stock(
     quantity_on_hand: Decimal,
     price: Decimal | None = None,
     retailer_id: uuid.UUID | None = None,
+    name: str = "Invariants R0 item",
 ) -> uuid.UUID:
-    """Seed one tenant SKU + stock row (+ optional retailer price) via ORM/SQL."""
+    """Seed one tenant SKU + stock row (+ optional retailer price) via ORM/SQL.
+
+    `name` lets a caller attach a tenant-distinctive marker to an otherwise
+    identical record (R1-R1 F1: two tenants hold the SAME sku_code and the
+    isolation assertion distinguishes records by id + name).
+    """
     from models import SKU
     from models.inventory_stock import InventoryStock
 
-    sku = SKU(sku_code=sku_code, name="Invariants R0 item", unit="box", is_active=True)
+    sku = SKU(sku_code=sku_code, name=name, unit="box", is_active=True)
     db.add(sku)
     await db.flush()
     db.add(

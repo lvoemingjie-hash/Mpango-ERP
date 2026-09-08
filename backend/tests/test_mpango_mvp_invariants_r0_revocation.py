@@ -27,6 +27,35 @@ type keep being refused; every refused refresh returns NO token material of
 any kind (a refusal must not mint a session); two tenants' same-kind data
 never cross-reads over the real HTTP stack.
 
+R1-R1 evidence-closure round (branch
+zcode/mpango-mvp-invariants-r1-r1-test-evidence-closure-2026-09-08, CTO
+findings F1/F3 of 2026-09-08) — test-only changes, product bytes untouched:
+
+- F1: the isolation control now uses IDENTICAL query parameters and the SAME
+  SKU business code in both tenants; records are distinguished by id + a
+  tenant-distinctive name, and ONE shared assertion
+  (assert_listing_exactly_own_tenant — also fed broken shapes by the guards
+  counterexamples) accepts only the caller's own record. The DB-isolation
+  control states and enforces an explicit cache-isolation premise (evicting
+  the tenant-shared skus_list cache entries between the two listings on the
+  task-owned Redis). The cache-reachable same-key leak is a REGISTERED risk
+  with its own bounded diagnostic node: it asserts the correct invariant and
+  is expected NAMED RED when the cache is reachable, explicit SKIP when it
+  is not.
+- F3: the refresh negatives are decoupled — (a) a nonexistent user inside a
+  REAL ACTIVE tenant must hit PRINCIPAL_NOT_FOUND (not the tenant branch);
+  (b) a token whose claims are byte-identical to the issuer's but whose
+  signature key differs must be refused at the signature layer, with a
+  recording sentinel proving the subject DB query was never reached; (c) a
+  bounded fault injected at exactly the subject SELECT (FastAPI
+  dependency_override) must issue ZERO tokens (issuer call count 0) without
+  forcing the service fault into a 401, while the same live subject still
+  refreshes with the fault disarmed. Shared helpers
+  assert_refresh_refused_with_code / assert_refresh_fault_carries_no_issuance
+  give each refusal branch a specific-code + zero-token contract; guards
+  counterexamples feed them masked codes, token-bearing bodies and
+  issuer-invoking shapes to prove no masking.
+
 External evidence (AI_REPORT_INBOX/external-architecture-2026-09-06):
 - supplementary-probes.json: http_deleted_user_suspended_tenant_skus = 200
 - counterexamples.json: suspended_tenant_context_resolved=true,
@@ -37,9 +66,11 @@ Environment premises:
 - Task-exclusive disposable loopback PostgreSQL 16 (ownership guard enforced).
 - MPANGO_ENV must not normalize to "test" (MockAuthStrategy would bypass the
   real JWT middleware); run with MPANGO_ENV=staging as the external lab did.
-- REDIS_URL must point at an unreachable throwaway address so no existing
-  Redis instance is touched (read-through caches fail open; see task record
-  for the registered out-of-scope cache-key finding).
+- REDIS_URL must point at a throwaway address so no existing Redis instance
+  is touched: unreachable (focused premise) → read-through caches fail open;
+  a reachable TASK-OWNED Redis (full-suite premise) is required only by the
+  cache diagnostic node, which then reproduces the registered leak as a
+  named RED.
 - Access tokens are signed with the test process SECRET_KEY via the product's
   own create_contextual_token (same documented limitation as the external
   probes: synthetic issuance material, real verification path).
@@ -53,7 +84,6 @@ identity-only refresh (documented in the task record).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
 from decimal import Decimal
 
 import httpx
@@ -62,7 +92,7 @@ from jose import jwt as jose_jwt
 from sqlalchemy import text
 
 from core.config import get_settings
-from core.security import create_contextual_token, hash_password
+from core.security import create_contextual_token, decode_token, hash_password
 
 from tests.mpango_invariants_r0_support import (
     TenantIdentity,
@@ -155,25 +185,22 @@ def _refresh(user_id: uuid.UUID, identity: TenantIdentity) -> str:
     )
 
 
-def _forged_refresh(user_id: uuid.UUID, identity: TenantIdentity) -> str:
-    """A structurally valid refresh token signed with the WRONG key.
+def _forged_refresh(valid_refresh_token: str) -> str:
+    """A refresh token IDENTICAL to a legitimately issued one except for the
+    signature key (F3.2 "only the signature changes").
 
-    Models an attacker-crafted (not legitimately issued) token: correct claims
-    shape, invalid signature. The endpoint must keep refusing it at the
-    signature-verification layer — the R1 subject/tenant DB validation must
-    never become the only line of defense.
+    The claims are decoded from the real token itself and re-signed with a
+    foreign key, so exp/roles/tenant claims are byte-for-byte the issuer's
+    own — the ONLY variable is the signature. The endpoint must keep
+    refusing it at the signature-verification layer; the subject/tenant DB
+    validation must never become the only line of defense.
     """
     settings = get_settings()
-    payload = {
-        "user_id": str(user_id),
-        "roles": ["r0_admin"],
-        "tenant_id": str(identity.wholesaler_id),
-        "tenant_schema": identity.schema,
-        "exp": datetime.utcnow() + timedelta(days=1),
-        "type": "refresh",
-    }
+    claims = jose_jwt.decode(
+        valid_refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+    )
     return jose_jwt.encode(
-        payload, "r1-wrong-signing-key-material-not-the-real-secret",
+        claims, "r1r1-wrong-signing-key-material-not-the-real-secret",
         algorithm=settings.ALGORITHM,
     )
 
@@ -219,6 +246,166 @@ async def _assert_refresh_refused(
         f"{invariant_name}: a refused refresh must not mint any session; "
         f"the 401 body carries token material ({str(body)[:300]})."
     )
+
+
+# ---------------------------------------------------------------------------
+# R1-R1 shared assertion helpers (SINGLE implementations).
+#
+# The real HTTP tests below AND the guards-file semantic counterexamples call
+# exactly these functions — there is no control-only copy of the logic.
+# ---------------------------------------------------------------------------
+
+def extract_refresh_error_code(body) -> str | None:
+    """Extract the public error code from a refresh error response body.
+
+    The product's DC-12R1-H2 handler serializes HTTPException into the flat
+    ``{code, message, request_id}`` envelope; the tolerant lookup also accepts
+    a nested ``{"detail": {"code": ...}}`` shape so the assertions do not
+    depend on the envelope revision.
+    """
+    if not isinstance(body, dict):
+        return None
+    detail = body.get("detail")
+    if isinstance(detail, dict) and detail.get("code"):
+        return str(detail["code"])
+    if isinstance(body.get("code"), str):
+        return str(body["code"])
+    return None
+
+
+def assert_refresh_response_carries_no_tokens(response, *, label: str) -> None:
+    """A refused or faulted refresh must not return any session material.
+
+    Works for ANY status (401 refusals and non-401 service faults alike):
+    wherever a ``data`` payload exists it must carry no access/refresh token.
+    """
+    try:
+        body = response.json()
+    except Exception:
+        body = {}
+    data = body.get("data") or {}
+    assert not data.get("access_token") and not data.get("refresh_token"), (
+        f"{label}: the response must not carry session material, got "
+        f"status={response.status_code} body={str(body)[:300]}."
+    )
+
+
+def assert_refresh_refused_with_code(response, *, expected_code: str, label: str) -> None:
+    """Shared decoupled-refusal assertion (F3): a target rejection branch is
+    proven by ALL THREE facets together — (1) HTTP 401, (2) the SPECIFIC
+    product error code, and (3) zero token material — so no other rejection
+    condition can mask the branch under test (CTO F3: decoupled negatives).
+    """
+    assert response.status_code == 401, (
+        f"{label}: expected HTTP 401 with code {expected_code!r}, got "
+        f"{response.status_code} with body {response.text[:300]}."
+    )
+    body = response.json()
+    code = extract_refresh_error_code(body)
+    assert code == expected_code, (
+        f"{label}: expected the {expected_code!r} rejection branch, got "
+        f"code={code!r} (body {str(body)[:300]}). A different rejection "
+        "condition must not mask the branch under test."
+    )
+    assert_refresh_response_carries_no_tokens(response, label=label)
+
+
+def assert_refresh_fault_carries_no_issuance(response, *, issuer_calls: int, label: str) -> None:
+    """Shared service-fault assertion (F3.3): when the subject database query
+    faults, the token issuer must not have been invoked, the response must
+    not look like a success, and no session material may be returned. The
+    status is deliberately NOT forced to 401 — a service fault is not an
+    authentication verdict.
+    """
+    assert issuer_calls == 0, (
+        f"{label}: the token issuer must not be invoked once the subject "
+        f"validation has faulted, got {issuer_calls} call(s)."
+    )
+    assert not 200 <= response.status_code < 300, (
+        f"{label}: a faulted subject validation must not surface as a "
+        f"success-looking {response.status_code}."
+    )
+    assert_refresh_response_carries_no_tokens(response, label=label)
+
+
+def assert_listing_exactly_own_tenant(
+    listing_body,
+    *,
+    own_sku_id: str,
+    own_name_marker: str,
+    shared_code: str,
+    label: str,
+    invariant: str = "CONTROL_R1_ISOLATION",
+) -> None:
+    """Shared tenant-isolation assertion over a real GET /api/v1/skus body.
+
+    Both tenants hold a SKU with the SAME business code; this assertion
+    accepts ONLY the caller's own record — exactly one item whose record id
+    AND tenant-distinctive name both match — so any cross-tenant leakage
+    (the other tenant's same-code row, or a mixed page) is rejected. It is
+    the single implementation shared by the real HTTP isolation control, the
+    cache diagnostic, and the guards negative controls.
+    """
+    data = listing_body.get("data") or {}
+    items = data.get("items")
+    assert items is not None, (
+        f"{invariant}[{label}]: listing body has no items list "
+        f"({str(listing_body)[:200]})."
+    )
+    ids = [str(item.get("id")) for item in items]
+    assert ids == [own_sku_id], (
+        f"{invariant}[{label}]: the listing must contain EXACTLY this "
+        f"tenant's own record id {own_sku_id}, got {ids}. Another tenant's "
+        "same-code record or a mixed result page must be rejected here — "
+        "filtering by the tenant's own code must not be what hides a "
+        "cross-tenant read."
+    )
+    item = items[0]
+    assert item.get("sku_code") == shared_code, (
+        f"{invariant}[{label}]: expected the shared business code "
+        f"{shared_code!r}, got {item.get('sku_code')!r}."
+    )
+    assert item.get("name") == own_name_marker, (
+        f"{invariant}[{label}]: expected this tenant's distinctive record "
+        f"name {own_name_marker!r}, got {item.get('name')!r}."
+    )
+
+
+async def _sku_list_cache_reachable() -> bool:
+    """Probe whether the sku-list read-through cache backend is reachable."""
+    try:
+        from core.cache import get_redis_client
+
+        client = await get_redis_client()
+        await client.ping()
+        return True
+    except Exception:
+        return False
+
+
+async def _evict_sku_list_cache_entries() -> str:
+    """Evict tenant-shared `skus_list:*` entries on the task-owned Redis.
+
+    Explicit premise enforcement for the DB-isolation control (CTO F1): the
+    sku-list cache key has NO tenant dimension (registered out-of-scope
+    finding), so with a reachable cache the second same-key listing could be
+    served from the first tenant's cached page instead of the database.
+    Evicting the entries between the two listings guarantees each listing
+    executes the real JWT → tenant-resolution → SQL path; the product stack
+    is untouched. With an unreachable cache this is a no-op (fail-open
+    premise). Only the task-owned Redis instance is ever touched.
+    """
+    try:
+        from core.cache import get_redis_client
+
+        client = await get_redis_client()
+        removed = 0
+        async for key in client.scan_iter(match="skus_list:*", count=200):
+            await client.delete(key)
+            removed += 1
+        return f"evicted={removed}"
+    except Exception as exc:
+        return f"cache-unreachable({type(exc).__name__})"
 
 
 # ---------------------------------------------------------------------------
@@ -560,36 +747,67 @@ async def test_r0_control_refresh_live_subject_issues_usable_session(http_client
 
 
 # ---------------------------------------------------------------------------
-# 9. R1 CONTROL: refresh keeps refusing wrong signatures and wrong types
+# 9. R1/R1-R1 CONTROLS: refresh keeps refusing wrong signatures and wrong
+#    types; the signature rejection is DECOUPLED from every database branch
 # ---------------------------------------------------------------------------
 
 @pytest.mark.integration
-async def test_r1_control_refresh_wrong_signature_refused(http_client):
-    """[CONTROL — expected PASS] Forged signature stays refused.
+async def test_r1_control_refresh_wrong_signature_refused(http_client, monkeypatch):
+    """[CONTROL — expected PASS] Signature-only rejection, decoupled (F3.2).
 
-    正常对照: a structurally valid refresh token signed with the WRONG key
-    must be refused 401 by signature verification — the R1 DB validation is
-    an additional layer for legitimately-signed-but-dead subjects, never a
-    replacement for verification.
-    目标缺陷: none (control pins the pre-existing defense so the R1 change
-    cannot regress it).
-    环境前提: token crafted with the same JWT library and claims shape as the
-    product's own issuance, different signing key.
+    正常对照: a refresh token whose claims are byte-for-byte the issuer's own
+    (decoded from the real token and re-signed with a foreign key — ONLY the
+    signature differs) and whose tenant and subject are REAL and active must
+    be refused 401 INVALID_REFRESH_TOKEN by signature verification.
+    目标缺陷: none (control pins the pre-existing defense so the R1 DB
+    validation can never substitute for verification).
+    解耦证明 (F3.2): the contextual subject DB query is instrumented with a
+    recording pass-through sentinel — it must NEVER be reached; combined with
+    the INVALID_REFRESH_TOKEN code assertion this proves the rejection
+    happened at the signature layer, not at a downstream database branch.
+    The real token decoder and the real HTTP routing are used throughout
+    (the sentinel only records; it never replaces decoding).
+    环境前提: real tenant + real user exist; forged token carries their exact
+    claims.
     执行入口: POST /api/v1/auth/refresh over the real HTTP stack.
-    未覆盖范围: none material for this layer (algorithm confusion, exp
-    edge cases are covered by product unit suites).
+    未覆盖范围: algorithm-confusion and exp edge cases (product unit suites).
     """
-    ghost_user = uuid.uuid4()
-    fake_identity = TenantIdentity()  # never created; signature fails first
+    import api.v1.auth as auth_routes
+
+    identity = await TenantIdentity().create()
     try:
-        await _assert_refresh_refused(
-            http_client,
-            _forged_refresh(ghost_user, fake_identity),
-            "CONTROL_R1_REFRESH_WRONG_SIGNATURE",
-            "a token signed with a foreign key (signature verification layer)",
+        user_id = await _seed_tenant_user(
+            identity=identity, email=f"r1r1-{uuid.uuid4().hex[:8]}@example.com"
+        )
+        valid_refresh = _refresh(user_id, identity)
+        forged = _forged_refresh(valid_refresh)
+        assert forged != valid_refresh
+
+        subject_query = {"reached": False}
+        original_validate = auth_routes._validate_contextual_refresh_subject
+
+        async def recording_validate(db, payload):  # noqa: ANN001
+            subject_query["reached"] = True
+            return await original_validate(db, payload)
+
+        monkeypatch.setattr(
+            auth_routes, "_validate_contextual_refresh_subject", recording_validate
+        )
+
+        response = await _http_refresh(http_client, forged)
+        assert_refresh_refused_with_code(
+            response,
+            expected_code="INVALID_REFRESH_TOKEN",
+            label="CONTROL_R1_REFRESH_WRONG_SIGNATURE[valid-subject]",
+        )
+        assert subject_query["reached"] is False, (
+            "CONTROL_R1_REFRESH_WRONG_SIGNATURE: the contextual subject "
+            "database query must not run for a token that fails signature "
+            "verification — the signature layer must reject before any "
+            "database branch is consulted."
         )
     finally:
-        await fake_identity.drop()  # no-op by construction (IF EXISTS)
+        await identity.drop()
 
 
 @pytest.mark.integration
@@ -626,93 +844,333 @@ async def test_r1_control_refresh_wrong_token_type_refused(http_client):
 
 
 # ---------------------------------------------------------------------------
-# 10. R1 CONTROL: tenant isolation — same-kind data never cross-reads
+# 10. R1-R1 (CTO F1) CONTROLS: tenant isolation proven with IDENTICAL query
+#     parameters and an IDENTICAL business code; the cache-reachable same-key
+#     leak is a separate bounded diagnostic, never folded in here.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.integration
-async def test_r1_control_tenant_isolation_no_cross_read(http_client):
-    """[CONTROL — expected PASS] Two tenants, same-kind data, no cross-read.
+async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_client):
+    """[CONTROL — expected PASS] Same query params + same SKU code, distinct
+    records: each listing contains EXACTLY the caller's own record.
 
-    正常对照: two fully-live tenants each hold one distinctly-coded SKU and
-    one user. Each tenant's token must list ONLY that tenant's SKU over the
-    real HTTP stack, and each tenant's refresh must return tokens still bound
-    to its own tenant claims — no path may expose the other tenant's data or
-    identity.
-    目标缺陷: none (control; the R0 baseline already isolated reads — this
-    pins that the R1 revocation checks did not disturb isolation, e.g. by
-    misbinding the tenant liveness query to the wrong session scope).
-    环境前提: same as the other HTTP tests. Each tenant's listing uses its own
-    `q` filter: the sku-list read-through cache key is NOT tenant-scoped
-    (registered out-of-scope finding in the task record), so per-tenant `q`
-    keeps this control a DATABASE-isolation proof independent of that cache
-    defect; under the unreachable-Redis premise the cache fails open anyway.
-    执行入口: GET /api/v1/skus and POST /api/v1/auth/refresh through the
-    real HTTP stack, one token per tenant.
-    未覆盖范围: write-path isolation (covered by the R0 concurrency file's
-    tenant-scoped writes); cross-tenant refresh claim swapping.
+    正常对照 (F1 redesign of the former different-codes/different-q control):
+    two fully-live tenants each seed a SKU with the SAME business code but
+    their own record id and a tenant-distinctive name. BOTH requests use the
+    IDENTICAL query parameters. The shared assertion
+    assert_listing_exactly_own_tenant (single implementation, also fed broken
+    shapes by the guards negative controls) accepts only the caller's own
+    record, so a cross-tenant read can no longer be hidden by per-tenant
+    filtering or by comparing business codes alone.
+    目标缺陷: none (control; pins that the R1 revocation checks did not
+    disturb database-level tenant isolation).
+    环境前提 (explicit cache-isolation premise): between the two listings the
+    tenant-shared `skus_list:*` cache entries are evicted on the task-owned
+    Redis (_evict_sku_list_cache_entries), so each listing executes the real
+    JWT → tenant-resolution → SQL path independent of the registered
+    non-tenant-scoped cache key. The cache-reachable same-key leak is a
+    separate registered risk with its own bounded diagnostic node (expected
+    named RED when the cache is reachable); it is deliberately NOT folded
+    into this control.
+    执行入口: GET /api/v1/skus (identical params, per-tenant tokens) and
+    POST /api/v1/auth/refresh for BOTH tenants through the real HTTP stack.
+    未覆盖边界: write-path isolation (covered by the R0 concurrency file's
+    tenant-scoped writes); arbitrary claim-substitution tokens — tampering
+    user_id/tenant_id inside a validly-signed token is a forgery scenario
+    owned by the signature layer, not asserted here; cache-reachable
+    same-key behaviour (separate diagnostic node).
     """
     identity_a = await TenantIdentity().create()
     identity_b = await TenantIdentity().create()
     try:
         user_a = await _seed_tenant_user(
-            identity=identity_a, email=f"r0-iso-a-{uuid.uuid4().hex[:8]}@example.com"
+            identity=identity_a, email=f"r1r1-iso-a-{uuid.uuid4().hex[:8]}@example.com"
         )
         user_b = await _seed_tenant_user(
-            identity=identity_b, email=f"r0-iso-b-{uuid.uuid4().hex[:8]}@example.com"
+            identity=identity_b, email=f"r1r1-iso-b-{uuid.uuid4().hex[:8]}@example.com"
         )
+        shared_code = f"R1ISOSHARED{uuid.uuid4().hex[:8].upper()}"
         async with tenant_session(identity_a.schema, identity_a.wholesaler_id) as db:
-            await seed_sku_with_stock(
-                db, sku_code="R1-ISO-TENANT-A", quantity_on_hand=Decimal("5")
+            sku_id_a = await seed_sku_with_stock(
+                db, sku_code=shared_code, quantity_on_hand=Decimal("5"),
+                name="ISOLATION-MARKER-TENANT-A",
             )
         async with tenant_session(identity_b.schema, identity_b.wholesaler_id) as db:
-            await seed_sku_with_stock(
-                db, sku_code="R1-ISO-TENANT-B", quantity_on_hand=Decimal("7")
+            sku_id_b = await seed_sku_with_stock(
+                db, sku_code=shared_code, quantity_on_hand=Decimal("7"),
+                name="ISOLATION-MARKER-TENANT-B",
             )
 
+        params = {"q": shared_code}  # IDENTICAL query parameters for both
         listing_a = await http_client.get(
-            "/api/v1/skus",
-            params={"q": "R1-ISO-TENANT-A"},
+            "/api/v1/skus", params=params,
             headers={"Authorization": "Bearer " + _bearer(user_a, identity_a)},
         )
+        await _evict_sku_list_cache_entries()
         listing_b = await http_client.get(
-            "/api/v1/skus",
-            params={"q": "R1-ISO-TENANT-B"},
+            "/api/v1/skus", params=params,
             headers={"Authorization": "Bearer " + _bearer(user_b, identity_b)},
         )
         assert listing_a.status_code == 200 and listing_b.status_code == 200, (
             "CONTROL_R1_ISOLATION: both live tenants must list their SKUs "
             f"(got {listing_a.status_code}/{listing_b.status_code})"
         )
-        codes_a = {
-            item["sku_code"] for item in listing_a.json()["data"]["items"]
-        }
-        codes_b = {
-            item["sku_code"] for item in listing_b.json()["data"]["items"]
-        }
-        assert codes_a == {"R1-ISO-TENANT-A"}, (
-            f"CONTROL_R1_ISOLATION: tenant A must see exactly its own SKU, got {codes_a}"
+        assert_listing_exactly_own_tenant(
+            listing_a.json(),
+            own_sku_id=str(sku_id_a), own_name_marker="ISOLATION-MARKER-TENANT-A",
+            shared_code=shared_code, label="tenant-A",
         )
-        assert codes_b == {"R1-ISO-TENANT-B"}, (
-            f"CONTROL_R1_ISOLATION: tenant B must see exactly its own SKU, got {codes_b}"
+        assert_listing_exactly_own_tenant(
+            listing_b.json(),
+            own_sku_id=str(sku_id_b), own_name_marker="ISOLATION-MARKER-TENANT-B",
+            shared_code=shared_code, label="tenant-B",
         )
 
-        # Refresh keeps each subject bound to its own tenant (no claim swap).
-        refresh_a = await _http_refresh(http_client, _refresh(user_a, identity_a))
-        assert refresh_a.status_code == 200, (
-            "CONTROL_R1_ISOLATION: tenant A's live refresh must succeed, got "
-            f"{refresh_a.status_code}: {refresh_a.text[:200]}"
-        )
-        from core.security import decode_token
+        # F1.5: BOTH tenants refresh; every identity claim must match the
+        # refreshing tenant's own real identity (subject, tenant_id, schema).
+        for identity, user_id, label in (
+            (identity_a, user_a, "A"), (identity_b, user_b, "B"),
+        ):
+            refresh = await _http_refresh(http_client, _refresh(user_id, identity))
+            assert refresh.status_code == 200, (
+                f"CONTROL_R1_ISOLATION: tenant {label}'s live refresh must "
+                f"succeed, got {refresh.status_code}: {refresh.text[:200]}"
+            )
+            claims = decode_token(refresh.json()["data"]["access_token"])
+            assert claims.user_id == str(user_id), (
+                f"CONTROL_R1_ISOLATION[{label}]: refreshed token must stay "
+                f"bound to the refreshing subject, got {claims.user_id}"
+            )
+            assert claims.tenant_id == str(identity.wholesaler_id), (
+                f"CONTROL_R1_ISOLATION[{label}]: refreshed token must stay "
+                f"bound to the refreshing tenant, got {claims.tenant_id}"
+            )
+            assert claims.tenant_schema == identity.schema, (
+                f"CONTROL_R1_ISOLATION[{label}]: refreshed token must stay "
+                f"bound to the refreshing tenant schema, got {claims.tenant_schema}"
+            )
+    finally:
+        await identity_b.drop()
+        await identity_a.drop()
 
-        claims_a = decode_token(refresh_a.json()["data"]["access_token"])
-        assert claims_a.user_id == str(user_a), (
-            "CONTROL_R1_ISOLATION: refreshed token must stay bound to the "
-            f"refreshing subject, got {claims_a.user_id}"
+
+@pytest.mark.integration
+async def test_r1_red_diagnostic_sku_list_cache_not_tenant_scoped(http_client):
+    """[REGISTERED-RISK DIAGNOSTIC — expected NAMED RED when the sku-list
+    cache is reachable; explicit SKIP when it is not] Identical query keys
+    must not serve one tenant's cached page to another.
+
+    正常对照: the same shared assertion as the DB-isolation control is used
+    (invariant name overridden), so this diagnostic cannot pass on weaker
+    terms than the control.
+    登记风险 (registered, NOT authorized to fix): the sku-list read-through
+    cache key (skus_list:{page}:{size}:{is_active}:{q}) has no tenant
+    dimension. With a reachable cache, tenant B's listing under the SAME key
+    as tenant A's can be served from A's cached page — a cross-tenant read
+    that never touches the database. This node reproduces that shape once,
+    in a bounded way (fresh tenants, a run-unique query token, no other
+    cache traffic), and asserts the CORRECT invariant; today it therefore
+    FAILS with INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED when the cache
+    is reachable (the named RED), and PASSES only if the cache key ever
+    becomes tenant-safe. When the cache is unreachable the premise is absent
+    and the node SKIPs with an explicit reason (never counted as GREEN
+    evidence either way). No cache implementation change is authorized.
+    环境前提: reachable task-owned Redis for the RED shape; unreachable
+    cache → skip (premise absent).
+    执行入口: GET /api/v1/skus with identical params, two tenant tokens,
+    real HTTP stack (cache hit path included).
+    未覆盖范围: any cache namespace other than skus_list:*; write caches.
+    """
+    if not await _sku_list_cache_reachable():
+        pytest.skip(
+            "INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED: premise absent — "
+            "the sku-list cache is unreachable (fail-open), so the "
+            "cross-tenant same-key cache leak cannot be reproduced in this "
+            "run. This diagnostic only means anything with a reachable cache."
         )
-        assert claims_a.tenant_id == str(identity_a.wholesaler_id), (
-            "CONTROL_R1_ISOLATION: refreshed token must stay bound to the "
-            f"refreshing tenant, got {claims_a.tenant_id}"
+    identity_a = await TenantIdentity().create()
+    identity_b = await TenantIdentity().create()
+    try:
+        user_a = await _seed_tenant_user(
+            identity=identity_a, email=f"r1r1-cdiag-a-{uuid.uuid4().hex[:8]}@example.com"
+        )
+        user_b = await _seed_tenant_user(
+            identity=identity_b, email=f"r1r1-cdiag-b-{uuid.uuid4().hex[:8]}@example.com"
+        )
+        shared_code = f"R1CACHEDIAG{uuid.uuid4().hex[:8].upper()}"
+        async with tenant_session(identity_a.schema, identity_a.wholesaler_id) as db:
+            sku_id_a = await seed_sku_with_stock(
+                db, sku_code=shared_code, quantity_on_hand=Decimal("5"),
+                name="CACHE-DIAG-MARKER-TENANT-A",
+            )
+        async with tenant_session(identity_b.schema, identity_b.wholesaler_id) as db:
+            sku_id_b = await seed_sku_with_stock(
+                db, sku_code=shared_code, quantity_on_hand=Decimal("7"),
+                name="CACHE-DIAG-MARKER-TENANT-B",
+            )
+
+        params = {"q": shared_code}  # identical cache key for both tenants
+        listing_a = await http_client.get(
+            "/api/v1/skus", params=params,
+            headers={"Authorization": "Bearer " + _bearer(user_a, identity_a)},
+        )
+        assert listing_a.status_code == 200, (
+            f"cache diagnostic: tenant A listing must succeed, got {listing_a.status_code}"
+        )
+        assert_listing_exactly_own_tenant(
+            listing_a.json(),
+            own_sku_id=str(sku_id_a), own_name_marker="CACHE-DIAG-MARKER-TENANT-A",
+            shared_code=shared_code, label="cache-diag-A",
+            invariant="INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED",
+        )
+        # Same key, NO eviction: the registered risk shape.
+        listing_b = await http_client.get(
+            "/api/v1/skus", params=params,
+            headers={"Authorization": "Bearer " + _bearer(user_b, identity_b)},
+        )
+        assert listing_b.status_code == 200, (
+            f"cache diagnostic: tenant B listing must succeed, got {listing_b.status_code}"
+        )
+        assert_listing_exactly_own_tenant(
+            listing_b.json(),
+            own_sku_id=str(sku_id_b), own_name_marker="CACHE-DIAG-MARKER-TENANT-B",
+            shared_code=shared_code, label="cache-diag-B",
+            invariant="INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED",
         )
     finally:
         await identity_b.drop()
         await identity_a.drop()
+
+
+# ---------------------------------------------------------------------------
+# 11. R1-R1 (CTO F3) DECOUPLED refresh negatives: each rejection branch and
+#     the fault path proven INDEPENDENTLY, over the real HTTP stack.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+async def test_r1_refresh_nonexistent_user_in_active_tenant_principal_branch(http_client):
+    """[CONTROL — expected PASS] Ghost user inside a REAL ACTIVE tenant hits
+    the PRINCIPAL_NOT_FOUND branch (F3.1 decoupling).
+
+    正常对照: tenant and at least one real user exist and the tenant is
+    active — only the subject varies (a user_id with no row). The refusal
+    must come from the subject branch (PRINCIPAL_NOT_FOUND), NOT from the
+    tenant branch (TENANT_NOT_FOUND) that masked this shape in the former
+    combined ghost-tenant-and-user node.
+    目标缺陷: none (control proving the R1 subject-existence branch is
+    reachable on its own).
+    环境前提: real active tenant via TenantIdentity; refresh token carries
+    the real tenant claims and a nonexistent user id.
+    执行入口: POST /api/v1/auth/refresh over the real HTTP stack.
+    未覆盖范围: inactive-user branch (PRINCIPAL_INACTIVE) — the soft-deleted
+    and deactivated paths are covered by the R0 RED nodes above.
+    """
+    identity = await TenantIdentity().create()
+    try:
+        await _seed_tenant_user(
+            identity=identity, email=f"r1r1-ghost-{uuid.uuid4().hex[:8]}@example.com"
+        )
+        ghost_user = uuid.uuid4()
+        response = await _http_refresh(http_client, _refresh(ghost_user, identity))
+        assert_refresh_refused_with_code(
+            response,
+            expected_code="PRINCIPAL_NOT_FOUND",
+            label="CONTROL_R1_REFRESH_GHOST_USER_IN_ACTIVE_TENANT",
+        )
+    finally:
+        await identity.drop()
+
+
+@pytest.mark.integration
+async def test_r1_refresh_subject_db_fault_zero_issuance(http_client, monkeypatch):
+    """[CONTROL — expected PASS] A bounded fault in the subject DB query
+    issues NOTHING (F3.3), and a live subject still refreshes.
+
+    正常对照: with the fault disarmed, the same live subject refreshes 200
+    with a usable pair.
+    目标缺陷: none (control proving the R1 validation fails closed on
+    infrastructure faults: no session may be minted from a half-validated
+    subject).
+    环境前提: the fault is injected at exactly ONE boundary — the
+    `{schema}.users` subject SELECT inside the real dependency-provided
+    session — via app.dependency_overrides on get_db_session (FastAPI's own
+    override mechanism; the route, its real routing and the real wholesaler
+    lookup are untouched). The issuer (create_contextual_token) is wrapped
+    with a counting pass-through. Both instruments are restored before the
+    test ends and live only in this test's process.
+    执行入口: POST /api/v1/auth/refresh over the real HTTP stack.
+    未覆盖范围: faults in the wholesaler (tenant) lookup; timeout-class
+    faults (a bounded immediate exception is used).
+    """
+    import api.v1.auth as auth_routes
+    from api.dependencies import get_db_session
+    from main import app as app_under_test
+
+    identity = await TenantIdentity().create()
+    try:
+        user_id = await _seed_tenant_user(
+            identity=identity, email=f"r1r1-fault-{uuid.uuid4().hex[:8]}@example.com"
+        )
+        fault = {"armed": True, "hits": 0}
+        issuer_calls = {"count": 0}
+
+        real_issuer = auth_routes.create_contextual_token
+
+        def counting_issuer(*args, **kwargs):  # noqa: ANN001
+            issuer_calls["count"] += 1
+            return real_issuer(*args, **kwargs)
+
+        monkeypatch.setattr(auth_routes, "create_contextual_token", counting_issuer)
+
+        class _FaultingExecuteSession:
+            """Delegating proxy: real session; only the subject SELECT faults."""
+
+            def __init__(self, session):
+                self._session = session
+
+            def __getattr__(self, name):
+                return getattr(self._session, name)
+
+            async def execute(self, statement, *args, **kwargs):  # noqa: ANN001
+                sql = str(statement)
+                if ".users" in sql and "is_active" in sql:
+                    fault["hits"] += 1
+                    raise RuntimeError("r1r1 bounded subject-query fault")
+                return await self._session.execute(statement, *args, **kwargs)
+
+        async def faulting_db_session():
+            async for session in get_db_session():
+                if fault["armed"]:
+                    yield _FaultingExecuteSession(session)
+                else:
+                    yield session
+
+        app_under_test.dependency_overrides[get_db_session] = faulting_db_session
+        try:
+            response = await _http_refresh(http_client, _refresh(user_id, identity))
+        finally:
+            app_under_test.dependency_overrides.pop(get_db_session, None)
+
+        assert fault["hits"] >= 1, (
+            "CONTROL_R1_REFRESH_SUBJECT_DB_FAULT: harness fault — the bounded "
+            "subject-query fault never fired, so a no-issuance verdict would "
+            "be vacuous."
+        )
+        assert_refresh_fault_carries_no_issuance(
+            response,
+            issuer_calls=issuer_calls["count"],
+            label="CONTROL_R1_REFRESH_SUBJECT_DB_FAULT",
+        )
+
+        # Control: the same live subject with the fault disarmed refreshes.
+        response_ok = await _http_refresh(http_client, _refresh(user_id, identity))
+        assert response_ok.status_code == 200, (
+            "CONTROL_R1_REFRESH_SUBJECT_DB_FAULT: with the fault disarmed the "
+            f"live subject must still refresh (200), got {response_ok.status_code}"
+        )
+        assert response_ok.json()["data"]["access_token"], (
+            "CONTROL_R1_REFRESH_SUBJECT_DB_FAULT: the disarmed refresh must "
+            "issue an access token"
+        )
+    finally:
+        await identity.drop()

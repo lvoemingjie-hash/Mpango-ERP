@@ -1,0 +1,103 @@
+SKIPPED [1] tests\test_alembic_migrations.py:41: Requires running Alembic CLI - integration test
+SKIPPED [1] tests\test_alembic_migrations.py:50: Requires running Alembic CLI - integration test
+SKIPPED [1] tests\test_alembic_migrations.py:59: Requires running Alembic CLI - integration test
+SKIPPED [2] tests\test_dc11t4h_receivable_collection_integrity.py:823: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for migration database tests
+SKIPPED [1] tests\test_dc11t4h_receivable_collection_integrity.py:855: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for migration database tests
+SKIPPED [1] tests\test_dc11t4h_receivable_collection_integrity.py:874: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for migration database tests
+SKIPPED [1] tests\test_dc11t4h_receivable_collection_integrity.py:924: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for migration database tests
+SKIPPED [1] tests\test_dc11t4h_receivable_collection_integrity.py:976: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for migration database tests
+SKIPPED [1] tests\test_payments_schema_contract.py:304: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:307: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:312: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:315: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:320: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:325: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:542: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:545: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:550: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:553: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:558: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:561: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:566: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:571: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:576: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:583: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:589: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:597: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_payments_schema_contract.py:602: set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification
+SKIPPED [1] tests\test_platform_p17dc_backup_migration.py:211: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p17dc_backup_migration.py:243: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p17dc_backup_migration.py:263: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p17dc_backup_migration.py:275: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p17dc_backup_migration.py:291: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p17dc_backup_migration.py:302: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p17dc_backup_migration.py:318: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p17dc_backup_migration.py:397: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p17dc_backup_migration.py:437: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p21_durable_approval_migration.py:227: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p21_durable_approval_migration.py:267: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p21_durable_approval_migration.py:290: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p21_durable_approval_migration.py:303: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p21_durable_approval_migration.py:322: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_platform_p21_durable_approval_migration.py:334: set MPANGO_ALLOW_TEMP_DB_CREATE=1 for disposable database tests
+SKIPPED [1] tests\test_route_coverage.py:46: docs/contracts/openapi.yaml not yet generated
+SKIPPED [1] tests\test_route_coverage.py:164: docs/contracts/openapi.yaml not yet generated
+SKIPPED [1] tests\test_route_coverage.py:171: docs/contracts/openapi.yaml not yet generated
+SKIPPED [1] tests\test_s3_profiling.py:96: SQL profiling disabled in current environment (ENABLE_SQL_PROFILING != true)
+SKIPPED [1] tests\test_s3_profiling.py:111: SQL profiling disabled in current environment (ENABLE_SQL_PROFILING != true)
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:290: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:315: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:322: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:328: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:345: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:367: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:581: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:585: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:589: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:593: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:597: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:601: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:605: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:613: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:617: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:621: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:625: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:643: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s3b_fresh_tenant_live_runtime_proof.py:660: S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory_stocks', 'ledger_entries', 'order_items', 'orders', 'payments', 'permissions', 'retailer_prices', 'role_permissions', 'roles', 'rpt_cash_flow_daily', 'rpt_receivables_summary', 'skus', 'user_roles', 'users']
+SKIPPED [1] tests\test_s5c_runtime_sku_import_http_integration.py:54: runtime import HTTP proof requires MPANGO_RUNTIME_BASE_URL, MPANGO_RUNTIME_TEST_EMAIL, MPANGO_RUNTIME_TEST_PASSWORD, MPANGO_RUNTIME_TENANT_ID
+SKIPPED [1] tests\test_s5c_runtime_sku_import_http_integration.py:125: runtime import HTTP proof requires MPANGO_RUNTIME_BASE_URL, MPANGO_RUNTIME_TEST_EMAIL, MPANGO_RUNTIME_TEST_PASSWORD, MPANGO_RUNTIME_TENANT_ID
+XFAIL tests/test_phase5_order_payment.py::TestRouteLevelOrderPaymentMonkeypatch::test_route_overpayment_rejected_with_400 - Overpayment test blocked by mock complexity: structured path calls PaymentRepository() which must return prior_paid=Decimal('3000') but patch chain OrderService->transition->db.execute is too brittle with MagicMock; seam proves 200-level behavior works for legacy+partial+structured paths, overpayment check logic verified in unit tests
+XFAIL tests/test_request_validation.py::TestRequestValidation::test_user_create_rejects_missing_email - RBAC middleware returns 403 before validation on protected endpoints
+XFAIL tests/test_request_validation.py::TestRequestValidation::test_order_create_rejects_empty_items - RBAC middleware returns 403 before validation on protected endpoints
+XFAIL tests/test_request_validation.py::TestRequestValidation::test_order_item_rejects_invalid_quantity - RBAC middleware returns 403 before validation on protected endpoints
+XFAIL tests/test_request_validation.py::TestRequestValidation::test_validation_error_has_structured_response - Login endpoint returns app-specific error format, not FastAPI default 422
+XFAIL tests/test_request_validation.py::TestQueryParameterValidation::test_list_users_rejects_invalid_page - RBAC middleware returns 403 before validation on protected endpoints
+XFAIL tests/test_request_validation.py::TestQueryParameterValidation::test_list_users_rejects_excessive_size - RBAC middleware returns 403 before validation on protected endpoints
+XFAIL tests/test_route_coverage.py::TestOpenAPIRouteCoverage::test_stub_endpoints_return_501 - Endpoints are implemented (not stubs) and RBAC middleware returns 403 for some
+XFAIL tests/test_route_coverage.py::TestRoutePathParameters::test_user_id_path_parameter_accepted - RBAC middleware returns 403 before reaching endpoint logic
+XFAIL tests/test_route_coverage.py::TestRoutePathParameters::test_order_id_path_parameter_accepted - RBAC middleware returns 403 before reaching endpoint logic
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/orders-Orders] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/skus-Products/SKUs] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/inventory/stocks-Stock] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/payments-Payments] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/pricing/prices-Pricing] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+FAILED tests/test_dc11t2_async_test_utils.py::test_temp_db_creates_and_drops_exact_database
+FAILED tests/test_dc11t2_async_test_utils.py::test_temp_db_terminates_own_role_session_and_drops
+FAILED tests/test_dc11t2_async_test_utils.py::test_temp_db_waits_out_transient_foreign_session
+FAILED tests/test_dc11t2_async_test_utils.py::test_temp_db_persistent_foreign_session_fails_closed_sanitized
+FAILED tests/test_dc11t2_async_test_utils.py::test_temp_db_original_exception_preserved_by_identity
+FAILED tests/test_dc11t2_async_test_utils.py::test_temp_db_body_and_cleanup_failure_raise_exception_group
+FAILED tests/test_dc11t4c_reporting_bootstrap_contract.py::test_public_alembic_alone_preserves_tenant_schema_set
+FAILED tests/test_dc12a_r2_credential_email_links.py::TestSettingsValidation::test_none_allowed_in_test
+FAILED tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_reset_link_legacy_shape_unchanged_without_code
+FAILED tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_reset_link_with_canonical_code_keeps_fragment_only
+FAILED tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_forgot_password_email_carries_db_canonical_uppercase_code
+FAILED tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_actual_alembic_035_to_036_failure_rolls_back_then_repaired_upgrade_noops
+FAILED tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_red_concurrent_full_return_single_economic_effect
+FAILED tests/test_s4g_migration_infrastructure_hardening.py::test_alembic_upgrade_head_creates_wide_version_table_on_fresh_database
+FAILED tests/test_s4g_migration_infrastructure_hardening.py::test_alembic_upgrade_head_widens_existing_varchar32_version_table
+FAILED tests/test_s4g_migration_infrastructure_hardening.py::test_migration_017_creates_retailer_prices_on_fresh_tenant_schema
+FAILED tests/test_s4g_migration_infrastructure_hardening.py::test_migration_017_reconciles_compatible_preexisting_retailer_prices
+FAILED tests/test_s4g_migration_infrastructure_hardening.py::test_migration_017_fails_closed_for_incompatible_retailer_prices
+= 18 failed, 3692 passed, 69 skipped, 15 xfailed, 12564 warnings, 43 errors in 1427.26s (0:23:47) =
+FROZEN_CAND_EXIT=1

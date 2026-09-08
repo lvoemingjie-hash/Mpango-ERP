@@ -136,3 +136,28 @@ caps=(login=t, super/createdb/createrole/replication=f)、成员关系 0；正�
 NEXT_GATE=KILO_DB_FIXTURE_ROLE_SOURCE_AND_REAL_LIFECYCLE_REVIEW。本轮未修改产品/业务合同、
 未合并、未部署、未跑浏览器、未重跑全量后端、未重执行 V3 正式矩阵。新候选改变测试夹具，
 Kilo 对旧 SHA 的 PASS 不自动覆盖。
+
+## 12. 完整自查（条目化，PASS / NOT_PROVEN）
+
+> 诚实记录：指令要求"提交前"完成本节；实际产出晚于候选推送（5ac27c74），作为事后补全的
+> 修订提交并入。实质核查动作（范围/编码/diff-check/秘密扫描/基线保留/残留/变异恢复）均在
+> 提交前执行并散记于 §6/§9；本节将其条目化并补充两项目后核验（blob↔运行字节双哈希、
+> 提交后工作树状态）。不以本节冒充"提交前已完成"。
+
+| 维度 | 判定 | 证据位置 |
+|---|---|---|
+| 修复 1-8 逐一对应真实入口 | PASS | §2/§4/§5；run3/8/10（新文件 10/10、正控单节点、四文件聚焦）；负控 run6/7 |
+| 正常对照存在且通过 | PASS | run8 F1 EVIDENCE 两身份行 + 完整生命周期；run10 83 PASS |
+| 负面路径不被无关守卫遮蔽 | PASS | 错目标零子进程启动（计数器仅拦 alembic、docker inspect 真跑）；具名分类断言（code 级）；guards 3 反例 |
+| 事务与资源：失败回滚/任务终结/零残留/流水不折叠 | PASS | run10 后残留 t_%=0/wholesalers=0/retailers=0；R0 对照节点保持；运行角色零成员实证 |
+| 回归证据绑定精确字节 | PASS | §6 run10（最终字节）+ 本节事后双哈希：support blob+CRLF==运行字节（数值一致），guards/新文件 authored-LF（blob(LF)==运行字节，数值一致）；提交恰 4 路径、工作树干净、baseline `f49c8622…` 不变 |
+| 范围：无产品/冻结面漂移 | PASS | `git diff 76ab895f` 恰 4 路径；产品/conftest/pw1r3 diff 为空（§1） |
+| 发布：diff-check/编码/真实 hook/清单一致 | PASS | §9 + detect_secrets_run.txt（canary rc=1、4 路径 rc=0）；blob UTF-8/无 BOM；提交 stat=4 路径 |
+| F1 Redis 51 节点保留 | PASS | collect 前后差集=∅；run5/run10 guards 54/54 |
+| 变异语义化且字节恢复 | PASS | §6 M1/M2/M3；恢复 sha256 `66f40141…` |
+| 全量后端在角色分离夹具下 | NOT_PROVEN（本轮指令禁止重跑全量；属后续 V3/独立验证） |
+| 迁移身份"角色属性级"弱化 | NOT_PROVEN（PG16 结构性禁止降权 bootstrap 超级用户，§7；以只读库载体证同一拒绝链） |
+| 正式矩阵 A/B/C | NOT_PROVEN（V3 范畴；本轮明确不重执行） |
+| V3 原始 matrix_A.log/preflight.json 字节 | NOT_PROVEN（本机不存在，§10；仅提供 blob 定位与脱敏副本） |
+| reporting 身份只读行为 | NOT_PROVEN（011 合同，属其自身套件） |
+| Kilo 独立复核 | NOT_PROVEN（NEXT_GATE 本身） |

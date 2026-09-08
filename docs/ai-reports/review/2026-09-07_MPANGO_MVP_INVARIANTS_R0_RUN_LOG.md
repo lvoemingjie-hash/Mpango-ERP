@@ -14,7 +14,7 @@
 
 | # | 范围 | 结果 | 原因/处置 |
 |---|---|---|---|
-| 1 | guards 文件 | 25 PASS | 共享 `assert_adjustment_chain` 的 9 个正反例首跑即通过（含 CTO 三行折叠反例：折叠快照经 ALGEBRA 拒绝、原始三行经 SET 拒绝）。 |
+| 1 | guards 文件 | 25 PASS | 共享 `assert_adjustment_chain` 的 9 个正反例首跑即通过（R2 自造链式重复坏快照：折叠快照经 ALGEBRA 拒绝、原始三行经 SET 拒绝。**2026-09-08 R1 轮按 CTO O1 更正**：该组行并非 CTO 原反例；CTO 精确原反例 A(17→22)×2、B(10→17) 的折叠形态与合法 B→A 链不可区分、必须接受，已另立对照补入）。 |
 | 2 | concurrency 全文件 | 4 FAILED / 3 PASSED | 两个夹具缺陷：① 单次调整对照残留旧 dict API（`.values()` 对 list 失效）→ 改列表索引；② **新对照阶段 3 自身犯了 F1 同型错误**——`pytest.raises` 放在会话上下文内部捕获 RuntimeError，上下文正常退出走了 commit，探针行存活。处置：raises 移到事务上下文之外（异常逃逸→回滚→再捕获），并在测试 docstring 记录该教训。两个 RED 保持原命名原值。 |
 | 3 | concurrency 全文件重跑 | 5 PASSED / 2 FAILED（预期 RED） | F1 回归对照（拒绝请求暂存写入零残留 + 后续请求可提交 + 未知异常传播回滚）通过。 |
 | 4 | revocation 全文件 | 5 命名 RED + 3 对照 PASS | 与 R1 一致（本轮未改该文件）。 |
@@ -63,7 +63,7 @@ PASSED tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_logic_rej
 PASSED tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_accepts_b_then_a_serial_order          (10→17→22)
 PASSED tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_accepts_a_then_b_serial_order          (10→15→22)
 PASSED tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_rejects_duplicate_reason_rows          (CTO F2 三行原始形态)
-PASSED tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_rejects_duplicate_collapsed_to_two     (dict 折叠后仍拒绝)
+PASSED tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_rejects_duplicate_collapsed_to_two     (R2 自造链式重复坏快照；R1 轮按 CTO O1 更名并更正措辞)
 PASSED tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_rejects_unknown_reason
 PASSED tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_rejects_missing_movement
 PASSED tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_rejects_wrong_final_value

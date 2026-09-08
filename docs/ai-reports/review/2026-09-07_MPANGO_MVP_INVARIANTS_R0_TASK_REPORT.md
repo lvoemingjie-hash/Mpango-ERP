@@ -11,7 +11,12 @@
 >   库存断言提取为共享助手 `assert_adjustment_chain`（support 模块），真实并发测试
 >   与 guards 正负对照调用同一实现；无序链检查同时接受 B→A（10→17→22）与
 >   A→B（10→15→22）两种合法串行序；重复行/重复 reason/未知 reason/缺流水/
->   错误终值/单行代数错误/丢失更新形态全部拒绝（含 CTO 离线诊断的三行折叠反例）。
+>   错误终值/单行代数错误/丢失更新形态全部拒绝。
+>   **（2026-09-08 R1 轮按 CTO O1 更正）**R2 所用的三行 A(10→15)/A(15→20)/B(20→27)
+>   是自造的额外坏快照而非 CTO 原反例；其折叠形态恰好因"无行始于初值"被拒绝，
+>   不代表折叠普遍可识别。CTO 精确原反例为 A(17→22)×2、B(10→17)、final=22——
+>   原始三行经 SET 拒绝；但其 dict 折叠形态与合法 B→A 链完全相同、必须被接受，
+>   即折叠后信息不可恢复，这正是读取 helper 必须保留原始行的原因。
 > 修订历史：R0（29bd720d）→ R1（a511369e）→ 本版 R2；均普通提交，未 amend/rebase/force-push。
 > R1 轮已获 CTO 接受的改进（归属守卫、JWT 实证、措辞修正、七个产品 RED）全部保留。
 
@@ -68,7 +73,7 @@
 | guards 3 归属负控 + 9 JWT 工厂 + 4 退货契约 | 不变 |
 | guards `assertion_logic_accepts_correct_adjustment_algebra`（平行实现正例） | 删除，替换为 `assertion_chain_accepts_b_then_a_serial_order` + `assertion_chain_accepts_a_then_b_serial_order`（调共享助手） |
 | guards `assertion_logic_rejects_lost_update_algebra`（平行实现反例） | 删除，替换为 `assertion_chain_rejects_lost_update_journal`（调共享助手） |
-| （无） | +7 反例：`rejects_duplicate_reason_rows`（CTO 诊断三行原始形态）、`rejects_duplicate_collapsed_to_two`（dict 折叠后仍拒绝）、`rejects_unknown_reason`、`rejects_missing_movement`、`rejects_wrong_final_value`、`rejects_wrong_single_row_algebra`（以上全部调共享助手，无平行实现） |
+| （无） | +7 反例：`rejects_duplicate_reason_rows`（重复 reason 三行）、`rejects_duplicate_collapsed_to_two`（R2 自造链式重复坏快照；**R1 轮按 CTO O1 更正**：非 CTO 原反例，已更名 `rejects_chained_duplicate_reason_rows`，CTO 精确原反例 A(17→22)×2、B(10→17) 另立对照）、`rejects_unknown_reason`、`rejects_missing_movement`、`rejects_wrong_final_value`、`rejects_wrong_single_row_algebra`（以上全部调共享助手，无平行实现） |
 
 计数由 R1 的"25 PASS + 7 RED（32 节点）"变为 R2 的"**33 PASS + 7 产品命名 RED（40 节点）**"。
 
@@ -124,7 +129,7 @@ guards 文件 6 节点直接验证断言与分类逻辑本身（合成输入，�
 ## 6b. 库存调整链共享助手（R2/F2）
 
 `assert_adjustment_chain(movements, initial, final_observed, expected)` 位于 support 模块，是库存调整不变量的**唯一实现**：真实并发 RED 测试（数据库原始行）与 guards 全部 9 个正反例（合成行）调用同一函数，无任何平行断言副本。检查顺序：
-1. 原始行数 == 预期调整数（重复/缺失行在进入代数前即拒绝——闭合 CTO 离线诊断的三行折叠 false-green）；
+1. 原始行数 == 预期调整数（重复/缺失行在进入代数前即拒绝——闭合 CTO 离线诊断揭示的"按 reason 折叠掩盖重复行"false-green；**R1 轮按 CTO O1 补注**：精确原反例 A(17→22)×2、B(10→17) 的折叠形态与合法 B→A 链不可区分，故防线必须在读取侧保留原始行）；
 2. 每个 reason 恰好一次、无未知 reason（重复身份=重复经济效果）；
 3. 每行 before+delta==after；delta 多重集匹配；
 4. 无序链：恰一行起点为 initial，其终点=initial+delta=另一行起点，另一行终点==实测终值（同时接受 B→A 与 A→B 两种合法串行序；丢失更新形态"两行同起点 10"被拒）；

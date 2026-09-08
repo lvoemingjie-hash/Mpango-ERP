@@ -411,11 +411,17 @@ class InventoryService:
         if stock is None:
             stock = await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
 
-        # Lock row
+        # Lock row. populate_existing is required: the unlocked read above has
+        # already placed this row in the session's identity map, and without a
+        # refresh the ORM keeps serving those STALE attributes even after the
+        # row lock is granted — a concurrent committer's update would be
+        # silently overwritten (lost update). Same pattern as
+        # _locked_stock_by_sku_code/_locked_stock_by_sku_id.
         result = await db.execute(
             select(InventoryStock)
             .where(InventoryStock.id == stock.id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         stock = result.scalar_one()
 

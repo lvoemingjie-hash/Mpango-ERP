@@ -12,17 +12,25 @@ themselves, so their verdicts are evidence, not assumption:
   whitespace variants — must yield MockAuthStrategy, and staging variants
   must yield JwtAuthStrategy. This is what makes the revocation suite's
   "we exercised real JWT" claim checkable instead of an env-string guess.
-- Assertion-logic controls (R1 acceptance effectiveness; R2 per CTO F2):
-  the concurrent return invariants are fed synthetic CORRECT outcomes —
-  both valid fix shapes (serialize the duplicate, or reject it with the
-  documented 409) and a correct single-effect economics snapshot — and must
-  ACCEPT them; broken shapes must be REJECTED. The adjustment invariant is
-  validated through the REAL shared assert_adjustment_chain helper (the same
-  function the concurrent RED test runs against database rows): legal
-  B→A and A→A→… serial orders accepted (B→A: 10→17→22; A→B: 10→15→22);
-  duplicate-reason rows, dict-collapsed duplicates, unknown reasons, missing
-  movements, wrong finals, wrong single-row algebra and the lost-update
-  journal all REJECTED. Test-level controls only — not a product-fix proof.
+- Assertion-logic controls (R1 acceptance effectiveness; R2 per CTO F2;
+  wording corrected in R1 per CTO O1 2026-09-08): the concurrent return
+  invariants are fed synthetic CORRECT outcomes — both valid fix shapes
+  (serialize the duplicate, or reject it with the documented 409) and a
+  correct single-effect economics snapshot — and must ACCEPT them; broken
+  shapes must be REJECTED. The adjustment invariant is validated through
+  the REAL shared assert_adjustment_chain helper (the same function the
+  concurrent RED test runs against database rows): legal B→A and A→B serial
+  orders accepted (B→A: 10→17→22; A→B: 10→15→22); duplicate-reason rows,
+  unknown reasons, missing movements, wrong finals, wrong single-row algebra
+  and the lost-update journal all REJECTED. CTO O1 correction: the PRECISE
+  original three-row counterexample A(17→22)×2 + B(10→17) has its own
+  control — raw rows rejected on the movement-set check, while its
+  dict-folded snapshot is identical to the legal B→A chain and MUST be
+  accepted (once folded, the duplicate is unrecoverable — which is exactly
+  why the read helper must preserve raw rows). The R2-invented chained
+  duplicate snapshot A(10→15)/A(15→20)/B(20→27) is kept as an extra bad
+  snapshot under a corrected name. Test-level controls only — not a
+  product-fix proof.
 
 No product code is imported beyond auth.factory / the guard function; no
 database connection is opened.
@@ -268,11 +276,11 @@ def test_r0_assertion_chain_accepts_a_then_b_serial_order():
 
 
 def test_r0_assertion_chain_rejects_duplicate_reason_rows():
-    """[ASSERTION CONTROL] (CTO F2 false-green) Three raw rows, A duplicated.
-
-    The CTO diagnostic shape: raw delta sum 17, dict-by-reason would collapse
-    this to two rows and wrongly accept. The shared helper must reject on the
-    RAW row count before any algebra.
+    """[ASSERTION CONTROL] Three raw rows with a duplicated reason are
+    rejected on the row-count check before any algebra (duplicate identity =
+    duplicate economic effect). The R2 shape (chained duplicate values) —
+    NOT the CTO's original counterexample, whose exact rows have their own
+    control since the R1/CTO-O1 wording correction.
     """
     from tests.mpango_invariants_r0_support import assert_adjustment_chain
 
@@ -287,20 +295,26 @@ def test_r0_assertion_chain_rejects_duplicate_reason_rows():
         )
 
 
-def test_r0_assertion_chain_rejects_duplicate_collapsed_to_two():
-    """[ASSERTION CONTROL] (CTO F2) Exact diagnostic rows: A(10→15), A(15→20),
-    B(20→27). A {reason: row} dict collapses these to A(15→20) + B(20→27) —
-    two plausible-looking rows whose deltas still sum with the initial to the
-    observed final. The shared helper rejects the collapsed snapshot anyway:
-    no row starts at the initial value, so the order-free chain check fails
-    (INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA). Feeding the helper the RAW three
-    rows instead rejects even earlier on INVARIANT_R0_STOCK_MOVEMENT_SET.
+def test_r0_assertion_chain_rejects_chained_duplicate_reason_rows():
+    """[ASSERTION CONTROL] (R2 synthetic bad snapshot; wording corrected in
+    R1 per CTO O1) Chained duplicate rows: A(10→15), A(15→20), B(20→27).
+
+    These three rows are an R2-invented EXTRA bad snapshot, NOT the CTO's
+    original counterexample (see test_r0_assertion_chain_exact_cto_counterexample_rows
+    for the precise original). Their distinctive property: the old
+    {reason: row} dict collapse leaves A(15→20) + B(20→27) — no row starts at
+    the initial value 10 — so the collapsed snapshot happens to be rejected
+    by the order-free chain check (INVARIANT_R0_STOCK_MOVEMENT_ALGEBRA). This
+    rejection is a property of THIS shape only and must not be cited as
+    proof that folding is harmless in general: the CTO's original counterexample
+    folds into a shape the invariant MUST accept (see the exact-counterexample
+    control). Raw rows are rejected earlier on INVARIANT_R0_STOCK_MOVEMENT_SET.
     """
     from tests.mpango_invariants_r0_support import assert_adjustment_chain
 
     rows = [
         _row(_REASON_A, 5, 10, 15),
-        _row(_REASON_A, 5, 15, 20),
+        _row(_REASON_A, 5, 15, 20),  # duplicate identity — must be rejected
         _row(_REASON_B, 7, 20, 27),
     ]
     # Simulate the old dict collapse: what a {reason: row} snapshot held.
@@ -318,6 +332,51 @@ def test_r0_assertion_chain_rejects_duplicate_collapsed_to_two():
         assert_adjustment_chain(
             rows, initial=Decimal("10"), final_observed=Decimal("27"), expected=_EXPECTED
         )
+
+
+def test_r0_assertion_chain_exact_cto_counterexample_rows():
+    """[ASSERTION CONTROL] (CTO O1, 2026-09-08 review) The PRECISE original
+    three-row counterexample: A(17→22, +5), duplicate A(17→22, +5),
+    B(10→17, +7), final observed 22.
+
+    Two properties, both asserted:
+
+    1. The RAW three rows are rejected on INVARIANT_R0_STOCK_MOVEMENT_SET
+       (row count / duplicate reason) — duplicate economic effects must be
+       caught before any algebra.
+    2. If the rows are first FOLDED into a {reason: row} dict — the exact
+       information loss the R1 read helper used to perform — the surviving
+       snapshot A(17→22) + B(10→17) is INDISTINGUISHABLE from the legal B→A
+       serial chain and the shared helper MUST ACCEPT it. This is not a
+       helper defect: once the third row is destroyed no assertion can
+       recover it. It is precisely why adjustment_movements returns raw
+       rows (and why test_r1_control_adjustment_read_helper_preserves_duplicate_rows
+       pins that property against the real database).
+
+    Economic expectation unchanged (initial 10, deltas {5,7}, final 22).
+    """
+    from tests.mpango_invariants_r0_support import assert_adjustment_chain
+
+    rows = [
+        _row(_REASON_A, 5, 17, 22),
+        _row(_REASON_A, 5, 17, 22),  # duplicate — same stale post-B value
+        _row(_REASON_B, 7, 10, 17),
+    ]
+    with pytest.raises(AssertionError, match="INVARIANT_R0_STOCK_MOVEMENT_SET"):
+        assert_adjustment_chain(
+            rows, initial=Decimal("10"), final_observed=Decimal("22"), expected=_EXPECTED
+        )
+
+    # The folded snapshot is exactly the legal B→A chain (10→17→22): the
+    # helper must accept it — documenting that folding defeats the invariant.
+    folded = {r["reason"]: r for r in rows}
+    assert len(folded) == 2, "fixture self-check: folding must lose one row"
+    assert_adjustment_chain(
+        list(folded.values()),
+        initial=Decimal("10"),
+        final_observed=Decimal("22"),
+        expected=_EXPECTED,
+    )
 
 
 def test_r0_assertion_chain_rejects_unknown_reason():

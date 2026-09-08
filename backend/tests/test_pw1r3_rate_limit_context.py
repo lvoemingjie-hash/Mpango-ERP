@@ -132,6 +132,13 @@ async def rl_tenant(rl_auth_schema):
 
     Every test starts with a deterministic, untouched tenant bucket
     (`rate_limit:tenant:{tenant_id}:{user_id}`) and a fresh active user row.
+
+    R1 auth-stock fix alignment (2026-09-08): resolve_tenant_context now also
+    requires an existing, non-deleted, ACTIVE public.wholesalers row for the
+    token's tenant (platform-registry liveness — a tenant outside the registry
+    must fail closed). This fixture therefore also provisions one exact,
+    task-owned wholesalers row (status='active') and removes it by exact id on
+    teardown; the rate-limit contract under test is otherwise unchanged.
     """
     tenant_id = str(uuid.uuid4())
     user_id = str(uuid.uuid4())
@@ -144,8 +151,27 @@ async def rl_tenant(rl_auth_schema):
             {"id": user_id, "email": f"pw1r3-rl-{uuid.uuid4().hex[:6]}@test.dev",
              "pw": hash_password("pw1r3-not-a-real-credential"), "name": "PW1R3 RL User"},
         )
+        await session.execute(
+            text(
+                "INSERT INTO public.wholesalers (id, code, name, status, is_deleted) "
+                "VALUES (:wid, :code, :name, 'active', FALSE)"
+            ),
+            {
+                "wid": tenant_id,
+                "code": f"PW1R3RL{uuid.uuid4().hex[:10].upper()}",
+                "name": "PW1-R3 synthetic rate-limit tenant",
+            },
+        )
         await session.commit()
-    return {"schema": RL_SCHEMA, "tenant_id": tenant_id, "user_id": user_id}
+    try:
+        yield {"schema": RL_SCHEMA, "tenant_id": tenant_id, "user_id": user_id}
+    finally:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("DELETE FROM public.wholesalers WHERE id = :wid"),
+                {"wid": tenant_id},
+            )
+            await session.commit()
 
 
 @pytest_asyncio.fixture(autouse=True)

@@ -1,32 +1,28 @@
-"""MPANGO-MVP-INVARIANTS-R0-R1 — concurrency regression candidates (known-RED).
+"""MPANGO-MVP-INVARIANTS-R0/R1 — concurrency regression tests.
 
-R1 revision of the R0 candidate (same product invariants on frozen baseline
-bd2373cbfeafde07f1771aba2089f0d1b5f0cd3f). Changes in R1:
+R1 fix round (branch zcode/mpango-mvp-invariants-r1-auth-stock-fix-2026-09-08),
+on the accepted R0-R2 known-RED baseline (1485c3f5). Fix state of the two
+product counterexample nodes in this file:
 
-- Every run proves the database belongs to this task BEFORE any write
-  (session fixture `r0_task_database`: declared container + owner label +
-  image/port/db/user match + engine/live-probe agreement + explicit-URL
-  migration to the baseline head). Loopback alone is not authorization.
-- Concurrent-return test collects BOTH request outcomes. A duplicate return
-  may be rejected by the documented contract (409 INVALID_STATE_TRANSITION)
-  — acceptance of that explicit rejection is asserted — but the economic
-  assertions (refund, restock, final quantity exactly once) ALWAYS run and
-  are never skipped because of an expected 409. Unknown exceptions propagate.
-- Concurrent-adjustment movements are identified by the unique journal reason
-  each adjustment was written with (never by timestamp order). The algebra is
-  order-free: per-row before+delta=after, deltas {5,7}, exactly one row
-  starting from the initial value and one from the other's committed result,
-  total delta and final stock must agree.
-- Background work is supervised (timeout -> cancel -> await); transactions
-  roll back and sessions close before test data is dropped; partial tenant
-  creation is cleaned up; dedicated harness-safety tests cover the
-  barrier-timeout and task-exception paths.
+- test_r0_red_concurrent_stock_adjustments_no_lost_update: FIXED in R1 —
+  InventoryService.adjust_stock's locked re-select now refreshes the
+  identity-map object (populate_existing), so the post-lock row state is
+  what the adjustment computes from. The node keeps its R0 name (historical
+  identifier) and its exact assertions; expected verdict is now PASS.
+- test_r0_red_concurrent_full_return_single_economic_effect: NOT fixed and
+  STILL EXPECTED RED (named known-unfixed) — the return route's unlocked
+  pre-read + OrderService.transition/restock_on_return re-select without
+  populate_existing remain, by R1 directive the duplicate-return economics
+  is out of scope. It must stay listed as a known RED, never silently
+  skipped or re-expected.
 
-THIS FILE IS A REGRESSION CANDIDATE, NOT A GREEN MERGE CANDIDATE:
-tests marked [TARGET-DEFECT RED] assert the business invariant that the
-external review showed the baseline violates. They are expected to FAIL
-(named RED) until the product is fixed. Never edit the expectation to make
-them pass — fix the product instead.
+R1 addition: test_r1_control_adjustment_read_helper_preserves_duplicate_rows —
+the DB-level proof that adjustment_movements returns RAW rows (a synthetic
+duplicate-reason journal row survives the read helper and is rejected by the
+shared assert_adjustment_chain), closing CTO O1's row-count-preservation
+requirement end-to-end.
+
+Never edit an expectation to make a test pass — fix the product instead.
 
 External evidence (AI_REPORT_INBOX/external-architecture-2026-09-06):
 - counterexamples.json: concurrent_stock_adjustment actual=15 (expected 22)
@@ -581,17 +577,20 @@ async def test_r0_control_rejected_return_rolls_back_staging_write():
 
 @pytest.mark.integration
 async def test_r0_red_concurrent_stock_adjustments_no_lost_update():
-    """[TARGET-DEFECT RED] Inventory 10 + concurrent +7 and +5 must be 22.
+    """[R0 RED → expected PASS after the R1 fix] Inventory 10 + concurrent
+    +7 and +5 must be 22.
 
     Invariant (REVIEW §2.1 fix goal): every adjustment computes from the
     post-lock latest value; two successful adjustments both survive; both
     movement rows and the current value stay mutually consistent.
 
     正常对照: single-adjustment control + the two harness-safety controls.
-    目标缺陷: inventory_service.adjust_stock re-selects the stock row with
-    FOR UPDATE but without populate_existing, so the ORM identity map keeps
-    the stale pre-lock quantity and the second committer's increment is
-    silently overwritten (external counterexample: 10 +7 +5 → 15).
+    目标缺陷(已修复): inventory_service.adjust_stock re-selected the stock row
+    with FOR UPDATE but without populate_existing, so the ORM identity map
+    kept the stale pre-lock quantity and the second committer's increment was
+    silently overwritten (external counterexample: 10 +7 +5 → 15). R1 fix:
+    the locked re-select now carries populate_existing (the module's own
+    _locked_stock_by_sku_code pattern).
     环境前提: two real sessions/connections; barrier = asyncio.Event set
     inside a repository read wrapper (timing control only — the wrapper never
     alters SQL results).
@@ -608,7 +607,7 @@ async def test_r0_red_concurrent_stock_adjustments_no_lost_update():
     serial orders (A→B: 10→15, 15→22; B→A: 10→17, 17→22) against the
     observed final stock. Timestamps are never used to infer order.
 
-    Expected RED failure names:
+    Pre-fix RED failure names (kept verbatim as the regression contract):
       INVARIANT_R0_STOCK_LOST_UPDATE — final on-hand must be 22.00
       INVARIANT_R0_STOCK_MOVEMENT_SET — exactly two rows, each reason once
           (duplicates/missing/unknown rejected)
@@ -741,20 +740,27 @@ async def test_r0_control_single_full_return_single_economic_effect():
 
 @pytest.mark.integration
 async def test_r0_red_concurrent_full_return_single_economic_effect():
-    """[TARGET-DEFECT RED] One full return executed twice concurrently.
+    """[TARGET-DEFECT RED — STILL EXPECTED RED, known unfixed in R1] One full
+    return executed twice concurrently.
 
     Invariant (REVIEW §2.3 fix goal): at most one economic effect per real
     return — no duplicate refund posting, no duplicate stock restoration —
     regardless of request interleaving.
 
+    R1 directive scope: this node is NOT fixed in this round (duplicate-return
+    economics is out of scope) and must keep failing as a named known-RED.
+    If it ever passes without a deliberate product fix for the return path,
+    that is a harness fault to investigate, not a win.
+
     正常对照: single-return control test above proves fixture + expectations;
     the outcome classifier accepts BOTH valid fix shapes (serialize the
     second request, or reject it with the documented 409).
-    目标缺陷: the return route pre-reads the order WITHOUT a lock and
+    目标缺陷(未修复): the return route pre-reads the order WITHOUT a lock and
     OrderService.transition re-selects with FOR UPDATE but without
     populate_existing, so the loser of the race keeps its stale
     identity-map status ('fulfilled'), passes validation, and posts a second
-    refund + restock (external counterexample: cash -200, 2 restocks).
+    refund + restock (external counterexample: cash -200, 2 restocks);
+    restock_on_return has the same re-lock shape.
     环境前提: two real sessions; barrier patched into routes.get_order_by_id
     (the route's actual pre-read), pausing request A after its read while B
     completes; A then resumes on the same stale object. Both outcomes are
@@ -850,5 +856,87 @@ async def test_r0_red_concurrent_full_return_single_economic_effect():
                 "acceptable; a second economic effect is not)"
             ),
         )
+    finally:
+        await identity.drop()
+
+
+# ---------------------------------------------------------------------------
+# 6. R1 CONTROL (CTO O1): the movement read helper preserves duplicate rows
+# ---------------------------------------------------------------------------
+
+_R1_PRESERVE_REASON = "r1-preserve-delta-5"
+
+
+@pytest.mark.integration
+async def test_r1_control_adjustment_read_helper_preserves_duplicate_rows():
+    """[CONTROL — expected PASS] adjustment_movements never collapses rows.
+
+    正常对照: one real adjustment writes one journal row; the read helper
+    returns exactly it. A synthetic second row with the SAME reason is then
+    inserted directly (labelled fixture data, not a product write): the read
+    helper must return BOTH raw rows (row-count preservation — the invariant
+    depends on duplicates surviving the read), and the shared
+    assert_adjustment_chain must reject the duplicated journal on the
+    movement-set check. This is the DB-level end-to-end closure of CTO O1
+    (2026-09-08 review): the guards-file synthetic controls prove the
+    assertion logic; this control proves the real read path feeds it raw rows.
+    目标缺陷: none (control for the read-helper/journal boundary).
+    环境前提: task-owned database; synthetic duplicate row clearly labelled
+    by its reason and reference_type, removed with the tenant schema.
+    执行入口: InventoryService.adjust_stock (one real adjustment) +
+    adjustment_movements + assert_adjustment_chain (the same shared helpers
+    the concurrent RED test uses).
+    未覆盖范围: no product write path can produce a duplicate-reason pair
+    today (that is the duplicate-return shape, still known-RED) — the row is
+    fixture-injected precisely because the read side must be provably
+    duplicate-preserving regardless of how such rows arise.
+    """
+    identity = await TenantIdentity().create()
+    try:
+        async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+            sku_id = await seed_sku_with_stock(
+                db, sku_code="R1-PRESERVE", quantity_on_hand=Decimal("10")
+            )
+
+        async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+            await InventoryService().adjust_stock(
+                db, sku_code="R1-PRESERVE", quantity=Decimal("5"),
+                reason=_R1_PRESERVE_REASON,
+            )
+
+        async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+            movements = await adjustment_movements(db, sku_code="R1-PRESERVE")
+        assert len(movements) == 1, (
+            "CONTROL_R1_ROW_PRESERVATION: one real adjustment must read back "
+            f"as exactly one movement row, got {len(movements)}."
+        )
+
+        # Fixture-injected duplicate-reason journal row (clearly labelled).
+        async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+            await db.execute(
+                text(
+                    "INSERT INTO inventory_movements "
+                    "(sku_id, movement_type, quantity, quantity_before, quantity_after, "
+                    "reason, reference_type) "
+                    "VALUES (:sku, 'adjustment', 5, 10, 15, :reason, 'r1-fixture-duplicate')"
+                ),
+                {"sku": sku_id, "reason": _R1_PRESERVE_REASON},
+            )
+
+        async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+            duplicated = await adjustment_movements(db, sku_code="R1-PRESERVE")
+        assert len(duplicated) == 2, (
+            "CONTROL_R1_ROW_PRESERVATION: adjustment_movements must return the "
+            f"RAW row count (2 after a duplicate insert), got {len(duplicated)} "
+            "— any deduplication in the read helper would hide double economic "
+            "effects from the invariant (the CTO O1 blind-spot shape)."
+        )
+        with pytest.raises(AssertionError, match="INVARIANT_R0_STOCK_MOVEMENT_SET"):
+            assert_adjustment_chain(
+                duplicated,
+                initial=Decimal("10"),
+                final_observed=Decimal("15"),
+                expected=[(_R1_PRESERVE_REASON, Decimal("5"))],
+            )
     finally:
         await identity.drop()

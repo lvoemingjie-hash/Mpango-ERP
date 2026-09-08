@@ -50,6 +50,80 @@ SUPERVISE_TIMEOUT_S = 30.0
 CONTAINER_ENV_VAR = "MPANGO_INVARIANTS_R0_PG_CONTAINER"
 OWNER_LABEL_ENV_VAR = "MPANGO_INVARIANTS_R0_PG_OWNER"
 OWNER_LABEL_PREFIX = "zcode-mvp-invariants"
+REDIS_CONTAINER_ENV_VAR = "MPANGO_INVARIANTS_R0_REDIS_CONTAINER"
+
+
+def verify_task_redis_ownership_sync() -> str:
+    """Pre-deletion ownership proof for the task Redis (CTO R1-R2 remediation).
+
+    Any cache-key deletion must happen ONLY on a provably task-owned Redis.
+    Returns the verified ``host:port`` of the declared instance. Refuses
+    BEFORE any deletion when:
+
+    1. MPANGO_INVARIANTS_R0_REDIS_CONTAINER / owner label / REDIS_URL missing;
+    2. REDIS_URL host is not loopback;
+    3. owner label outside the ``zcode-mvp-invariants`` namespace;
+    4. docker inspect: label mismatch, image not ``redis:*``, or the 6379
+       mapping is not ``127.0.0.1:<REDIS_URL port>``.
+
+    Same discipline as verify_task_database_ownership_sync: a mismatch,
+    missing config, or undeclared container refuses — callers must never
+    delete (or scan) keys on an unproven Redis instance.
+    """
+    container = os.environ.get(REDIS_CONTAINER_ENV_VAR, "").strip()
+    owner_label = os.environ.get(OWNER_LABEL_ENV_VAR, "").strip()
+    redis_url = os.environ.get("REDIS_URL", "").strip()
+
+    missing = [
+        name
+        for name, value in (
+            (REDIS_CONTAINER_ENV_VAR, container),
+            (OWNER_LABEL_ENV_VAR, owner_label),
+            ("REDIS_URL", redis_url),
+        )
+        if not value
+    ]
+    if missing:
+        raise GuardRefused(
+            "GUARD_REFUSED_REDIS_OWNERSHIP: missing required environment: "
+            f"{', '.join(missing)}. Cache-key deletion requires a declared, "
+            "task-owned Redis instance."
+        )
+    parsed = urlparse(redis_url)
+    host = parsed.hostname
+    port = parsed.port or 6379
+    if host not in LOOPBACK_HOSTS:
+        raise GuardRefused(
+            f"GUARD_REFUSED_REDIS_OWNERSHIP: REDIS_URL host {host!r} is not loopback."
+        )
+    if not owner_label.startswith(OWNER_LABEL_PREFIX):
+        raise GuardRefused(
+            "GUARD_REFUSED_REDIS_OWNERSHIP: owner label must be a "
+            f"{OWNER_LABEL_PREFIX}-* task label, got {owner_label!r}."
+        )
+    info = _docker_inspect(container)
+    labels = (info.get("Config") or {}).get("Labels") or {}
+    if labels.get("mpango.owner") != owner_label:
+        raise GuardRefused(
+            "GUARD_REFUSED_REDIS_OWNERSHIP: container "
+            f"'{container}' label mpango.owner={labels.get('mpango.owner')!r} "
+            f"does not match declared owner {owner_label!r}."
+        )
+    image_name = str((info.get("Config") or {}).get("Image") or "")
+    if not image_name.startswith("redis:"):
+        raise GuardRefused(
+            "GUARD_REFUSED_REDIS_OWNERSHIP: container image "
+            f"'{image_name}' is not redis:*."
+        )
+    mapping = (info.get("NetworkSettings") or {}).get("Ports") or {}
+    port_bindings = mapping.get("6379/tcp") or []
+    mapped = {b.get("HostIp"): b.get("HostPort") for b in port_bindings}
+    if mapped.get("127.0.0.1") != str(port):
+        raise GuardRefused(
+            "GUARD_REFUSED_REDIS_OWNERSHIP: container 6379 mapping "
+            f"{mapped} does not match REDIS_URL host/port (127.0.0.1:{port})."
+        )
+    return f"{host}:{port}"
 
 
 class GuardRefused(RuntimeError):

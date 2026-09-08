@@ -237,3 +237,34 @@ MCP-only 面）——如实披露，以 `git status`/staged diff 逐文件核对
 
 冻结/差分容器（cand/base pg+redis，ID 见 RUN_IDENTITY）与开发容器在报告核验后按标签删除（含卷）；
 BASE 差分工作树移除；env 脚本（合成口令）留仓库外可删；VOID-1 材料归档保留。
+
+---
+
+# 九、R1-R2 整改轮（2026-09-08，CTO 裁决 NEED_CHANGES_TEST_SAFETY_AND_EVIDENCE_INTEGRITY）
+
+六项整改全部完成，细节见 `mpango-mvp-invariants-r1-r1-2026-09-08/INTEGRITY_APPENDIX.md`：
+
+1. **Redis 归属+精确键**：删除动作前置 `verify_task_redis_ownership_sync`（声明容器+任务标签+
+   redis:* 镜像+6379→127.0.0.1 端口映射的 docker inspect 核验，缺任一即
+   GUARD_REFUSED_REDIS_OWNERSHIP）；通配 SCAN 废除，仅删除测试自算的精确键
+   （`skus_list:1:10:None:<唯一q>`）。三前提实测：可达+声明→对照 PASS（deleted=1）+诊断命名 RED；
+   可达+未声明→对照 SKIP（fail-closed 零删除）；不可达→对照 PASS（fail-open）+诊断 SKIP。
+   guards 新增 4 单测（35/35 PASS）。整改后聚焦：不可达 55P+1 已知 RED+1 SKIP；可达 55P+2 命名 RED。
+2. **POST_VOID_CONTINUATION**：候选冻结运行标注为 VOID-1 后续跑，不追溯为原授权首次正式验收
+   （EXPECTED_SET/RUN_IDENTITY_CANDIDATE 顶部标注；INTEGRITY_APPENDIX §1）。
+3. **完整逐节点对账**：修正解析器（多空格对齐+含空格参数化 id），完整恢复候选 3837 / BASE 3824；
+   candidate-only=18 / base-only=5（与裁决数字一致）；唯一状态变化、FAILED/ERROR 差、SKIP 集合
+   恒等结论经完整解析维持；40 个 collect/verbose 参数转义渲染差经参数盲匹配 0 失配
+   （NODE_RECONCILIATION 修订 + INTEGRITY_APPENDIX §2）。
+4. **真实秘密扫描**：`python -m detect_secrets.main hook` 确认为空操作并弃用；改用
+   `detect-secrets-hook.exe`（v1.5.0）：反例（植入 AWS key 形状）rc=1 证明非空操作；对候选累计
+   **18 个变更路径**正式扫描 rc=0；baseline sha256 不变（INTEGRITY_APPENDIX §3）。
+5. **双哈希+EOL 事实**：四份测试文件的运行字节 sha256 与提交 blob（LF）sha256 并列；三文件给出
+   blob+CRLF==冻结哈希的数值验证，guards 混合行尾（主体 CRLF+追加节 LF）以 clean filter 定义说明
+   内容等价（INTEGRITY_APPENDIX §5）。
+6. **18 路径口径更正**：候选累计 diff 为 18 个路径（`git diff --name-only` 计数），此前沿用上轮
+   "12 文件"口径有误，秘密扫描已覆盖全部 18 路径（INTEGRITY_APPENDIX §4）。
+
+整改轮运行容器：`mpango-zcode-inv-r1r2-dev-pg` / `-redis`（任务标签，报告核验后删除）；
+env：`_zcode_mvp_invariants_r1r2_env_redis.sh` / `_r1r2_env_unreach.sh`（仓库外，合成口令）。
+整改后四测试文件工作树 sha256 以提交时 `git rev-parse` 绑定记录于提交说明。

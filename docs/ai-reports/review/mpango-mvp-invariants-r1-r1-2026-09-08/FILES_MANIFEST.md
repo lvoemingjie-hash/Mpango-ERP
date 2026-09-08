@@ -51,3 +51,14 @@
 **不含 skip 节点 id 与原因**。结论：19 个新增 skip 的 nodeid/原因/运行身份无法从既有留存材料恢复，
 如实标为未知；原"库态差异"归因为推测，已在勘误中撤回。恢复尝试记录：以 `grep "^SKIPPED"` 与
 进度行复核，两日志均无 SKIPPED 摘要行（-rE 不含 S 报告）。
+
+## 增补记录（R1-R2 整改，2026-09-08）
+
+| 文件 | 用途 |
+|---|---|
+| `INTEGRITY_APPENDIX.md` | CTO 六项整改的更正与补强记录（VOID 标注、完整对账 3837/3824 与 18/5、真实 detect-secrets-hook、18 路径、双哈希/EOL、Redis 归属+精确键） |
+| `evidence/` 增补 | 整改后聚焦两前提 + 三前提实测摘要（见 RUN_LOG §九） |
+
+仓库外新增：`_zcode_mvp_invariants_r1r2_env_redis.sh` / `_zcode_mvp_invariants_r1r2_env_unreach.sh`
+（整改轮 env，含/不含 MPANGO_INVARIANTS_R0_REDIS_CONTAINER 声明）。
+原始日志不可覆盖原则维持：`_frozen_cand_VOID1.log` 等全部保留。

@@ -575,3 +575,73 @@ def test_r1_guard_no_issuance_assertion_rejects_issuer_use_and_tokens():
             issuer_calls=0,
             label="guard-token-leak",
         )
+
+
+# ---------------------------------------------------------------------------
+# R1-R2 (CTO remediation): task-Redis ownership guard negatives for the
+# precise cache-key deletion helper. Refusals happen BEFORE any docker call
+# or any deletion, so these unit controls need no Redis and no docker.
+# ---------------------------------------------------------------------------
+
+def _clear_redis_ownership_env(monkeypatch):
+    for name in (
+        "MPANGO_INVARIANTS_R0_REDIS_CONTAINER",
+        "MPANGO_INVARIANTS_R0_PG_OWNER",
+        "REDIS_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_r1_guard_redis_eviction_guard_refuses_missing_config(monkeypatch):
+    """[GUARD CONTROL] No declared Redis container / owner / URL → refuse
+    before any deletion."""
+    from tests.mpango_invariants_r0_support import (
+        GuardRefused,
+        verify_task_redis_ownership_sync,
+    )
+
+    _clear_redis_ownership_env(monkeypatch)
+    with pytest.raises(GuardRefused, match="GUARD_REFUSED_REDIS_OWNERSHIP"):
+        verify_task_redis_ownership_sync()
+
+
+def test_r1_guard_redis_eviction_guard_refuses_non_task_owner_label(monkeypatch):
+    """[GUARD CONTROL] An owner label outside the task namespace → refuse."""
+    from tests.mpango_invariants_r0_support import (
+        GuardRefused,
+        verify_task_redis_ownership_sync,
+    )
+
+    _clear_redis_ownership_env(monkeypatch)
+    monkeypatch.setenv("MPANGO_INVARIANTS_R0_REDIS_CONTAINER", "some-redis")
+    monkeypatch.setenv("MPANGO_INVARIANTS_R0_PG_OWNER", "someone-elses-task")
+    monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:6379/15")
+    with pytest.raises(GuardRefused, match="owner label"):
+        verify_task_redis_ownership_sync()
+
+
+def test_r1_guard_redis_eviction_guard_refuses_non_loopback_url(monkeypatch):
+    """[GUARD CONTROL] A non-loopback REDIS_URL → refuse (never delete on a
+    remote/shared instance)."""
+    from tests.mpango_invariants_r0_support import (
+        GuardRefused,
+        verify_task_redis_ownership_sync,
+    )
+
+    _clear_redis_ownership_env(monkeypatch)
+    monkeypatch.setenv("MPANGO_INVARIANTS_R0_REDIS_CONTAINER", "some-redis")
+    monkeypatch.setenv("MPANGO_INVARIANTS_R0_PG_OWNER", "zcode-mvp-invariants-r1-r1")
+    monkeypatch.setenv("REDIS_URL", "redis://shared-cache.internal:6379/15")
+    with pytest.raises(GuardRefused, match="not loopback"):
+        verify_task_redis_ownership_sync()
+
+
+def test_r1_guard_sku_list_cache_key_shape_is_exact():
+    """[GUARD CONTROL] The precise-key deletion targets exactly the one key
+    `_list_skus_cached` builds for the default listing — page 1, size 10,
+    is_active None, query q (core/cache.py: skus_list:{page}:{size}:{is_active}:{q})."""
+    from tests.test_mpango_mvp_invariants_r0_revocation import _sku_list_cache_key
+
+    assert _sku_list_cache_key("R1ISOSHAREDAB12CD34") == (
+        "skus_list:1:10:None:R1ISOSHAREDAB12CD34"
+    )

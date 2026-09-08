@@ -1,5 +1,8 @@
 # 冻结运行身份：最终候选（zcode 分支 HEAD + 冻结测试字节）
 
+> **状态标注（R1-R2 整改）**：本文件所述候选冻结全量运行为 **POST_VOID_CONTINUATION**
+> （VOID-1 后续跑，见 EXPECTED_SET 顶部标注与 INTEGRITY_APPENDIX §1）。
+
 ## 绑定字节
 
 - 分支：`zcode/mpango-mvp-invariants-r1-r1-test-evidence-closure-2026-09-08`

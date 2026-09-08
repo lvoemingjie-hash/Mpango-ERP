@@ -1,5 +1,9 @@
 # MPANGO-MVP-INVARIANTS-R1-R1 冻结验收预期集合
 
+> **状态标注（R1-R2 整改，2026-09-08）**：候选侧冻结全量运行为 **POST_VOID_CONTINUATION**
+> （VOID-1 之后加入准备步骤的续跑），不追溯为原授权下的首次正式验收；正式验收由独立 V3 执行。
+> 见 INTEGRITY_APPENDIX.md §1。
+
 ## 环境准备步骤（VOID-1 修订后显式声明）
 
 **VOID-1 记录（2026-09-08）**：第一次候选冻结运行（容器 mpango-zcode-inv-r1r1-cand-pg/redis，

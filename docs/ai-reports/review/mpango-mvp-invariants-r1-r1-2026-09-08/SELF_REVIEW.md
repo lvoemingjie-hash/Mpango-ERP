@@ -1,5 +1,12 @@
 # SELF_REVIEW（R1-R1 提交前全面自查）
 
+> **修订（R1-R2 整改，2026-09-08）**：原 §F "只读秘密扫描（实际 argv/rc）"行所引
+> `python -m detect_secrets.main hook` 为空操作，不作证据——已改用真实
+> `detect-secrets-hook.exe`（反例证明非空操作 + 全 18 路径 rc=0），见 INTEGRITY_APPENDIX §3；
+> "严格编码"行的"12 个变更文件"应为本候选累计 **18 个路径**；对账数字更正见 §D 引用的
+> NODE_RECONCILIATION 修订（3837/3824、18/5）；双哈希与 EOL 事实见 INTEGRITY_APPENDIX §5。
+> 原文保留如下。
+
 > 逐项给出证据位置与判定（PASS / KNOWN_RED / NOT_PROVEN）。自查不是独立评审。
 > 证据根目录：本目录（E=）、候选 worktree（W=worktrees/zcode_mpango_mvp_invariants_r1_r1_2026-09-08）、
 > 仓库外原始日志（R=C:/Users/Jeff0/MPANGO ERP/_zcode_mvp_invariants_r1r1_*.log）。

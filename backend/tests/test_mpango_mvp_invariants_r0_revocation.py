@@ -383,27 +383,47 @@ async def _sku_list_cache_reachable() -> bool:
         return False
 
 
-async def _evict_sku_list_cache_entries() -> str:
-    """Evict tenant-shared `skus_list:*` entries on the task-owned Redis.
+def _sku_list_cache_key(q: str) -> str:
+    """The EXACT cache key `_list_skus_cached` uses for the default listing
+    (page=1, size=10, is_active=None) with query `q` (core/cache.py decorator:
+    key = f"{prefix}:{page}:{size}:{is_active}:{q}")."""
+    return f"skus_list:1:10:None:{q}"
 
-    Explicit premise enforcement for the DB-isolation control (CTO F1): the
-    sku-list cache key has NO tenant dimension (registered out-of-scope
-    finding), so with a reachable cache the second same-key listing could be
-    served from the first tenant's cached page instead of the database.
-    Evicting the entries between the two listings guarantees each listing
-    executes the real JWT → tenant-resolution → SQL path; the product stack
-    is untouched. With an unreachable cache this is a no-op (fail-open
-    premise). Only the task-owned Redis instance is ever touched.
+
+async def _delete_sku_list_cache_keys(keys: list) -> str:
+    """Precise-key eviction on the OWNERSHIP-PROVEN task Redis (CTO R1-R2
+    remediation of the former wildcard SCAN).
+
+    Three outcomes, each explicitly reported to the caller:
+
+    - ``cache-unreachable(...)``: the cache backend is unreachable; nothing
+      is deleted and nothing needs deleting (fail-open premise);
+    - ``refused-ownership(...)``: the cache IS reachable but the task-Redis
+      ownership proof failed or is undeclared
+      (verify_task_redis_ownership_sync) — NOTHING is deleted and the caller
+      must NOT establish the cache-isolation premise on an unproven Redis;
+    - ``deleted=k``: reachable + ownership proven; EXACTLY the named keys
+      were deleted (no SCAN, no pattern matching, no other key touched).
     """
+    from tests.mpango_invariants_r0_support import (
+        GuardRefused,
+        verify_task_redis_ownership_sync,
+    )
+
     try:
         from core.cache import get_redis_client
 
         client = await get_redis_client()
-        removed = 0
-        async for key in client.scan_iter(match="skus_list:*", count=200):
-            await client.delete(key)
-            removed += 1
-        return f"evicted={removed}"
+        await client.ping()
+    except Exception as exc:
+        return f"cache-unreachable({type(exc).__name__})"
+    try:
+        verify_task_redis_ownership_sync()
+    except GuardRefused as refused:
+        return f"refused-ownership({refused})"
+    try:
+        removed = await client.delete(*keys)
+        return f"deleted={int(removed)}"
     except Exception as exc:
         return f"cache-unreachable({type(exc).__name__})"
 
@@ -865,13 +885,18 @@ async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_cli
     目标缺陷: none (control; pins that the R1 revocation checks did not
     disturb database-level tenant isolation).
     环境前提 (explicit cache-isolation premise): between the two listings the
-    tenant-shared `skus_list:*` cache entries are evicted on the task-owned
-    Redis (_evict_sku_list_cache_entries), so each listing executes the real
-    JWT → tenant-resolution → SQL path independent of the registered
-    non-tenant-scoped cache key. The cache-reachable same-key leak is a
-    separate registered risk with its own bounded diagnostic node (expected
-    named RED when the cache is reachable); it is deliberately NOT folded
-    into this control.
+    EXACT shared cache key (skus_list:1:10:None:<q>) is deleted on the
+    task-owned Redis via _delete_sku_list_cache_keys — which FIRST proves the
+    Redis belongs to this task (verify_task_redis_ownership_sync: declared
+    container + owner label + redis:* image + 127.0.0.1 port mapping against
+    REDIS_URL) and then deletes ONLY the named key (no SCAN, no wildcards).
+    If ownership cannot be proven while the cache IS reachable, the premise
+    cannot be established safely and the node SKIPs (fail-closed: no
+    deletion on an unproven Redis). If the cache is unreachable, the
+    fail-open premise applies (no cache can serve cross-tenant pages). The
+    cache-reachable same-key leak is a separate registered risk with its own
+    bounded diagnostic node (expected named RED when the cache is reachable
+    and ownership-proven); it is deliberately NOT folded into this control.
     执行入口: GET /api/v1/skus (identical params, per-tenant tokens) and
     POST /api/v1/auth/refresh for BOTH tenants through the real HTTP stack.
     未覆盖边界: write-path isolation (covered by the R0 concurrency file's
@@ -890,6 +915,7 @@ async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_cli
             identity=identity_b, email=f"r1r1-iso-b-{uuid.uuid4().hex[:8]}@example.com"
         )
         shared_code = f"R1ISOSHARED{uuid.uuid4().hex[:8].upper()}"
+        own_cache_key = _sku_list_cache_key(shared_code)
         async with tenant_session(identity_a.schema, identity_a.wholesaler_id) as db:
             sku_id_a = await seed_sku_with_stock(
                 db, sku_code=shared_code, quantity_on_hand=Decimal("5"),
@@ -906,7 +932,24 @@ async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_cli
             "/api/v1/skus", params=params,
             headers={"Authorization": "Bearer " + _bearer(user_a, identity_a)},
         )
-        await _evict_sku_list_cache_entries()
+        premise = await _delete_sku_list_cache_keys([own_cache_key])
+        if premise.startswith("refused-ownership"):
+            pytest.skip(
+                "CONTROL_R1_ISOLATION: cache-isolation premise unestablishable "
+                f"safely — {premise}. The control refuses to delete cache keys "
+                "on a Redis whose task ownership is not proven; declare the "
+                "task Redis container to run this control against a reachable "
+                "cache."
+            )
+        if premise.startswith("cache-unreachable"):
+            assert not await _sku_list_cache_reachable(), (
+                f"CONTROL_R1_ISOLATION: inconsistent premise report ({premise})"
+            )
+        else:
+            assert premise == "deleted=1", (
+                f"CONTROL_R1_ISOLATION: the exact shared cache key must be "
+                f"deleted once ownership is proven, got {premise!r}"
+            )
         listing_b = await http_client.get(
             "/api/v1/skus", params=params,
             headers={"Authorization": "Bearer " + _bearer(user_b, identity_b)},
@@ -950,6 +993,13 @@ async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_cli
                 f"bound to the refreshing tenant schema, got {claims.tenant_schema}"
             )
     finally:
+        # Best-effort teardown of THIS test's own exact cache key (precise
+        # key, ownership-proven path; if ownership is unproven the key is
+        # left to the cache TTL — no destructive action is attempted).
+        try:
+            await _delete_sku_list_cache_keys([_sku_list_cache_key(shared_code)])
+        except Exception:
+            pass
         await identity_b.drop()
         await identity_a.drop()
 
@@ -1038,6 +1088,12 @@ async def test_r1_red_diagnostic_sku_list_cache_not_tenant_scoped(http_client):
             invariant="INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED",
         )
     finally:
+        # Best-effort teardown of THIS diagnostic's own exact cache key
+        # (precise key, ownership-proven path; TTL expiry is the fallback).
+        try:
+            await _delete_sku_list_cache_keys([_sku_list_cache_key(shared_code)])
+        except Exception:
+            pass
         await identity_b.drop()
         await identity_a.drop()
 

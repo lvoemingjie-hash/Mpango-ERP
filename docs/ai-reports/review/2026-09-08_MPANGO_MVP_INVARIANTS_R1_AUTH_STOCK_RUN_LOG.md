@@ -151,3 +151,17 @@ Redis**（容器 `mpango-zcode-inv-r1fix-20260908-redis`，redis:7-alpine，标�
 - env 脚本（仓库外，合成口令）：`_zcode_mvp_invariants_r1fix_env.sh` /
   `_zcode_mvp_invariants_r1fix_env_redis.sh`，保留或删除同 R0 流程。
 - 全部运行后残留核查见 §三；全量套件两轮运行后的库内残留（各测试自清理余量）以最终核查为准。
+
+## 七、提交与推送记录
+
+| 项 | 值 |
+|---|---|
+| 提交 1（任务记录：范围表+调用链，先于实施） | `f905bcee7fb64c822d3b0c1b4f6b14dfaca607b8`（父 = BASE 1485c3f5） |
+| 提交 2（产品修复+测试+报告） | `4e06ee3b7a35ba7601331a65e94b2da282302899` |
+| 本追加提交（RUN_LOG §七） | 见 `git log -1`（普通后继提交） |
+| 分支 | `zcode/mpango-mvp-invariants-r1-auth-stock-fix-2026-09-08`（普通 push，无 force） |
+| local==remote 核验 | 提交 2 推送后 `git rev-parse HEAD` == `git ls-remote origin <branch>` ==
+  `4e06ee3b7a35ba7601331a65e94b2da282302899`（YES）；追加提交后同法复验 |
+| 提交前核查 | `git diff --cached --check` 干净；detect-secrets hook（--baseline）退出 0、
+  baseline 字节未变（sha256 f49c8622…16bf）；UTF-8/无 BOM 12 文件通过 |
+| 变更文件 | 恰为任务记录 §1 范围表所列（产品 3 + 测试 4 + 报告 5；support 零字节变化） |

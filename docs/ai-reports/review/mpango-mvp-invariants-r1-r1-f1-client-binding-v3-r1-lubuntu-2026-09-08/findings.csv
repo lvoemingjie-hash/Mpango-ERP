@@ -1,0 +1,2 @@
+finding_id,category,severity,status,evidence,details
+F1-R1-ENV-0001,migration-privilege,high,STOP,"evidence/preflight.json; evidence/logs/matrix_A.log; evidence/manifests/runtime_evidence_manifest.json","Matrix A stopped in r0_task_database setup when alembic migration 011_s6_p_reporting_role attempted CREATE ROLE reporting_role under the minimal runtime role mpango_f1_v3r1 and failed with permission denied to create role. Guards passed, but the focused suite could not proceed to concurrency or revocation execution."

@@ -1,0 +1,52 @@
+gate,check,expected,actual,status,notes
+source_authenticity,cumulative_delta_paths,exactly_4,exactly_4,PASS,2 test files + 1 support + 1 ledger
+source_authenticity,r2_delta_paths,exactly_3,exactly_3,PASS,support + test + ledger section
+source_authenticity,forbidden_product_paths,none,none,PASS,no product/migration/config/lockfile changes
+source_authenticity,blob_sha_support,615c53d2...,615c53d2...,PASS,verified pre/post mutation cycles
+source_authenticity,blob_sha_test_file,00130356...,00130356...,PASS,verified pre/post mutation cycles
+identity_separation,migration_user_superuser,true,true,PASS,inv_f1_mig has SUPERUSER
+identity_separation,run_user_ordinary,true,true,PASS,inv_f1_run has no privileged flags
+identity_separation,run_user_zero_memberships,true,true,PASS,verified via pg_auth_members
+identity_separation,migration_user_live_probe,session_user==mig_user,session_user==mig_user,PASS,PG16 confirmed
+identity_separation,run_user_live_probe,session_user==run_user,session_user==run_user,PASS,ordinary role confirmed
+migration_lifecycle,launch_count,1,1,PASS,single subprocess invocation
+migration_lifecycle,return_code,0,0,PASS,alembic upgrade head succeeded
+migration_lifecycle,revisions_executed,37,37,PASS,001 through 037
+migration_lifecycle,password_leaks,none,none,PASS,checked stdout+stderr
+migration_lifecycle,container_label,mpango.owner matches,matches,PASS,zcode-mvp-invariants-kilo-r2-review-2026-09-09
+migration_lifecycle,container_image,postgres:16,postgres:16,PASS,PG16 confirmed
+migration_lifecycle,port_binding,127.0.0.1:15461,127.0.0.1:15461,PASS,loopback confirmed
+test_coverage,21_nodes_total,21,21,PASS,all nodes collected
+test_coverage,positive_lifecycle,PASS,PASS,PASS,full lifecycle verified
+test_coverage,negative_wrong_target_x4,PASS,PASS,PASS,host/port/db/user
+test_coverage,negative_wrong_container_owner,PASS,PASS,PASS,zero launches
+test_coverage,negative_run_equals_bootstrap,PASS,PASS,PASS,pre-write refusal
+test_coverage,negative_engine_foreign_user,PASS,PASS,PASS,fixture helper rejection
+test_coverage,subprocess_env_contract,PASS,PASS,PASS,child DATABASE_URL == migration URL
+test_coverage,sanitization_url_password,PASS,PASS,PASS,raw+encoded absent
+test_coverage,sanitization_reporting_password,PASS,PASS,PASS,SQL-embedded form absent
+test_coverage,sanitization_timeout,PASS,PASS,PASS,TIMED OUT + sanitized
+test_coverage,counter_positional_argv,PASS,PASS,PASS,launches=1 delegated=0
+test_coverage,counter_keyword_args,PASS,PASS,PASS,launches=1 delegated=0
+test_coverage,counter_non_migration,PASS,PASS,PASS,delegated=2
+test_coverage,counter_malformed_shapes,PASS,PASS,PASS,launches=0 delegated=4
+test_coverage,ordering_wrong_target,PASS,PASS,PASS,launches=0 before refusal
+test_coverage,r2_domain_selfcheck,PASS,PASS,PASS,machine-asserted distinctness
+test_coverage,r2_sanitizer_nonzero_exit,PASS,PASS,PASS,decoded plaintext absent
+test_coverage,r2_sanitizer_timeout_bytes,PASS,PASS,PASS,bytes output sanitized
+test_coverage,r2_sanitizer_log,PASS,PASS,PASS,on-disk log sanitized
+mutation_ma,counter_positional_regression,1 RED,1 RED,PASS,test_f1_counter_records_positional_argv_migration_call
+mutation_ma,restored_green,true,true,PASS,SHA-256 verified
+mutation_mb,ordering_regression,1 RED,1 RED,PASS,test_f1_wrong_target_refused_before_migration_in_real_fixture_order
+mutation_mb,restored_green,true,true,PASS,SHA-256 verified
+mutation_mc2,sanitizer_regression,3 RED,3 RED,PASS,nonzero + timeout + log nodes
+mutation_mc2,restored_green,true,true,PASS,SHA-256 verified
+sanitization_boundaries,url_password_raw,covered,covered,PASS,replaced in output
+sanitization_boundaries,url_password_encoded,covered,covered,PASS,replaced in output
+sanitization_boundaries,url_password_quote_forms,covered,covered,PASS,quote + quote_plus
+sanitization_boundaries,decoded_plaintext,covered,covered,PASS,R2 FIX: bare non-URL text
+sanitization_boundaries,run_url_password,covered,covered,PASS,independent encoding
+sanitization_boundaries,reporting_password_sql,covered,covered,PASS,CREATE USER ... PASSWORD
+sanitization_boundaries,timeout_bytes,covered,covered,PASS,partial output sanitized
+sanitization_boundaries,optional_log,covered,covered,PASS,on-disk log sanitized
+environment,windows_encoding_caveat,utf-8 workaround,utf-8 workaround,CAUTION,PYTHONIOENCODING=utf-8 required for migration 010 emoji on GBK consoles

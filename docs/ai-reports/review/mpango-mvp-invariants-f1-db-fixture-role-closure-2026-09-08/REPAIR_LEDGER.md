@@ -259,3 +259,69 @@ MB 迁移前置到守卫之前 → 次序节点 RED（"launches=1"）；MC 脱�
 
 容器 `mpango-zcode-inv-f1r1-pg`（标签核验）在报告核验后删除；/tmp 变异备份与口令文件已清；
 env/regrants/provision 存 `r1/`（合成口令，不入库）；上轮 evidence-root 原件零覆盖。
+
+
+---
+
+# R2 修复轮（CTO-AUTH-MPANGO-INVARIANTS-F1-DB-ROLE-R2-ENCODED-SECRET-2026-09-09）
+
+BASE=`ae8418d20c65b8eff27b6c0256aa6b668be6d3ed`；分支
+`zcode/mpango-mvp-invariants-f1-db-fixture-role-closure-r2-2026-09-09`；工作树
+`worktrees/zcode_mpango_mvp_invariants_f1_r2_2026-09-09`。实际变更恰两个代码路径
+（`git diff --name-only ae8418d2`：support、db_fixture_roles 测试文件；`changed_paths_r2.txt`）。
+产品/迁移/角色供给/Redis 归属规则零改动。唯一阻断项 F2-R1（百分号编码口令不解码）关闭。
+
+## R2-1 修复
+
+- `_add_url_password_forms(url, forms)`（新）：按**实际 URL 口令语义**取集——
+  `urlparse().password` 的**原有编码表示**入集；**单次 `unquote` 解码**得到原文入集
+  （userinfo 中 `+` 为字面量，故用 `unquote` 而非 `unquote_plus`；无递归解码）；原文的
+  `quote(safe='')` 与 `quote_plus` 形态入集。
+- `_task_known_secrets(migration_url=None)`：**实际调用参数**的迁移 URL 优先进入集合
+  （不只依赖 ambient env），其后三项环境 URL；reporting 口令维持原文/quote/quote_plus。
+  口令值仅用于匹配，绝不作为诊断输出（值或哈希均不出现）。
+- 三个出口（非零、超时、可选迁移日志）共用 `_sanitize_connection_output` 单一策略；
+  类别/rc/非敏感定位保留。
+
+## R2-2 新增节点（+4；文件共 21）
+
+| 节点 | 覆盖 |
+|---|---|
+| `test_r2_domain_selfcheck_encoded_and_plaintext_are_distinct` | **机器断言**：原文≠URL编码≠quote_plus 形态；`unquote(enc)==原文`；`+` 字面量语义（`unquote('a%2Bb')=='a+b'`、`unquote_plus('a+b')=='a b'`——故解码不用 unquote_plus）；quote 与 quote_plus 对含空格口令形态不同 |
+| `test_r2_sanitizer_strips_encoded_password_plaintext_nonzero_exit` | 非零出口：**裸文本解码原文**（CTO 反例形态）+ 完整 URL + 编码 + quote/quote_plus 形态 + 独立 reporting 口令，全部从**拒绝全文**消失；类别保留；非敏感诊断文本（"alembic driver diagnostic"/"connect failed"）保留——非删除充数 |
+| `test_r2_sanitizer_strips_plaintext_in_timeout_bytes_output` | 超时出口 **bytes** 部分输出含解码原文 → 全部脱敏、TIMED OUT 类别保留 |
+| `test_r2_sanitizer_optional_migration_log_also_sanitized` | 可选迁移日志同一策略：落盘内容零标记且保留 rc 诊断 |
+
+运行/迁移口令分别使用不同合成标记（运行 URL 口令为独立百分号编码值）。
+
+## R2-3 运行记账（原始日志 `evidence-root/r2/`，不覆盖任何历史目录）
+
+| # | 范围 | 结果 |
+|---|---|---|
+| 1 | 全文件（新容器，run1） | 1 FAILED（domain selfcheck 的 `unquote_plus` 断言写错——%2B 编码下两者本就一致）+20 PASS → 修正断言语义 |
+| 2 | 同上 | 同一 selfcheck 再失败（NameError: unquote_plus 缺导入，前次编辑未生效）→ 修正 |
+| 3 | 全文件 | **21 PASS** |
+| MC2 | 变异：恢复"仅编码、不解码"缺陷 | **三个 R2 语义节点全 RED**（拒绝文本/超时文本/落盘日志各现解码原文泄漏），恢复 sha256 字节一致（support `3e8e97ca…`、测试 `3996d52e…`）→ 21/21 回绿 |
+| 4 | 四文件聚焦（R2 字节） | **94 PASS + 1 已知双退 RED + 2 缓存前提 SKIP**；运行后残留 t_%=0、wholesalers=0 |
+
+## R2-4 提交前条目化自查（本次实际于提交前完成）
+
+| 项 | 判定 | 证据位置 |
+|---|---|---|
+| 解码原文入脱敏集合（缺口本体） | PASS | support `_add_url_password_forms`/`_task_known_secrets`；三个 R2 语义节点 |
+| 调用参数迁移 URL 的口令入集（非仅 ambient） | PASS | `_task_known_secrets(migration_url)` 签名+`_sanitize_connection_output` 传参；编码用例自身即以调用参数 URL 承载口令 |
+| 输入域真实（机器断言编码≠原文≠quote_plus） | PASS | domain_selfcheck 节点；**MC2 RED 反证域有效性** |
+| 全部出口同一策略（非零/超时/日志） | PASS | 三语义节点 + support 三处 `_sanitize_connection_output` 调用点 |
+| 类别与非敏感诊断保留（非删除充数） | PASS | 非零出口节点尾断言（"alembic driver diagnostic"/"connect failed" 存活）；日志节点 rc=1 断言 |
+| 复用真实实现（无平行复制） | PASS | 全部经真实 `run_public_migrations`/`_sanitize_connection_output`；假子进程结果仅注入数据 |
+| 既有回归保留 | PASS | 计数四形态、次序节点、reporting/timeout R1 节点未动（21 含全部）；guards 54/54；聚焦 94P+1RED+2SKIP |
+| MC2 敏感性 | PASS | 恢复缺陷 → 三节点 RED；字节恢复 → 21/21 GREEN |
+| 范围 | PASS | 恰 2 代码路径（`changed_paths_r2.txt`）；产品/供给/Redis 规则零改动 |
+| 秘密扫描/diff-check/编码/baseline | PASS | `detect_secrets_r2.txt`（canary rc=1、正式 rc=0、f49c8622 不变）；提交流程核对 |
+| 新节点数量 | 实测 **+4**（文件 17→21）——不预定等于旧数 | run1→run3 计数 |
+| 未覆盖 | NOT_PROVEN：全量后端/正式 V3（未授权）；reporting 身份行为（011 合同）；Kilo 复核（NEXT_GATE） |
+
+## R2-5 资源
+
+容器 `mpango-zcode-inv-f1r2-pg`（标签核验）报告核验后删除；/tmp 密钥与备份已清；R0/R1/CTO
+诊断/历史 VOID 原件零覆盖；本轮原件存 `evidence-root/r2/`。

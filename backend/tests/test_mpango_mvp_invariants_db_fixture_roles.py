@@ -685,3 +685,175 @@ async def test_f1_wrong_target_refused_before_migration_in_real_fixture_order(mo
     finally:
         support.subprocess.run = original_run
         _restore_env(snapshot)
+
+
+# ---------------------------------------------------------------------------
+# 7. R2 (CTO F2-R1): PERCENT-ENCODED passwords must redact their DECODED
+#    plaintext too — urlparse().password keeps the encoding; a driver may
+#    print the decoded password as bare non-URL text.
+# ---------------------------------------------------------------------------
+
+# Synthetic password whose URL-encoded form DIFFERS from its plaintext and
+# whose quote / quote_plus forms also differ from each other (space/+).
+_R2_MIG_PW = "p@ss w:ord+/x%z"
+_R2_MIG_PW_ENC = "p%40ss%20w%3Aord%2B%2Fx%25z"  # quote(_R2_MIG_PW, safe="")
+_R2_MIG_PW_QPLUS = "p%40ss+w%3Aord%2B%2Fx%25z"  # quote_plus(_R2_MIG_PW)
+_R2_RUN_PW = "run/pw:sec%ret"
+_R2_RUN_PW_ENC = "run%2Fpw%3Asec%25ret"
+_R2_REP_PW = "rep%20P@ss+9"
+
+
+def test_r2_domain_selfcheck_encoded_and_plaintext_are_distinct():
+    """[DOMAIN SELF-CHECK — expected PASS] Machine proof that the synthetic
+    inputs really exercise the gap: plaintext != URL-encoded form !=
+    quote_plus form, and unquote(encoded) recovers the plaintext exactly
+    once ('+' stays literal in userinfo percent-decoding)."""
+    from urllib.parse import quote, quote_plus, unquote, unquote_plus
+
+    assert _R2_MIG_PW != _R2_MIG_PW_ENC
+    assert _R2_MIG_PW != _R2_MIG_PW_QPLUS
+    assert _R2_MIG_PW_ENC != _R2_MIG_PW_QPLUS
+    assert unquote(_R2_MIG_PW_ENC) == _R2_MIG_PW, (
+        "R2 DOMAIN: userinfo percent-decoding must recover the plaintext."
+    )
+    # '+' is a LITERAL in userinfo percent-decoding: %2B -> '+', and a bare
+    # '+' would NOT become a space (that is form semantics, unquote_plus —
+    # deliberately NOT used for decoding URL passwords).
+    assert unquote("a%2Bb") == "a+b"
+    assert unquote_plus("a+b") == "a b"
+    assert quote(_R2_MIG_PW, safe="") == _R2_MIG_PW_ENC
+    assert quote_plus(_R2_MIG_PW) == _R2_MIG_PW_QPLUS
+    assert _R2_MIG_PW_QPLUS != _R2_MIG_PW_ENC, (
+        "R2 DOMAIN: quote vs quote_plus must differ for a space-bearing "
+        "password so the redaction set covers both shapes."
+    )
+    assert _R2_RUN_PW != _R2_RUN_PW_ENC
+    assert unquote(_R2_RUN_PW_ENC) == _R2_RUN_PW
+
+
+def _r2_secret_env(monkeypatch, *, mig_url, run_pw_encoded):
+    """Synthetic task env: percent-encoded migration + run URL passwords and
+    an independent reporting password. Values are used for matching only."""
+    monkeypatch.setenv(MIGRATION_URL_ENV_VAR, mig_url)
+    run_url = f"postgresql://inv_f1_run:{run_pw_encoded}@127.0.0.1:1/inv_f1_lab"
+    monkeypatch.setenv("TEST_DATABASE_URL", run_url)
+    monkeypatch.setenv("DATABASE_URL", run_url)
+    monkeypatch.setenv("REPORTING_USER_PASSWORD", _R2_REP_PW)
+
+
+def _all_r2_markers_present_in(text) -> bool:
+    markers = [
+        _R2_MIG_PW, _R2_MIG_PW_ENC, _R2_MIG_PW_QPLUS,
+        _R2_RUN_PW, _R2_RUN_PW_ENC, _R2_REP_PW,
+    ]
+    return any(m in text for m in markers)
+
+
+@pytest.mark.integration
+def test_r2_sanitizer_strips_encoded_password_plaintext_nonzero_exit(monkeypatch):
+    """[R2 SEMANTIC — expected PASS] Nonzero exit: the DECODED plaintext of
+    percent-encoded migration/run URL passwords must be absent from the
+    refusal text even though it appears as BARE non-URL text (the exact gap
+    CTO reproduced offline); full-URL and encoded occurrences too, across
+    stdout AND stderr; the category and non-secret diagnostics survive."""
+    from urllib.parse import quote
+
+    mig_url = f"postgresql://mig:{_R2_MIG_PW_ENC}@127.0.0.1:5432/inv"
+    _r2_secret_env(monkeypatch, mig_url=mig_url, run_pw_encoded=_R2_RUN_PW_ENC)
+    result = _Failed(
+        stdout=(
+            "alembic driver diagnostic: connecting as mig with password "
+            f"{_R2_MIG_PW} (decoded) while url said {mig_url}; run role "
+            f"password {_R2_RUN_PW} failed"
+        ),
+        stderr=(
+            "connect failed: postgresql://mig:"
+            f"{_R2_MIG_PW_ENC}@127.0.0.1:5432/inv | quoting variant "
+            f"postgresql://mig:{quote(_R2_MIG_PW, safe='')}@host | form "
+            f"variant mig:{_R2_MIG_PW_QPLUS} | reporting embedded CREATE "
+            f"USER reporting_user WITH PASSWORD '{_R2_REP_PW}'"
+        ),
+    )
+    text = _capture_refusal(monkeypatch, result=result, migration_url=mig_url)
+    assert "GUARD_REFUSED_MIGRATION" in text, (
+        "R2: the category must survive sanitization."
+    )
+    assert not _all_r2_markers_present_in(text), (
+        "R2 SANITIZATION: a decoded plaintext or encoded/quoted marker "
+        "survived the refusal text — percent-encoded URL passwords must "
+        "redact their decoded plaintext too."
+    )
+    # Not a content-free excuse: benign non-secret diagnostics must survive.
+    assert "alembic driver diagnostic" in text and "connect failed" in text, (
+        "R2 SANITIZATION: non-secret diagnostic text must not be deleted wholesale."
+    )
+
+
+@pytest.mark.integration
+def test_r2_sanitizer_strips_plaintext_in_timeout_bytes_output(monkeypatch):
+    """[R2 SEMANTIC — expected PASS] Timeout exit with BYTES partial output
+    carrying the decoded plaintexts: same strategy, same absence."""
+    import subprocess as _subprocess
+
+    mig_url = f"postgresql://mig:{_R2_MIG_PW_ENC}@127.0.0.1:5432/inv"
+    _r2_secret_env(monkeypatch, mig_url=mig_url, run_pw_encoded=_R2_RUN_PW_ENC)
+    expired = _subprocess.TimeoutExpired(
+        cmd=["python", "-m", "alembic", "upgrade", "head"], timeout=300
+    )
+    expired.stdout = (
+        f"partial bytes stdout: decoded mig password {_R2_MIG_PW} and run "
+        f"password {_R2_RUN_PW}"
+    ).encode("utf-8")
+    expired.stderr = (
+        f"partial bytes stderr: reporting CREATE USER ... PASSWORD "
+        f"'{_R2_REP_PW}'"
+    ).encode("utf-8")
+    import tests.mpango_invariants_r0_support as support
+
+    original_run = support.subprocess.run
+
+    def raise_timeout(*a, **k):
+        raise expired
+
+    support.subprocess.run = raise_timeout
+    try:
+        with pytest.raises(GuardRefused) as excinfo:
+            run_public_migrations(mig_url)
+        text = str(excinfo.value)
+    finally:
+        support.subprocess.run = original_run
+    assert "GUARD_REFUSED_MIGRATION" in text and "TIMED OUT" in text
+    assert not _all_r2_markers_present_in(text), (
+        "R2 SANITIZATION: the timeout exit (bytes) leaked a decoded/encoded "
+        f"marker: {text[:200]!r}"
+    )
+
+
+@pytest.mark.integration
+def test_r2_sanitizer_optional_migration_log_also_sanitized(monkeypatch, tmp_path):
+    """[R2 SEMANTIC — expected PASS] The optional evidence log passes the
+    SAME sanitizer: the on-disk log carries no marker after a failing run."""
+    import tests.mpango_invariants_r0_support as support
+
+    mig_url = f"postgresql://mig:{_R2_MIG_PW_ENC}@127.0.0.1:5432/inv"
+    _r2_secret_env(monkeypatch, mig_url=mig_url, run_pw_encoded=_R2_RUN_PW_ENC)
+    log_path = tmp_path / "migration_output_sanitized.txt"
+    monkeypatch.setenv(MIGRATION_LOG_ENV_VAR, str(log_path))
+    original_run = support.subprocess.run
+    support.subprocess.run = lambda *a, **k: _Failed(
+        stdout=f"decoded {_R2_MIG_PW} in stdout",
+        stderr=f"decoded {_R2_RUN_PW} and reporting {_R2_REP_PW} in stderr",
+    )
+    try:
+        with pytest.raises(GuardRefused, match="GUARD_REFUSED_MIGRATION"):
+            run_public_migrations(mig_url)
+    finally:
+        support.subprocess.run = original_run
+    on_disk = log_path.read_text(encoding="utf-8")
+    assert not _all_r2_markers_present_in(on_disk), (
+        "R2 SANITIZATION: the optional migration log must pass the same "
+        f"sanitizer — a marker survived on disk: {on_disk[:200]!r}"
+    )
+    assert "rc=1" in on_disk, (
+        "R2 SANITIZATION: the log must keep the rc diagnostic, not delete all output."
+    )

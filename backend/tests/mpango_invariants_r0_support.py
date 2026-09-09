@@ -541,54 +541,80 @@ def verify_task_database_ownership_sync() -> str:
     return test_url
 
 
-def _task_known_secrets() -> list:
+def _add_url_password_forms(url: str, forms: set) -> None:
+    """Add every redaction-worthy representation of ``url``'s password.
+
+    R2 (CTO F2-R1): ``urlparse(...).password`` PRESERVES percent-encoding.
+    The redaction set must therefore contain the URL's own encoded
+    representation AND the decoded plaintext (the actual password semantics
+    — a driver diagnostic may print the decoded form as bare, non-URL text
+    which no URL-shape regex can catch) plus the plaintext's
+    ``quote(safe='')`` and ``quote_plus`` forms. Percent-decoding is applied
+    exactly once (``unquote`` — ``+`` is a literal character in URL
+    userinfo, never a form-space); no recursive decoding.
+    """
+    from urllib.parse import quote, quote_plus, unquote
+
+    if not url:
+        return
+    parsed = urlparse(url.replace("postgresql+asyncpg://", "postgresql://", 1))
+    encoded = parsed.password
+    if not encoded:
+        return
+    forms.add(encoded)  # the URL's own (possibly percent-encoded) form
+    plaintext = unquote(encoded)  # single decode; '+' stays literal
+    if plaintext:
+        forms.add(plaintext)
+        forms.add(quote(plaintext, safe=""))
+        forms.add(quote_plus(plaintext))
+
+
+def _task_known_secrets(migration_url: str | None = None) -> list:
     """Every task-known credential that could appear in migration output.
 
-    R1 (CTO F2): not only the migration URL password — also the RUN session
-    URL password and REPORTING_USER_PASSWORD (migration 011 embeds the latter
-    in ``CREATE USER ... PASSWORD '<pw>'`` SQL that can surface in error
-    output). Each secret is collected in raw AND URL-encoded forms
-    (quote/quote_plus), because passwords travel encoded inside URLs.
+    R2 (CTO F2-R1): the set covers, per URL — the URL's own encoded password
+    representation, the DECODED plaintext, and the plaintext's
+    ``quote(safe='')`` / ``quote_plus`` forms — for the ACTUAL
+    ``migration_url`` call argument first, then the three environment URLs
+    (migration declaration, test-session, run). REPORTING_USER_PASSWORD
+    (embedded by migration 011 in ``CREATE USER ... PASSWORD`` SQL) keeps
+    its raw/quote/quote_plus handling. Secret values are used for MATCHING
+    only; they (and hashes of them) are never emitted as diagnostics.
     """
     from urllib.parse import quote, quote_plus
-    from urllib.parse import urlparse as _urlparse
 
-    secrets = []
-    for url in (
-        os.environ.get(MIGRATION_URL_ENV_VAR, ""),
-        os.environ.get("TEST_DATABASE_URL", ""),
-        os.environ.get("DATABASE_URL", ""),
-    ):
-        if not url:
-            continue
-        password = _urlparse(
-            url.replace("postgresql+asyncpg://", "postgresql://", 1)
-        ).password
-        if password:
-            secrets.append(password)
+    forms: set = set()
+    urls = []
+    if migration_url:
+        urls.append(migration_url)  # the actual call argument, not just ambient env
+    for env_name in (MIGRATION_URL_ENV_VAR, "TEST_DATABASE_URL", "DATABASE_URL"):
+        value = os.environ.get(env_name, "")
+        if value:
+            urls.append(value)
+    for url in urls:
+        _add_url_password_forms(url, forms)
     reporting_password = os.environ.get("REPORTING_USER_PASSWORD", "")
     if reporting_password:
-        secrets.append(reporting_password)
-    forms = []
-    for secret in secrets:
-        forms.append(secret)
-        forms.append(quote(secret, safe=""))
-        forms.append(quote_plus(secret))
+        forms.add(reporting_password)
+        forms.add(quote(reporting_password, safe=""))
+        forms.add(quote_plus(reporting_password))
     # Longest first so overlapping encodings collapse cleanly.
-    return sorted({f for f in forms if f}, key=len, reverse=True)
+    return sorted((f for f in forms if f), key=len, reverse=True)
 
 
 def _sanitize_connection_output(raw: str, migration_url: str) -> str:
     """Strip credentials from subprocess output before it enters any message.
 
-    R1 (CTO F2): removes EVERY task-known secret — migration/run URL
-    passwords, REPORTING_USER_PASSWORD, and their URL-encoded forms — plus
-    any postgres URL with an embedded password (shape-level catch).
-    Usernames/hosts/ports/categories stay for diagnosis; public reports and
-    logs must never carry connection passwords.
+    R2 (CTO F2-R1): the redaction set now includes DECODED password
+    plaintexts (percent-encoded connection URLs are the norm; a driver may
+    print the decoded password as bare text that no URL-shape regex can
+    catch) and the ACTUAL ``migration_url`` call argument's secret joins the
+    ambient environment's. Every exit (nonzero, timeout, optional evidence
+    log) passes through this single strategy. Secret values are matched,
+    never echoed.
     """
     sanitized = raw
-    for secret in _task_known_secrets():
+    for secret in _task_known_secrets(migration_url):
         sanitized = sanitized.replace(secret, "***")
     import re as _re
 

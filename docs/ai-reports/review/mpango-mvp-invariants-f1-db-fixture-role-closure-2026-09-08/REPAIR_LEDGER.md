@@ -325,3 +325,96 @@ BASE=`ae8418d20c65b8eff27b6c0256aa6b668be6d3ed`；分支
 
 容器 `mpango-zcode-inv-f1r2-pg`（标签核验）报告核验后删除；/tmp 密钥与备份已清；R0/R1/CTO
 诊断/历史 VOID 原件零覆盖；本轮原件存 `evidence-root/r2/`。
+
+
+---
+
+# R2-ALEMBIC-PERCENT-URL-COMPATIBILITY 轮（CTO-AUTH-MPANGO-F1-DB-ROLE-R2-ALEMBIC-PERCENT-URL-COMPAT-2026-09-10）
+
+BASE/CANDIDATE=`ae8418d2…` 候选 `e0a63639…` 上的定向修复；分支
+`zcode/mpango-mvp-invariants-f1-db-role-r2-alembic-percent-url-compat-2026-09-10`；工作树
+`worktrees/zcode_mpango_mvp_invariants_f1_pctcompat_2026-09-10`。
+
+## PCT-1 缺陷与修复
+
+缺陷：`alembic/env.py` 将含 `%23`/`%25`/`%2B` 的 DATABASE_URL 直传
+`config.set_main_option()`；Alembic Config 在写入时校验 ConfigParser 插值语法，裸 `%` 触发
+`ValueError: invalid interpolation syntax`，迁移在任何连接前失败（与 CTO 离线反例一致）。
+
+修复：env.py 新增 `_sqlalchemy_url_for_alembic(database_url)`——先应用 async 驱动前缀
+（`postgresql://`→`postgresql+asyncpg://`），再把 `%` 转义为 `%%`（ConfigParser 安全）后交给
+`set_main_option`。`get_main_option`/`get_section` 读取时插值还原出**原始转换后 URL**（逐字节）。
+`+` 与全部百分号三元组保持 URL 语义——无任何解码（不含 unquote）。实测 Alembic 1.18 语义：
+set 校验（裸 % 拒绝）→ get 插值还原（`%%`→`%`）；`get_section`（async engine 的消费面）同样还原。
+`run_migrations_offline` 的 `get_main_option` 消费面由此天然正确。角色供给/迁移内容/Settings/
+Redis 归属规则零改动。
+
+## PCT-2 测试（backend/tests/test_alembic_percent_url_compat.py，9 节点；真实实现复用）
+
+加载**真实 env.py**（`importlib` + alembic.context 运行时代理替换为持有**真实**
+`alembic.config.Config(alembic.ini)` 的受控 stub；stub 在 env.py 运行时分发行受控停止——
+helper/set_main_option 效果均已入模块字典）。无任何实现复制。
+
+| 节点 | 覆盖 |
+|---|---|
+| `..._url_without_percent_roundtrips_unchanged` | 无百分号 URL：行为不变（前缀转换 + Config 回返一致） |
+| `..._encoded_password_roundtrip_exact[%23/%25/%2B]` | 三种三元组：helper 产出转义形态 → set 无插值错误 → get_main_option **还原原始转换 URL** → get_section（engine 消费面）同值 |
+| `..._full_url_with_all_triplets_roundtrip` | 三三元组并存 + 查询串的完整 URL 回返 |
+| `..._plus_semantics_never_decoded` | 裸 `+` 保持字面量（无不解码引入） |
+| `..._incomplete_url_passed_through_unchanged` | 错误/不完整 URL：原样传递（无新增校验——连接期失败的既有规则被钉住） |
+| `..._missing_database_url_keeps_ini_default` | 缺 DATABASE_URL：完全跳过覆盖，ini 默认保留（既有规则） |
+| `..._real_alembic_upgrade_head_with_encoded_url` | **真实 e2e**：`python -m alembic upgrade head` 子进程 + 含 `%23/%25/%2B` 的 DATABASE_URL → rc=0、链达 036→037、数据库探针 head==037 |
+
+## PCT-3 运行记账（原始日志 `evidence-root/r2pct/`，历史目录零覆盖）
+
+| # | 范围 | 结果 |
+|---|---|---|
+| run1 | 新文件（供给 grants 不完整期） | 9 failed（9 项含 e2e；两类原因，见下） |
+| run2 | 补 alembic.context 绑定与角色 grants 后 | 4 failed / 5 passed（roundtrip 断言写错：误期望建议读法为转义值）→ 依实测语义修正断言 |
+| e2e_final | 正控单节点（迁移身份 + 编码口令 URL、重建空库） | **1 PASS**（rc=0、达 037、探针==037） |
+| fullfile_final | 全文件（该空库，最终字节） | **9 PASS** |
+| mutation | 删除 `%%` 转义 → **5 FAILED，其中 4×`ValueError: invalid interpolation syntax`**（ConfigParser 语义处，正是裁决所指失败点）| 恢复 env.py sha `39b058e4…` 字节一致 → 离线 8 PASS + e2e 按环境声明 SKIP（本轮已另证 PASS） |
+| focused | 四不变量文件（角色分离 env，重建空库+预授权） | **94 PASS + 1 已知双退 RED（-200.0000 原值）+ 2 缓存前提 SKIP** |
+
+开发期如实记录：两轮断言/修复迭代（run1 的 grants 不完整与 `unquote_plus` 断言错误在 run2/run3
+暴露并修正）；role-split env 生成两次失误（sed 过宽、种子文件行错位致 run 口令/REPORTING 口令/
+SECRET_KEY 错值）均以容器端重置与重建 env 修正后复跑——全部日志保留。
+
+## PCT-4 元数据勘误（遵裁决第 10 条；追加而非改写）
+
+1. **baseline 哈希表述更正**：既往报告所记 `.secrets.baseline` 哈希 `f49c8622…` 实为
+   **工作树 CRLF 字节**的 SHA-256；**规范 git blob（LF）哈希为 `c8f3aa245b94d4f4…`**
+   （BASE 76ab895f 与 ae8418d2/e0a63639 各点核验一致）。“未改写”结论不变，引用哈希形式以此更正。
+2. **permission_decisions x6 勘误**：R2-LUBUNTU-V1-V2 报告分支 findings.csv 行 R2-25
+   （blob 90c87cda）披露执行会话“classifier blocks x6 …logs/permission_decisions.md”。
+   该底层数据文件不在本 Windows 主机，本执行方无法核验 x6 的正确计数与分解；此为**追加勘误**
+   （不改写原行）：该行属 Lubuntu 执行会话的环境披露，与候选/产品无关，计数核验需在持有
+   原始日志的执行环境进行——转交 CTO/Kilo。
+3. **供给到正式运行的时间空档披露**：本轮（PCT）容器/env 供给 09-10 09:51，正式记录运行
+   09-10 10:03–10:18（分钟级，无空档）。可测历史：R1-R1 证据轮容器/env 供给 09-09 06:30–07:26
+   → 其正式冻结运行同日 10:03–10:18 与 09-09 06:53–07:37（分钟级）；**R1-AUTH-STOCK 轮**
+   env 供给 09-08 06:30:25 → 其冻结全量差分正式运行完成于 09-08 12:56:36/13:21（**约 6.4–6.8
+   小时**），期间同一容器经受了多轮聚焦/证伪迭代——该轮正式差分的库态为“供给后开发使用态”而非
+   全新供给态（此局限已在 R1-R1 轮以独立等价容器+显式准备步骤消除）。CTO 所记“约 10.5 小时”
+   之精确窗口含本机已删容器创建时刻，本机保留证据无法完全复算——如实记录，以 CTO 时线为准。
+
+## PCT-5 提交前条目化自查（实际于提交前完成）
+
+| 项 | 判定 | 证据位置 |
+|---|---|---|
+| 修复在真实路径（env.py 顶层真实执行） | PASS | 测试以真实 env.py 导入 + 真实 Config(ini)；run3/run5/e2e_final |
+| 无百分号 URL 行为不变 | PASS | `url_without_percent_roundtrips_unchanged` |
+| `%23/%25/%2B` 写入+读回（原始 URL 还原） | PASS | 三个参数化节点 + full_url 节点（get_main_option 与 get_section 双面断言） |
+| `+` 语义不被解码 | PASS | plus_semantics 节点 |
+| 错误/不完整 URL 既有规则 | PASS | incomplete_url 钉住（无新增校验）；missing_database_url 钉住（ini 默认保留） |
+| 真实凭据零出现 | PASS | 全部 URL 为合成标记；detect-secrets 正式扫描 rc=0 |
+| 变异语义 RED（ConfigParser 处） | PASS | mutation_pct.log：5 FAILED/4×`invalid interpolation syntax`；恢复 sha `39b058e4…` 一致 → GREEN |
+| 兼容门（不变量家族×新 env.py） | PASS | focused 四文件 94P+1 已知 RED+2 SKIP（角色分离 env、重建空库+预授权） |
+| 未覆盖 | NOT_PROVEN | offline 模式真实 alembic 运行（`--sql` 路径未单测）；PG13-15 兼容；全量后端/正式 V3（未授权） |
+| FULL_SUITE_RESULT | NOT_RUN（本轮未授权重跑全量；最近全量为 R1-R1 轮 BASE 差分，见该轮台账） |
+| BROWSER_RUNTIME | NOT_RUN（无浏览器步骤） |
+
+## PCT-6 资源
+
+容器 `mpango-zcode-inv-pct-pg`（标签核验）报告核验后删除；/tmp 口令与备份已清；R0/R1/CTO/VOID
+原件零覆盖；本轮原件存 `evidence-root/r2pct/`（manifest 同目录）。

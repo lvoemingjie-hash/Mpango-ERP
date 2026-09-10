@@ -30,12 +30,29 @@ if config.config_file_name is not None:
 # Override sqlalchemy.url from DATABASE_URL env var if available.
 # This allows alembic to work inside Docker where the DB host is
 # a service name (e.g. 'postgres') rather than '127.0.0.1'.
+def _sqlalchemy_url_for_alembic(database_url: str) -> str:
+    """Convert DATABASE_URL into the value Alembic's Config must hold.
+
+    1. The async driver prefix is applied (``postgresql://`` becomes
+       ``postgresql+asyncpg://``).
+    2. ``%`` is escaped as ``%%`` for ConfigParser interpolation: the URL
+       goes in through ``set_main_option`` (stored raw) and comes out via
+       ``get_main_option`` / ``get_section`` (interpolated), so a literal
+       ``%23`` / ``%25`` / ``%2B`` inside a percent-encoded password would
+       otherwise raise ``ValueError: invalid interpolation syntax`` before
+       any database connection is attempted. After escaping, reading the
+       option returns the original (converted) URL byte-for-byte. ``+`` and
+       every percent-triplet keep their URL semantics — nothing is decoded.
+    """
+    url = database_url
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return url.replace("%", "%%")
+
+
 _db_url = os.environ.get("DATABASE_URL")
 if _db_url:
-    # Alembic needs the async driver prefix
-    if _db_url.startswith("postgresql://"):
-        _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    config.set_main_option("sqlalchemy.url", _db_url)
+    config.set_main_option("sqlalchemy.url", _sqlalchemy_url_for_alembic(_db_url))
 
 # Target metadata for autogenerate
 target_metadata = Base.metadata

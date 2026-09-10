@@ -10,6 +10,11 @@ from models.catalog_product import CatalogProduct
 from models.sku import SKU
 from repositories.sku_repository import SKURepository
 from repositories.inventory_repository import InventoryRepository
+from services.package_identity import (
+    ensure_package_quantity_change_allowed,
+    lock_sku_row,
+    package_quantity_changed,
+)
 from services.sku_integrity import flush_skus_or_409
 
 
@@ -116,6 +121,15 @@ class SKUService:
                 detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
             )
 
+        # BC06-R1: shared package-identity guard — serialize on the SKU row
+        # and gate actual package_quantity changes BEFORE any mutation, so a
+        # refused request leaves zero data changes in this transaction.
+        await lock_sku_row(db, sku_id=sku.id)
+        if package_quantity_changed(sku.package_quantity, package_quantity):
+            await ensure_package_quantity_change_allowed(
+                db, sku=sku, new_package_quantity=package_quantity
+            )
+
         if name is not None:
             sku.catalog_product.name = name
         if description is not None:
@@ -128,6 +142,11 @@ class SKUService:
             sku.catalog_product.category = category
         if is_active is not None:
             sku.is_active = is_active
+        # BC06-R1: the sibling sync must not trigger a lazy collection load —
+        # in the async session that raises MissingGreenlet (latent defect on
+        # the frozen base: this entry was never exercised against real PG).
+        # Load the units in an explicit awaited boundary instead.
+        await db.refresh(sku.catalog_product, ["sellable_units"])
         for sibling in sku.catalog_product.sellable_units:
             sibling.name = sku.catalog_product.name
             sibling.description = sku.catalog_product.description

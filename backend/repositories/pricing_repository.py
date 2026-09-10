@@ -14,6 +14,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.retailer_price import RetailerPrice
+from services.package_identity import lock_sku_row
 
 
 async def get_price(
@@ -75,6 +76,14 @@ async def set_price(
 
     Uses upsert semantics: creates if not exists, updates if exists.
     """
+    # BC06-R1: take the SAME skus row lock as the package_quantity
+    # modification entries, creating one deterministic serialization order:
+    # a price committed before a repackaging attempt makes that attempt
+    # return SKU_PACKAGE_QUANTITY_REPRICE_REQUIRED / 409; a repackaging
+    # committed first means this price simply applies to the new package
+    # definition. No price rows are ever deleted or retired here.
+    await lock_sku_row(db, sku_id=sku_id)
+
     result = await db.execute(
         select(RetailerPrice)
         .where(

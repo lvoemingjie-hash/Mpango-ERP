@@ -14,6 +14,11 @@ from models.catalog_product import CatalogProduct
 from models.sku import SKU
 from repositories.inventory_repository import InventoryRepository
 from schemas.catalog import CatalogProductCreate, CatalogProductUpdate, SellableUnitCreate, SellableUnitUpdate
+from services.package_identity import (
+    ensure_package_quantity_change_allowed,
+    lock_sku_row,
+    package_quantity_changed,
+)
 from services.sku_integrity import flush_skus_or_409
 
 
@@ -205,7 +210,16 @@ class CatalogProductService:
         unit = next((item for item in product.sellable_units if item.id == unit_uuid), None)
         if unit is None:
             raise HTTPException(status_code=404, detail={"code": "SELLABLE_UNIT_NOT_FOUND", "message": "Sellable unit not found"})
-        for field, value in request.model_dump(exclude_unset=True).items():
+        updates = request.model_dump(exclude_unset=True)
+        # BC06-R1: shared package-identity guard — the SAME implementation as
+        # SKUService.update_sku: serialize on the SKU row and gate actual
+        # package_quantity changes BEFORE any mutation.
+        await lock_sku_row(db, sku_id=unit.id)
+        if package_quantity_changed(unit.package_quantity, updates.get("package_quantity")):
+            await ensure_package_quantity_change_allowed(
+                db, sku=unit, new_package_quantity=updates["package_quantity"]
+            )
+        for field, value in updates.items():
             setattr(unit, field, value)
         unit.updated_by = actor_id
         await db.flush()

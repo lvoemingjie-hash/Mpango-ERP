@@ -485,15 +485,16 @@ class TestConcurrency:
 
 
 class TestMigrationHead:
-    """Sole head 037 after upgrade."""
+    """Sole head 038 after upgrade (038_catalog_identity_vertical_slice is the
+    exact single successor of 037_payment_declarations_schema)."""
 
-    async def test_head_is_037(self):
+    async def test_head_is_038(self):
         async with AsyncSessionLocal() as db:
             row = (await db.execute(text(
                 "SELECT version_num FROM public.alembic_version"
             ))).first()
             assert row is not None
-            assert row[0] == "037_payment_declarations_schema"
+            assert row[0] == "038_catalog_identity_vertical_slice"
 
     async def test_sole_head(self):
         async with AsyncSessionLocal() as db:

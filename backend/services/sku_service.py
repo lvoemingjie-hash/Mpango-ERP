@@ -3,11 +3,19 @@ from __future__ import annotations
 import uuid
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from models.catalog_product import CatalogProduct
 from models.sku import SKU
 from repositories.sku_repository import SKURepository
 from repositories.inventory_repository import InventoryRepository
+from services.package_identity import (
+    ensure_package_quantity_change_allowed,
+    lock_sku_row,
+    package_quantity_changed,
+)
+from services.sku_integrity import flush_skus_or_409
 
 
 class SKUService:
@@ -23,31 +31,72 @@ class SKUService:
         self,
         db: AsyncSession,
         *,
+        catalog_product_id: str | None,
         sku_code: str,
         name: str,
         description: str | None,
         unit: str,
+        package_quantity,
         category: str | None,
         is_active: bool,
         created_by: str | None,
     ) -> SKU:
-        existing = await self._sku_repo.get_by_code(db, sku_code=sku_code)
+        existing = await self._sku_repo.get_any_by_code(db, sku_code=sku_code)
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={"code": "SKU_EXISTS", "message": f"SKU '{sku_code}' already exists"},
             )
 
+        product: CatalogProduct | None = None
+        if catalog_product_id:
+            try:
+                product_uuid = uuid.UUID(catalog_product_id)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"code": "PRODUCT_NOT_FOUND", "message": "Catalog product not found"},
+                ) from exc
+            product = (
+                await db.execute(
+                    select(CatalogProduct).where(
+                        CatalogProduct.id == product_uuid,
+                        CatalogProduct.is_deleted.is_(False),
+                    )
+                )
+            ).scalar_one_or_none()
+            if product is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={"code": "PRODUCT_NOT_FOUND", "message": "Catalog product not found"},
+                )
+        else:
+            product = CatalogProduct(
+                name=name,
+                description=description,
+                category=category,
+                is_active=is_active,
+                created_by=uuid.UUID(created_by) if created_by else None,
+            )
+            db.add(product)
+            await db.flush()
+
         sku = SKU(
+            catalog_product_id=product.id,
             sku_code=sku_code,
-            name=name,
-            description=description,
+            name=product.name,
+            description=product.description,
             unit=unit,
-            category=category,
+            package_quantity=package_quantity,
+            category=product.category,
             is_active=is_active,
             created_by=uuid.UUID(created_by) if created_by else None,
         )
-        sku = await self._sku_repo.create(db, sku=sku)
+        db.add(sku)
+        # R1: concurrent duplicate-code race surfaces at flush — mapped to
+        # SKU_EXISTS/409 by the named-constraint guard (never a 500).
+        await flush_skus_or_409(db, sku_code=sku_code)
+        await db.refresh(sku)
 
         await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
         return sku
@@ -60,6 +109,7 @@ class SKUService:
         name: str | None,
         description: str | None,
         unit: str | None,
+        package_quantity,
         category: str | None,
         is_active: bool | None,
         updated_by: str | None,
@@ -71,16 +121,45 @@ class SKUService:
                 detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
             )
 
+        # BC06-R1/R2: shared package-identity guard — serialize on the SKU
+        # row and take the LOCKED-FRESH instance for both the change decision
+        # and the write below (never the pre-lock loaded object). A refused
+        # request leaves zero data changes in this transaction.
+        locked = await lock_sku_row(db, sku_id=sku.id)
+        if locked is None:
+            # Concurrently soft-deleted between precheck and lock.
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
+            )
+        sku = locked
+        if package_quantity_changed(sku.package_quantity, package_quantity):
+            await ensure_package_quantity_change_allowed(
+                db, sku=sku, new_package_quantity=package_quantity
+            )
+
         if name is not None:
-            sku.name = name
+            sku.catalog_product.name = name
         if description is not None:
-            sku.description = description
+            sku.catalog_product.description = description
         if unit is not None:
             sku.unit = unit
+        if package_quantity is not None:
+            sku.package_quantity = package_quantity
         if category is not None:
-            sku.category = category
+            sku.catalog_product.category = category
         if is_active is not None:
             sku.is_active = is_active
+        # BC06-R1: the sibling sync must not trigger a lazy collection load —
+        # in the async session that raises MissingGreenlet (latent defect on
+        # the frozen base: this entry was never exercised against real PG).
+        # Load the units in an explicit awaited boundary instead.
+        await db.refresh(sku.catalog_product, ["sellable_units"])
+        for sibling in sku.catalog_product.sellable_units:
+            sibling.name = sku.catalog_product.name
+            sibling.description = sku.catalog_product.description
+            sibling.category = sku.catalog_product.category
+            sibling.updated_by = uuid.UUID(updated_by) if updated_by else None
         sku.updated_by = uuid.UUID(updated_by) if updated_by else None
 
         sku = await self._sku_repo.save(db, sku=sku)

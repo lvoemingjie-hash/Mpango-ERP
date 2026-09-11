@@ -65,7 +65,7 @@ function requestKey(config: AxiosRequestConfig): string {
   return `${(config.method ?? 'get').toUpperCase()} ${config.url ?? ''}`;
 }
 
-function installRealEndpointAdapter(): string[] {
+function installRealEndpointAdapter(catalogParamsList: Array<unknown>): string[] {
   const handled: string[] = [];
   const adapter: AxiosAdapter = async (config) => {
     const key = requestKey(config);
@@ -97,7 +97,8 @@ function installRealEndpointAdapter(): string[] {
         });
       case 'GET /orders':
         return ok(config, apiResponse(paginated([], 1, 50)));
-      case 'GET /skus':
+      case 'GET /catalog-products':
+        catalogParamsList.push(config.params);
         return ok(config, apiResponse(paginated([], 1, 100)));
       case 'GET /inventory/stocks':
         return ok(config, apiResponse(paginated([], 1, 50)));
@@ -200,7 +201,8 @@ describe('S5-B frontend real user smoke gate', () => {
 
   it('lets an authenticated admin click the MVP sidebar pages without 403 or 500 toasts', async () => {
     const user = userEvent.setup();
-    const handled = installRealEndpointAdapter();
+    const catalogParamsList: Array<unknown> = [];
+    const handled = installRealEndpointAdapter(catalogParamsList);
 
     render(<App />);
 
@@ -264,7 +266,7 @@ describe('S5-B frontend real user smoke gate', () => {
         'GET /dashboards/kpi/summary',
         'GET /dashboards/charts/sales-trend',
         'GET /orders',
-        'GET /skus',
+        'GET /catalog-products',
         'GET /inventory/stocks',
         'GET /finance/summary',
         'GET /finance/receivables/summary',
@@ -274,5 +276,9 @@ describe('S5-B frontend real user smoke gate', () => {
         'GET /retailers?page=1&size=100',
       ]),
     );
+    expect(catalogParamsList.length).toBeGreaterThan(0);
+    for (const params of catalogParamsList) {
+      expect(params).toEqual({ page: 1, size: 100 });
+    }
   });
 });

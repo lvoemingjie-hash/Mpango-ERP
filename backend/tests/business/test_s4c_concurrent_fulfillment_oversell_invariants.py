@@ -24,6 +24,7 @@ from database.session import AsyncSessionLocal
 from models.inventory_stock import InventoryStock
 from models.order import Order, OrderItem, OrderStatus
 from models.sku import SKU
+from tests.catalog_identity_helpers import create_sku_with_catalog, stable_order_items
 
 
 def _tenant_id(async_session: AsyncSession) -> uuid.UUID:
@@ -85,9 +86,9 @@ async def _create_sku_with_stock(
     sku_code: str,
     on_hand: Decimal,
 ) -> SKU:
-    sku = SKU(sku_code=sku_code, name=f"SKU {sku_code}", unit="piece", is_active=True)
-    async_session.add(sku)
-    await async_session.flush()
+    sku = await create_sku_with_catalog(
+        async_session, sku_code=sku_code, name=f"SKU {sku_code}"
+    )
     async_session.add(
         InventoryStock(
             sku_id=sku.id,
@@ -113,16 +114,7 @@ async def _create_order(
         total_amount=total,
         notes="S4-C1 concurrent fulfillment oversell invariant audit",
     )
-    order.items = [
-        OrderItem(
-            product_name=f"Product {sku_code}",
-            sku_code=sku_code,
-            quantity=quantity,
-            unit_price=unit_price,
-            subtotal=Decimal(quantity) * unit_price,
-        )
-        for sku_code, quantity, unit_price in items
-    ]
+    order.items = await stable_order_items(async_session, items)
     async_session.add(order)
     await async_session.commit()
     await async_session.refresh(order)

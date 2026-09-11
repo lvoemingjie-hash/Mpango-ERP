@@ -12,6 +12,7 @@ from core.exceptions import InventoryShortageError
 from models.inventory_movement import InventoryMovement, MovementType
 from models.inventory_reservation import InventoryReservation
 from models.inventory_stock import InventoryStock
+from models.catalog_product import CatalogProduct
 from models.sku import SKU
 from repositories.inventory_repository import InventoryRepository
 
@@ -74,21 +75,33 @@ class InventoryService:
         *,
         sku_id: uuid.UUID,
         sku_code: str,
+        require_active: bool = False,
     ) -> InventoryStock:
-        result = await db.execute(
+        statement = (
             select(InventoryStock)
+            .join(SKU, SKU.id == InventoryStock.sku_id)
+            .join(CatalogProduct, CatalogProduct.id == SKU.catalog_product_id)
             .where(InventoryStock.sku_id == sku_id)
             .where(InventoryStock.is_deleted.is_(False))
+            .where(SKU.sku_code == sku_code)
             .with_for_update()
             .execution_options(populate_existing=True)
         )
+        if require_active:
+            statement = statement.where(
+                SKU.is_active.is_(True),
+                SKU.is_deleted.is_(False),
+                CatalogProduct.is_active.is_(True),
+                CatalogProduct.is_deleted.is_(False),
+            )
+        result = await db.execute(statement)
         stock = result.scalar_one_or_none()
         if stock is None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
-                    "code": "STOCK_NOT_FOUND",
-                    "message": f"Stock row for SKU '{sku_code}' not found",
+                    "code": "SELLABLE_UNIT_UNAVAILABLE",
+                    "message": f"Active sellable unit '{sku_code}' with matching identity was not found",
                 },
             )
         return stock
@@ -117,6 +130,14 @@ class InventoryService:
 
         reservations: list[InventoryReservation] = []
         for item in sorted(order.items, key=lambda order_item: (order_item.sku_code, str(order_item.id))):
+            if item.sellable_unit_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "ORDER_ITEM_SELLABLE_ID_REQUIRED",
+                        "message": f"Order item '{item.id}' requires explicit legacy mapping",
+                    },
+                )
             quantity = Decimal(str(item.quantity))
             if quantity <= Decimal("0.00"):
                 raise HTTPException(
@@ -127,8 +148,11 @@ class InventoryService:
                     },
                 )
 
-            sku, stock = await self._locked_stock_by_sku_code(
-                db, sku_code=item.sku_code, create_if_missing=True
+            stock = await self._locked_stock_by_sku_id(
+                db,
+                sku_id=item.sellable_unit_id,
+                sku_code=item.sku_code,
+                require_active=True,
             )
             available = self._available(stock.quantity_on_hand, stock.quantity_reserved)
             if available < quantity:
@@ -146,7 +170,7 @@ class InventoryService:
             reservation = InventoryReservation(
                 order_id=order.id,
                 order_item_id=item.id,
-                sku_id=sku.id,
+                sku_id=item.sellable_unit_id,
                 sku_code=item.sku_code,
                 quantity=quantity,
                 status="reserved",
@@ -231,12 +255,40 @@ class InventoryService:
                 detail={"code": "INVALID_ORDER_ID", "message": "Invalid order_id"},
             )
 
-        sku_codes = await self._inventory_repo.list_sku_codes_for_order(db, order_id=oid)
-        unique_codes = sorted({c for c in sku_codes if c})
+        identities = await self._inventory_repo.list_sellable_identities_for_order(
+            db, order_id=oid
+        )
+        if any(sellable_unit_id is None for sellable_unit_id, _ in identities):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "ORDER_ITEM_SELLABLE_ID_REQUIRED",
+                    "message": "Explicit legacy mapping is required",
+                },
+            )
+        unique_identities = {
+            sellable_unit_id: sku_code
+            for sellable_unit_id, sku_code in identities
+        }
 
         items = []
-        for code in unique_codes:
-            sku, stock = await self.get_stock_by_sku_code(db, sku_code=code)
+        for sellable_unit_id in sorted(unique_identities, key=str):
+            row = await self._inventory_repo.get_stock_by_sku_id(
+                db, sku_id=sellable_unit_id
+            )
+            if row is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "code": "SKU_NOT_FOUND",
+                        "message": "Sellable unit not found",
+                    },
+                )
+            sku, stock = row
+            if stock is None:
+                stock = await self._inventory_repo.ensure_stock_row(
+                    db, sku_id=sellable_unit_id
+                )
             items.append((sku, stock))
         return items
 
@@ -295,6 +347,7 @@ class InventoryService:
         self,
         db: AsyncSession,
         *,
+        sellable_unit_id: uuid.UUID | None,
         sku_code: str,
         quantity: Decimal,
         order_id: uuid.UUID,
@@ -302,7 +355,14 @@ class InventoryService:
         fulfilled_by: str | None = None,
     ) -> tuple[InventoryStock, InventoryMovement]:
         """Deduct on-hand stock for a fulfilled order and write a journal entry."""
-        sku, stock = await self._locked_stock_by_sku_code(db, sku_code=sku_code)
+        if sellable_unit_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "ORDER_ITEM_SELLABLE_ID_REQUIRED", "message": "Explicit legacy mapping is required"},
+            )
+        stock = await self._locked_stock_by_sku_id(
+            db, sku_id=sellable_unit_id, sku_code=sku_code
+        )
         quantity = Decimal(str(quantity))
         quantity_before = stock.quantity_on_hand
         quantity_after = quantity_before - quantity
@@ -343,6 +403,14 @@ class InventoryService:
                     ),
                 },
             )
+        if reservations and any(reservation.sku_id != sellable_unit_id for reservation in reservations):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "RESERVATION_SELLABLE_ID_MISMATCH",
+                    "message": f"Reservation identity does not match order item '{order_item_id}'",
+                },
+            )
 
         stock.quantity_on_hand = quantity_after
         if reservations:
@@ -371,7 +439,7 @@ class InventoryService:
                 pass
 
         movement = InventoryMovement(
-            sku_id=sku.id,
+            sku_id=sellable_unit_id,
             movement_type="deduction",
             quantity=-quantity,
             quantity_before=quantity_before,
@@ -523,44 +591,21 @@ class InventoryService:
         self,
         db: AsyncSession,
         *,
+        sellable_unit_id: uuid.UUID | None,
         sku_code: str,
         quantity: Decimal,
         order_id: uuid.UUID,
         returned_by: str | None = None,
     ) -> tuple[InventoryStock, InventoryMovement]:
         """Restore on-hand stock for a returned fulfilled order and journal it."""
-        row = await self._inventory_repo.get_stock_by_sku_code(db, sku_code=sku_code)
-        if not row:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
-            )
-
-        sku, stock = row
-        if stock is None:
+        if sellable_unit_id is None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "code": "STOCK_NOT_FOUND",
-                    "message": f"Stock row for SKU '{sku_code}' not found",
-                },
+                detail={"code": "ORDER_ITEM_SELLABLE_ID_REQUIRED", "message": "Explicit legacy mapping is required"},
             )
-
-        result = await db.execute(
-            select(InventoryStock)
-            .where(InventoryStock.id == stock.id)
-            .where(InventoryStock.is_deleted.is_(False))
-            .with_for_update()
+        stock = await self._locked_stock_by_sku_id(
+            db, sku_id=sellable_unit_id, sku_code=sku_code
         )
-        stock = result.scalar_one_or_none()
-        if stock is None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "code": "STOCK_NOT_FOUND",
-                    "message": f"Stock row for SKU '{sku_code}' not found",
-                },
-            )
 
         quantity = Decimal(str(quantity))
         if quantity <= Decimal("0.00"):
@@ -584,7 +629,7 @@ class InventoryService:
                 pass
 
         movement = InventoryMovement(
-            sku_id=sku.id,
+            sku_id=sellable_unit_id,
             movement_type=MovementType.RESTOCK.value,
             quantity=quantity,
             quantity_before=quantity_before,

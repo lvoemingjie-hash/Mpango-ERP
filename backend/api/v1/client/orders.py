@@ -76,7 +76,10 @@ def _order_to_client_view(order) -> ClientOrderView:
     items = [
         ClientOrderItemView(
             product_name=item.product_name,
+            sellable_unit_id=str(item.sellable_unit_id) if item.sellable_unit_id else None,
+            identity_status=item.identity_status,
             sku_code=item.sku_code,
+            unit_snapshot=item.unit_snapshot,
             quantity=item.quantity,
             unit_price=item.unit_price,
             subtotal=item.subtotal,
@@ -119,46 +122,65 @@ async def create_order(
     DRAFT/CONFIRMED order (no separate cancel permission in this slice).
     """
     # Validate all SKUs exist, are active, and have stock
-    sku_codes = [item.sku_code for item in request.items]
+    sku_codes = [item.sku_code for item in request.items if item.sku_code]
+    sku_ids = [item.sellable_unit_id for item in request.items if item.sellable_unit_id]
     placeholders = ", ".join([f":sku_{i}" for i in range(len(sku_codes))])
     sku_params = {f"sku_{i}": code for i, code in enumerate(sku_codes)}
+    id_placeholders = ", ".join([f":sku_id_{i}" for i in range(len(sku_ids))])
+    sku_params.update({f"sku_id_{i}": value for i, value in enumerate(sku_ids)})
+    selectors = []
+    if placeholders:
+        selectors.append(f"s.sku_code IN ({placeholders})")
+    if id_placeholders:
+        selectors.append(f"s.id::text IN ({id_placeholders})")
+    selector_sql = " OR ".join(selectors)
 
     sku_sql = f"""
         SELECT
             s.id AS sku_id,
             s.sku_code,
-            s.name,
-            s.is_active,
+            p.name,
+            s.unit,
+            (s.is_active AND p.is_active) AS is_active,
             COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand,
             rp.price AS sell_price
         FROM skus s
+        JOIN catalog_products p ON p.id = s.catalog_product_id AND p.is_deleted IS NOT TRUE
         LEFT JOIN inventory_stocks i ON i.sku_id = s.id AND i.is_deleted IS NOT TRUE
         LEFT JOIN retailer_prices rp
             ON rp.sku_id = s.id
             AND rp.retailer_id = :retailer_id
             AND rp.is_deleted IS NOT TRUE
-        WHERE s.sku_code IN ({placeholders})
+        WHERE ({selector_sql})
           AND s.is_deleted IS NOT TRUE
     """
     sku_params["retailer_id"] = client.retailer_id
     result = await db.execute(text(sku_sql), sku_params)
     sku_rows = {row.sku_code: row for row in result.fetchall()}
+    sku_rows_by_id = {str(row.sku_id): row for row in sku_rows.values()}
 
     # Validate each requested item and resolve server-side pricing
     errors = []
     order_items = []
     for item in request.items:
-        sku_row = sku_rows.get(item.sku_code)
+        by_id = sku_rows_by_id.get(item.sellable_unit_id) if item.sellable_unit_id else None
+        by_code = sku_rows.get(item.sku_code) if item.sku_code else None
+        if item.sellable_unit_id and item.sku_code:
+            if by_id is None or by_code is None or by_id.sku_id != by_code.sku_id:
+                errors.append("Sellable unit ID does not match SKU code")
+                continue
+        sku_row = by_id or by_code
+        selector = item.sku_code or item.sellable_unit_id
         if sku_row is None:
-            errors.append(f"Product '{item.sku_code}' not found")
+            errors.append(f"Product '{selector}' not found")
             continue
         if not sku_row.is_active:
-            errors.append(f"Product '{item.sku_code}' is no longer available")
+            errors.append(f"Product '{selector}' is no longer available")
             continue
         qty_available = float(sku_row.quantity_on_hand)
         if qty_available < item.quantity:
             errors.append(
-                f"Insufficient stock for '{item.sku_code}': "
+                f"Insufficient stock for '{selector}': "
                 f"requested {item.quantity}, available {int(qty_available)}"
             )
             continue
@@ -166,7 +188,7 @@ async def create_order(
         # P0: Price is resolved server-side from retailer_prices, NEVER from client
         if sku_row.sell_price is None:
             errors.append(
-                f"No price configured for '{item.sku_code}'. "
+                f"No price configured for '{selector}'. "
                 f"Please contact your supplier."
             )
             continue
@@ -175,14 +197,16 @@ async def create_order(
 
         if resolved_price <= 0:
             errors.append(
-                f"Invalid price for '{item.sku_code}'. "
+                f"Invalid price for '{selector}'. "
                 f"Please contact your supplier."
             )
             continue
 
         order_items.append({
+            "sellable_unit_id": sku_row.sku_id,
             "product_name": sku_row.name,
-            "sku_code": item.sku_code,
+            "sku_code": sku_row.sku_code,
+            "unit_snapshot": sku_row.unit,
             "quantity": item.quantity,
             "unit_price": resolved_price,
         })

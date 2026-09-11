@@ -169,7 +169,7 @@ def test_alembic_head_includes_owner_credential_setup_tokens():
     config = Config(str(ALEMBIC_INI_PATH))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["037_payment_declarations_schema"]
+    assert script.get_heads() == ["038_catalog_identity_vertical_slice"]
 
 
 def test_owner_credential_schema_foundation_artifacts_remain_present():

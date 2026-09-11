@@ -27,6 +27,7 @@ from models.inventory_stock import InventoryStock
 from models.ledger import AccountType, LedgerEntry
 from models.order import Order, OrderItem, OrderStatus
 from models.sku import SKU
+from tests.catalog_identity_helpers import create_sku_with_catalog, stable_order_items
 from schemas.order import PayOrderRequest
 from scripts.bootstrap_tenant_schema import bootstrap
 
@@ -76,9 +77,9 @@ async def _create_sku_with_stock(
     on_hand: Decimal,
     reserved: Decimal = Decimal("0.00"),
 ) -> SKU:
-    sku = SKU(sku_code=sku_code, name=f"SKU {sku_code}", unit="piece", is_active=True)
-    async_session.add(sku)
-    await async_session.flush()
+    sku = await create_sku_with_catalog(
+        async_session, sku_code=sku_code, name=f"SKU {sku_code}"
+    )
     async_session.add(
         InventoryStock(
             sku_id=sku.id,
@@ -132,16 +133,7 @@ async def _create_order(
         total_amount=total,
         notes="S4-F business invariant closeout",
     )
-    order.items = [
-        OrderItem(
-            product_name=f"Product {sku_code}",
-            sku_code=sku_code,
-            quantity=quantity,
-            unit_price=unit_price,
-            subtotal=Decimal(quantity) * unit_price,
-        )
-        for sku_code, quantity, unit_price in items
-    ]
+    order.items = await stable_order_items(async_session, items)
     async_session.add(order)
     await async_session.commit()
     await async_session.refresh(order)
@@ -238,15 +230,22 @@ async def _insert_sku_order_in_schema(
     on_hand: Decimal,
 ) -> tuple[uuid.UUID, uuid.UUID]:
     async with _tenant_session(tenant_schema, tenant_id) as session:
-        sku_result = await session.execute(
+        sku_id = uuid.uuid4()
+        await session.execute(
+            text(
+                f'INSERT INTO "{tenant_schema}".catalog_products '
+                "(id, name, is_active) VALUES (:sku_id, :name, true)"
+            ),
+            {"sku_id": sku_id, "name": f"SKU {sku_code}"},
+        )
+        await session.execute(
             text(
                 f'INSERT INTO "{tenant_schema}".skus '
-                "(sku_code, name, unit, is_active) "
-                "VALUES (:sku_code, :name, 'piece', true) RETURNING id"
+                "(id, catalog_product_id, sku_code, name, unit, package_quantity, is_active) "
+                "VALUES (:sku_id, :sku_id, :sku_code, :name, 'piece', 1.000, true)"
             ),
-            {"sku_code": sku_code, "name": f"SKU {sku_code}"},
+            {"sku_id": sku_id, "sku_code": sku_code, "name": f"SKU {sku_code}"},
         )
-        sku_id = sku_result.scalar_one()
         await session.execute(
             text(
                 f'INSERT INTO "{tenant_schema}".inventory_stocks '
@@ -272,11 +271,14 @@ async def _insert_sku_order_in_schema(
         await session.execute(
             text(
                 f'INSERT INTO "{tenant_schema}".order_items '
-                "(order_id, product_name, sku_code, quantity, unit_price, subtotal) "
-                "VALUES (:order_id, :product_name, :sku_code, :quantity, 25.00, :subtotal)"
+                "(order_id, sellable_unit_id, identity_status, product_name, sku_code, "
+                "unit_snapshot, quantity, unit_price, subtotal) "
+                "VALUES (:order_id, :sku_id, 'stable', :product_name, :sku_code, "
+                "'piece', :quantity, 25.00, :subtotal)"
             ),
             {
                 "order_id": order_id,
+                "sku_id": sku_id,
                 "product_name": f"Product {sku_code}",
                 "sku_code": sku_code,
                 "quantity": quantity,

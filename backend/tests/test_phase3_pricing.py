@@ -44,18 +44,33 @@ async def seed_products(async_session: AsyncSession):
     await async_session.execute(text(f'DELETE FROM "{schema}".order_items'))
     await async_session.execute(text(f'DELETE FROM "{schema}".orders'))
     await async_session.execute(text(f'DELETE FROM "{schema}".skus'))
+    await async_session.execute(text(f'DELETE FROM "{schema}".catalog_products'))
 
     # Insert SKUs
     sku_flour_id = uuid.uuid4()
     sku_sugar_id = uuid.uuid4()
     sku_rice_id = uuid.uuid4()
 
+    # Stable catalog identity: each sellable unit owns its CatalogProduct row
+    # (same reconciliation shape migration 038 applies to legacy rows).
     await async_session.execute(text(f"""
-        INSERT INTO "{schema}".skus (id, sku_code, name, unit, category, is_active)
+        INSERT INTO "{schema}".catalog_products (id, name, category, is_active)
         VALUES
-            (:flour_id, 'FLOUR-25KG', 'Wheat Flour 25kg', 'bag', 'Grains', true),
-            (:sugar_id, 'SUGAR-50KG', 'White Sugar 50kg', 'bag', 'Sweeteners', true),
-            (:rice_id,  'RICE-5KG',   'Basmati Rice 5kg', 'bag', 'Grains', true)
+            (:flour_id, 'Wheat Flour 25kg', 'Grains', true),
+            (:sugar_id, 'White Sugar 50kg', 'Sweeteners', true),
+            (:rice_id,  'Basmati Rice 5kg', 'Grains', true)
+    """), {
+        "flour_id": sku_flour_id,
+        "sugar_id": sku_sugar_id,
+        "rice_id": sku_rice_id,
+    })
+
+    await async_session.execute(text(f"""
+        INSERT INTO "{schema}".skus (id, sku_code, name, unit, category, is_active, catalog_product_id, package_quantity)
+        VALUES
+            (:flour_id, 'FLOUR-25KG', 'Wheat Flour 25kg', 'bag', 'Grains', true, :flour_id, 1.000),
+            (:sugar_id, 'SUGAR-50KG', 'White Sugar 50kg', 'bag', 'Sweeteners', true, :sugar_id, 1.000),
+            (:rice_id,  'RICE-5KG',   'Basmati Rice 5kg', 'bag', 'Grains', true, :rice_id, 1.000)
     """), {
         "flour_id": sku_flour_id,
         "sugar_id": sku_sugar_id,

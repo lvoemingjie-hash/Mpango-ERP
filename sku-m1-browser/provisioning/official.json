@@ -1,0 +1,21 @@
+{
+  "schema": "sku-m1-browser/official-provisioning/1",
+  "tenant_a": {
+    "company_name": "SKU M1 Browser Wholesaler A",
+    "country": "TZ",
+    "owner_email": "b1-owner-a@skum1browser.dev",
+    "owner_password": "B1Owner-A-7kQz2Wx9Vm4N",
+    "retailer": {
+      "name": "SKU M1 Browser Retailer A",
+      "phone": "+255700000001",
+      "email": "b1-retailer-a@skum1browser.dev",
+      "password": "B1Retailer-A-4hTz8Nc5Rb1Q"
+    }
+  },
+  "tenant_b": {
+    "company_name": "SKU M1 Browser Wholesaler B",
+    "country": "TZ",
+    "owner_email": "b1-owner-b@skum1browser.dev",
+    "owner_password": "B1Owner-B-3fHs6Jc8Wq1Z"
+  }
+}

@@ -1,0 +1,2 @@
+sku-m1-browser/tests/catalog-hist-001.spec.ts::CATALOG-HIST-001
+sku-m1-browser/tests/catalog-id-001.spec.ts::CATALOG-ID-001

@@ -1,0 +1,17 @@
+{
+  "name": "sku-m1-browser-harness",
+  "private": true,
+  "version": "1.0.0",
+  "description": "DC-12R1-MVP-L1-SKU-R0-M1-R1-B1 authoritative SKU browser harness (CATALOG-ID-001, CATALOG-HIST-001). Isolated: no imports from, or dependencies shared with, the H2-B/H2-C forgot-reset harness.",
+  "scripts": {
+    "list": "playwright test --list",
+    "desktop": "playwright test --project=desktop",
+    "mobile-390": "playwright test --project=mobile-390",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1",
+    "typescript": "5.7.3",
+    "@types/node": "22.10.5"
+  }
+}

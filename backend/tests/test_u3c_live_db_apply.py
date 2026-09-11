@@ -2,7 +2,7 @@
 
 Tests that require a real PostgreSQL database (pytest --run-db).
 Covers: success, skip duplicate, fail duplicate rollback, second apply
-rejected, and no inventory/pricing writes.
+rejected, atomic catalog/inventory initialization, and forbidden writes.
 
 Uses the async_session fixture from conftest.py (t_test schema).
 """
@@ -20,6 +20,8 @@ from sqlalchemy import text, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.import_run import ImportRun
+from models.catalog_product import CatalogProduct
+from models.inventory_stock import InventoryStock
 from models.sku import SKU
 from services.import_service import ImportService
 
@@ -104,6 +106,44 @@ async def _table_row_count(db: AsyncSession, table: str) -> int:
         text(f'SELECT COUNT(*) FROM "{TEST_TENANT_SCHEMA}"."{table}"')
     )
     return result.scalar()
+
+
+async def _create_existing_sellable_unit(
+    db: AsyncSession, *, sku_code: str, name: str
+) -> SKU:
+    product = CatalogProduct(name=name, is_active=True)
+    db.add(product)
+    await db.flush()
+    sku = SKU(
+        catalog_product_id=product.id,
+        sku_code=sku_code,
+        name=name,
+        unit="unit",
+        is_active=True,
+    )
+    db.add(sku)
+    await db.flush()
+    db.add(InventoryStock(sku_id=sku.id))
+    await db.flush()
+    return sku
+
+
+async def _assert_catalog_stock_integrity(
+    db: AsyncSession, sku_codes: set[str]
+) -> None:
+    result = await db.execute(
+        select(SKU, CatalogProduct, InventoryStock)
+        .join(CatalogProduct, CatalogProduct.id == SKU.catalog_product_id)
+        .outerjoin(InventoryStock, InventoryStock.sku_id == SKU.id)
+        .where(SKU.sku_code.in_(sku_codes), SKU.is_deleted.is_(False))
+    )
+    rows = result.all()
+    assert {sku.sku_code for sku, _, _ in rows} == sku_codes
+    for sku, product, stock in rows:
+        assert sku.catalog_product_id == product.id
+        assert stock is not None
+        assert stock.quantity_on_hand == 0
+        assert stock.quantity_reserved == 0
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +254,13 @@ async def clean_skus(async_session: AsyncSession):
     started by the commit.
     """
     await async_session.execute(
+        text(f'DELETE FROM "{TEST_TENANT_SCHEMA}".inventory_stocks')
+    )
+    await async_session.execute(
         text(f'DELETE FROM "{TEST_TENANT_SCHEMA}".skus')
+    )
+    await async_session.execute(
+        text(f'DELETE FROM "{TEST_TENANT_SCHEMA}".catalog_products')
     )
     await async_session.commit()
     # Re-set search_path for the new implicit transaction
@@ -290,7 +336,8 @@ class TestApplySuccess:
         assert result.created == 1
         assert result.status == "completed"
         sku_count = await _count_skus(async_session)
-        assert sku_count >= 1
+        assert sku_count == 1
+        await _assert_catalog_stock_integrity(async_session, {"SINGLE-001"})
 
 
 # ====================================================================
@@ -305,15 +352,11 @@ class TestSkipDuplicate:
         self, async_session: AsyncSession, import_runs_table, clean_skus
     ):
         """Pre-existing SKU is skipped, new SKU still created."""
-        # Create a SKU directly
-        existing = SKU(
+        await _create_existing_sellable_unit(
+            async_session,
             sku_code="EXIST-DB-001",
             name="Already Exists",
-            unit="unit",
-            is_active=True,
         )
-        async_session.add(existing)
-        await async_session.flush()
 
         import_id = f"imp_{uuid.uuid4().hex[:20]}"
         rows = [
@@ -342,6 +385,10 @@ class TestSkipDuplicate:
         codes = set(sku_res.scalars().all())
         assert "EXIST-DB-001" in codes
         assert "NEW-DB-001" in codes
+        assert await _table_row_count(async_session, "inventory_stocks") == 2
+        await _assert_catalog_stock_integrity(
+            async_session, {"EXIST-DB-001", "NEW-DB-001"}
+        )
 
 
 # ====================================================================
@@ -360,14 +407,11 @@ class TestFailDuplicate:
         Setup data (conflict SKU + import_run) is committed so that
         the test-level rollback only undoes svc.apply writes.
         """
-        existing = SKU(
+        await _create_existing_sellable_unit(
+            async_session,
             sku_code="EXIST-FAIL-001",
             name="Already There",
-            unit="unit",
-            is_active=True,
         )
-        async_session.add(existing)
-        await async_session.flush()
 
         import_id = f"imp_{uuid.uuid4().hex[:20]}"
         rows = [
@@ -428,6 +472,86 @@ class TestFailDuplicate:
         run = run_res.scalar_one()
         assert run.status != "applied"
 
+    @pytest.mark.asyncio
+    async def test_mid_apply_failure_rolls_back_catalog_unit_and_stock(
+        self, async_session: AsyncSession, import_runs_table, clean_skus
+    ):
+        """A failure after partial stock initialization leaves zero writes."""
+        from repositories.inventory_repository import InventoryRepository
+
+        import_id = f"imp_{uuid.uuid4().hex[:20]}"
+        await _create_validated_import_run(async_session, import_id, _valid_rows())
+        await async_session.commit()
+        await async_session.execute(
+            text(f'SET LOCAL search_path TO "{TEST_TENANT_SCHEMA}", public')
+        )
+
+        class FailAfterSecondStock(InventoryRepository):
+            def __init__(self):
+                self.calls = 0
+
+            async def ensure_stock_row(self, db, *, sku_id):
+                stock = await super().ensure_stock_row(db, sku_id=sku_id)
+                self.calls += 1
+                if self.calls == 2:
+                    raise RuntimeError("forced import stock failure")
+                return stock
+
+        svc = ImportService(inventory_repo=FailAfterSecondStock())
+        with pytest.raises(RuntimeError, match="forced import stock failure"):
+            await svc.apply(
+                async_session,
+                import_id=import_id,
+                on_conflict="skip",
+                applied_by=uuid.UUID(TEST_TENANT_ID),
+            )
+        await async_session.rollback()
+        await async_session.execute(
+            text(f'SET LOCAL search_path TO "{TEST_TENANT_SCHEMA}", public')
+        )
+
+        assert await _table_row_count(async_session, "catalog_products") == 0
+        assert await _count_skus(async_session) == 0
+        assert await _table_row_count(async_session, "inventory_stocks") == 0
+        run = (
+            await async_session.execute(
+                select(ImportRun).where(ImportRun.import_id == import_id)
+            )
+        ).scalar_one()
+        assert run.status == "validated"
+
+    @pytest.mark.asyncio
+    async def test_soft_deleted_sku_code_remains_reserved(
+        self, async_session: AsyncSession, import_runs_table, clean_skus
+    ):
+        retired = await _create_existing_sellable_unit(
+            async_session,
+            sku_code="RETIRED-IMPORT-001",
+            name="Retired Import Unit",
+        )
+        retired.soft_delete()
+        await async_session.commit()
+        await async_session.execute(
+            text(f'SET LOCAL search_path TO "{TEST_TENANT_SCHEMA}", public')
+        )
+        import_id = f"imp_{uuid.uuid4().hex[:20]}"
+        await _create_validated_import_run(
+            async_session,
+            import_id,
+            [{"sku_code": "RETIRED-IMPORT-001", "name": "Replacement"}],
+        )
+
+        with pytest.raises(Exception) as exc_info:
+            await ImportService().apply(
+                async_session,
+                import_id=import_id,
+                on_conflict="fail",
+                applied_by=uuid.UUID(TEST_TENANT_ID),
+            )
+        assert "CONFLICT_DETECTED" in str(exc_info.value)
+        assert await _table_row_count(async_session, "catalog_products") == 1
+        assert await _table_row_count(async_session, "inventory_stocks") == 1
+
 
 # ====================================================================
 # 4. Second apply rejected (duplicate apply)
@@ -473,18 +597,21 @@ class TestSecondApplyRejected:
 
 
 # ====================================================================
-# 5. No inventory/pricing writes
+# 5. Atomic inventory initialization and forbidden-write boundaries
 # ====================================================================
 
 class TestNoSideEffectWrites:
-    """Apply must not touch inventory_stocks or retailer_prices tables."""
+    """Catalog initialization is allowed; commercial records are not."""
+
+    CONTRACT_MIGRATION = (
+        "SUPERSEDED_BY_SKU_R0_M1_CATALOG_AND_INVENTORY_INITIALIZATION_CONTRACT"
+    )
 
     @pytest.mark.asyncio
-    async def test_apply_does_not_write_inventory(
+    async def test_apply_creates_exactly_one_zero_stock_per_sellable_unit(
         self, async_session: AsyncSession, import_runs_table, clean_skus
     ):
-        """After apply, inventory_stocks should have no new rows from import."""
-        # Get baseline inventory count
+        """Every imported sellable unit receives one safe stock row."""
         inv_before = await _table_row_count(async_session, "inventory_stocks")
 
         import_id = f"imp_{uuid.uuid4().hex[:20]}"
@@ -501,8 +628,9 @@ class TestNoSideEffectWrites:
         assert result.created == 2
 
         inv_after = await _table_row_count(async_session, "inventory_stocks")
-        assert inv_after == inv_before, (
-            f"inventory_stocks changed: {inv_before} -> {inv_after}"
+        assert inv_after == inv_before + 2
+        await _assert_catalog_stock_integrity(
+            async_session, {"U3C-R1-001", "U3C-R1-002"}
         )
 
     @pytest.mark.asyncio
@@ -534,10 +662,13 @@ class TestNoSideEffectWrites:
     async def test_apply_no_cross_table_contamination(
         self, async_session: AsyncSession, import_runs_table, clean_skus
     ):
-        """Apply only creates SKU rows; no other table is touched."""
+        """Apply creates catalog/unit/stock only; commercial rows stay fixed."""
         inv_before = await _table_row_count(async_session, "inventory_stocks")
         price_before = await _table_row_count(async_session, "retailer_prices")
+        payment_before = await _table_row_count(async_session, "payments")
+        order_before = await _table_row_count(async_session, "orders")
         skus_before = await _count_skus(async_session)
+        products_before = await _table_row_count(async_session, "catalog_products")
 
         import_id = f"imp_{uuid.uuid4().hex[:20]}"
         await _create_validated_import_run(async_session, import_id, _valid_rows())
@@ -554,10 +685,19 @@ class TestNoSideEffectWrites:
 
         inv_after = await _table_row_count(async_session, "inventory_stocks")
         price_after = await _table_row_count(async_session, "retailer_prices")
+        payment_after = await _table_row_count(async_session, "payments")
+        order_after = await _table_row_count(async_session, "orders")
         skus_after = await _count_skus(async_session)
+        products_after = await _table_row_count(async_session, "catalog_products")
 
-        assert inv_after == inv_before
+        assert inv_after == inv_before + 2
         assert price_after == price_before
+        assert payment_after == payment_before
+        assert order_after == order_before
+        assert products_after == products_before + 2
         assert skus_after == skus_before + 2, (
             f"Expected {skus_before + 2} SKUs, got {skus_after}"
+        )
+        await _assert_catalog_stock_integrity(
+            async_session, {"U3C-R1-001", "U3C-R1-002"}
         )

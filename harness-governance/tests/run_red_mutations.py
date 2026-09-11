@@ -933,6 +933,17 @@ try:
 except ImportError:  # pragma: no cover - et1_r3a1_mutations ships with the gate
     R3A1_MUTATIONS_WIRED = []
 
+# HE2-ET1-R4: bounded digest-bound manifest transport mutations.
+try:
+    import et1_r4_mutations as _r4_mut
+
+    R4_MUTATIONS_WIRED = [
+        (name, REPO_ROOT / target_relpath, patch, probe_name)
+        for name, target_relpath, patch, probe_name in _r4_mut.R4_MUTATIONS
+    ]
+except ImportError:  # pragma: no cover - et1_r4_mutations ships with the gate
+    R4_MUTATIONS_WIRED = []
+
 
 def tree_digest():
     digest = hashlib.sha256()
@@ -956,13 +967,14 @@ def main() -> int:
     total_red = (len(RED_MUTATIONS) + len(MODE_PROOFS) + len(VALIDATOR_MUTATIONS)
                  + len(E2E_MUTATIONS_WIRED) + len(R2_MUTATIONS_WIRED)
                  + len(R2R2_MUTATIONS_WIRED) + len(R3_MUTATIONS_WIRED)
-                 + len(R3A1_MUTATIONS_WIRED))
+                 + len(R3A1_MUTATIONS_WIRED) + len(R4_MUTATIONS_WIRED))
     print(
         f"HE2-R1 RED mutation gate: {total_red} RED mutations "
         f"({len(RED_MUTATIONS)} tamper + {len(MODE_PROOFS)} mode proof + "
         f"{len(VALIDATOR_MUTATIONS)} validator-scope + {len(E2E_MUTATIONS_WIRED)} authority-e2e "
         f"+ {len(R2_MUTATIONS_WIRED)} redis-authority + {len(R2R2_MUTATIONS_WIRED)} module-binding "
-        f"+ {len(R3_MUTATIONS_WIRED)} backend-cwd-tempdb + {len(R3A1_MUTATIONS_WIRED)} alembic-authority), "
+        f"+ {len(R3_MUTATIONS_WIRED)} backend-cwd-tempdb + {len(R3A1_MUTATIONS_WIRED)} alembic-authority "
+        f"+ {len(R4_MUTATIONS_WIRED)} manifest-transport), "
         f"{len(GREEN_CONTROLS)} GREEN controls"
     )
     print("-" * 78)
@@ -1056,6 +1068,19 @@ def main() -> int:
     for name, target_file, patch, probe_name in R3A1_MUTATIONS_WIRED:
         _run_probe_mutation(
             name, target_file, patch, (lambda pn=probe_name: _r3a1_mut.run_probe(pn)), failures
+        )
+
+    # HE2-ET1-R4 GREEN control + bounded manifest transport mutations.
+    if R4_MUTATIONS_WIRED:
+        pristine_r4 = all(_r4_mut.run_probe(probe_name) for _, _, _, probe_name in R4_MUTATIONS_WIRED)
+        if pristine_r4:
+            print(f"  {'RR-C01-pristine-manifest-transport-held':<40} GREEN as intended")
+        else:
+            failures.append("RR-C01: pristine candidate already fails an R4 probe")
+            print(f"  {'RR-C01-pristine-manifest-transport-held':<40} UNEXPECTED WEAK (pristine)")
+    for name, target_file, patch, probe_name in R4_MUTATIONS_WIRED:
+        _run_probe_mutation(
+            name, target_file, patch, (lambda pn=probe_name: _r4_mut.run_probe(pn)), failures
         )
 
     for name, factory, *mode_args in MODE_PROOFS:

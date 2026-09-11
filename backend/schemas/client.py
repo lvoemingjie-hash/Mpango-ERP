@@ -12,8 +12,9 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from typing import List, Optional
+from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -40,38 +41,66 @@ def compute_stock_level(quantity_on_hand: Decimal) -> StockLevel:
 
 
 # ---------------------------------------------------------------------------
-# Product View Models
+# Product View Models (DC-12R1-MVP-L1-SKU-R0-M1-R1-R1 product-level contract)
 # ---------------------------------------------------------------------------
+#
+# OLD (per-SKU) semantics — REMOVED:
+#   GET /client/products returned ONE item PER SELLABLE UNIT (per SKU row);
+#   `id`/`sellable_unit_id` were the SKU.id and `product_id` was ambiguous
+#   (GET /client/products/{id} actually queried skus.id).
+#
+# NEW (product-level) semantics:
+#   GET /client/products returns ONE item PER CATALOG PRODUCT; `id` is the
+#   CatalogProduct.id; the product carries its ACTIVE sellable units (packaging
+#   choices) nested under `units`. GET /client/products/{id} queries
+#   CatalogProduct.id ONLY (a sellable-unit UUID is a 404, never a product).
+
+class ClientSellableUnitOption(BaseModel):
+    """One packaging choice inside its parent product container."""
+    sellable_unit_id: str = Field(..., description="Stable sellable-unit UUID used for ordering")
+    sku_code: str
+    unit: str
+    package_quantity: Decimal
+    price: Optional[Decimal] = Field(None, description="Retailer-specific selling price (null if not priced)")
+    in_stock: bool
+    stock_level: StockLevel
+    can_order: bool = Field(..., description="True if in stock AND priced for this retailer")
+
+    model_config = {"from_attributes": True}
+
+
+_UNIT_STOCK_RANK = {
+    StockLevel.HIGH: 3,
+    StockLevel.MEDIUM: 2,
+    StockLevel.LOW: 1,
+    StockLevel.OUT_OF_STOCK: 0,
+}
+
+
+def product_stock_level(unit_levels: List[StockLevel]) -> StockLevel:
+    """Aggregate a product's stock level as its BEST unit level."""
+    if not unit_levels:
+        return StockLevel.OUT_OF_STOCK
+    return max(unit_levels, key=lambda level: _UNIT_STOCK_RANK[level])
+
 
 class ClientProductSummary(BaseModel):
-    """Product card — used in list view."""
-    id: str
+    """Product container — one per CatalogProduct in list view."""
+    id: str = Field(..., description="CatalogProduct.id — the customer product identity")
     name: str
-    sku_code: str
     category: Optional[str] = None
-    unit: str
-    price: Optional[Decimal] = Field(None, description="Selling price visible to retailer (null if not priced)")
-    in_stock: bool
-    stock_level: StockLevel
-    can_order: bool = Field(..., description="True if active AND in stock AND has price")
+    in_stock: bool = Field(..., description="True if ANY active unit is in stock")
+    stock_level: StockLevel = Field(..., description="Best (highest) unit stock level")
+    can_order: bool = Field(..., description="True if ANY active unit can be ordered")
+    unit_count: int
+    units: List[ClientSellableUnitOption] = Field(..., description="Active packaging choices (deterministic order)")
 
     model_config = {"from_attributes": True}
 
 
-class ClientProductDetail(BaseModel):
-    """Product detail — full info for single product view."""
-    id: str
-    name: str
-    sku_code: str
+class ClientProductDetail(ClientProductSummary):
+    """Product detail — the full product container with its packaging choices."""
     description: Optional[str] = None
-    category: Optional[str] = None
-    unit: str
-    price: Optional[Decimal] = Field(None, description="Selling price (null if not priced for this retailer)")
-    in_stock: bool
-    stock_level: StockLevel
-    can_order: bool
-
-    model_config = {"from_attributes": True}
 
 
 # ---------------------------------------------------------------------------
@@ -80,8 +109,25 @@ class ClientProductDetail(BaseModel):
 
 class ClientOrderItemRequest(BaseModel):
     """Single line item in an order creation request."""
-    sku_code: str = Field(..., description="SKU code of the product")
+    sellable_unit_id: Optional[str] = Field(None, description="Stable sellable-unit UUID")
+    sku_code: Optional[str] = Field(None, description="Compatibility SKU selector")
     quantity: int = Field(..., gt=0, description="Quantity to order")
+
+    @field_validator("sellable_unit_id")
+    @classmethod
+    def validate_sellable_unit_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return str(UUID(value))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("sellable_unit_id must be a UUID") from exc
+
+    @model_validator(mode="after")
+    def require_selector(self):
+        if not self.sellable_unit_id and not self.sku_code:
+            raise ValueError("sellable_unit_id or sku_code is required")
+        return self
 
 
 class ClientCreateOrderRequest(BaseModel):
@@ -93,7 +139,10 @@ class ClientCreateOrderRequest(BaseModel):
 class ClientOrderItemView(BaseModel):
     """Single line item in an order response."""
     product_name: str
+    sellable_unit_id: Optional[str] = None
+    identity_status: str = "legacy"
     sku_code: str
+    unit_snapshot: Optional[str] = None
     quantity: int
     unit_price: Decimal
     subtotal: Decimal

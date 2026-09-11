@@ -141,6 +141,9 @@ async def _bootstrap_minimal_tenant_schema(session, schema: str) -> None:
                 quantity INTEGER NOT NULL,
                 unit_price NUMERIC(12, 2) NOT NULL,
                 subtotal NUMERIC(12, 2) NOT NULL,
+                sellable_unit_id UUID,
+                identity_status VARCHAR(32) NOT NULL DEFAULT 'legacy',
+                unit_snapshot VARCHAR(32),
                 is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
                 deleted_at TIMESTAMP WITH TIME ZONE,
                 created_by UUID,
@@ -148,6 +151,26 @@ async def _bootstrap_minimal_tenant_schema(session, schema: str) -> None:
                 created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                 updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
             )
+            """
+        )
+    )
+    await session.execute(
+        text(
+            f"""
+            ALTER TABLE "{schema}".order_items
+                DROP CONSTRAINT IF EXISTS ck_order_items_identity_shape_minimal
+            """
+        )
+    )
+    await session.execute(
+        text(
+            f"""
+            ALTER TABLE "{schema}".order_items
+                ADD CONSTRAINT ck_order_items_identity_shape_minimal CHECK (
+                    (identity_status = 'legacy' AND sellable_unit_id IS NULL) OR
+                    (identity_status = 'linked_legacy' AND sellable_unit_id IS NOT NULL) OR
+                    (identity_status = 'stable' AND sellable_unit_id IS NOT NULL AND unit_snapshot IS NOT NULL)
+                )
             """
         )
     )

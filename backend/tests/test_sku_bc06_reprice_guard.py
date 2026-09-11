@@ -1182,31 +1182,19 @@ async def test_nonzero_reserved_stock_locks_repackage(engine, tenant_db):
 
 
 @pytest.mark.asyncio
-async def test_active_reservation_locks_repackage(engine, tenant_db):
-    """A status='reserved' row for the SKU blocks (isolated reservation
-    probe: the underlying order line references an unrelated code)."""
+@pytest.mark.parametrize("reservation_status", ["reserved", "consumed", "released"])
+async def test_reservation_status_locks_repackage(engine, tenant_db, reservation_status):
+    """R2-R1: reserved, consumed AND released reservation rows all block —
+    the R2-confirmed 'any retained reservation row blocks repackaging'
+    semantic, now parametrized across every live status so a per-status
+    exception cannot slip back in (isolated reservation probe: the underlying
+    order line references an unrelated code)."""
     maker = _session_maker(engine)
     session = await _bind_tenant_session(maker, tenant_db)
     try:
         product_id, unit_id, sku_code = await _create_baseline_unit(session, _code("RESVACT"))
         await _insert_isolated_reservation(
-            session, tenant_db, unit_id=unit_id, sku_code=sku_code, status="reserved"
-        )
-        await _assert_both_entries_immutable(maker, session, tenant_db, product_id=product_id, unit_id=unit_id, sku_code=sku_code)
-    finally:
-        await session.close()
-
-
-@pytest.mark.asyncio
-async def test_consumed_reservation_locks_repackage_no_exception(engine, tenant_db):
-    """No consumed/released exception this round: a consumed reservation row
-    still proves identity use and blocks (directive default)."""
-    maker = _session_maker(engine)
-    session = await _bind_tenant_session(maker, tenant_db)
-    try:
-        product_id, unit_id, sku_code = await _create_baseline_unit(session, _code("RESVCONS"))
-        await _insert_isolated_reservation(
-            session, tenant_db, unit_id=unit_id, sku_code=sku_code, status="consumed"
+            session, tenant_db, unit_id=unit_id, sku_code=sku_code, status=reservation_status
         )
         await _assert_both_entries_immutable(maker, session, tenant_db, product_id=product_id, unit_id=unit_id, sku_code=sku_code)
     finally:
@@ -1380,5 +1368,235 @@ async def test_update_sku_syncs_sibling_fields_and_preserves_package_quantity(
         assert Decimal(str(row_b[6])) == Decimal("12.000"), (
             "unit B keeps its own package_quantity (never synced from the sibling)"
         )
+    finally:
+        await session.close()
+
+
+# ---------------------------------------------------------------------------
+# R2-R1 — lock liveness: concurrent soft-delete must fail closed with the
+# structured Not Found semantics and ZERO business writes, in BOTH
+# linearization orders
+# ---------------------------------------------------------------------------
+
+
+async def _soft_delete_sku(session: AsyncSession, tenant_db: str, unit_id: str) -> None:
+    await session.execute(
+        text(
+            f'UPDATE "{tenant_db}".skus SET is_deleted = TRUE, deleted_at = now() '
+            f"WHERE id = :sid"
+        ),
+        {"sid": unit_id},
+    )
+    await session.commit()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ["sku", "unit", "set_price"])
+async def test_concurrent_soft_delete_wins_updater_returns_structured_404(
+    engine, tenant_db, entry
+):
+    """Delete-commits-first linearization, two REAL connections with event
+    barriers: the updater FIRST reads the ACTIVE SKU (b_precheck), then A
+    holds the skus row lock, commits the soft-delete, and only then does the
+    updater's shared lock acquisition resolve. The lock query itself excludes
+    is_deleted rows, so the updater must fail closed with the STRUCTURED
+    Not Found semantics and write NOTHING — no name, no package_quantity, no
+    price row."""
+    maker = _session_maker(engine)
+    setup = await _bind_tenant_session(maker, tenant_db)
+    try:
+        product_id, unit_id, sku_code = await _create_baseline_unit(setup, _code("DEADLOCK"))
+    finally:
+        await setup.close()
+
+    session_b = await _bind_tenant_session(maker, tenant_db)  # updater
+    session_a = await _bind_tenant_session(maker, tenant_db)  # deleter
+    b_precheck = asyncio.Event()
+    b_go = asyncio.Event()
+
+    async def deleter() -> None:
+        # Hold the shared row lock before the updater's path reaches it.
+        await session_a.execute(
+            text(f'SELECT id FROM "{tenant_db}".skus WHERE id = :sid FOR UPDATE'),
+            {"sid": unit_id},
+        )
+        b_go.set()
+        await b_precheck.wait()  # updater has read the ACTIVE row
+        await session_a.execute(
+            text(
+                f'UPDATE "{tenant_db}".skus SET is_deleted = TRUE, deleted_at = now() '
+                f"WHERE id = :sid"
+            ),
+            {"sid": unit_id},
+        )
+        await session_a.commit()  # the delete now linearizes first
+
+    async def updater() -> None:
+        # 1. Read the ACTIVE row (committed state, before any delete).
+        await session_b.execute(select(SKU).where(SKU.sku_code == sku_code))
+        if entry == "unit":
+            await _CATALOG.get_product(session_b, product_id=product_id)
+        b_precheck.set()
+        await b_go.wait()
+        # 2. Enter the real modification path; the shared lock serializes
+        #    behind A and the liveness filter must reject the retired row.
+        try:
+            if entry == "sku":
+                await _update_qty_via_sku_entry(session_b, sku_code, Decimal("24.000"))
+            elif entry == "unit":
+                await _update_qty_via_unit_entry(
+                    session_b, product_id, unit_id, Decimal("24.000")
+                )
+            else:
+                from repositories.pricing_repository import set_price
+
+                await set_price(
+                    db=session_b,
+                    retailer_id=uuid.uuid4(),
+                    sku_id=unit_id,
+                    price=Decimal("88.00"),
+                    updated_by=None,
+                )
+            await session_b.commit()
+            raise AssertionError(
+                f"({entry}): the updater must fail closed on the concurrently "
+                "soft-deleted SKU, not write against a dead row"
+            )
+        except HTTPException as exc:
+            await session_b.rollback()
+            assert exc.status_code == 404, (
+                f"({entry}): expected structured 404, got {exc.status_code}: {exc.detail}"
+            )
+            expected_code = (
+                "SELLABLE_UNIT_NOT_FOUND" if entry == "unit" else "SKU_NOT_FOUND"
+            )
+            assert isinstance(exc.detail, dict) and exc.detail.get("code") == expected_code, (
+                f"({entry}): expected {expected_code}, got {exc.detail}"
+            )
+
+    try:
+        await asyncio.gather(asyncio.create_task(deleter()), asyncio.create_task(updater()))
+
+        # ZERO business writes: the surviving row is exactly the deleter's
+        # (soft-deleted, original quantity, original name) — the updater's
+        # transaction contributed nothing.
+        check = await _bind_tenant_session(maker, tenant_db)
+        try:
+            row = await _sku_row_tuple(check, tenant_db, unit_id)
+            assert row[3] == "BC06 Juice", "name must be untouched by the refused updater"
+            assert Decimal(str(row[6])) == Decimal("1.000"), (
+                "package_quantity must be untouched by the refused updater"
+            )
+            assert row[11] is True, "the deleter's soft-delete must be the surviving state"
+            prices = await _price_rows(check, tenant_db, unit_id)
+            assert prices == [], "no price row may appear for the retired SKU"
+        finally:
+            await check.close()
+    finally:
+        await session_a.close()
+        await session_b.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ["sku", "unit"])
+async def test_reverse_linearization_update_wins_then_soft_delete(engine, tenant_db, entry):
+    """The REVERSE order must be equally explicit: the updater acquires the
+    lock and COMMITS first (event-sequenced), and only then does the other
+    connection soft-delete. The update is durable against the live row and
+    the delete then retires it — both writes persist in exactly that order,
+    never an arbitrary outcome."""
+    maker = _session_maker(engine)
+    setup = await _bind_tenant_session(maker, tenant_db)
+    try:
+        product_id, unit_id, sku_code = await _create_baseline_unit(setup, _code("REVLIN"))
+    finally:
+        await setup.close()
+
+    session_b = await _bind_tenant_session(maker, tenant_db)  # updater first
+    session_a = await _bind_tenant_session(maker, tenant_db)  # deleter second
+    b_committed = asyncio.Event()
+
+    async def updater_first() -> None:
+        try:
+            if entry == "sku":
+                await _update_qty_via_sku_entry(session_b, sku_code, Decimal("24.000"))
+            else:
+                await _update_qty_via_unit_entry(
+                    session_b, product_id, unit_id, Decimal("24.000")
+                )
+            await session_b.commit()
+        finally:
+            b_committed.set()  # only AFTER the updater's commit returned
+
+    async def deleter_second() -> None:
+        await b_committed.wait()
+        await _soft_delete_sku(session_a, tenant_db, unit_id)
+
+    try:
+        await asyncio.gather(
+            asyncio.create_task(updater_first()), asyncio.create_task(deleter_second())
+        )
+
+        check = await _bind_tenant_session(maker, tenant_db)
+        try:
+            row = await _sku_row_tuple(check, tenant_db, unit_id)
+        finally:
+            await check.close()
+        assert Decimal(str(row[6])) == Decimal("24.000"), (
+            "the update committed first must be durable"
+        )
+        assert row[11] is True, "the sequenced soft-delete must then retire the row"
+    finally:
+        await session_a.close()
+        await session_b.close()
+
+
+@pytest.mark.asyncio
+async def test_set_price_fail_closed_on_missing_or_soft_deleted_sku(engine, tenant_db):
+    """set_price must honor the shared lock's result: for a soft-deleted (or
+    never-existing) SKU it fails closed with the structured SKU_NOT_FOUND
+    semantics and produces ZERO price writes — the backstop holds even when
+    a caller skips its own prechecks."""
+    maker = _session_maker(engine)
+    session = await _bind_tenant_session(maker, tenant_db)
+    try:
+        product_id, unit_id, sku_code = await _create_baseline_unit(session, _code("DEADPRICE"))
+        await _soft_delete_sku(session, tenant_db, unit_id)
+        ghost_id = str(uuid.uuid4())
+
+        from repositories.pricing_repository import set_price
+
+        for label, target_id in (("soft-deleted SKU", unit_id), ("never-existing SKU", ghost_id)):
+            with pytest.raises(HTTPException) as exc:
+                await set_price(
+                    db=session,
+                    retailer_id=uuid.uuid4(),
+                    sku_id=target_id,
+                    price=Decimal("66.00"),
+                    updated_by=None,
+                )
+            await session.rollback()
+            assert exc.value.status_code == 404, (
+                f"{label}: expected 404, got {exc.value.status_code}"
+            )
+            assert (
+                isinstance(exc.value.detail, dict)
+                and exc.value.detail.get("code") == "SKU_NOT_FOUND"
+            ), f"{label}: expected structured SKU_NOT_FOUND, got {exc.value.detail}"
+
+        check = await _bind_tenant_session(maker, tenant_db)
+        try:
+            written = (
+                await check.execute(
+                    text(
+                        f'SELECT COUNT(*) FROM "{tenant_db}".retailer_prices '
+                        f"WHERE sku_id IN (:a, :b)"
+                    ),
+                    {"a": unit_id, "b": ghost_id},
+                )
+            ).scalar_one()
+        finally:
+            await check.close()
+        assert written == 0, "no price row may be written for a dead or missing SKU"
     finally:
         await session.close()

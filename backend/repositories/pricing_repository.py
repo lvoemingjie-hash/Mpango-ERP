@@ -10,6 +10,7 @@ from decimal import Decimal
 from typing import Dict, List, Optional
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -76,13 +77,22 @@ async def set_price(
 
     Uses upsert semantics: creates if not exists, updates if exists.
     """
-    # BC06-R1: take the SAME skus row lock as the package_quantity
+    # BC06-R1/R2-R1: take the SAME skus row lock as the package_quantity
     # modification entries, creating one deterministic serialization order:
     # a price committed before a repackaging attempt makes that attempt
     # return SKU_PACKAGE_QUANTITY_REPRICE_REQUIRED / 409; a repackaging
     # committed first means this price simply applies to the new package
     # definition. No price rows are ever deleted or retired here.
-    await lock_sku_row(db, sku_id=sku_id)
+    # R2-R1: the lock's return is load-bearing — a SKU that is missing or
+    # concurrently soft-deleted as of lock acquisition fails closed with the
+    # structured Not Found semantics and ZERO price writes; this backstop
+    # holds even when callers skip their own prechecks.
+    locked = await lock_sku_row(db, sku_id=sku_id)
+    if locked is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_id}' not found"},
+        )
 
     result = await db.execute(
         select(RetailerPrice)

@@ -63,7 +63,7 @@ def _conflict(code: str, message: str) -> HTTPException:
 
 
 async def lock_sku_row(db: AsyncSession, *, sku_id) -> SKU | None:
-    """Acquire the shared ``skus`` row lock and return the FRESHEST row.
+    """Acquire the shared ``skus`` row lock and return the FRESHEST LIVE row.
 
     ``SELECT ... FOR UPDATE`` with ``populate_existing``: the row lock makes
     this transaction the serialization point for both package_quantity
@@ -71,12 +71,15 @@ async def lock_sku_row(db: AsyncSession, *, sku_id) -> SKU | None:
     ``populate_existing`` refreshes the caller's identity-map instance with
     the committed state as of lock acquisition — a stale pre-lock object is
     overwritten here, so the change decision and the write always act on the
-    locked-fresh ``package_quantity``. Returns ``None`` only when the row
-    does not exist (concurrent soft-delete between precheck and lock).
+    locked-fresh ``package_quantity``. R2-R1: soft-deleted rows are excluded
+    from the lock query itself, so ``None`` means "missing OR soft-deleted
+    as of lock acquisition" — a concurrently retired SKU fails closed with
+    the structured Not Found semantics and zero business writes, never
+    against a dead row.
     """
     result = await db.execute(
         select(SKU)
-        .where(SKU.id == sku_id)
+        .where(SKU.id == sku_id, SKU.is_deleted.is_(False))
         .execution_options(populate_existing=True)
         .with_for_update()
     )

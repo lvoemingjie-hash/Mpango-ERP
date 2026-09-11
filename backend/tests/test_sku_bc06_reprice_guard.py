@@ -1,9 +1,10 @@
-"""DC-12R1-MVP-L1-SKU-BC06-R1 — package_quantity vs retailer price validity.
+"""DC-12R1-MVP-L1-SKU-BC06-R1 + R2 — package_quantity vs retailer price validity.
 
 Real PostgreSQL 16, real tenant schemas via the canonical bootstrap, real
 concurrent connections with event barriers (no timing sleeps, no mocked SQL).
 
-Contract (CTO-AUTH-DC12R1-MVP-L1-SKU-BC06-R1-RETAILER-PRICE-VALIDITY):
+Contract (CTO-AUTH-DC12R1-MVP-L1-SKU-BC06-R1-RETAILER-PRICE-VALIDITY, as
+amended by CTO-AUTH-DC12R1-MVP-L1-SKU-BC06-R2-HISTORY-LOCK-ORM-FRESHNESS):
 
 - ``retailer_prices`` rows are current/retired price CONFIGURATION, never
   transaction history. A soft-deleted row is retired configuration: it does
@@ -16,11 +17,14 @@ Contract (CTO-AUTH-DC12R1-MVP-L1-SKU-BC06-R1-RETAILER-PRICE-VALIDITY):
   PRICE_DATA_INTEGRITY_RED, never be silently ignored.
 - Current price configuration is an independent SKU_PACKAGE_QUANTITY_
   REPRICE_REQUIRED gate (structured 409), NOT the history lock.
-- Real transaction history is a separate, stronger gate:
-  SKU_PACKAGE_QUANTITY_IMMUTABLE_AFTER_USE. Zero-value inventory_stocks
-  placeholder rows are NOT history and never block.
-- This round performs NO automatic retailer_prices deletion/retirement/
-  migration/recomputation.
+- R2 identity-use history (SKU_PACKAGE_QUANTITY_IMMUTABLE_AFTER_USE):
+  order_items INCLUDING soft-deleted rows; ANY retained inventory_movements
+  row; any inventory_stocks row with non-zero on-hand OR reserved; ANY
+  retained inventory_reservations row (no consumed/released exception).
+  Only the automatic all-zero inventory_stocks placeholder is not history.
+- R2 locked-fresh reads: lock_sku_row returns the FOR UPDATE + populate_
+  existing refreshed SKU; both modification entries decide and write from
+  that instance, never from a pre-lock loaded object.
 
 Covered paths (both modification entries call the ONE shared guard in
 services/package_identity.py, and set_price takes the SAME skus row lock):
@@ -53,11 +57,12 @@ os.environ.setdefault(
 os.environ.setdefault("MPANGO_ENV", "test")
 
 from fastapi import HTTPException  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import select, text  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
 
 from models.import_run import ImportRun  # noqa: E402
 from models.order import Order, OrderItem, OrderStatus  # noqa: E402
+from models.sku import SKU  # noqa: E402
 from schemas.catalog import CatalogProductCreate, SellableUnitCreate, SellableUnitUpdate  # noqa: E402
 from scripts.bootstrap_tenant_schema import bootstrap  # noqa: E402
 from services.catalog_product_service import CatalogProductService  # noqa: E402
@@ -1001,5 +1006,379 @@ async def test_history_lock_dominates_the_price_gate(engine, tenant_db):
             await _update_qty_via_sku_entry(session, sku_code, Decimal("12.000"))
         _assert_conflict(exc.value, "update_sku entry", CODE_IMMUTABLE_AFTER_USE)
         await session.rollback()
+    finally:
+        await session.close()
+
+
+# ---------------------------------------------------------------------------
+# R2 — identity-use history extension
+# ---------------------------------------------------------------------------
+
+
+async def _soft_delete_order_items(session: AsyncSession, tenant_db: str, unit_id: str) -> None:
+    """Soft-delete every order_items row referencing the SKU. R2: history is
+    NOT bypassable by soft-deleting the line items."""
+    await session.execute(
+        text(
+            f'UPDATE "{tenant_db}".order_items SET is_deleted = TRUE, deleted_at = now() '
+            f"WHERE sellable_unit_id = :sid"
+        ),
+        {"sid": unit_id},
+    )
+    await session.commit()
+
+
+async def _insert_movement(session: AsyncSession, tenant_db: str, unit_id: str) -> None:
+    """A single inventory_movements journal row — a real stock event."""
+    await session.execute(
+        text(
+            f'INSERT INTO "{tenant_db}".inventory_movements '
+            "(sku_id, movement_type, quantity, quantity_before, quantity_after, reason) "
+            "VALUES (:sid, 'deduction', -3, 3, 0, 'BC06-R2 movement isolation test')"
+        ),
+        {"sid": unit_id},
+    )
+    await session.commit()
+
+
+async def _set_stock(session: AsyncSession, tenant_db: str, unit_id: str, on_hand: str, reserved: str) -> None:
+    """Move the automatic placeholder stock row to explicit quantities."""
+    await session.execute(
+        text(
+            f'UPDATE "{tenant_db}".inventory_stocks '
+            f"SET quantity_on_hand = :oh, quantity_reserved = :r WHERE sku_id = :sid"
+        ),
+        {"oh": Decimal(on_hand), "r": Decimal(reserved), "sid": unit_id},
+    )
+    await session.commit()
+
+
+async def _insert_isolated_reservation(
+    session: AsyncSession, tenant_db: str, *, unit_id: str, sku_code: str, status: str
+) -> None:
+    """A reservation row for the target SKU whose order/line do NOT reference
+    it (the line is legacy with an unrelated code), so the RESERVATION check
+    is the only history signal that can fire. Isolation is what makes the
+    stock/reservation mutations semantically falsifiable."""
+    order_id = uuid.uuid4()
+    await session.execute(
+        text(
+            f'INSERT INTO "{tenant_db}".orders '
+            "(id, wholesaler_id, retailer_id, status, total_amount) "
+            "VALUES (:id, :w, :r, 'voided', 1.00)"
+        ),
+        {"id": order_id, "w": str(uuid.uuid4()), "r": str(uuid.uuid4())},
+    )
+    item_id = uuid.uuid4()
+    await session.execute(
+        text(
+            f'INSERT INTO "{tenant_db}".order_items '
+            "(id, order_id, identity_status, product_name, sku_code, quantity, "
+            "unit_price, subtotal) "
+            "VALUES (:id, :oid, 'legacy', 'BC06 Unrelated', :code, 1, 1.00, 1.00)"
+        ),
+        {"id": item_id, "oid": order_id, "code": f"UNRELATED-{uuid.uuid4().hex[:8].upper()}"},
+    )
+    await session.execute(
+        text(
+            f'INSERT INTO "{tenant_db}".inventory_reservations '
+            "(order_id, order_item_id, sku_id, sku_code, quantity, status, reference_id) "
+            "VALUES (:oid, :iid, :sid, :scode, 2, :status, :oid)"
+        ),
+        {
+            "oid": order_id,
+            "iid": item_id,
+            "sid": unit_id,
+            "scode": sku_code,
+            "status": status,
+        },
+    )
+    await session.commit()
+
+
+async def _assert_both_entries_immutable(maker, session, tenant_db, *, product_id, unit_id, sku_code):
+    for label, runner in (
+        ("update_sku entry", lambda: _update_qty_via_sku_entry(session, sku_code, Decimal("12.000"))),
+        (
+            "update_sellable_unit entry",
+            lambda: _update_qty_via_unit_entry(session, product_id, unit_id, Decimal("12.000")),
+        ),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await runner()
+        _assert_conflict(exc.value, label, CODE_IMMUTABLE_AFTER_USE)
+        await session.rollback()
+
+    check = await _bind_tenant_session(maker, tenant_db)
+    try:
+        row = await _sku_row_tuple(check, tenant_db, unit_id)
+        assert Decimal(str(row[6])) == Decimal("1.000"), (
+            "blocked repackage must not persist"
+        )
+    finally:
+        await check.close()
+
+
+@pytest.mark.asyncio
+async def test_soft_deleted_order_items_still_lock_repackage(engine, tenant_db):
+    """R2: soft-deleting the order line does NOT un-happen the order — the
+    package identity stays immutable."""
+    maker = _session_maker(engine)
+    session = await _bind_tenant_session(maker, tenant_db)
+    try:
+        product_id, unit_id, sku_code = await _create_baseline_unit(session, _code("SOFTORD"))
+        unit_row = await _sku_row_tuple(session, tenant_db, unit_id)
+        await _insert_order_history(
+            session,
+            unit_id=unit_id,
+            sku_code=sku_code,
+            unit=str(unit_row[5]),
+            identity_status="stable",
+        )
+        await _soft_delete_order_items(session, tenant_db, unit_id)
+        await _assert_both_entries_immutable(maker, session, tenant_db, product_id=product_id, unit_id=unit_id, sku_code=sku_code)
+    finally:
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_any_inventory_movement_locks_repackage(engine, tenant_db):
+    """Any retained inventory_movements journal row blocks repackaging — the
+    movement proves the package identity entered real stock handling."""
+    maker = _session_maker(engine)
+    session = await _bind_tenant_session(maker, tenant_db)
+    try:
+        product_id, unit_id, sku_code = await _create_baseline_unit(session, _code("MOVEHIST"))
+        await _insert_movement(session, tenant_db, unit_id)
+        await _assert_both_entries_immutable(maker, session, tenant_db, product_id=product_id, unit_id=unit_id, sku_code=sku_code)
+    finally:
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_nonzero_on_hand_stock_locks_repackage(engine, tenant_db):
+    """Only the all-zero placeholder may pass: on-hand != 0 blocks."""
+    maker = _session_maker(engine)
+    session = await _bind_tenant_session(maker, tenant_db)
+    try:
+        product_id, unit_id, sku_code = await _create_baseline_unit(session, _code("STOCKOH"))
+        await _set_stock(session, tenant_db, unit_id, "5", "0")
+        await _assert_both_entries_immutable(maker, session, tenant_db, product_id=product_id, unit_id=unit_id, sku_code=sku_code)
+    finally:
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_nonzero_reserved_stock_locks_repackage(engine, tenant_db):
+    """Reserved != 0 blocks even when on-hand is zero."""
+    maker = _session_maker(engine)
+    session = await _bind_tenant_session(maker, tenant_db)
+    try:
+        product_id, unit_id, sku_code = await _create_baseline_unit(session, _code("STOCKRSV"))
+        await _set_stock(session, tenant_db, unit_id, "0", "2")
+        await _assert_both_entries_immutable(maker, session, tenant_db, product_id=product_id, unit_id=unit_id, sku_code=sku_code)
+    finally:
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_active_reservation_locks_repackage(engine, tenant_db):
+    """A status='reserved' row for the SKU blocks (isolated reservation
+    probe: the underlying order line references an unrelated code)."""
+    maker = _session_maker(engine)
+    session = await _bind_tenant_session(maker, tenant_db)
+    try:
+        product_id, unit_id, sku_code = await _create_baseline_unit(session, _code("RESVACT"))
+        await _insert_isolated_reservation(
+            session, tenant_db, unit_id=unit_id, sku_code=sku_code, status="reserved"
+        )
+        await _assert_both_entries_immutable(maker, session, tenant_db, product_id=product_id, unit_id=unit_id, sku_code=sku_code)
+    finally:
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_consumed_reservation_locks_repackage_no_exception(engine, tenant_db):
+    """No consumed/released exception this round: a consumed reservation row
+    still proves identity use and blocks (directive default)."""
+    maker = _session_maker(engine)
+    session = await _bind_tenant_session(maker, tenant_db)
+    try:
+        product_id, unit_id, sku_code = await _create_baseline_unit(session, _code("RESVCONS"))
+        await _insert_isolated_reservation(
+            session, tenant_db, unit_id=unit_id, sku_code=sku_code, status="consumed"
+        )
+        await _assert_both_entries_immutable(maker, session, tenant_db, product_id=product_id, unit_id=unit_id, sku_code=sku_code)
+    finally:
+        await session.close()
+
+
+# ---------------------------------------------------------------------------
+# R2 — locked-fresh ORM reads (stale pre-lock object must never decide)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ["sku", "unit"])
+async def test_locked_fresh_read_after_concurrent_commit(engine, tenant_db, entry):
+    """Two REAL connections: A holds the skus row lock and commits a NEW
+    package_quantity (1.000 -> 24.000) while B — which PRE-LOADED the stale
+    object — waits on the lock inside the real modification path. The entry
+    must decide from the LOCKED-FRESH quantity: requesting exactly the new
+    value 24.000 succeeds (unchanged, price gate skipped even though a live
+    price exists). A stale decision (1.000 != 24.000) would return
+    REPRICE_REQUIRED — which is exactly what the refresh-removal mutation
+    exposes."""
+    maker = _session_maker(engine)
+    setup = await _bind_tenant_session(maker, tenant_db)
+    try:
+        product_id, unit_id, sku_code = await _create_baseline_unit(setup, _code("FRESHLOCK"))
+    finally:
+        await setup.close()
+    # A live price makes a stale decision OBSERVABLE: unchanged-after-refresh
+    # must skip the price gate; stale 1.000 vs 24.000 would hit it.
+    price_session = await _bind_tenant_session(maker, tenant_db)
+    try:
+        await _set_live_price(price_session, unit_id, uuid.uuid4(), "100.00")
+    finally:
+        await price_session.close()
+
+    session_a = await _bind_tenant_session(maker, tenant_db)
+    session_b = await _bind_tenant_session(maker, tenant_db)
+    b_go = asyncio.Event()
+    b_precheck = asyncio.Event()
+
+    async def lock_holder() -> None:
+        await session_a.execute(
+            text(f'SELECT id FROM "{tenant_db}".skus WHERE id = :sid FOR UPDATE'),
+            {"sid": unit_id},
+        )
+        b_go.set()
+        await b_precheck.wait()
+        await session_a.execute(
+            text(f'UPDATE "{tenant_db}".skus SET package_quantity = 24 WHERE id = :sid'),
+            {"sid": unit_id},
+        )
+        # Hold the uncommitted state across B's internal pre-lock reads with
+        # REAL round trips (no wall-clock sleeps): B's pre-lock precheck must
+        # observe the OLD committed quantity so the freshness of the post-lock
+        # decision is what is being proven.
+        for _ in range(8):
+            await session_a.execute(text("SELECT 1"))
+        await session_a.commit()  # releases the shared skus row lock
+
+    async def stale_writer() -> None:
+        await b_go.wait()
+        # Pre-load the STALE object (committed quantity 1.000) into B's
+        # identity map BEFORE A's update.
+        if entry == "unit":
+            await _CATALOG.get_product(session_b, product_id=product_id)
+        else:
+            await session_b.execute(select(SKU).where(SKU.sku_code == sku_code))
+        b_precheck.set()
+        try:
+            if entry == "sku":
+                await _update_qty_via_sku_entry(session_b, sku_code, Decimal("24.000"))
+            else:
+                await _update_qty_via_unit_entry(
+                    session_b, product_id, unit_id, Decimal("24.000")
+                )
+            await session_b.commit()
+        except HTTPException as exc:
+            await session_b.rollback()
+            raise AssertionError(
+                f"({entry}): the post-lock decision must use the FRESH committed "
+                f"quantity (24.000 == requested 24.000 -> unchanged, price gate "
+                f"skipped); got {exc.status_code}: {exc.detail}"
+            )
+
+    try:
+        await asyncio.gather(
+            asyncio.create_task(lock_holder()), asyncio.create_task(stale_writer())
+        )
+
+        check = await _bind_tenant_session(maker, tenant_db)
+        try:
+            row = await _sku_row_tuple(check, tenant_db, unit_id)
+            assert Decimal(str(row[6])) == Decimal("24.000"), (
+                "the concurrently committed quantity must be the surviving value"
+            )
+            prices = await _price_rows(check, tenant_db, unit_id)
+            assert len(prices) == 1 and prices[0][6] is False, (
+                "the live price row must be untouched by the fresh-read path"
+            )
+        finally:
+            await check.close()
+    finally:
+        await session_a.close()
+        await session_b.close()
+
+
+# ---------------------------------------------------------------------------
+# R2 — update_sku sibling-sync regression (R1-disclosed path, real PG)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_sku_syncs_sibling_fields_and_preserves_package_quantity(
+    engine, tenant_db
+):
+    """The R1-disclosed sibling-sync path: a product-level rename via
+    update_sku propagates name/description/category to ALL units of the
+    product while every unit keeps its own package_quantity."""
+    maker = _session_maker(engine)
+    session = await _bind_tenant_session(maker, tenant_db)
+    try:
+        product = await _CATALOG.create_product(
+            session,
+            request=CatalogProductCreate(
+                name="Sync Base",
+                category="staples",
+                is_active=True,
+                sellable_units=[
+                    SellableUnitCreate(
+                        sku_code=_code("SYNCA"), unit="bottle", package_quantity=Decimal("1.000")
+                    ),
+                    SellableUnitCreate(
+                        sku_code=_code("SYNCB"), unit="case", package_quantity=Decimal("12.000")
+                    ),
+                ],
+            ),
+            actor_id=None,
+        )
+        await session.commit()
+        unit_a, unit_b = product.sellable_units[0], product.sellable_units[1]
+        a_id, b_id = str(unit_a.id), str(unit_b.id)
+        a_code = unit_a.sku_code
+
+        await _SKU_SERVICE.update_sku(
+            session,
+            sku_code=a_code,
+            name="Synced Name",
+            description="Synced description",
+            unit=None,
+            package_quantity=None,  # package quantity NOT part of this update
+            category="beverages",
+            is_active=None,
+            updated_by=None,
+        )
+        await session.commit()
+
+        check = await _bind_tenant_session(maker, tenant_db)
+        try:
+            row_a = await _sku_row_tuple(check, tenant_db, a_id)
+            row_b = await _sku_row_tuple(check, tenant_db, b_id)
+        finally:
+            await check.close()
+        for label, row in (("unit A", row_a), ("unit B", row_b)):
+            assert row[3] == "Synced Name", f"{label}: sibling name must sync"
+            assert row[4] == "Synced description", f"{label}: sibling description must sync"
+            assert row[7] == "beverages", f"{label}: sibling category must sync"
+        assert Decimal(str(row_a[6])) == Decimal("1.000"), (
+            "unit A package_quantity must be untouched by the rename"
+        )
+        assert Decimal(str(row_b[6])) == Decimal("12.000"), (
+            "unit B keeps its own package_quantity (never synced from the sibling)"
+        )
     finally:
         await session.close()

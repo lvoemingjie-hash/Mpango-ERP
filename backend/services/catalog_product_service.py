@@ -211,10 +211,15 @@ class CatalogProductService:
         if unit is None:
             raise HTTPException(status_code=404, detail={"code": "SELLABLE_UNIT_NOT_FOUND", "message": "Sellable unit not found"})
         updates = request.model_dump(exclude_unset=True)
-        # BC06-R1: shared package-identity guard — the SAME implementation as
-        # SKUService.update_sku: serialize on the SKU row and gate actual
-        # package_quantity changes BEFORE any mutation.
-        await lock_sku_row(db, sku_id=unit.id)
+        # BC06-R1/R2: shared package-identity guard — the SAME implementation
+        # as SKUService.update_sku: serialize on the SKU row and take the
+        # LOCKED-FRESH instance for both the change decision and the write
+        # below (never the pre-lock collection object).
+        locked = await lock_sku_row(db, sku_id=unit.id)
+        if locked is None:
+            # Concurrently soft-deleted between precheck and lock.
+            raise HTTPException(status_code=404, detail={"code": "SELLABLE_UNIT_NOT_FOUND", "message": "Sellable unit not found"})
+        unit = locked
         if package_quantity_changed(unit.package_quantity, updates.get("package_quantity")):
             await ensure_package_quantity_change_allowed(
                 db, sku=unit, new_package_quantity=updates["package_quantity"]

@@ -121,10 +121,18 @@ class SKUService:
                 detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
             )
 
-        # BC06-R1: shared package-identity guard — serialize on the SKU row
-        # and gate actual package_quantity changes BEFORE any mutation, so a
-        # refused request leaves zero data changes in this transaction.
-        await lock_sku_row(db, sku_id=sku.id)
+        # BC06-R1/R2: shared package-identity guard — serialize on the SKU
+        # row and take the LOCKED-FRESH instance for both the change decision
+        # and the write below (never the pre-lock loaded object). A refused
+        # request leaves zero data changes in this transaction.
+        locked = await lock_sku_row(db, sku_id=sku.id)
+        if locked is None:
+            # Concurrently soft-deleted between precheck and lock.
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
+            )
+        sku = locked
         if package_quantity_changed(sku.package_quantity, package_quantity):
             await ensure_package_quantity_change_allowed(
                 db, sku=sku, new_package_quantity=package_quantity

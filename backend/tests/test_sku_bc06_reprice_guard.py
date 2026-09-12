@@ -43,6 +43,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
+from contextlib import asynccontextmanager
 from decimal import Decimal
 
 import pytest
@@ -78,7 +79,7 @@ from services.sku_service import SKUService  # noqa: E402
 DB_URL = os.environ["DATABASE_URL"]
 ASYNC_DB_URL = DB_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-_SCHEMA = "t_bc06_r1"
+_SCHEMA_PREFIX = "t_bc06_"
 
 _CATALOG = CatalogProductService()
 _SKU_SERVICE = SKUService()
@@ -92,44 +93,77 @@ _INTAKE = IntakeApplyService()
 PRICE_FIRST_ITERATIONS = 12
 
 
+async def _drop_bc06_schema(admin_engine, schema):
+    async with asyncio.timeout(10):
+        async with admin_engine.connect() as conn:
+            await conn.execute(text("SET lock_timeout = '2s'"))
+            await conn.execute(text("SET statement_timeout = '5s'"))
+            await conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+
+
+@asynccontextmanager
+async def _bc06_schema():
+    """Own one exclusively created schema; never terminate other sessions."""
+    schema = _SCHEMA_PREFIX + uuid.uuid4().hex
+    admin_engine = create_async_engine(ASYNC_DB_URL, isolation_level="AUTOCOMMIT")
+    owned = False
+    try:
+        async with admin_engine.connect() as conn:
+            await conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+            owned = True
+        await bootstrap(schema, ASYNC_DB_URL)
+        yield schema
+    finally:
+        try:
+            if owned:
+                await _drop_bc06_schema(admin_engine, schema)
+        finally:
+            await admin_engine.dispose()
+
+
+@asynccontextmanager
+async def _bc06_engine():
+    eng = create_async_engine(ASYNC_DB_URL, future=True)
+    eng.sync_engine._bc06_owned_sessions = []
+    try:
+        yield eng
+    finally:
+        try:
+            async with asyncio.timeout(10):
+                # Keep strong references until teardown, including sessions
+                # abandoned by a failing assertion before the caller's close.
+                results = await asyncio.gather(
+                    *(session.close() for session in eng.sync_engine._bc06_owned_sessions),
+                    return_exceptions=True,
+                )
+                failures = [result for result in results if isinstance(result, BaseException)]
+                if failures:
+                    raise BaseExceptionGroup("BC06 owned session cleanup failed", failures)
+        finally:
+            await eng.dispose()
+
+
 @pytest_asyncio.fixture
 async def tenant_db():
-    """One dedicated tenant schema, RESET per test: real PG16 tables via the
-    canonical bootstrap (matching production shape). Teardown terminates any
-    backend still holding schema locks (a failed test may leave sessions
-    open) so the next test's DROP SCHEMA can never hang."""
-    admin_engine = create_async_engine(ASYNC_DB_URL, isolation_level="AUTOCOMMIT")
-    try:
-        async with admin_engine.connect() as conn:
-            await conn.execute(text(
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                "WHERE datname = current_database() AND pid <> pg_backend_pid()"
-            ))
-            await conn.execute(text(f'DROP SCHEMA IF EXISTS "{_SCHEMA}" CASCADE'))
-    finally:
-        await admin_engine.dispose()
-    await bootstrap(_SCHEMA, ASYNC_DB_URL)
-    yield _SCHEMA
-    try:
-        admin_engine = create_async_engine(ASYNC_DB_URL, isolation_level="AUTOCOMMIT")
-        async with admin_engine.connect() as conn:
-            await conn.execute(text(
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                "WHERE datname = current_database() AND pid <> pg_backend_pid()"
-            ))
-    finally:
-        await admin_engine.dispose()
+    async with _bc06_schema() as schema:
+        yield schema
 
 
 @pytest_asyncio.fixture
 async def engine(tenant_db):
-    eng = create_async_engine(ASYNC_DB_URL, future=True)
-    yield eng
-    await eng.dispose()
+    async with _bc06_engine() as eng:
+        yield eng
 
 
 def _session_maker(eng):
-    return async_sessionmaker(eng, class_=AsyncSession, expire_on_commit=False)
+    owned_sessions = eng.sync_engine._bc06_owned_sessions
+
+    class OwnedSession(AsyncSession):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            owned_sessions.append(self)
+
+    return async_sessionmaker(eng, class_=OwnedSession, expire_on_commit=False)
 
 
 async def _bind_tenant_session(maker, schema: str) -> AsyncSession:
@@ -140,6 +174,149 @@ async def _bind_tenant_session(maker, schema: str) -> AsyncSession:
     session.info["tenant_id"] = str(_tenant_uuid(schema))
     await session.execute(text(f'SET search_path TO "{schema}", public'))
     return session
+
+
+async def _bc06_schema_exists(schema):
+    admin = create_async_engine(ASYNC_DB_URL, isolation_level="AUTOCOMMIT")
+    try:
+        async with admin.connect() as conn:
+            return bool(await conn.scalar(
+                text("SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = :schema)"),
+                {"schema": schema},
+            ))
+    finally:
+        await admin.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bystander_role", ["same_role", "reporting_role"])
+async def test_bc06_fixture_preserves_unrelated_connections(bystander_role):
+    url = ASYNC_DB_URL if bystander_role == "same_role" else os.environ["REPORTING_DATABASE_URL"]
+    outsider = create_async_engine(url.replace("postgresql://", "postgresql+asyncpg://", 1))
+    try:
+        async with outsider.connect() as conn:
+            before = tuple((await conn.execute(text(
+                "SELECT pg_backend_pid(), current_user, current_setting('search_path')"
+            ))).one())
+            if bystander_role == "reporting_role":
+                assert before[1] == "reporting_user"
+            else:
+                assert not await conn.scalar(text(
+                    "SELECT rolsuper OR pg_has_role(current_user, 'pg_signal_backend', 'MEMBER') "
+                    "FROM pg_roles WHERE rolname = current_user"
+                ))
+            async with _bc06_schema() as schema:
+                async with _bc06_engine() as eng:
+                    session = await _bind_tenant_session(_session_maker(eng), schema)
+                    assert await session.scalar(text("SELECT 1")) == 1
+                    # Deliberately leave this owned session to fixture teardown.
+                assert await conn.scalar(text("SELECT 1")) == 1
+            assert not await _bc06_schema_exists(schema)
+            after = tuple((await conn.execute(text(
+                "SELECT pg_backend_pid(), current_user, current_setting('search_path')"
+            ))).one())
+            assert after == before
+            await conn.commit()
+            assert await conn.scalar(text("SELECT 1")) == 1
+    finally:
+        await outsider.dispose()
+
+
+@pytest.mark.asyncio
+async def test_bc06_overlapping_fixture_schemas_are_independent():
+    async with _bc06_schema() as first:
+        async with _bc06_schema() as second:
+            assert first != second
+            assert await _bc06_schema_exists(first)
+            assert await _bc06_schema_exists(second)
+        assert not await _bc06_schema_exists(second)
+        assert await _bc06_schema_exists(first)
+    assert not await _bc06_schema_exists(first)
+
+
+@pytest.mark.asyncio
+async def test_bc06_body_failure_closes_owned_transaction_before_drop():
+    failure = RuntimeError("bc06 intentional body failure")
+    with pytest.raises(RuntimeError) as observed:
+        async with _bc06_schema() as schema:
+            async with _bc06_engine() as eng:
+                session = await _bind_tenant_session(_session_maker(eng), schema)
+                await session.execute(text(f'LOCK TABLE "{schema}".skus IN ACCESS EXCLUSIVE MODE'))
+                raise failure
+    assert observed.value is failure
+    assert not await _bc06_schema_exists(schema)
+
+
+@pytest.mark.asyncio
+async def test_bc06_partial_bootstrap_failure_cleans_only_owned_schema(monkeypatch):
+    original = bootstrap
+    created = []
+    failure = RuntimeError("bc06 intentional setup failure")
+
+    async def fail_after_bootstrap(schema, url):
+        created.append(schema)
+        await original(schema, url)
+        raise failure
+
+    monkeypatch.setitem(globals(), "bootstrap", fail_after_bootstrap)
+    with pytest.raises(RuntimeError) as observed:
+        async with _bc06_schema():
+            pytest.fail("failed setup must not yield")
+    assert observed.value is failure
+    assert len(created) == 1
+    assert not await _bc06_schema_exists(created[0])
+
+
+@pytest.mark.asyncio
+async def test_bc06_cleanup_lock_timeout_is_not_swallowed():
+    from sqlalchemy.exc import DBAPIError
+
+    outsider = create_async_engine(ASYNC_DB_URL)
+    schema = None
+    try:
+        async with outsider.connect() as conn:
+            with pytest.raises(DBAPIError) as observed:
+                async with _bc06_schema() as schema:
+                    await conn.execute(text(f'LOCK TABLE "{schema}".skus IN ACCESS SHARE MODE'))
+            assert observed.value.orig.sqlstate == "55P03"
+            # Cleanup fails closed; it must not kill even a same-role bystander
+            # to obtain the lock. The owning test releases it and cleans up.
+            assert await conn.scalar(text("SELECT 1")) == 1
+            assert await _bc06_schema_exists(schema)
+            await conn.rollback()
+    finally:
+        await outsider.dispose()
+        if schema is not None and await _bc06_schema_exists(schema):
+            admin = create_async_engine(ASYNC_DB_URL, isolation_level="AUTOCOMMIT")
+            try:
+                await _drop_bc06_schema(admin, schema)
+            finally:
+                await admin.dispose()
+    assert not await _bc06_schema_exists(schema)
+
+
+@pytest.mark.asyncio
+async def test_bc06_schema_collision_never_drops_existing_schema(monkeypatch):
+    identity = uuid.uuid4()
+    schema = _SCHEMA_PREFIX + identity.hex
+    admin = create_async_engine(ASYNC_DB_URL, isolation_level="AUTOCOMMIT")
+    try:
+        async with admin.connect() as conn:
+            await conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+            await conn.execute(text(f'CREATE TABLE "{schema}".sentinel (value integer)'))
+            await conn.execute(text(f'INSERT INTO "{schema}".sentinel VALUES (17)'))
+            monkeypatch.setattr(uuid, "uuid4", lambda: identity)
+            from sqlalchemy.exc import DBAPIError
+            with pytest.raises(DBAPIError) as observed:
+                async with _bc06_schema():
+                    pytest.fail("pre-existing schema must not be adopted")
+            assert observed.value.orig.sqlstate == "42P06"
+            assert await conn.scalar(text(f'SELECT value FROM "{schema}".sentinel')) == 17
+    finally:
+        try:
+            await _drop_bc06_schema(admin, schema)
+        finally:
+            await admin.dispose()
 
 
 def _product_create(code: str, *, name: str = "BC06 Juice") -> CatalogProductCreate:

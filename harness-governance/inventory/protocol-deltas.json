@@ -383,4 +383,20 @@
   "approval_ref": "DC-12R1-MVP-L1-SKU-DELIVERY-R1 human founder bounded-disposition authorization 2026-09-11; ai-ledger/product-ai/2026-09-11_sku_delivery_r1_integration.md",
   "notes": "Exact paths only; no directory, wildcard, future scope or waiver. This records present human-delegated integration authority, not retrospective CTO preauthorization. Prior D1 unmerged-tree structural rc=1 remains preserved. Full runtime and independent final verification remain pending. No protected-branch merge or deployment authorization."
  }
+,
+ {
+  "delta_id": "PD-2026-09-12-SKU-DELIVERY-R2-BC06-FIXTURE-ISOLATION",
+  "kind": "governance",
+  "affected_ids": [],
+  "affected_paths": [
+   "backend/tests/test_sku_bc06_reprice_guard.py",
+   "harness-governance/inventory/protocol-deltas.json"
+  ],
+  "base_sha": "8e9aeb4847d392c6556c22e289f5652cb14b39bf",
+  "date": "2026-09-12",
+  "owner": "Codex-L delegated engineering lead",
+  "reason": "Test-only BC-06 full-suite isolation repair: remove blanket backend termination, use exclusive per-test schemas and owned-session cleanup, expose bounded cleanup failures, and prove unrelated same-role/reporting connections survive. Existing business test bodies and product/bootstrap/authority semantics are unchanged. No pg_signal_backend grant or swallowed privilege error.",
+  "approval_ref": "Human founder SKU completion and bounded-disposition delegation; ai-ledger/product-ai/2026-09-12_sku_delivery_r2_fixture_isolation.md",
+  "notes": "Exact test and accounting paths only; no test waiver or runtime PASS. External diagnostic full run remains non-green and not authority evidence. No protected-branch merge or deployment."
+ }
 ]

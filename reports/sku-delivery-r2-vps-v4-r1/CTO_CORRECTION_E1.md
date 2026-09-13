@@ -93,7 +93,7 @@ F4-a1 的 4 个失败逐节点对应(保留日志 formal-4-attempt1-conn-exhaust
 
 本次新增发布(均经脱敏检查:任务密码 0 残留):evidence/prep/attempts.log(19,897 字节完整尝试日志)、evidence/cleanup.sh、evidence/hashes.txt、evidence/node-outcome-inventory.json、evidence/timeline.txt、evidence/secrets-scan-changed.json、evidence/baseline-before/after.txt、full-suite 四轮完整输出、acceptance-checklist.md、run-manifest.json、pip-freeze.txt。
 来源哈希(evidence/hashes.txt,VPS 侧生成):cleanup.sh=9b5aac2e…、acceptance-checklist(aea3f303…,E1 前版本)、pip-freeze=8602a95f…;published-attempts.log 的 sha256 见本次提交后 evidence/hashes-e1.txt。
-**MISSING 登记**:F4-a2 部分输出(保留于 VPS results/,未随包发布);Q3-STOP-REPORT.md(见下);PG15 运行时版本串。以上不重建、不补造。
+**登记状态更新(E1 提交后补)**:F4-a2 中止运行的部分输出已补发布为 evidence/full-suite/formal-4-attempt2-aborted-partial.txt(中止状态如实保留);其余 MISSING 不变。以上不重建、不补造。
 **Q3 更正**:初版引用 M0 STOP_REPORT(2026-09-03)为替代,CTO 判定不构成替代。真实 Q3-STOP-REPORT.md 在候选树/远端/报告目录未定位——登记为 **MISSING(待 Codex-L/CTO 提供路径或文本;如采用用户提供文本,将标注"转录,未核对远端原件")**。
 
 ## E1-8 独立性声明更正(对应 CTO F5/治理)

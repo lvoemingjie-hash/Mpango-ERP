@@ -52,3 +52,11 @@ Worktree status clean at candidate; all test runs on frozen tree; no candidate e
 - Report branch committed on VPS worktree, transported via bundle, pushed from Windows; local==remote verified post-push.
 
 VERDICT CLAIM (within ceiling): SKU_DELIVERY_VERIFICATION_READY_FOR_CTO_REVIEW — environment PASS + product suites PASS as above; final acceptance rests with CTO.
+
+## ADDENDUM (2026-09-13, post-run M03 dynamic supplement)
+Executor supplementary falsification of M03 (runner converted M03 to a static presence guard; its docstring claims "T2 RED with MissingGreenlet / implicit SQL" but no dynamic removal exists in the runner).
+- Method: disposable copy of candidate backend; removed all 3 `selectinload(CatalogProduct.sellable_units)` call sites (syntax-verified); ran tests/test_sku_b2_catalog_serialization.py against the task PG15 stack.
+- Result: **9 passed — mutation SURVIVED (not killed)**. Removing the eager loaders does not fail any test; the post-flush `_reload_product_graph` (M01 target) already fully materializes the graph, so the loaders are redundant belt-and-suspenders.
+- Consequences: (a) the runner gate wording "all mutations RED as intended" overstates M03 — M03 has NO dynamic falsification evidence; (b) the b2 closure itself is NOT weakened by this (behavior holds with and without loaders — redundancy, not a defect); (c) recommend Codex-L either implement a genuine M03 kill (e.g., assert zero lazy-load SQL via statement counting) or reclassify M03 as static design-presence check.
+- Evidence: evidence/formal-5-m03-dynamic.txt (attempt1 invalid: task PG removed by cleanup before supplement — environment error, discarded; attempt2 valid).
+- First supplement attempt was itself invalid (database removed by cleanup before supplement — environment error, not counted); attempt2 above is the valid run on a rebuilt task stack.

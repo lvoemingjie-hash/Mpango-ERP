@@ -1,0 +1,1669 @@
+{
+ "note": "module-level inventory parsed from retained -q progress output; per-node PASSED names UNKNOWN (not captured in frozen -q mode)",
+ "modules": {
+  "tests/api/test_wholesaler.py": {
+   "passed": 4,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/b6_hardening/test_b6_global_tenant_filter.py": {
+   "passed": 6,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/b6_hardening/test_b6_payment_atomicity.py": {
+   "passed": 1,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/b6_hardening/test_b6_payments_api.py": {
+   "passed": 4,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/business/test_financial_loop.py": {
+   "passed": 3,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/business/test_s4_order_fulfillment_inventory_invariants.py": {
+   "passed": 6,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/business/test_s4b_inventory_reversal_invariants.py": {
+   "passed": 9,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/business/test_s4c_concurrent_fulfillment_oversell_invariants.py": {
+   "passed": 5,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/business/test_s4d_inventory_movement_ledger_integrity.py": {
+   "passed": 9,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/business/test_s4e_reservation_schema_contract.py": {
+   "passed": 3,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/business/test_s4e_stock_reservation_lifecycle_audit.py": {
+   "passed": 12,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/business/test_s4f_business_invariant_closeout.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/security/test_exploit_guardrail.py": {
+   "passed": 3,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/security/test_jwt_boundaries.py": {
+   "passed": 11,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_alembic_migrations.py": {
+   "passed": 4,
+   "skipped": 3,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_auth_bypass.py": {
+   "passed": 5,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_auth_regressions.py": {
+   "passed": 2,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_b5_real_db.py": {
+   "passed": 4,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_crud_scoped.py": {
+   "passed": 2,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc10e_export_worker_tenant_context.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc10f_payment_method_integrity.py": {
+   "passed": 4,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc10f_r1_payment_method_migration.py": {
+   "passed": 24,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc10g_platform_uuid_export_error_hardening.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc10k_finance_receivables_runtime.py": {
+   "passed": 2,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc10l_order_status_enum_reconciliation.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc11d_payment_replay_concurrency_integrity.py": {
+   "passed": 10,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc11p0_platform_operator_identity_contract.py": {
+   "passed": 16,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc11p1_platform_operator_schema.py": {
+   "passed": 36,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc11t2_async_test_utils.py": {
+   "passed": 27,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc11t4c_reporting_bootstrap_contract.py": {
+   "passed": 4,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc11t4h_receivable_collection_integrity.py": {
+   "passed": 13,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12a_r2_credential_email_links.py": {
+   "passed": 14,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12a_r3_orchestration_link_regression.py": {
+   "passed": 3,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_contract_d_r5_node_csv.py": {
+   "passed": 5,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_contract_d_r7_gen_fail_closed.py": {
+   "passed": 7,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_contract_d_statement_print.py": {
+   "passed": 76,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_h2_structured_http_error_contract.py": {
+   "passed": 44,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_h4_event_loop_pool_isolation.py": {
+   "passed": 7,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_h5_prepared_statement_cache_isolation.py": {
+   "passed": 5,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_h7_bcrypt_manifest_parity.py": {
+   "passed": 176,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_h7_setup_preflight.py": {
+   "passed": 144,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_j1_h2_b_r3_r1_user_role_assignment_async_serialization.py": {
+   "passed": 9,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_j1_h2a_cross_tenant_invitation_binding.py": {
+   "passed": 4,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_j1_h2a_r1_dual_entry_self_join.py": {
+   "passed": 19,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py": {
+   "passed": 12,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py": {
+   "passed": 11,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s1_h1_verification_token_terminal_state.py": {
+   "passed": 6,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s1_r1_corrections.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s1_r2_strict_mapping.py": {
+   "passed": 4,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s1_r3_migration_contract.py": {
+   "passed": 11,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s1_r4_exact_catalog.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py": {
+   "passed": 41,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s1_r5a_permission_registry_parity.py": {
+   "passed": 4,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s1_retailer_identity.py": {
+   "passed": 14,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s2_supplier_scoped_retailer_login.py": {
+   "passed": 50,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s3_s1_catalog_order_hardening.py": {
+   "passed": 43,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s3_s2_read_only_retailer_finance.py": {
+   "passed": 7,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py": {
+   "passed": 36,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py": {
+   "passed": 14,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py": {
+   "passed": 29,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py": {
+   "passed": 18,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py": {
+   "passed": 42,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py": {
+   "passed": 36,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc1e_validation_error_serialization.py": {
+   "passed": 2,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc1g_retailer_registration_binding_balance.py": {
+   "passed": 2,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc2h_production_smtp_compose_wiring.py": {
+   "passed": 3,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc2m2_legacy_tenant_reconciliation_forward_migration.py": {
+   "passed": 11,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc3b_credential_recovery_backend.py": {
+   "passed": 16,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_dc5a_login_email_normalization.py": {
+   "passed": 1,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_finance_receivables_api.py": {
+   "passed": 23,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_global_tenant_filter.py": {
+   "passed": 6,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_health.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_idempotency.py": {
+   "passed": 12,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_jwt_utils.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_models_structure.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_order_creation.py": {
+   "passed": 1,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_orders_api.py": {
+   "passed": 10,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_p25ed_platform_system_db_context.py": {
+   "passed": 10,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_password_utils.py": {
+   "passed": 4,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_payment_atomicity.py": {
+   "passed": 2,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_payments_api.py": {
+   "passed": 4,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_payments_schema_contract.py": {
+   "passed": 21,
+   "skipped": 19,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_phase3_pricing.py": {
+   "passed": 16,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_phase4_pricing_safe_orders.py": {
+   "passed": 22,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_phase5_order_payment.py": {
+   "passed": 53,
+   "skipped": 0,
+   "xfailed": 1,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_audit.py": {
+   "passed": 18,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_audit_api.py": {
+   "passed": 43,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p0.py": {
+   "passed": 13,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p10_contracts.py": {
+   "passed": 173,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p11c0_legacy_guard.py": {
+   "passed": 24,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p12_support_console.py": {
+   "passed": 62,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p13_operations_cockpit.py": {
+   "passed": 64,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p15_incident_triage.py": {
+   "passed": 31,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p17_registry.py": {
+   "passed": 58,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p17dc_backup_migration.py": {
+   "passed": 9,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p17dc_backup_models.py": {
+   "passed": 14,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p17dc_backup_registry_read.py": {
+   "passed": 26,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p18_controlled_actions.py": {
+   "passed": 52,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p18d_real_registry.py": {
+   "passed": 12,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p19_approval_workflow.py": {
+   "passed": 43,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p20_durable_approval_governance.py": {
+   "passed": 71,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p21_durable_approval_adapter_implementation.py": {
+   "passed": 23,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p21_durable_approval_adapter_skeleton.py": {
+   "passed": 32,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p21_durable_approval_migration.py": {
+   "passed": 6,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p21_durable_approval_models.py": {
+   "passed": 26,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p21_durable_approval_schema.py": {
+   "passed": 31,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p21dd_runtime_storage_cutover_gate.py": {
+   "passed": 36,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p21e_durable_approval_runtime_closeout.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p22_controlled_execution.py": {
+   "passed": 61,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p22e1_runtime_governed_adapter_seam.py": {
+   "passed": 29,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p22e3_backup_check_source_probe.py": {
+   "passed": 28,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p22g_governed_backup_check.py": {
+   "passed": 26,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p23_operator_task_queue.py": {
+   "passed": 42,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p23_source_materialization.py": {
+   "passed": 42,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p24_incident_runbook_closeout.py": {
+   "passed": 40,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_p25eb_durable_approval_resolver_integration.py": {
+   "passed": 10,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_platform_stats_api.py": {
+   "passed": 13,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_pw1r3_rate_limit_context.py": {
+   "passed": 7,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_pw1r4_cross_tenant_statement_cache.py": {
+   "passed": 9,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_pw1r4b4_retailer_permission_context.py": {
+   "passed": 5,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_r4_middleware_tenant_context_contract.py": {
+   "passed": 3,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_rbac_enforcement.py": {
+   "passed": 23,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_receivables_service.py": {
+   "passed": 15,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_reliability.py": {
+   "passed": 20,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_request_validation.py": {
+   "passed": 3,
+   "skipped": 0,
+   "xfailed": 6,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_route_authorization_policy.py": {
+   "passed": 35,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_route_coverage.py": {
+   "passed": 1,
+   "skipped": 3,
+   "xfailed": 3,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s3_profiling.py": {
+   "passed": 18,
+   "skipped": 2,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s3a_fresh_tenant_runtime_smoke.py": {
+   "passed": 13,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s3b_fresh_tenant_live_runtime_proof.py": {
+   "passed": 22,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s3b_simple.py": {
+   "passed": 1,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s3c_cache.py": {
+   "passed": 10,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s3c_integration.py": {
+   "passed": 6,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s3c_self_contained_fresh_tenant_live_proof.py": {
+   "passed": 17,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s4_jobs_local.py": {
+   "passed": 11,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s4_jobs_persistence.py": {
+   "passed": 5,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s4g_migration_infrastructure_hardening.py": {
+   "passed": 5,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s5_5_ledger_hardening.py": {
+   "passed": 11,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s5_ledger.py": {
+   "passed": 15,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s5_order_state_machine.py": {
+   "passed": 15,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s5a_fresh_tenant_real_user_journey_gate.py": {
+   "passed": 3,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s5c_runtime_sku_import_http_integration.py": {
+   "passed": 0,
+   "skipped": 2,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s5d4b_settled_cash_payment.py": {
+   "passed": 12,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s5d5_payment_ledger_runtime_invariant.py": {
+   "passed": 5,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s5d6_multi_partial_payment_state_machine.py": {
+   "passed": 2,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s6_2_materialized_views.py": {
+   "passed": 5,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s6_3_dashboard_api.py": {
+   "passed": 27,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s6_4_async_exports.py": {
+   "passed": 38,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s6_p_reporting_constraints.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s6b_payment_write_path_unification.py": {
+   "passed": 1,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s6c_reset_staging_current_head_gate.py": {
+   "passed": 4,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s6e_rbac_permission_registry_drift_gate.py": {
+   "passed": 6,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s7_1_policy.py": {
+   "passed": 55,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s7_2_enforcement.py": {
+   "passed": 38,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s7_4_t3_resolver_api.py": {
+   "passed": 36,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s7_4_tenant_assets.py": {
+   "passed": 54,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_s7_5_headless_usage.py": {
+   "passed": 42,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_schema_security.py": {
+   "passed": 6,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_search_path.py": {
+   "passed": 1,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_security_privacy.py": {
+   "passed": 17,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_security_s2_5.py": {
+   "passed": 30,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_sku_b2_catalog_serialization.py": {
+   "passed": 9,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_sku_bc06_reprice_guard.py": {
+   "passed": 37,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_sku_m1_api_rbac.py": {
+   "passed": 1,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_sku_m1_catalog_identity.py": {
+   "passed": 16,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_sku_m1_migration_pg16.py": {
+   "passed": 6,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_sku_r1_client_catalog_contract.py": {
+   "passed": 15,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_sku_r1_multipackaging_closure.py": {
+   "passed": 6,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_tenant_isolation.py": {
+   "passed": 4,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_test_mode_auth_bypass.py": {
+   "passed": 1,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_token_properties.py": {
+   "passed": 5,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u1_bootstrap_permission_completeness.py": {
+   "passed": 9,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u1r1_bootstrap_completeness.py": {
+   "passed": 20,
+   "skipped": 0,
+   "xfailed": 5,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u3b1_contract_foundation.py": {
+   "passed": 27,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u3b2_live_db_import_preview_validate.py": {
+   "passed": 14,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u3b2_preview_validate.py": {
+   "passed": 70,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u3c_import_apply.py": {
+   "passed": 32,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u3c_live_db_apply.py": {
+   "passed": 10,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u3e_e2e_hardening.py": {
+   "passed": 26,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u4c_intake_api_contract.py": {
+   "passed": 12,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u4c_intake_backend_schema.py": {
+   "passed": 6,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u4d_intake_parser_preview.py": {
+   "passed": 15,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u4ib1_intake_apply_audit_schema.py": {
+   "passed": 4,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u4ib2_intake_apply_service.py": {
+   "passed": 15,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6b_tenant_onboarding_schema.py": {
+   "passed": 11,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6c_signup_email_verification_skeleton.py": {
+   "passed": 16,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6d_verify_email_endpoint.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6e0_onboarding_status_token_schema.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6e_onboarding_status_endpoint.py": {
+   "passed": 13,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6f_onboarding_auth_chain_closeout.py": {
+   "passed": 7,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6g_tenant_provisioning_contract.py": {
+   "passed": 7,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6h0_tenant_provisioning_schema_gap_decision.py": {
+   "passed": 18,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6h1_tenant_provisioning_service_skeleton.py": {
+   "passed": 10,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6h2_tenant_provisioning_wholesaler_schema.py": {
+   "passed": 14,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py": {
+   "passed": 8,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6i0_owner_credential_setup_contract.py": {
+   "passed": 9,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6i1_owner_credential_setup_schema.py": {
+   "passed": 6,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6i2_owner_credential_setup_token_issue.py": {
+   "passed": 15,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6i3_owner_credential_setup_consume.py": {
+   "passed": 12,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6i4_first_admin_rbac_creation.py": {
+   "passed": 9,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6i5_owner_credential_setup_endpoint.py": {
+   "passed": 13,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6i6_onboarding_e2e_closeout.py": {
+   "passed": 1,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6k_production_smtp_email_delivery.py": {
+   "passed": 5,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_u6l_email_verified_onboarding_orchestration.py": {
+   "passed": 7,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_users_roles_api.py": {
+   "passed": 23,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_uuid_serialization.py": {
+   "passed": 5,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  },
+  "tests/test_v019_camel_adapter.py": {
+   "passed": 17,
+   "skipped": 0,
+   "xfailed": 0,
+   "xpassed": 0,
+   "failed": 0,
+   "error": 0
+  }
+ },
+ "totals": {
+  "passed": 3839,
+  "skipped": 29,
+  "xfailed": 15,
+  "xpassed": 0,
+  "failed": 0,
+  "error": 0
+ }
+}

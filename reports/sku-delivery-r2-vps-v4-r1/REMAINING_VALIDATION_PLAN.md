@@ -11,7 +11,7 @@ AUTHORIZATION_ID: CTO-AUTH-SKU-VPS-V4-R1-EVIDENCE-CORRECTION-E1-2026-09-13(后�
 | G3 P2 | 迁移完整链 001→038 | alembic history/current(最终头)+ pg16 模块内分场景升级 | 从空库一次性重放并记录逐版本链 | 全新临时库 `alembic upgrade head` + `alembic history`/逐步 `upgrade +1` 记录 | 任务 PG 栈;~10 分钟;脚本化即一次性 |
 | G4 P2 | M03 行为覆盖(变异存活) | 静态守卫(3 loader 存在)+ 补证(移除后 9 passed 存活) | 行为表达型测试:如"序列化阶段零懒加载 SQL"断言(语句计数),或 Codex-L 重新分类 M03 为静态设计检查 | Codex-L 设计 + 实现于 b2 套件;复跑 F5 门 | b2 套件 ~1 分钟/次;设计 ~1–2 小时 |
 | G5 P2 | 完整逐节点结果清单 | node-outcome-inventory.json(模块级;逐节点 PASSED 名 UNKNOWN) | -v/-rs 模式的逐节点 SKIP/XFAIL 名与理由 | 全量套件以 `-v -rs -rx` 重跑一次(仅记录用途) | 任务栈;~20–25 分;或接受模块级清单 + UNKNOWN |
-| G6 P2(状态更新) | Q3 交付要求对齐 | 用户文本转录已发布(evidence/Q3-STOP-REPORT.transcribed.md,未核对原件);Q3=本 VPS 授权直接前置,无运行时证据(NOT_RUN),两陷阱与本轮修正互证 | 原件哈希核对(86cc99f8…/35b8671d…)+ 与交付合同的对账确认 | Codex-L 提供原件或 CTO 接受转录 | 原件提供后 ~15 分钟 |
+| G6 P2(✅ 已完成 2026-09-13) | Q3 交付要求对齐 | 转录已发布且**原件哈希核对一致**(86cc99f8…/35b8671d…,evidence/q3-original/ 5 文件);Q3=本 VPS 授权直接前置,PRODUCT_RED=NO、RUNTIME=NOT_RUN,两陷阱与本轮 E1 修正互证 | 无剩余(原件核对已完成) | — | 已完成 |
 | G7 P2 | F4 失败根因闭环(容量 vs 连接生命周期) | attempt1 traceback + 400 上限后 GREEN | 连接生命周期证据(池上标本/连接年龄/泄漏检测) | 若 CTO 要求:pool events + pg_stat_activity 采样重跑 s4_jobs_local 模块 | 任务栈;~20 分钟 |
 
 全量重跑说明:F4-attempt4 已为环境完整条件下的 GREEN 实测;仅当 CTO 裁定 G2 需 PG16 全量绑定、或 G5 要求逐节点清单时,才需要再次全量;否则定点补验(G1/G3/G4)+ 既有 3839-pass 事实即可支撑验收决议。

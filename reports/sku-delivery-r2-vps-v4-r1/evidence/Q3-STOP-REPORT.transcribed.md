@@ -1,6 +1,6 @@
 # Q3 Controlled Rootful Fallback Report
 
-> ⚠️ 发布标注(2026-09-13):本文件为 **EXECUTOR: Zcode-W 依据用户提供文本的逐字转录**,未核对远端原件。
+> ✅ 发布标注更新(2026-09-13):本文件为 EXECUTOR: Zcode-W 依据用户提供文本的逐字转录。**远端原件已于 2026-09-13 经 SSH(mpio-lubuntu/codexops)核对:原件哈希与转录完全一致**(EVIDENCE-MANIFEST.sha256=86cc99f8… ✓、terminal-record.json=35b8671d… ✓),原件副本见 evidence/q3-original/(5 文件,含清单内全部条目)。
 > 原件据称位于 Codex-L 本机 /home/ivy/Documents/Codex/scratch/DC-12R1-MVP-L1-SKU-DELIVERY-R3-R1-A7-Q3-ROOTFUL-CODEXL/evidence,
 > 清单哈希:EVIDENCE_MANIFEST_SHA256=86cc99f8e44bdf73636984219821f964e5bebad4d5a7ed43449751e17b251644、
 > TERMINAL_RECORD_SHA256=35b8671d138125bb537640e085164f995514565f62699122c3c154dde33a2aa5(未核对)。

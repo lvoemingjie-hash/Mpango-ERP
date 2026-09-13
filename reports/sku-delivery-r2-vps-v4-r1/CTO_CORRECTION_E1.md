@@ -94,7 +94,7 @@ F4-a1 的 4 个失败逐节点对应(保留日志 formal-4-attempt1-conn-exhaust
 本次新增发布(均经脱敏检查:任务密码 0 残留):evidence/prep/attempts.log(19,897 字节完整尝试日志)、evidence/cleanup.sh、evidence/hashes.txt、evidence/node-outcome-inventory.json、evidence/timeline.txt、evidence/secrets-scan-changed.json、evidence/baseline-before/after.txt、full-suite 四轮完整输出、acceptance-checklist.md、run-manifest.json、pip-freeze.txt。
 来源哈希(evidence/hashes.txt,VPS 侧生成):cleanup.sh=9b5aac2e…、acceptance-checklist(aea3f303…,E1 前版本)、pip-freeze=8602a95f…;published-attempts.log 的 sha256 见本次提交后 evidence/hashes-e1.txt。
 **登记状态更新(E1 提交后补)**:F4-a2 中止运行的部分输出已补发布为 evidence/full-suite/formal-4-attempt2-aborted-partial.txt(中止状态如实保留);其余 MISSING 不变。以上不重建、不补造。
-**Q3 更新(E1 发布后补充)**:Q3-STOP-REPORT.md 已由用户提供文本并作为转录发布于 evidence/Q3-STOP-REPORT.transcribed.md(标注"转录,未核对远端原件";原件哈希已记录)。Q3 即本 VPS 授权的直接前置:其 FINAL_DISPOSITION(STOP_LOCAL_RUNTIME_VALIDATION__REQUIRE_FRESH_VPS_AUTHORITY)触发本轮 V4 运行;其记载的两个环境陷阱(镜像 RepoDigests 单元素断言缺陷、共享镜像归属冲突)与本轮 E1 修正项一一对应,互为印证;Q3 自身 PRODUCT_RUNTIME_RESULT=NOT_RUN、无产品 RED,故不为交付覆盖表增加运行时证据。
+**Q3 更新(E1 发布后补充,已核对)**:Q3-STOP-REPORT.md 转录已发布,且**远端原件已于 2026-09-13 经 SSH 核对一致**(lubuntu 机器 /home/ivy/... 路径;EVIDENCE-MANIFEST.sha256 与 terminal-record.json 的 sha256 与 Q3 报告所载完全匹配;原件 5 文件已随证据发布于 evidence/q3-original/)。Q3 即本 VPS 授权的直接前置:其 FINAL_DISPOSITION(STOP_LOCAL_RUNTIME_VALIDATION__REQUIRE_FRESH_VPS_AUTHORITY)触发本轮 V4 运行;其记载的两个环境陷阱(镜像 RepoDigests 单元素断言缺陷、共享镜像归属冲突)与本轮 E1 修正项一一对应,互为印证;Q3 自身 PRODUCT_RUNTIME_RESULT=NOT_RUN、无产品 RED,故不为交付覆盖表增加运行时证据。
 
 ## E1-8 独立性声明更正(对应 CTO F5/治理)
 

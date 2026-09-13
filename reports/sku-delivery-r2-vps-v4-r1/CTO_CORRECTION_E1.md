@@ -94,7 +94,7 @@ F4-a1 的 4 个失败逐节点对应(保留日志 formal-4-attempt1-conn-exhaust
 本次新增发布(均经脱敏检查:任务密码 0 残留):evidence/prep/attempts.log(19,897 字节完整尝试日志)、evidence/cleanup.sh、evidence/hashes.txt、evidence/node-outcome-inventory.json、evidence/timeline.txt、evidence/secrets-scan-changed.json、evidence/baseline-before/after.txt、full-suite 四轮完整输出、acceptance-checklist.md、run-manifest.json、pip-freeze.txt。
 来源哈希(evidence/hashes.txt,VPS 侧生成):cleanup.sh=9b5aac2e…、acceptance-checklist(aea3f303…,E1 前版本)、pip-freeze=8602a95f…;published-attempts.log 的 sha256 见本次提交后 evidence/hashes-e1.txt。
 **登记状态更新(E1 提交后补)**:F4-a2 中止运行的部分输出已补发布为 evidence/full-suite/formal-4-attempt2-aborted-partial.txt(中止状态如实保留);其余 MISSING 不变。以上不重建、不补造。
-**Q3 更正**:初版引用 M0 STOP_REPORT(2026-09-03)为替代,CTO 判定不构成替代。真实 Q3-STOP-REPORT.md 在候选树/远端/报告目录未定位——登记为 **MISSING(待 Codex-L/CTO 提供路径或文本;如采用用户提供文本,将标注"转录,未核对远端原件")**。
+**Q3 更新(E1 发布后补充)**:Q3-STOP-REPORT.md 已由用户提供文本并作为转录发布于 evidence/Q3-STOP-REPORT.transcribed.md(标注"转录,未核对远端原件";原件哈希已记录)。Q3 即本 VPS 授权的直接前置:其 FINAL_DISPOSITION(STOP_LOCAL_RUNTIME_VALIDATION__REQUIRE_FRESH_VPS_AUTHORITY)触发本轮 V4 运行;其记载的两个环境陷阱(镜像 RepoDigests 单元素断言缺陷、共享镜像归属冲突)与本轮 E1 修正项一一对应,互为印证;Q3 自身 PRODUCT_RUNTIME_RESULT=NOT_RUN、无产品 RED,故不为交付覆盖表增加运行时证据。
 
 ## E1-8 独立性声明更正(对应 CTO F5/治理)
 
@@ -106,3 +106,10 @@ F4-a1 的 4 个失败逐节点对应(保留日志 formal-4-attempt1-conn-exhaust
 ## 结论(在 CLAIM_CEILING 内)
 
 EVIDENCE_CORRECTION_COMPLETE_PENDING_CTO_REVIEW。本轮为证据修正与对账,不新增任何产品/测试/依赖/基线/runner 修改;候选零改动(worktree 仅 reports/ 变更)。剩余缺口与最小补验计划见 REMAINING_VALIDATION_PLAN.md。PRODUCT_ACCEPTANCE=NOT_GRANTED;NEXT_GATE=CTO_TARGETED_VALIDATION_SCOPE_DECISION。
+
+### E1-8-S 补充:BC-06 作者重叠的具体环节与影响(2026-09-13,Q3 转录入库时一并澄清)
+
+- **重叠环节(精确)**:累计候选中的 BC-06 三个修复轮 R1(3e831384)、R2(f151f53d)、R2-R1(50f15ded)**全部由 ZCode-W 执行**(三轮报告 EXECUTOR 字段一致;50f15ded 的 git 作者身份为 dfljeff01-commits)。50f15ded 精确触及 backend/repositories/pricing_repository.py(±14 行:set_price 锁结果检查→结构化 404)与 backend/services/package_identity.py(±11 行:lock_sku_row 软删除过滤+populate_existing),及测试模块 +258 行(23→30 节点)。
+- **与本轮验证的交集**:F1 的 37 节点正是验证上述两个产品文件的测试模块;F2 内 BC-06 相关回归与 50f15ded 测试变更部分重叠。R2 修复轮(Codex-L)的 7 个夹具隔离节点缓解了夹具层的重叠,但不缓解锁/定价断言层的重叠。
+- **对已接受结论的影响**:BC-06 各轮当时结论(30/30 GREEN、变异 M-A/M-B/M-C 语义 RED)为**当时自验记录,历史地位维持不变**,本报告不推翻;本轮 V4 F1 在真实 PG 上复跑 GREEN 亦为客观事实。受影响的是**证据的独立性等级**:同源执行者+同源断言使 BC-06 路径的证据不能按"完全独立验收"对待,存在与作者假设同向的盲区可能。该部分属实质性披露而非纯记录性说明。
+- **缓解与建议**:①R2 修复轮的夹具隔离 7 节点为 Codex-L authored(独立于 ZCode-W 的产品变更);②建议 CTO 对 lock_sku_row/set_price 路径安排非重叠执行者复跑(F1 同命令换执行者)或独立源码审查(参考已有 Kilo bounded review 记录);③本轮 3839-pass 全量事实不受影响,但其中 BC-06 路径子集的独立证明价值按上述降级理解。

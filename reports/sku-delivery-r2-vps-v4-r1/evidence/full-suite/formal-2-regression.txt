@@ -1,0 +1,103 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.2, pluggy-1.6.0
+rootdir: /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend
+configfile: pytest.ini
+plugins: cov-4.1.0, anyio-4.12.1, hypothesis-6.150.2, asyncio-0.26.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collected 140 items
+
+tests/test_sku_m1_catalog_identity.py ................                   [ 11%]
+tests/test_sku_m1_api_rbac.py .                                          [ 12%]
+tests/test_sku_b2_catalog_serialization.py .........                     [ 18%]
+tests/test_sku_r1_client_catalog_contract.py ...............             [ 29%]
+tests/test_sku_r1_multipackaging_closure.py ......                       [ 33%]
+tests/test_phase3_pricing.py ................                            [ 45%]
+tests/test_phase4_pricing_safe_orders.py ......................          [ 60%]
+tests/test_order_creation.py .                                           [ 61%]
+tests/test_orders_api.py ..........                                      [ 68%]
+tests/test_u3c_import_apply.py ................................          [ 91%]
+tests/test_u4c_intake_api_contract.py ............                       [100%]
+
+=============================== warnings summary ===============================
+../../venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+database/base.py:7
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/database/base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/test_sku_m1_catalog_identity.py::test_retired_sku_code_is_not_reusable
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/models/base.py:50: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    self.deleted_at = datetime.utcnow()
+
+tests/test_sku_r1_client_catalog_contract.py: 26 warnings
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/core/security.py:150: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/test_sku_r1_client_catalog_contract.py: 13 warnings
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/api/v1/client/auth.py:339: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_sku_r1_client_catalog_contract.py::TestProductLevelList::test_one_container_per_product_with_nested_units
+tests/test_sku_r1_client_catalog_contract.py::TestProductLevelList::test_pagination_counts_products_not_units
+tests/test_sku_r1_client_catalog_contract.py::TestProductLevelList::test_pagination_counts_products_not_units
+tests/test_sku_r1_client_catalog_contract.py::TestProductLevelList::test_search_by_unit_sku_code_finds_the_product
+tests/test_sku_r1_client_catalog_contract.py::TestProductLevelDetail::test_inactive_product_detail_is_product_inactive_404
+tests/test_sku_r1_multipackaging_closure.py::test_product_listing_groups_units_and_orders_deterministically
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/api/v1/client/products.py:209: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_sku_r1_client_catalog_contract.py::TestProductLevelDetail::test_detail_by_catalog_product_id_returns_units
+tests/test_sku_r1_client_catalog_contract.py::TestProductLevelDetail::test_detail_with_sellable_unit_uuid_is_404_not_the_product
+tests/test_sku_r1_client_catalog_contract.py::TestIsolationAndVisibility::test_inactive_units_hidden_and_unpriced_units_not_orderable
+tests/test_sku_r1_client_catalog_contract.py::TestIsolationAndVisibility::test_retailer_price_isolation
+tests/test_sku_r1_client_catalog_contract.py::TestCanonicalProductIdFailClosed::test_canonical_existing_uuid_returns_200
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/api/v1/client/products.py:301: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_phase4_pricing_safe_orders.py::TestWholesalerOrderCreationAPI::test_create_order_slim_shape_happy_path
+tests/test_phase4_pricing_safe_orders.py::TestWholesalerOrderCreationAPI::test_matching_stable_id_and_code_create_stable_snapshot
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/api/v1/orders.py:519: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_phase4_pricing_safe_orders.py::TestPricingListAPI::test_list_prices_happy_path
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/api/v1/pricing.py:110: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_phase4_pricing_safe_orders.py::TestPricingSetAPI::test_set_price_creates_new
+tests/test_phase4_pricing_safe_orders.py::TestPricingSetAPI::test_set_price_updates_existing
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/api/v1/pricing.py:161: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_u3c_import_apply.py::TestCorruptedValidatedRows::test_missing_sku_code_column_raises_422
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/tests/test_u3c_import_apply.py:630: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    await ImportService().apply(
+
+tests/test_u3c_import_apply.py::TestCorruptedValidatedRows::test_empty_sku_code_raises_422
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/tests/test_u3c_import_apply.py:651: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    await ImportService().apply(
+
+tests/test_u3c_import_apply.py::TestCorruptedValidatedRows::test_mixed_valid_and_corrupt_fails_entirely
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/tests/test_u3c_import_apply.py:674: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    await ImportService().apply(
+
+tests/test_u3c_import_apply.py::TestCorruptedValidatedRows::test_all_rows_corrupt_no_db_add
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/tests/test_u3c_import_apply.py:697: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    await ImportService().apply(
+
+tests/test_u4c_intake_api_contract.py::test_contextual_tenant_user_with_intake_create_can_create_workspace
+tests/test_u4c_intake_api_contract.py::test_contextual_tenant_user_with_intake_read_can_list_and_detail_created_workspace
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/api/v1/intake.py:269: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_u4c_intake_api_contract.py::test_contextual_tenant_user_with_intake_read_can_list_and_detail_created_workspace
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/api/v1/intake.py:315: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_u4c_intake_api_contract.py::test_contextual_tenant_user_with_intake_read_can_list_and_detail_created_workspace
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend/api/v1/intake.py:353: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+====================== 140 passed, 66 warnings in 39.75s =======================

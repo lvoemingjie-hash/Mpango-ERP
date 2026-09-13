@@ -1,0 +1,8 @@
+  M00-pristine-subset-green                                  GREEN as intended
+  M01-remove-post-flush-reload                               RED as intended (byte-identical restore)
+  M02-remove-populate-existing                               RED as intended (byte-identical restore)
+  M03-remove-selectinload-loaders                            GREEN (all 3 loaders present; removal mutation applied below)
+  M04-return-expired-pre-reload-product                      RED as intended (byte-identical restore)
+  M05-omit-unit-updated-at-serialization                     RED as intended (byte-identical restore)
+  M06-source-guard-required-assertions                       GREEN (anchors present)
+B2 FALSIFICATION GATE: all mutations RED as intended, pristine/restore GREEN

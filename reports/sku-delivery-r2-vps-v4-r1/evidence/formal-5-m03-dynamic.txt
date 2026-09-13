@@ -1,0 +1,10 @@
+M03_DYNAMIC_RED=YES
+ERROR tests/test_sku_b2_catalog_serialization.py::test_t5_add_sellable_unit_returns_complete_graph
+ERROR tests/test_sku_b2_catalog_serialization.py::test_t6_create_product_returns_complete_graph
+ERROR tests/test_sku_b2_catalog_serialization.py::test_t7_rename_and_deactivate_leave_order_snapshots_unchanged
+ERROR tests/test_sku_b2_catalog_serialization.py::test_t8_wrong_tenant_product_is_404
+ERROR tests/test_sku_b2_catalog_serialization.py::test_t8_missing_permission_denied
+========================= 1 warning, 9 errors in 0.81s =========================
+== M03 attempt2 2026-09-13T14:21:58+08:00 ==
+========================= 9 passed, 1 warning in 4.74s =========================
+M03_ATTEMPT2_RC=0

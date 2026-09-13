@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-09-13T11:39:54+0800",
+  "run": "sku-delivery-r2-v4-r1",
+  "images": {
+    "postgres:15-alpine": {
+      "image_id": "sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b",
+      "repo_digests": [
+        "postgres@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b"
+      ],
+      "created": "2026-08-13T19:19:07.097478906Z"
+    },
+    "redis:7-alpine": {
+      "image_id": "sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf",
+      "repo_digests": [
+        "redis@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf"
+      ],
+      "created": "2026-08-18T16:56:46.926554149Z"
+    }
+  }
+}

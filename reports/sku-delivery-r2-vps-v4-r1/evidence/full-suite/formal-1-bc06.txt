@@ -1,0 +1,3031 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.2, pluggy-1.6.0 -- /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/venv/bin/python3
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend
+configfile: pytest.ini
+plugins: cov-4.1.0, anyio-4.12.1, hypothesis-6.150.2, asyncio-0.26.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 37 items
+
+tests/test_sku_bc06_reprice_guard.py::test_bc06_fixture_preserves_unrelated_connections[same_role] FAILED [  2%]
+tests/test_sku_bc06_reprice_guard.py::test_bc06_fixture_preserves_unrelated_connections[reporting_role] FAILED [  5%]
+tests/test_sku_bc06_reprice_guard.py::test_bc06_overlapping_fixture_schemas_are_independent FAILED [  8%]
+tests/test_sku_bc06_reprice_guard.py::test_bc06_body_failure_closes_owned_transaction_before_drop FAILED [ 10%]
+tests/test_sku_bc06_reprice_guard.py::test_bc06_partial_bootstrap_failure_cleans_only_owned_schema FAILED [ 13%]
+tests/test_sku_bc06_reprice_guard.py::test_bc06_cleanup_lock_timeout_is_not_swallowed FAILED [ 16%]
+tests/test_sku_bc06_reprice_guard.py::test_bc06_schema_collision_never_drops_existing_schema FAILED [ 18%]
+tests/test_sku_bc06_reprice_guard.py::test_all_sku_creation_entries_create_zero_retailer_price_rows ERROR [ 21%]
+tests/test_sku_bc06_reprice_guard.py::test_zero_value_stock_placeholder_is_not_use_and_does_not_block ERROR [ 24%]
+tests/test_sku_bc06_reprice_guard.py::test_repackage_without_history_or_price_succeeds_via_both_entries ERROR [ 27%]
+tests/test_sku_bc06_reprice_guard.py::test_same_value_repackage_is_never_blocked_even_with_live_price ERROR [ 29%]
+tests/test_sku_bc06_reprice_guard.py::test_live_price_blocks_both_entries_with_zero_data_change ERROR [ 32%]
+tests/test_sku_bc06_reprice_guard.py::test_only_soft_deleted_price_rows_do_not_gate_and_stay_byte_identical ERROR [ 35%]
+tests/test_sku_bc06_reprice_guard.py::test_any_live_price_among_multiple_retailers_blocks ERROR [ 37%]
+tests/test_sku_bc06_reprice_guard.py::test_corrupt_nonpositive_live_price_fails_closed_red ERROR [ 40%]
+tests/test_sku_bc06_reprice_guard.py::test_concurrent_price_first_then_repackage_returns_reprice_required ERROR [ 43%]
+tests/test_sku_bc06_reprice_guard.py::test_concurrent_repackage_first_then_set_price_targets_new_definition ERROR [ 45%]
+tests/test_sku_bc06_reprice_guard.py::test_transaction_history_locks_repackage_immutable_after_use[stable] ERROR [ 48%]
+tests/test_sku_bc06_reprice_guard.py::test_transaction_history_locks_repackage_immutable_after_use[linked_legacy] ERROR [ 51%]
+tests/test_sku_bc06_reprice_guard.py::test_transaction_history_locks_repackage_immutable_after_use[legacy] ERROR [ 54%]
+tests/test_sku_bc06_reprice_guard.py::test_history_lock_dominates_the_price_gate ERROR [ 56%]
+tests/test_sku_bc06_reprice_guard.py::test_soft_deleted_order_items_still_lock_repackage ERROR [ 59%]
+tests/test_sku_bc06_reprice_guard.py::test_any_inventory_movement_locks_repackage ERROR [ 62%]
+tests/test_sku_bc06_reprice_guard.py::test_nonzero_on_hand_stock_locks_repackage ERROR [ 64%]
+tests/test_sku_bc06_reprice_guard.py::test_nonzero_reserved_stock_locks_repackage ERROR [ 67%]
+tests/test_sku_bc06_reprice_guard.py::test_reservation_status_locks_repackage[reserved] ERROR [ 70%]
+tests/test_sku_bc06_reprice_guard.py::test_reservation_status_locks_repackage[consumed] ERROR [ 72%]
+tests/test_sku_bc06_reprice_guard.py::test_reservation_status_locks_repackage[released] ERROR [ 75%]
+tests/test_sku_bc06_reprice_guard.py::test_locked_fresh_read_after_concurrent_commit[sku] ERROR [ 78%]
+tests/test_sku_bc06_reprice_guard.py::test_locked_fresh_read_after_concurrent_commit[unit] ERROR [ 81%]
+tests/test_sku_bc06_reprice_guard.py::test_update_sku_syncs_sibling_fields_and_preserves_package_quantity ERROR [ 83%]
+tests/test_sku_bc06_reprice_guard.py::test_concurrent_soft_delete_wins_updater_returns_structured_404[sku] ERROR [ 86%]
+tests/test_sku_bc06_reprice_guard.py::test_concurrent_soft_delete_wins_updater_returns_structured_404[unit] ERROR [ 89%]
+tests/test_sku_bc06_reprice_guard.py::test_concurrent_soft_delete_wins_updater_returns_structured_404[set_price] ERROR [ 91%]
+tests/test_sku_bc06_reprice_guard.py::test_reverse_linearization_update_wins_then_soft_delete[sku] ERROR [ 94%]
+tests/test_sku_bc06_reprice_guard.py::test_reverse_linearization_update_wins_then_soft_delete[unit] ERROR [ 97%]
+tests/test_sku_bc06_reprice_guard.py::test_set_price_fail_closed_on_missing_or_soft_deleted_sku ERROR [100%]
+
+==================================== ERRORS ====================================
+_ ERROR at setup of test_all_sku_creation_entries_create_zero_retailer_price_rows _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_zero_value_stock_placeholder_is_not_use_and_does_not_block _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_repackage_without_history_or_price_succeeds_via_both_entries _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_same_value_repackage_is_never_blocked_even_with_live_price _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_live_price_blocks_both_entries_with_zero_data_change __
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_only_soft_deleted_price_rows_do_not_gate_and_stay_byte_identical _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+____ ERROR at setup of test_any_live_price_among_multiple_retailers_blocks _____
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+____ ERROR at setup of test_corrupt_nonpositive_live_price_fails_closed_red ____
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_concurrent_price_first_then_repackage_returns_reprice_required _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_concurrent_repackage_first_then_set_price_targets_new_definition _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_transaction_history_locks_repackage_immutable_after_use[stable] _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_transaction_history_locks_repackage_immutable_after_use[linked_legacy] _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_transaction_history_locks_repackage_immutable_after_use[legacy] _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_________ ERROR at setup of test_history_lock_dominates_the_price_gate _________
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_____ ERROR at setup of test_soft_deleted_order_items_still_lock_repackage _____
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+________ ERROR at setup of test_any_inventory_movement_locks_repackage _________
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_________ ERROR at setup of test_nonzero_on_hand_stock_locks_repackage _________
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+________ ERROR at setup of test_nonzero_reserved_stock_locks_repackage _________
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_____ ERROR at setup of test_reservation_status_locks_repackage[reserved] ______
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_____ ERROR at setup of test_reservation_status_locks_repackage[consumed] ______
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_____ ERROR at setup of test_reservation_status_locks_repackage[released] ______
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+____ ERROR at setup of test_locked_fresh_read_after_concurrent_commit[sku] _____
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+____ ERROR at setup of test_locked_fresh_read_after_concurrent_commit[unit] ____
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_update_sku_syncs_sibling_fields_and_preserves_package_quantity _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_concurrent_soft_delete_wins_updater_returns_structured_404[sku] _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_concurrent_soft_delete_wins_updater_returns_structured_404[unit] _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_concurrent_soft_delete_wins_updater_returns_structured_404[set_price] _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_reverse_linearization_update_wins_then_soft_delete[sku] _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_reverse_linearization_update_wins_then_soft_delete[unit] _
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_ ERROR at setup of test_set_price_fail_closed_on_missing_or_soft_deleted_sku __
+tests/test_sku_bc06_reprice_guard.py:148: in tenant_db
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+=================================== FAILURES ===================================
+_________ test_bc06_fixture_preserves_unrelated_connections[same_role] _________
+tests/test_sku_bc06_reprice_guard.py:197: in test_bc06_fixture_preserves_unrelated_connections
+    async with outsider.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+______ test_bc06_fixture_preserves_unrelated_connections[reporting_role] _______
+tests/test_sku_bc06_reprice_guard.py:197: in test_bc06_fixture_preserves_unrelated_connections
+    async with outsider.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidPasswordError: password authentication failed for user "reporting_user"
+____________ test_bc06_overlapping_fixture_schemas_are_independent _____________
+tests/test_sku_bc06_reprice_guard.py:227: in test_bc06_overlapping_fixture_schemas_are_independent
+    async with _bc06_schema() as first:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_________ test_bc06_body_failure_closes_owned_transaction_before_drop __________
+tests/test_sku_bc06_reprice_guard.py:241: in test_bc06_body_failure_closes_owned_transaction_before_drop
+    async with _bc06_schema() as schema:
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_________ test_bc06_partial_bootstrap_failure_cleans_only_owned_schema _________
+tests/test_sku_bc06_reprice_guard.py:263: in test_bc06_partial_bootstrap_failure_cleans_only_owned_schema
+    async with _bc06_schema():
+/usr/lib/python3.12/contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+tests/test_sku_bc06_reprice_guard.py:111: in _bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+_______________ test_bc06_cleanup_lock_timeout_is_not_swallowed ________________
+tests/test_sku_bc06_reprice_guard.py:277: in test_bc06_cleanup_lock_timeout_is_not_swallowed
+    async with outsider.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+____________ test_bc06_schema_collision_never_drops_existing_schema ____________
+tests/test_sku_bc06_reprice_guard.py:304: in test_bc06_schema_collision_never_drops_existing_schema
+    async with admin.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+
+During handling of the above exception, another exception occurred:
+tests/test_sku_bc06_reprice_guard.py:317: in test_bc06_schema_collision_never_drops_existing_schema
+    await _drop_bc06_schema(admin, schema)
+tests/test_sku_bc06_reprice_guard.py:98: in _drop_bc06_schema
+    async with admin_engine.connect() as conn:
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py:121: in __aenter__
+    return await self.start(is_ctxmanager=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py:275: in start
+    await greenlet_spawn(self.sync_engine.connect)
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3285: in connect
+    return self._connection_cls(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:143: in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py:3309: in raw_connection
+    return self.pool.connect()
+           ^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:447: in connect
+    return _ConnectionFairy._checkout(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:1264: in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:711: in checkout
+    rec = pool._do_get()
+          ^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:177: in _do_get
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/impl.py:175: in _do_get
+    return self._create_connection()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:388: in _create_connection
+    return _ConnectionRecord(self)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:673: in __init__
+    self.__connect()
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:899: in __connect
+    with util.safe_reraise():
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py:224: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+../../venv/lib/python3.12/site-packages/sqlalchemy/pool/base.py:895: in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/create.py:661: in connect
+    return dialect.connect(*cargs, **cparams)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py:630: in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py:955: in connect
+    await_only(creator_fn(*arg, **kw)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connection.py:2443: in connect
+    return await connect_utils._connect(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1218: in _connect
+    conn = await _connect_addr(
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1054: in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../venv/lib/python3.12/site-packages/asyncpg/connect_utils.py:1102: in __connect_addr
+    await connected
+E   asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+=========================== short test summary info ============================
+FAILED tests/test_sku_bc06_reprice_guard.py::test_bc06_fixture_preserves_unrelated_connections[same_role] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+FAILED tests/test_sku_bc06_reprice_guard.py::test_bc06_fixture_preserves_unrelated_connections[reporting_role] - asyncpg.exceptions.InvalidPasswordError: password authentication failed for user "reporting_user"
+FAILED tests/test_sku_bc06_reprice_guard.py::test_bc06_overlapping_fixture_schemas_are_independent - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+FAILED tests/test_sku_bc06_reprice_guard.py::test_bc06_body_failure_closes_owned_transaction_before_drop - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+FAILED tests/test_sku_bc06_reprice_guard.py::test_bc06_partial_bootstrap_failure_cleans_only_owned_schema - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+FAILED tests/test_sku_bc06_reprice_guard.py::test_bc06_cleanup_lock_timeout_is_not_swallowed - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+FAILED tests/test_sku_bc06_reprice_guard.py::test_bc06_schema_collision_never_drops_existing_schema - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_all_sku_creation_entries_create_zero_retailer_price_rows - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_zero_value_stock_placeholder_is_not_use_and_does_not_block - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_repackage_without_history_or_price_succeeds_via_both_entries - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_same_value_repackage_is_never_blocked_even_with_live_price - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_live_price_blocks_both_entries_with_zero_data_change - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_only_soft_deleted_price_rows_do_not_gate_and_stay_byte_identical - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_any_live_price_among_multiple_retailers_blocks - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_corrupt_nonpositive_live_price_fails_closed_red - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_concurrent_price_first_then_repackage_returns_reprice_required - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_concurrent_repackage_first_then_set_price_targets_new_definition - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_transaction_history_locks_repackage_immutable_after_use[stable] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_transaction_history_locks_repackage_immutable_after_use[linked_legacy] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_transaction_history_locks_repackage_immutable_after_use[legacy] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_history_lock_dominates_the_price_gate - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_soft_deleted_order_items_still_lock_repackage - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_any_inventory_movement_locks_repackage - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_nonzero_on_hand_stock_locks_repackage - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_nonzero_reserved_stock_locks_repackage - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_reservation_status_locks_repackage[reserved] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_reservation_status_locks_repackage[consumed] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_reservation_status_locks_repackage[released] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_locked_fresh_read_after_concurrent_commit[sku] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_locked_fresh_read_after_concurrent_commit[unit] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_update_sku_syncs_sibling_fields_and_preserves_package_quantity - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_concurrent_soft_delete_wins_updater_returns_structured_404[sku] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_concurrent_soft_delete_wins_updater_returns_structured_404[unit] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_concurrent_soft_delete_wins_updater_returns_structured_404[set_price] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_reverse_linearization_update_wins_then_soft_delete[sku] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_reverse_linearization_update_wins_then_soft_delete[unit] - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+ERROR tests/test_sku_bc06_reprice_guard.py::test_set_price_fail_closed_on_missing_or_soft_deleted_sku - asyncpg.exceptions.InvalidCatalogNameError: database "test_mpango_task" does not exist
+======================== 7 failed, 30 errors in 12.76s =========================

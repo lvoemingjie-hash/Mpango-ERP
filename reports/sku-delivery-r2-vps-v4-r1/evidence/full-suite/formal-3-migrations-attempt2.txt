@@ -1,0 +1,26 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.2, pluggy-1.6.0
+rootdir: /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend
+configfile: pytest.ini
+plugins: cov-4.1.0, anyio-4.12.1, hypothesis-6.150.2, asyncio-0.26.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collected 13 items
+
+tests/test_alembic_migrations.py sss....                                 [ 53%]
+tests/test_sku_m1_migration_pg16.py ......                               [100%]
+
+=============================== warnings summary ===============================
+tests/test_sku_m1_migration_pg16.py::test_real_pg16_two_tenant_upgrade_preserves_identity_snapshots_and_stock
+tests/test_sku_m1_migration_pg16.py::test_real_pg16_two_tenant_upgrade_preserves_identity_snapshots_and_stock
+tests/test_sku_m1_migration_pg16.py::test_real_pg16_preflight_failure_causes_global_zero_tenant_mutation
+tests/test_sku_m1_migration_pg16.py::test_real_pg16_preflight_failure_causes_global_zero_tenant_mutation
+tests/test_sku_m1_migration_pg16.py::test_real_pg16_bootstrap_reconciles_unregistered_pre038_tenant
+tests/test_sku_m1_migration_pg16.py::test_real_pg16_bootstrap_rolls_back_unsafe_missing_stock_reconciliation
+tests/test_sku_m1_migration_pg16.py::test_real_pg16_demo_seeder_uses_canonical_catalog_identity
+tests/test_sku_m1_migration_pg16.py::test_real_pg16_non_live_registered_tenant_fails_before_any_mutation
+tests/test_sku_m1_migration_pg16.py::test_real_pg16_non_live_registered_tenant_fails_before_any_mutation
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/venv/lib/python3.12/site-packages/alembic/config.py:612: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================== 10 passed, 3 skipped, 9 warnings in 13.98s ==================

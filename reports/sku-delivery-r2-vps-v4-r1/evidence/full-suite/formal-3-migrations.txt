@@ -1,0 +1,92 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.2, pluggy-1.6.0
+rootdir: /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/worktree/backend
+configfile: pytest.ini
+plugins: cov-4.1.0, anyio-4.12.1, hypothesis-6.150.2, asyncio-0.26.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collected 13 items
+
+tests/test_alembic_migrations.py sss....                                 [ 53%]
+tests/test_sku_m1_migration_pg16.py FFFFFF                               [100%]
+
+=================================== FAILURES ===================================
+___ test_real_pg16_two_tenant_upgrade_preserves_identity_snapshots_and_stock ___
+tests/test_sku_m1_migration_pg16.py:307: in test_real_pg16_two_tenant_upgrade_preserves_identity_snapshots_and_stock
+    with temporary_database_url(source_url, "skum1r1") as db_url:
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/async_test_utils.py:201: in temporary_database_url
+    parsed = _validate_temporary_database_source(source_url)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/async_test_utils.py:116: in _validate_temporary_database_source
+    raise RuntimeError("temporary database source port is not explicitly allowed")
+E   RuntimeError: temporary database source port is not explicitly allowed
+_____ test_real_pg16_preflight_failure_causes_global_zero_tenant_mutation ______
+tests/test_sku_m1_migration_pg16.py:452: in test_real_pg16_preflight_failure_causes_global_zero_tenant_mutation
+    with temporary_database_url(source_url, "skum1rollback") as db_url:
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/async_test_utils.py:201: in temporary_database_url
+    parsed = _validate_temporary_database_source(source_url)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/async_test_utils.py:116: in _validate_temporary_database_source
+    raise RuntimeError("temporary database source port is not explicitly allowed")
+E   RuntimeError: temporary database source port is not explicitly allowed
+________ test_real_pg16_bootstrap_reconciles_unregistered_pre038_tenant ________
+tests/test_sku_m1_migration_pg16.py:497: in test_real_pg16_bootstrap_reconciles_unregistered_pre038_tenant
+    with temporary_database_url(source_url, "skum1bootstrap") as db_url:
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/async_test_utils.py:201: in temporary_database_url
+    parsed = _validate_temporary_database_source(source_url)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/async_test_utils.py:116: in _validate_temporary_database_source
+    raise RuntimeError("temporary database source port is not explicitly allowed")
+E   RuntimeError: temporary database source port is not explicitly allowed
+___ test_real_pg16_bootstrap_rolls_back_unsafe_missing_stock_reconciliation ____
+tests/test_sku_m1_migration_pg16.py:560: in test_real_pg16_bootstrap_rolls_back_unsafe_missing_stock_reconciliation
+    with temporary_database_url(source_url, "skum1bootstrapfail") as db_url:
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/async_test_utils.py:201: in temporary_database_url
+    parsed = _validate_temporary_database_source(source_url)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/async_test_utils.py:116: in _validate_temporary_database_source
+    raise RuntimeError("temporary database source port is not explicitly allowed")
+E   RuntimeError: temporary database source port is not explicitly allowed
+__________ test_real_pg16_demo_seeder_uses_canonical_catalog_identity __________
+tests/test_sku_m1_migration_pg16.py:627: in test_real_pg16_demo_seeder_uses_canonical_catalog_identity
+    with temporary_database_url(source_url, "skum1demoseed") as db_url:
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/async_test_utils.py:201: in temporary_database_url
+    parsed = _validate_temporary_database_source(source_url)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/async_test_utils.py:116: in _validate_temporary_database_source
+    raise RuntimeError("temporary database source port is not explicitly allowed")
+E   RuntimeError: temporary database source port is not explicitly allowed
+_____ test_real_pg16_non_live_registered_tenant_fails_before_any_mutation ______
+tests/test_sku_m1_migration_pg16.py:680: in test_real_pg16_non_live_registered_tenant_fails_before_any_mutation
+    with temporary_database_url(source_url, "skum1status") as db_url:
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+tests/async_test_utils.py:201: in temporary_database_url
+    parsed = _validate_temporary_database_source(source_url)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/async_test_utils.py:116: in _validate_temporary_database_source
+    raise RuntimeError("temporary database source port is not explicitly allowed")
+E   RuntimeError: temporary database source port is not explicitly allowed
+=========================== short test summary info ============================
+FAILED tests/test_sku_m1_migration_pg16.py::test_real_pg16_two_tenant_upgrade_preserves_identity_snapshots_and_stock
+FAILED tests/test_sku_m1_migration_pg16.py::test_real_pg16_preflight_failure_causes_global_zero_tenant_mutation
+FAILED tests/test_sku_m1_migration_pg16.py::test_real_pg16_bootstrap_reconciles_unregistered_pre038_tenant
+FAILED tests/test_sku_m1_migration_pg16.py::test_real_pg16_bootstrap_rolls_back_unsafe_missing_stock_reconciliation
+FAILED tests/test_sku_m1_migration_pg16.py::test_real_pg16_demo_seeder_uses_canonical_catalog_identity
+FAILED tests/test_sku_m1_migration_pg16.py::test_real_pg16_non_live_registered_tenant_fails_before_any_mutation
+==================== 6 failed, 4 passed, 3 skipped in 0.54s ====================

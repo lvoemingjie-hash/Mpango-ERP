@@ -1,0 +1,254 @@
+[
+ {
+  "id": "TestAlembicMigrationIsolation::test_migration_creates_tenant_schema",
+  "reason": "Requires running Alembic CLI - integration test"
+ },
+ {
+  "id": "TestAlembicMigrationIsolation::test_tenant_migration_does_not_affect_public_schema",
+  "reason": "Requires running Alembic CLI - integration test"
+ },
+ {
+  "id": "TestAlembicMigrationIsolation::test_public_migration_does_not_create_tenant_tables",
+  "reason": "Requires running Alembic CLI - integration test"
+ },
+ {
+  "id": "TestLiveSchemaContract::test_live_has_retailer_id",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveSchemaContract::test_live_retailer_id_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveSchemaContract::test_live_has_transaction_id",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveSchemaContract::test_live_transaction_id_nullable",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveSchemaContract::test_live_has_order_id_index",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveSchemaContract::test_live_has_transaction_id_partial_unique",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveRetailerPricesContract::test_live_has_retailer_id",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveRetailerPricesContract::test_live_retailer_id_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveRetailerPricesContract::test_live_has_sku_id",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveRetailerPricesContract::test_live_sku_id_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveRetailerPricesContract::test_live_has_price",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveRetailerPricesContract::test_live_price_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveRetailerPricesContract::test_live_created_at_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveRetailerPricesContract::test_live_updated_at_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveRetailerPricesContract::test_live_is_deleted_not_null",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveRetailerPricesContract::test_live_has_unique_constraint",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveRetailerPricesContract::test_live_has_check_constraint",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveRetailerPricesContract::test_live_has_retailer_id_index",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestLiveRetailerPricesContract::test_live_has_sku_id_index",
+  "reason": "set PAYMENTS_SCHEMA_REQUIRE_LIVE=1 for prepared-schema verification"
+ },
+ {
+  "id": "TestRouteLevelOrderPaymentMonkeypatch::test_route_overpayment_rejected_with_400",
+  "reason": "Overpayment test blocked by mock complexity: structured path calls PaymentRepository() which must re"
+ },
+ {
+  "id": "TestRequestValidation::test_user_create_rejects_missing_email",
+  "reason": "RBAC middleware returns 403 before validation on protected endpoints"
+ },
+ {
+  "id": "TestRequestValidation::test_order_create_rejects_empty_items",
+  "reason": "RBAC middleware returns 403 before validation on protected endpoints"
+ },
+ {
+  "id": "TestRequestValidation::test_order_item_rejects_invalid_quantity",
+  "reason": "RBAC middleware returns 403 before validation on protected endpoints"
+ },
+ {
+  "id": "TestRequestValidation::test_validation_error_has_structured_response",
+  "reason": "Login endpoint returns app-specific error format, not FastAPI default 422"
+ },
+ {
+  "id": "TestQueryParameterValidation::test_list_users_rejects_invalid_page",
+  "reason": "RBAC middleware returns 403 before validation on protected endpoints"
+ },
+ {
+  "id": "TestQueryParameterValidation::test_list_users_rejects_excessive_size",
+  "reason": "RBAC middleware returns 403 before validation on protected endpoints"
+ },
+ {
+  "id": "TestOpenAPIRouteCoverage::test_all_openapi_paths_have_routes",
+  "reason": "docs/contracts/openapi.yaml not yet generated"
+ },
+ {
+  "id": "TestOpenAPIRouteCoverage::test_stub_endpoints_return_501",
+  "reason": "Endpoints are implemented (not stubs) and RBAC middleware returns 403 for some"
+ },
+ {
+  "id": "TestRoutePathParameters::test_user_id_path_parameter_accepted",
+  "reason": "RBAC middleware returns 403 before reaching endpoint logic"
+ },
+ {
+  "id": "TestRoutePathParameters::test_order_id_path_parameter_accepted",
+  "reason": "RBAC middleware returns 403 before reaching endpoint logic"
+ },
+ {
+  "id": "TestOpenAPISpecLoading::test_openapi_spec_file_exists",
+  "reason": "docs/contracts/openapi.yaml not yet generated"
+ },
+ {
+  "id": "TestOpenAPISpecLoading::test_openapi_spec_is_valid_yaml",
+  "reason": "docs/contracts/openapi.yaml not yet generated"
+ },
+ {
+  "id": "TestSQLProfilingMiddleware::test_profiling_headers_on_health_endpoint",
+  "reason": "SQL profiling disabled in current environment (ENABLE_SQL_PROFILING != true)"
+ },
+ {
+  "id": "TestSQLProfilingMiddleware::test_profiling_skips_metrics_endpoint",
+  "reason": "SQL profiling disabled in current environment (ENABLE_SQL_PROFILING != true)"
+ },
+ {
+  "id": "TestLiveTenantSchemaBootstrapped::test_all_required_tables_present",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveAdminPermissionsComplete::test_admin_user_exists_and_is_active",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveAdminPermissionsComplete::test_admin_has_at_least_one_role",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveAdminPermissionsComplete::test_admin_role_has_all_required_permissions",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestNearRealContextualJwtFlow::test_encode_decode_roundtrip",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestNearRealContextualJwtFlow::test_decoded_token_is_contextual_not_identity",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveEndpointSmoke::test_dashboard_kpi_summary",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveEndpointSmoke::test_dashboard_sales_trend",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveEndpointSmoke::test_dashboard_cash_flow",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveEndpointSmoke::test_orders_list",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveEndpointSmoke::test_skus_list",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveEndpointSmoke::test_stock_list_endpoint",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveEndpointSmoke::test_pricing_prices",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveEndpointSmoke::test_payments_list",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveEndpointSmoke::test_retailers_list",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveEndpointSmoke::test_retailer_bindings",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestLiveEndpointSmoke::test_exports_status",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestBusinessEmptyStateProof::test_pricing_non_200_is_business_not_auth",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "TestBusinessEmptyStateProof::test_exports_non_200_is_business_not_auth",
+  "reason": "S3-B prepared tenant prerequisites are missing for 't_u1r1_test': ['inventory_movements', 'inventory"
+ },
+ {
+  "id": "test_s5c_runtime_sku_import_http_integration::test_sku_import_preview_validate_apply_happy_path",
+  "reason": "runtime import HTTP proof requires MPANGO_RUNTIME_BASE_URL, MPANGO_RUNTIME_TEST_EMAIL, MPANGO_RUNTIM"
+ },
+ {
+  "id": "test_s5c_runtime_sku_import_http_integration::test_sku_import_preview_returns_401_without_token",
+  "reason": "runtime import HTTP proof requires MPANGO_RUNTIME_BASE_URL, MPANGO_RUNTIME_TEST_EMAIL, MPANGO_RUNTIM"
+ },
+ {
+  "id": "TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/orders-Orders]",
+  "reason": "Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstr"
+ },
+ {
+  "id": "TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/skus-Products/SKUs]",
+  "reason": "Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstr"
+ },
+ {
+  "id": "TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/inventory/stocks-Stock]",
+  "reason": "Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstr"
+ },
+ {
+  "id": "TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/payments-Payments]",
+  "reason": "Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstr"
+ },
+ {
+  "id": "TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/pricing/prices-Pricing]",
+  "reason": "Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstr"
+ }
+]

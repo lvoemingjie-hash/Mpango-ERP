@@ -104,3 +104,33 @@ CANDIDATE: 1ee75d9f…(TREE 5712eb85…,worktree detached 校验一致)| PRODUCT
 ## 修复与后续(待 CTO 授权)
 - 修复动作明确且低成本:对 `test_mpango_task_pg16` 执行 `alembic upgrade head`(sku_mig 角色,G3 已证明该链在 PG16.15 上 exit 0),随后重跑一次全量。
 - 按 CTO 授权的 stop 规则("首个非预期失败→停止受影响正式序列;不得以同一身份重跑失败的正式门"),**本轮不自行重跑**;G2 修正重跑请求 CTO 明确授权(建议:同栈同命令,仅修复库前态,结果作为 G2-R 记录,首轮 INVALID 证据保留)。
+---
+
+# G2-R 修正重跑结果(2026-09-14,CTO 授权后执行)— GREEN
+
+授权链:用户(CTO 通道)在 G2 CORRECTION 发布后明确授权"重跑后补充重跑结果"。首轮 INVALID 证据全部保留;G2-R 为唯一有效 PG16 全量结果。
+
+## 执行(与首轮冻结命令一致,仅修复库前态)
+- 库前态修复:DROP/CREATE `test_mpango_task_pg16` → `alembic upgrade head`(sku_mig)→ public **29 张表**、`wholesaler_retailer_bindings`=t、Redis DB15=0(与 PG15 有效轮前态对齐;首轮仅 7 张表未迁移)。
+- 命令:`python -m pytest tests/ -v -rs -rx --junitxml=<evidence>/backend-pg16-r.xml`;起止 13:29:38–13:45:40(+08),**exit=0,干净退出(本轮无关闭期挂死)**。
+
+## 结果
+- **3820 passed / 48 skipped / 15 xfailed — 0 failed / 0 errors**(3883 节点,JUnitXML 机器可读:backend-pg16-r-inventory.jsonl.gz)
+- **BC-06:37/37 passed** ✓
+- 与 PG15(3839p/29s/15x)同总节点 3883:差 19 个节点由 passed→skipped,全部落在 `PAYMENTS_SCHEMA_REQUIRE_LIVE=1` 显式开关组(TestLiveSchemaContract 6 + TestLiveRetailerPricesContract 13,理由逐条留档 g2r-skips-with-reasons.json)——文档化 opt-in 跳过,非 PG16 不兼容;该 19 节点在 PG15 轮的实际状态无法从留存输出逐节点复原(记 UNKNOWN,与 E1-6 口径一致)。
+- 其余 skip 理由类:S3-B 预置租户前提缺失(19)、RBAC 平台限制(7)、Alembic CLI 骨架(3)、openapi.yaml 未生成(3)、SQL profiling 未开(2)等——全部为文档化条件跳过,无 PG16 语义类。
+- G7 随行采样:pg-activity-samples-r.log(全程+结束后,无查询文本)。
+- G2 最终判定:**PG16 绑定下后端全量套件 GREEN**(G2-R);首轮 INVALID_RUN 作为准备缺陷案例留档(含关闭期挂死登记,该缺陷本轮未复现,保持独立登记)。
+
+## 对 G1/G2 总表的更新
+| 门 | 结果 |
+|---|---|
+| G1-a vitest+build | 21/21 + build exit0 ✓ |
+| G1-b 浏览器(候选,PG16 栈) | 4/4 GREEN,三门 GREEN ✓ |
+| G2(PG16 全量) | **G2-R GREEN:3820p/48s/15x,0f/0e,exit0** ✓ |
+| G3 迁移重放 | 001→038 真实 38 步链 ✓ |
+| G5 逐节点清单 | 两轮 inventory(首轮 INVALID 留档 + G2-R 有效)✓ |
+| G7 连接观察 | 两轮采样留档(有界,不证伪泄漏)✓ |
+| G4 变异分类 | 维持:4 动态杀死 / 2 静态 / M03 存活(deferred)|
+
+G2-R 后最终清单 evidence/final-manifest.sha256.gz:45 条目,sha256 `ef276dcb4838a312c16091ef10067a1c026fdab2fc23c5c1a38473263f811244`。

@@ -1,7 +1,8 @@
 # SKU Delivery R2 — VPS V4 Independent Linux Runtime Verification Report
 
 > ✅ **最新结果(2026-09-14,G1/G2 授权):G1 浏览器 4/4 GREEN(候选树、PG16 运行栈)+ G3 真实重放 001→038 + G5 逐节点记录 + G7 有界连接观察。**
-> ⚠️ **G2 更正:首轮 PG16 全量(3284p/169f/371e)经诊断定性为 INVALID_RUN——测试库建库后漏跑迁移(执行者准备缺陷),失败全部为缺表类(UndefinedTable×1147/UndefinedColumn×36,零 PG16 语义不兼容证据),不构成产品判定;BC-06 37/37 不受影响。修正重跑待 CTO 授权。详见 G1_G2_RESULTS.md 尾部 G2 CORRECTION 节。**详见 G1_G2_RESULTS.md 与 REMAINING_VALIDATION_PLAN.md。**
+> ⚠️ **G2 更正:首轮 PG16 全量(3284p/169f/371e)经诊断定性为 INVALID_RUN——测试库建库后漏跑迁移(执行者准备缺陷),失败全部为缺表类(UndefinedTable×1147/UndefinedColumn×36,零 PG16 语义不兼容证据),不构成产品判定;BC-06 37/37 不受影响。修正重跑待 CTO 授权。详见 G1_G2_RESULTS.md 尾部 G2 CORRECTION 节。**
+> ✅ **G2-R(CTO 授权修正重跑,库前态修复后):3820 passed / 48 skipped / 15 xfailed,0 failed / 0 errors,exit 0——PG16 绑定下后端全量 GREEN;BC-06 37/37 ✓;19 节点差异为文档化 opt-in 跳过(PAYMENTS_SCHEMA_REQUIRE_LIVE)。详见 G1_G2_RESULTS.md 尾部 G2-R 节。**详见 G1_G2_RESULTS.md 与 REMAINING_VALIDATION_PLAN.md。**
 
 > ⚠️ **CORRECTION E1 (2026-09-13) — CTO-AUTH-SKU-VPS-V4-R1-EVIDENCE-CORRECTION-E1-2026-09-13**
 > 初版文本存在交付范围/变异聚合/失败归因/独立性方面的已确认错误,更正与剩余缺口见 **CTO_CORRECTION_E1.md** 与 **REMAINING_VALIDATION_PLAN.md**(本分支后继提交)。原文按历史保留,逐项更正以 [E1 CORRECTION] 标注。

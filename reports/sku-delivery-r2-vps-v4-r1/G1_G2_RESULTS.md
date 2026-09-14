@@ -83,3 +83,24 @@ CANDIDATE: 1ee75d9f…(TREE 5712eb85…,worktree detached 校验一致)| PRODUCT
 - 最终 SHA-256 清单:evidence/final-manifest.sha256(本分支,覆盖全部已发布证据文件)。
 
 最终清单(evidence/final-manifest.sha256.gz,38 条目)自身 sha256:`108cc4d0c50a04cd0f30d8761a79b6b9d3e666b8c8cba4ce4526b8a323c9fb5e`
+
+---
+
+# ⚠️ G2 CORRECTION (2026-09-14, post-publication diagnosis) — G2 结果无效:准备缺陷,非产品判定
+
+**取代上文 G2 节中"PG15→16 SQL 兼容性/交付缺口"的一切定性。**
+
+## 根因(只读诊断,证据驱动)
+- **G2 的 PG16 测试库从未执行 alembic upgrade**:建库(`CREATE DATABASE test_mpango_task_pg16`)后直接运行套件,public schema 仅 7 张表;`alembic_version` 存在但 `wholesalers`/`retailers`/`wholesaler_retailer_bindings` 等迁移产物业务表**全部不存在**(只读 SELECT EXISTS 佐证:f)。
+- **环境不对称(执行者失误)**:PG15 轮的 `test_mpango_task` 在 F1 修复链中已迁移至 038 后才跑全量(3839 passed);PG16 轮遗漏了这一步。失败节点 = 直接查询源库已迁移 public schema 的夹具/守卫测试。
+- **异常类型量化**:1147× UndefinedTableError + 36× UndefinedColumnError;**0× UndefinedFunctionError / 0× FeatureNotSupportedError**(即**无任何 PG16 语义不兼容证据**)。缺失表 top:public.retailers(989)、wholesaler_retailer_bindings(93)、retailer_credential_setup_tokens(78)、platform_operator_setup_tokens(72)、wholesalers(57)、sys_jobs(45)——全部为迁移 001→038 的产物。
+
+## 更正后的判定
+- G2 首轮结果(3284/169/371/63)定性为 **INVALID_RUN — 测试库前态错误(准备缺陷)**,不构成对候选产品代码的任何判定(既非"PG16 不兼容",也非"通过")。
+- 上文 G2 节"在 PG16 绑定下后端套件未通过…交付缺口"的说法**撤回**。
+- 不受影响仍有效:BC-06 37/37 GREEN(该模块自建隔离 schema,不依赖源库迁移前态);G1(前端+浏览器,4/4 GREEN);G3(独立库自跑迁移,38 步链);G5 的 inventory 记录的是本轮实际执行(按 INVALID_RUN 定性解读);G7 采样;关闭期挂死缺陷登记(独立事实,保留)。
+- 原始证据(backend-pg16-inventory.jsonl.gz / 蒸馏清单 / collection)全部保留——它们真实记录了这次无效运行,供复核。
+
+## 修复与后续(待 CTO 授权)
+- 修复动作明确且低成本:对 `test_mpango_task_pg16` 执行 `alembic upgrade head`(sku_mig 角色,G3 已证明该链在 PG16.15 上 exit 0),随后重跑一次全量。
+- 按 CTO 授权的 stop 规则("首个非预期失败→停止受影响正式序列;不得以同一身份重跑失败的正式门"),**本轮不自行重跑**;G2 修正重跑请求 CTO 明确授权(建议:同栈同命令,仅修复库前态,结果作为 G2-R 记录,首轮 INVALID 证据保留)。

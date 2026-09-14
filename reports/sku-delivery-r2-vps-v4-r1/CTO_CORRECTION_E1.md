@@ -113,3 +113,18 @@ EVIDENCE_CORRECTION_COMPLETE_PENDING_CTO_REVIEW。本轮为证据修正与对账
 - **与本轮验证的交集**:F1 的 37 节点正是验证上述两个产品文件的测试模块;F2 内 BC-06 相关回归与 50f15ded 测试变更部分重叠。R2 修复轮(Codex-L)的 7 个夹具隔离节点缓解了夹具层的重叠,但不缓解锁/定价断言层的重叠。
 - **对已接受结论的影响**:BC-06 各轮当时结论(30/30 GREEN、变异 M-A/M-B/M-C 语义 RED)为**当时自验记录,历史地位维持不变**,本报告不推翻;本轮 V4 F1 在真实 PG 上复跑 GREEN 亦为客观事实。受影响的是**证据的独立性等级**:同源执行者+同源断言使 BC-06 路径的证据不能按"完全独立验收"对待,存在与作者假设同向的盲区可能。该部分属实质性披露而非纯记录性说明。
 - **缓解与建议**:①R2 修复轮的夹具隔离 7 节点为 Codex-L authored(独立于 ZCode-W 的产品变更);②建议 CTO 对 lock_sku_row/set_price 路径安排非重叠执行者复跑(F1 同命令换执行者)或独立源码审查(参考已有 Kilo bounded review 记录);③本轮 3839-pass 全量事实不受影响,但其中 BC-06 路径子集的独立证明价值按上述降级理解。
+
+## E1 CORRECTIONS-2(2026-09-14,G1/G2 授权伴随修正;显式取代)
+
+1. **比较端点与 R1/R2 标签更正(取代 E1-1/E1-8-S 中的对应句)**:
+   - 唯一的"最终三路径夹具变更"范围是 **8e9aeb48..1ee75d9f**(1ee75d9f 相对其父 8e9aeb48 的三点路径变更:夹具隔离测试、protocol-deltas 登记、台账)。
+   - **50f15ded..1ee75d9f** 除上述外还包含集成提交 8e9aeb48 的变更——初版以该区间描述"最后一轮修复"不精确,以此为准修正。
+   - **轮次标签更正(取代 E1-8-S 的轮次括注)**:BC-06 **R1 = f151f53d**(package_quantity reprice guard)、**R2 = 3e831384**(identity-use 历史锁 + ORM 新鲜读)、**R2-R1 = 50f15ded**(锁活性 + set_price 结构化 404)。E1-8-S 中 "R1(3e831384)、R2(f151f53d)" 为错误互换,以本条为准。
+2. **Q3 原件发布声明更正(取代 E1-7"已随证据发布"句)**:evidence/q3-original/ **未发布于仓库**——5 个原件经 SSH 于源机(lubuntu/codexops)直接核对:两个关键哈希(EVIDENCE-MANIFEST.sha256=86cc99f8…、terminal-record.json=35b8671d…)与 Q3 报告所载**完全一致**;原件(含 launch-intent.json 的主机网络拓扑清单)有意保留在仓库之外,仓库内仅发布核对纪要 evidence/q3-original-verification.md。哈希比对证据维持有效。
+3. **Kilo 独立评审出处(回应 E1-8-S 提及的 Kilo 记录)**:
+   - 分支:`kilo/bc06-independent-review-report-2026-09-14`
+   - 提交:`815094d4fc3fd59b8acc230c1ed6e59987ef58c6`(parent = 候选 1ee75d9f,已 fetch 核验)
+   - 评审对象:候选 1ee75d9f / 树 5712eb85 / backend/tests/test_sku_bc06_reprice_guard.py(37 节点)+ pricing_repository.py + package_identity.py 源码审查
+   - 执行者声明:**EXECUTOR = Kilo**,全新隔离工作树,未复用 ZCode-W 遗留文件
+   - 发现处置:35 passed / 2 failed——2 个失败均为环境疏漏(新容器中 bc06r1 角色被建成超管违反夹具假设;reporting_user 密码源不一致),**非 BC-06 业务逻辑缺陷**;实现 vs 测试断言对照审查完成
+   - 该独立评审(非重叠执行者)直接缓解 E1-8 所述的 BC-06 作者重叠关切;独立性最终定级仍由 CTO 决定

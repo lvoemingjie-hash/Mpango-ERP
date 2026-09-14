@@ -163,9 +163,59 @@ G2-R 后最终清单 evidence/final-manifest.sha256.gz:45 条目,sha256 `ef276dc
 | SQL profiling 未开启 | 2 | 否——诊断开关 |
 | runtime import HTTP proof(需 MPANGO_RUNTIME_BASE_URL 等) | 2 | **部分**——导入业务逻辑由 test_u3c_import_apply/test_u4c_intake(GREEN)覆盖;HTTP 端到端导入本轮未执行(环境门控,PG15 轮同样跳过)。登记为残余观察项,由 CTO 决定是否专门补验 |
 
-## C5 本轮补齐的原件(自 VPS 保留物;六项任务凭据 0 残留检查通过)
+## C5 本轮补齐的原件(**[闭合轮2修正:本节数字与实况不符,以文末 CLOSURE-2 的 REQUIRED_ARTIFACTS 对账表为准]**;自 VPS 保留物;六项任务凭据 0 残留检查通过)
 - evidence/g1/(6 文件):vitest JSON/运行日志/节点清单/build 日志与 rc
 - evidence/browser/ 与 evidence/browser-attempts/(共 23 文件):正式轮与两次准备尝试的 playwright-report/reconciliation(-in)/invocation-ledger/live-execution-contract/authority-report/preflight-verdict + 运行日志
 - evidence/prep-g1g2/(5 文件):installs/g1b/infra/g2/g2r 准备日志(含 G2-R 库重建完整 alembic 输出)
 - **发布形式说明**:browser/ 与 browser-attempts/ 的文件以 gzip 二进制发布(文件名 .gz;解压后 sha256 对照表见 evidence/browser-evidence-sha256.json.gz(解压后为 JSON))——原因:文件内含候选 SHA 绑定字段(candidate_sha:1ee75d9f…),40 位十六进制触发仓库 detect-secrets 钩子的高熵误报(E1-7 已甄别的同类误报);不以脱敏篡改证据字节,改以二进制容器发布,保真性由解压 sha256 对照保证。
 - 排除项(有意):maildir 邮件原文(供应夹具凭证的邮件,凭证本体已在候选仓库 provisioning/official.json 公开,无增量价值)、test-artifacts/.last-run.json 运行残留。
+
+---
+
+# CLOSURE-2(2026-09-14,CTO 复核 97478e0d 后的第二轮交工闭合)
+
+依据:CTO_CLOSURE_REVIEW_97478e0d.md(PARTIAL_CLOSURE_ACCEPTED)。本轮仅材料闭合与覆盖映射,不运行任何测试。
+
+## F1(P1)应交文件对账与补交 — REQUIRED_ARTIFACTS
+
+**遗漏根因**:`.gitignore:23 *.log` 匹配全部 `.log` 路径,`git add` 静默跳过(v1 清单列名但未入库,故 v1/v2 均无法发现此类遗漏)。本轮处置遵守 CTO 给定的两种形式之一:**无损压缩副本 + 解压 sha256**(明文 .log 与浏览器 JSON 同因高熵误报不可明文入库)。
+
+| 应交材料 | 本轮前实况 | 本轮后(均为 .log.gz + 解压哈希) |
+|---|---|---|
+| evidence/g1/(前端) | 4 件 | **6 件**(+g1-build.log.gz、g1-vitest-run.log.gz) |
+| evidence/browser/ + browser-attempts/ | 18 件 | **21 件**(+3 个运行日志 gz:attempt1 run / attempt2 run / attempt3 formal) |
+| evidence/prep-g1g2/ | **0 件** | **5 件**(installs/g1b/infra/g2/g2r 全部 gz) |
+| evidence/g3-alembic-replay.log(G3 完整迁移链) | 缺 | **在库**(.gz) |
+| evidence/pg-activity-samples.log / -r.log(两轮连接采样) | 缺 | **在库**(.gz ×2) |
+| evidence/prep/attempts.log(E1 尝试日志) | 缺 | **在库**(.gz) |
+| v1 inventory(0b8f1e6a 移除) | 缺 | **已恢复**(自 eb00346a 检出;标注被 v2 取代,历史引用可发现) |
+| 解压对照表 | browser-evidence-sha256(18) | **compressed-evidence-sha256.json.gz(32 条:浏览器 18 + 日志 14)** |
+| manifest | v2(65) | **v3(本轮内容提交 blob 全集,取代 v2;v1/v2 保留)** |
+
+**私有保留项登记:无**(全部应交件已发布;VPS 原件目录 /home/ubuntu/sku-verify/{g1g2-20260914,sku-delivery-r2-v4-r1} 保留作离线复核;全局 .gitignore 未改动)。
+
+## F2(P2)19 个 live-schema 跳过项逐项覆盖映射(取代 C4 表中"由订单快照覆盖"的宽泛表述)
+
+**依据 A:精确已通过节点**(同模块非 live 变体,同一 G2-R 运行/同候选/同 PG16;见 backend-pg16-r-inventory-v2):
+
+payments 表(6):test_live_has_retailer_id→test_payments_has_retailer_id;test_live_retailer_id_not_null→test_payments_retailer_id_is_not_null;test_live_has_transaction_id→test_payments_has_transaction_id;test_live_transaction_id_nullable→test_payments_transaction_id_is_nullable;test_live_has_order_id_index→test_payments_has_order_id_index;test_live_has_transaction_id_partial_unique→test_payments_has_transaction_id_partial_unique_index。
+
+retailer_prices(12/13):test_live_has_retailer_id→test_retailer_prices_has_retailer_id;test_live_retailer_id_not_null→test_retailer_id_is_not_null;test_live_has_sku_id→test_retailer_prices_has_sku_id;test_live_sku_id_not_null→test_sku_id_is_not_null;test_live_has_price→test_retailer_prices_has_price;test_live_price_not_null→test_price_is_not_null;test_live_created_at_not_null→test_created_at_is_not_null;test_live_is_deleted_not_null→test_is_deleted_not_null;test_live_has_unique_constraint→test_has_unique_constraint;test_live_has_check_constraint→test_has_check_constraint;test_live_has_retailer_id_index→test_has_retailer_id_index;test_live_has_sku_id_index→test_has_sku_id_index。
+
+**依据 B:Kilo 独立数据库证据**(kilo/bc06-independent-review-report-2026-09-14 @815094d4;评审对象=候选 1ee75d9f):
+- test_live_updated_at_not_null(唯一无非 live 对应者)→ Kilo information_schema 列清单:**updated_at | is_nullable=NO | default now()** ✓
+- 双源佐证:uq_retailer_prices_retailer_sku UNIQUE(retailer_id, sku_id);ck_retailer_prices_positive_price CHECK(price>0);retailer_prices_pkey PK(id)。
+
+**结论:18 项有精确已通过节点映射,1 项由 Kilo 候选绑定目录证据证明;零"未证明"残留。** live 与非 live 变体断言同一属性(数据源不同:连接库 vs 自举源);本映射不宣称两变体全等,仅证明属性已有同轮 GREEN 实证。
+
+## F3 导入运行边界冻结补验计划(本轮仅计划不执行;CTO 建议 non-author executor)
+
+- 对象:候选 1ee75d9f(全新 detached worktree);模块 backend/tests/test_s5c_runtime_sku_import_http_integration.py
+- 预期节点(恰好 2):test_sku_import_preview_validate_apply_happy_path;test_sku_import_preview_returns_401_without_token
+- 环境:任务 PG16.15(digest f1c3376c…)+Redis7 DB15+生产模式后端(loopback,真实 JWT,同 G1-b runbook 标记块;应用角色最小权限;head 038);env:MPANGO_RUNTIME_BASE_URL/TEST_EMAIL/TEST_PASSWORD/TENANT_ID(测试租户经公开 API+SMTP sink 供应)
+- 持久化核对(apply 后只读):catalog_products↔skus↔inventory_stocks 稳定 UUID 关联、package_quantity 初始化、库存初始化、重复码处理——HTTP 200 不足以证明新持久化语义
+- 边界:仅此模块;不跑全套件;不改 runner;准备与正式分离记录
+- 执行者建议:非重叠执行者(如 Kilo);若 Zcode-W 执行则按 AUTHOR 身份披露
+
+## 边界引用(CTO 复核)
+65/65 v2 清单与 18 份解压哈希已由 CTO 复核通过;v3 方法不变(git blob sha256/正斜杠)。gzip 仅为存储形式,解压内容扫描义务按 CTO 要求执行(本轮 14 个日志明文已过六凭据 grep 终查 0 残留后压缩)。

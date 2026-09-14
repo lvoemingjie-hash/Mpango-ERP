@@ -68,3 +68,4 @@ Executor supplementary falsification of M03 (runner converted M03 to a static pr
 - Evidence: evidence/formal-5-m03-dynamic.txt (attempt1 invalid: task PG removed by cleanup before supplement — environment error, discarded; attempt2 valid).
 - First supplement attempt was itself invalid (database removed by cleanup before supplement — environment error, not counted); attempt2 above is the valid run on a rebuilt task stack.
 > 🔒 **交工材料闭合(2026-09-14):final-manifest-v2 按 git blob 重建(v1 保留并被取代);inventory v2 区分 skip/xfail;19 节点比较按证据边界重述;Hypothesis 缓存变化披露;48-skip 分类与 SKU 缺口评估;G1/浏览器/准备原件以 gzip+sha256 对照补齐。详见 G1_G2_RESULTS.md"交工材料闭合"节。**
+> 🔁 **CLOSURE-2(2026-09-14,CTO 复核 97478e0d 后):*.log 忽略规则致遗漏的应交文件已按"无损压缩+解压哈希"补齐(g1×2/浏览器运行日志×3/prep-g1g2×5/G3 链/两轮采样/E1 attempts,统一对照表 32 条),v1 inventory 恢复可发现性;19 个 live-schema 跳过项逐项映射(18→精确已通过节点,1→Kilo 目录证据,零未证明);导入运行边界冻结计划已列(待排期,建议非重叠执行者)。manifest v3 取代 v2。详见 G1_G2_RESULTS.md CLOSURE-2 节。**

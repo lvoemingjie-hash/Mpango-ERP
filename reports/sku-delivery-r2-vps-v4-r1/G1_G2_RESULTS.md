@@ -219,3 +219,50 @@ retailer_prices(12/13):test_live_has_retailer_id→test_retailer_prices_has_reta
 
 ## 边界引用(CTO 复核)
 65/65 v2 清单与 18 份解压哈希已由 CTO 复核通过;v3 方法不变(git blob sha256/正斜杠)。gzip 仅为存储形式,解压内容扫描义务按 CTO 要求执行(本轮 14 个日志明文已过六凭据 grep 终查 0 残留后压缩)。
+
+---
+
+# CLOSURE-3(2026-09-14,CTO 复核 e0bd9ddd 后:安全处置 + 映射层级收紧 + 对照表修正)
+
+依据:CTO_CLOSURE2_REVIEW_e0bd9ddd.md(NEED_CHANGES 三项)。本轮仅材料/安全处置,不运行测试。
+
+## D1(P1)疑似任务数据库口令的处置记录
+
+**对象**:evidence/prep/attempts.log.gz 原第 14 行的独立 24-hex 值(CTO 未回显,处置记录同样不回显)。
+
+**来源核实(私下调查,证据可复核)**:
+- 该值产生于 E1 首次准备尝试的失败 SQL(`CREATE ROLE sku_task … PASSWORD '<该值>' CREATEDB NOSUPERUSER NOCREATEDB` → `ERROR: conflicting or redundant options`)——**该 SQL 从未成功执行**,角色从未以该口令存在;
+- 当时的 `.env.task` 写入同轮失败,**该值从未写入任何环境/凭据文件**(现存 `.env.task` grep 计数=0);
+- 其所属任务栈容器 sku-r2-pg 与卷 sku-r2-pgdata 均已在 E1 清理中销毁(本轮 docker ps/volume ls 复核:无存续);当前 VPS 无任何运行中 PG 含 sku_task 角色;
+- G1G2 任务使用独立随机凭据(`.env.g1b` grep 计数=0,未复用)。
+
+**有效性结论**:该值为**完全惰性的瞬态口令**(创建失败 + 资源销毁 + 未落盘 + 未复用)——不存在可撤销/轮换的存续资源。
+
+**已执行处置**:
+1. 发布脱敏副本:attempts.log.gz 中该独立 24-hex 已替换为 `***REDACTED-E1-TASK-ROLE-PASSWORD***`,对照表哈希同步更新;
+2. 全量边界精确复扫(排除长 SHA 子串):14 份日志中**独立 24-hex 仅此 1 处**,其余 25 个 24-hex 串均为 40/64 位 Git/容器/镜像 ID 的子串(误报类);
+3. **历史 Git 对象暴露如实承认**:该值仍存在于 e0bd9ddd 及之前的提交对象中;按治理规则维持 append-only(不做历史重写);该暴露**无实际风险**(值本身惰性,如上);CTO 如仍要求清除历史对象,需另行授权 history rewrite 流程;
+4. VPS 侧原件(prep/attempts.log 原文)保留于私有任务目录供复核,不发布。
+
+## D2(P2)19 项映射的证据层级收紧(取代 CLOSURE-2 F2 的"零未证明残留"结论)
+
+CTO 复核指正成立,分层重述:
+- **依据 A(18 项"精确已通过节点")实际层级**:非 live 变体断言的对象是 **bootstrap 建表源码文本**(source-text 合同),不是数据库实况——定性为**静态覆盖**;
+- **依据 B(Kilo 列/约束查询)实际层级**:查询目标是 **public schema**(Kilo 评审栈),不能直接证明**运行租户 schema** 的同名属性——定性为**公共表观察**;
+- **撤回**:"零未证明残留"的结论。**当前状态**:19 项 = 静态覆盖(18)+ 公共表观察(1 + 双源佐证);**租户 schema 实况未证明**;
+- **补齐路径(已纳入 D3 计划)**:在下一次导入定点补验的同一任务栈内,以**只读目录查询**(information_schema,限定租户 schema)补齐这些属性的实况证明;不新增写入场景。
+
+## D3(P2)对照表路径修正 + 导入计划冻结补全
+
+**对照表**:compressed-evidence-sha256.json.gz 已重建——32 条目,路径统一为单一 `evidence/` 前缀 + 正斜杠(消除 `evidence/evidence\` 双前缀混分隔符缺陷);自检 PASS;内容哈希与大小不变(除 attempts.log.gz 因脱敏更新)。
+
+**导入定点补验计划冻结补全(取代 CLOSURE-2 F3 同名节)**:
+- **执行者**:建议 **Kilo**(非重叠执行者,独立工作树);备选 Zcode-W(则按 AUTHOR 身份披露,不标独立)——**由 CTO 指定后执行**;
+- **环境冻结**:任务 PG16.15(digest `f1c3376c…`,容器名 sku-import-pg,127.0.0.1:15434)+ Redis7 DB15(16379)+ 生产模式后端(loopback :8010,runbook 标记块形式,真实 JWT;应用角色最小权限;alembic head 038)+ SMTP sink(:8105)+ 测试租户经公开 API 供应;4 个运行态 env 同前;
+- **预期节点(恰好 2,不变)**:test_sku_import_preview_validate_apply_happy_path;test_sku_import_preview_returns_401_without_token;
+- **持久化核对(apply 后只读)**:catalog_products↔skus↔inventory_stocks 的稳定 UUID 关联、package_quantity 初始化、库存初始化——HTTP 200 不足以证明;
+- **重复码行为——引用既有运行证据,不新增写入场景**(按 CTO 指示收紧):G2-R 全量已通过的 ①test_u4ib2_intake_apply_service::test_concurrent_intake_apply_sku_code_races_deterministically(两会话 intake 竞态)②test_sku_r1_multipackaging_closure::test_concurrent_duplicate_sku_code_races_deterministically ③同模块 test_race_loser_session_is_immediately_usable_and_parent_row_rolled_back ④test_concurrent_add_sellable_unit_race_maps_to_409 ⑤test_u3b2_live_db_import_preview_validate::test_validate_duplicate_sku_detected_live(live-DB 检测)——重复码/竞态行为已有真实 PG 运行证据,本轮只读快照不重复构造写入竞态;
+- **附带(D2 补齐)**:同栈只读查询租户 schema 的 19 项属性实况(information_schema,租户 schema 限定)。
+
+## 提交与清单
+本轮内容提交后生成 final-manifest-v4(blob sha256,取代 v3;v1/v2/v3 保留)。历史链:…→ e0bd9ddd(v3)→ CLOSURE-3 内容 → v4。

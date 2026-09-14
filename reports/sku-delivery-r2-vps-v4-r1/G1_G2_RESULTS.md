@@ -117,7 +117,7 @@ CANDIDATE: 1ee75d9f…(TREE 5712eb85…,worktree detached 校验一致)| PRODUCT
 ## 结果
 - **3820 passed / 48 skipped / 15 xfailed — 0 failed / 0 errors**(3883 节点,JUnitXML 机器可读:backend-pg16-r-inventory.jsonl.gz)
 - **BC-06:37/37 passed** ✓
-- 与 PG15(3839p/29s/15x)同总节点 3883:差 19 个节点由 passed→skipped,全部落在 `PAYMENTS_SCHEMA_REQUIRE_LIVE=1` 显式开关组(TestLiveSchemaContract 6 + TestLiveRetailerPricesContract 13,理由逐条留档 g2r-skips-with-reasons.json)——文档化 opt-in 跳过,非 PG16 不兼容;该 19 节点在 PG15 轮的实际状态无法从留存输出逐节点复原(记 UNKNOWN,与 E1-6 口径一致)。
+- **[闭合修正(CTO P2)取代原表述]** PG15 轮 3839p/29s/15x 与 G2-R 3820p/48s/15x 同总节点 3883,可确认:(a) 总数差 19;(b) PG16 两轮均含恰好 19 个因 `PAYMENTS_SCHEMA_REQUIRE_LIVE=1` 显式开关未开启而跳过的节点(TestLiveSchemaContract 6 + TestLiveRetailerPricesContract 13,理由逐条留档);(c) **跨轮逐节点对应关系无法证明**(PG15 逐节点状态 UNKNOWN,-q 输出未捕获)——不宣称"从 PASS 变为 SKIP"。
 - 其余 skip 理由类:S3-B 预置租户前提缺失(19)、RBAC 平台限制(7)、Alembic CLI 骨架(3)、openapi.yaml 未生成(3)、SQL profiling 未开(2)等——全部为文档化条件跳过,无 PG16 语义类。
 - G7 随行采样:pg-activity-samples-r.log(全程+结束后,无查询文本)。
 - G2 最终判定:**PG16 绑定下后端全量套件 GREEN**(G2-R);首轮 INVALID_RUN 作为准备缺陷案例留档(含关闭期挂死登记,该缺陷本轮未复现,保持独立登记)。
@@ -134,3 +134,38 @@ CANDIDATE: 1ee75d9f…(TREE 5712eb85…,worktree detached 校验一致)| PRODUCT
 | G4 变异分类 | 维持:4 动态杀死 / 2 静态 / M03 存活(deferred)|
 
 G2-R 后最终清单 evidence/final-manifest.sha256.gz:45 条目,sha256 `ef276dcb4838a312c16091ef10067a1c026fdab2fc23c5c1a38473263f811244`。
+
+---
+
+# 交工材料闭合(2026-09-14,CTO 裁决后"仅交工材料闭合"轮)
+
+授权:CTO 裁决(G2-R 接受;仅闭合材料,不改产品/不重建 runner/不重跑)。对应 CTO 三项发现:
+
+## C1(P1)发布清单闭合 — final-manifest-v2
+- **v1 缺陷根因(如实登记)**:v1 生成于 Windows 工作树,路径含反斜杠,与 git 正斜杠路径无法对齐(41 项"缺失"主因);生成后文档又被追加(1 项哈希漂移);另有钩子自动修改导致的漂移。CTO 独立核数(15/4/26)与本执行者复算(3/41/1)口径不同但同指向:**v1 不闭合**。
+- **v2 重建**:对最终 git blob 内容计算 sha256,正斜杠相对路径,覆盖全部已发布文件;文件为 evidence/final-manifest-v2.sha256.gz(v1 保留,在此明确被取代);两段式提交保证清单绑定其内容提交的 blob,核验:`git cat-file blob <sha1> | sha256sum` 逐项对照。
+
+## C2(P2)分类修正 — inventory v2(取代 v1)
+- JUnitXML 以 `skipped@type` 区分:pytest.skip=48、pytest.xfail=15;v1 将二者合并为 63 skipped,已取代。
+- 两轮重述(v2 口径):首轮(INVALID)=3284p/169f/371e/48s/15x(3887);G2-R(有效)=3820p/0f/0e/48s/15x(3883)。两轮跳过集合计数一致,内部自洽。
+
+## C3(P2)清洁状态精确披露
+- 此前"候选零改动"限定为:分支提交内 reports/ 之外零改动、HEAD=候选、tree 一致。
+- 补充:VPS 任务 worktree 存在 tracked Hypothesis 缓存文件的运行期变化(backend/.hypothesis/unicode_data/15.0.0/codec-utf-8.json.gz 等,套件运行副产物)——未进入任何提交,但工作树非字面零变化;HEAD/tree 身份一致 ≠ 工作树零 diff。
+
+## C4 48 个 SKIP 分类与 SKU 行为缺口评估
+| 类别 | 数量 | 留下必需 SKU 行为缺口? |
+|---|---|---|
+| PAYMENTS_SCHEMA_REQUIRE_LIVE 显式开关(live schema 合同) | 19 | 否——支付 live-schema 属 SKU 前置域;订单快照由已 GREEN 的 b2/r1/order 套件覆盖 |
+| S3-B 预置租户前提缺失(live smoke/诊断) | 19 | 否——平台诊断类 |
+| Alembic CLI 集成骨架 | 3 | 否——真实迁移由 G3 重放(38 步)与 pg16 模块真实升级测试覆盖 |
+| openapi.yaml 未生成 | 3 | 否——文档产物 |
+| SQL profiling 未开启 | 2 | 否——诊断开关 |
+| runtime import HTTP proof(需 MPANGO_RUNTIME_BASE_URL 等) | 2 | **部分**——导入业务逻辑由 test_u3c_import_apply/test_u4c_intake(GREEN)覆盖;HTTP 端到端导入本轮未执行(环境门控,PG15 轮同样跳过)。登记为残余观察项,由 CTO 决定是否专门补验 |
+
+## C5 本轮补齐的原件(自 VPS 保留物;六项任务凭据 0 残留检查通过)
+- evidence/g1/(6 文件):vitest JSON/运行日志/节点清单/build 日志与 rc
+- evidence/browser/ 与 evidence/browser-attempts/(共 23 文件):正式轮与两次准备尝试的 playwright-report/reconciliation(-in)/invocation-ledger/live-execution-contract/authority-report/preflight-verdict + 运行日志
+- evidence/prep-g1g2/(5 文件):installs/g1b/infra/g2/g2r 准备日志(含 G2-R 库重建完整 alembic 输出)
+- **发布形式说明**:browser/ 与 browser-attempts/ 的文件以 gzip 二进制发布(文件名 .gz;解压后 sha256 对照表见 evidence/browser-evidence-sha256.json.gz(解压后为 JSON))——原因:文件内含候选 SHA 绑定字段(candidate_sha:1ee75d9f…),40 位十六进制触发仓库 detect-secrets 钩子的高熵误报(E1-7 已甄别的同类误报);不以脱敏篡改证据字节,改以二进制容器发布,保真性由解压 sha256 对照保证。
+- 排除项(有意):maildir 邮件原文(供应夹具凭证的邮件,凭证本体已在候选仓库 provisioning/official.json 公开,无增量价值)、test-artifacts/.last-run.json 运行残留。

@@ -1,0 +1,993 @@
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_confirm_creates_owned_reservation_rows_and_updates_aggregate FAILED [  1%]
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_confirm_insufficient_available_rolls_back_order_stock_and_reservations FAILED [  1%]
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_concurrent_confirm_does_not_over_reserve_or_accept_excess_demand FAILED [  1%]
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_duplicate_confirm_does_not_create_duplicate_reservation_rows FAILED [  1%]
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_cancel_releases_only_this_order_reservation_rows FAILED [  1%]
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_duplicate_cancel_does_not_double_release_reservation FAILED [  1%]
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_fulfillment_consumes_only_this_order_reservation_and_deducts_on_hand FAILED [  1%]
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_direct_paid_order_with_no_reservation_preserves_unrelated_reservations FAILED [  1%]
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_return_restores_on_hand_without_creating_reservation FAILED [  1%]
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_concurrent_fulfill_consumes_reservation_once_and_writes_one_movement FAILED [  1%]
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_reservation_table_and_aggregate_stock_are_tenant_isolated FAILED [  1%]
+tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_reserve_release_and_consume_movement_boundaries FAILED [  1%]
+tests/business/test_s4f_business_invariant_closeout.py::test_confirm_creates_reservation_and_insufficient_confirm_rolls_back FAILED [  1%]
+tests/business/test_s4f_business_invariant_closeout.py::test_pay_preserves_inventory_reservation_and_existing_phase5_ledger_semantics FAILED [  1%]
+tests/business/test_s4f_business_invariant_closeout.py::test_unpaid_order_cannot_fulfill_and_inventory_is_unchanged FAILED [  1%]
+tests/business/test_s4f_business_invariant_closeout.py::test_fulfill_consumes_owned_reservation_writes_movement_and_duplicate_is_stable FAILED [  1%]
+tests/business/test_s4f_business_invariant_closeout.py::test_return_restores_on_hand_without_re_reserving_and_duplicate_is_stable FAILED [  1%]
+tests/business/test_s4f_business_invariant_closeout.py::test_cancel_confirmed_releases_reservation_and_paid_or_fulfilled_cancel_is_rejected FAILED [  1%]
+tests/business/test_s4f_business_invariant_closeout.py::test_multi_item_confirm_and_fulfill_failures_roll_back_all_side_effects FAILED [  1%]
+tests/test_alembic_migrations.py::TestAlembicMigrationIsolation::test_migration_creates_tenant_schema SKIPPED [  2%]
+tests/test_alembic_migrations.py::TestAlembicMigrationIsolation::test_tenant_migration_does_not_affect_public_schema SKIPPED [  2%]
+tests/test_alembic_migrations.py::TestAlembicMigrationIsolation::test_public_migration_does_not_create_tenant_tables SKIPPED [  2%]
+tests/test_dc10k_finance_receivables_runtime.py::test_receivable_orders_handle_postgres_timestamptz FAILED [  3%]
+tests/test_dc10k_finance_receivables_runtime.py::test_receivables_summary_is_scoped_to_current_wholesaler FAILED [  3%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_concurrent_same_financial_result_replay_creates_one_financial_result ERROR [  4%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_concurrent_different_keys_cannot_overpay ERROR [  4%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_empty_body_and_empty_object_create_no_side_effects ERROR [  4%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_unrelated_integrity_error_is_not_idempotency_conflict_and_rolls_back ERROR [  4%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_rollback_after_state_failure_leaves_tables_unchanged ERROR [  4%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_cross_tenant_same_idempotency_key_is_isolated FAILED [  4%]
+tests/test_dc11d_payment_replay_concurrency_integrity.py::test_cross_tenant_same_idempotency_key_is_isolated ERROR [  4%]
+tests/test_dc11p1_platform_operator_schema.py::TestMigrationStructure::test_all_four_tables_in_public_schema ERROR [  4%]
+tests/test_dc11p1_platform_operator_schema.py::TestMigrationStructure::test_no_operator_tables_in_tenant_schemas ERROR [  4%]
+tests/test_dc11p1_platform_operator_schema.py::TestMigrationStructure::test_no_email_hash_column ERROR [  4%]
+tests/test_dc11p1_platform_operator_schema.py::TestMigrationStructure::test_platform_operators_has_all_columns ERROR [  4%]
+tests/test_dc11p1_platform_operator_schema.py::TestMigrationStructure::test_migration_revision_and_down_revision ERROR [  4%]
+tests/test_dc11p1_platform_operator_schema.py::TestMigrationStructure::test_migration_imports_no_runtime_models ERROR [  4%]
+tests/test_dc11p1_platform_operator_schema.py::TestEmailNormalization::test_mixed_case_email_rejected ERROR [  4%]
+tests/test_dc11p1_platform_operator_schema.py::TestEmailNormalization::test_surrounding_whitespace_rejected ERROR [  4%]
+tests/test_dc11p1_platform_operator_schema.py::TestEmailNormalization::test_empty_email_rejected ERROR [  4%]
+tests/test_dc11p1_platform_operator_schema.py::TestEmailNormalization::test_whitespace_only_email_rejected ERROR [  4%]
+tests/test_dc11p1_platform_operator_schema.py::TestEmailNormalization::test_normalized_email_accepted ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestEmailNormalization::test_duplicate_normalized_email_rejected ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestOperatorConstraints::test_invalid_status_rejected ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestOperatorConstraints::test_invalid_role_rejected ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestOperatorConstraints::test_negative_attempts_rejected ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestOperatorConstraints::test_auth_version_zero_rejected ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestOperatorConstraints::test_active_without_password_rejected ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestOperatorConstraints::test_active_with_revoked_rejected ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestTokenConstraints::test_setup_used_and_revoked_rejected ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestTokenConstraints::test_duplicate_active_setup_rejected ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestTokenConstraints::test_used_setup_allows_replacement ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestTokenConstraints::test_expired_setup_still_blocks_index ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestTokenConstraints::test_duplicate_active_reset_rejected ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestTokenConstraints::test_token_hash_globally_unique_within_table ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestRecoveryConstraints::test_active_ok ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestRecoveryConstraints::test_used_with_revoked_rejected ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestRecoveryConstraints::test_active_with_used_at_rejected ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestRecoveryConstraints::test_duplicate_active_recovery_rejected ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestRecoveryConstraints::test_credential_hash_globally_unique ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestForeignKeyBehavior::test_setup_cascade_on_delete ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestForeignKeyBehavior::test_invited_by_set_null ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestSecurityColumns::test_setup_tokens_no_plaintext_cols ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestSecurityColumns::test_reset_tokens_no_plaintext_cols ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestSecurityColumns::test_recovery_no_plaintext_cols ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestORMCatalogParity::test_partial_unique_indexes_exist_in_catalog ERROR [  5%]
+tests/test_dc11p1_platform_operator_schema.py::TestORMCatalogParity::test_orm_declares_matching_indexes ERROR [  5%]
+tests/test_dc11t4h_receivable_collection_integrity.py::test_ordinary_cash_and_transfer_from_zero_binding_remain_zero FAILED [  6%]
+tests/test_dc11t4h_receivable_collection_integrity.py::test_credit_sale_partial_final_collection_and_finance_summary FAILED [  6%]
+tests/test_dc11t4h_receivable_collection_integrity.py::test_over_collection_is_rejected_without_side_effects FAILED [  6%]
+tests/test_dc11t4h_receivable_collection_integrity.py::test_credit_collection_idempotent_replay_has_no_duplicate_ledger FAILED [  6%]
+tests/test_dc11t4h_receivable_collection_integrity.py::test_concurrent_credit_collection_cannot_over_collect FAILED [  6%]
+tests/test_dc11t4h_receivable_collection_integrity.py::test_extra_payment_against_ordinary_paid_order_remains_rejected FAILED [  6%]
+tests/test_dc11t4h_receivable_collection_integrity.py::test_credit_collections_are_isolated_across_tenants FAILED [  6%]
+tests/test_dc12r1_contract_d_statement_print.py::TestStatementHappyPath::test_retailer_statement_happy_path ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestStatementHappyPath::test_supplier_statement_happy_path ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestStatementHappyPath::test_opening_closing_arithmetic_invariant ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDualKeyIsolation::test_supplier_foreign_retailer_denied_neutral ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_missing_from_date ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_missing_to_date ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_blank_from_date ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_malformed_from_date ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_from_after_to ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_span_exceeds_365_days ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_supplier_route_shares_the_same_strict_parser ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_non_zero_padded_date_is_rejected ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_extra_characters_in_date_are_rejected ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_invalid_calendar_date_is_rejected ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_whitespace_suffix_is_rejected ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_encoded_space_20_is_rejected ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_encoded_tab_09_is_rejected ERROR [  7%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_tab_and_newline_suffixes_are_rejected ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_parser_rejects_trimmed_input_directly ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_parser_accepts_canonical_input_directly ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateRangeContract::test_malformed_retailer_uuid_supplier ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestZeroWrite::test_statement_routes_zero_fingerprint ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestIndependentLists::test_movements_and_settled_payments_are_separate_lists ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestIndependentLists::test_pending_declarations_only_when_requested ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestNoLeakage::test_no_internal_ids_in_statement ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestFailClosed::test_orphan_ledger_ref_returns_409_scope_incomplete ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestFailClosed::test_zero_value_movement_returns_409_internal_inconsistent ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestPaymentOwnershipIntegrity::test_payment_retailer_mismatch_returns_409_internal_inconsistent ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestPaymentOwnershipIntegrity::test_wrong_order_wholesaler_returns_409 ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestPaymentOwnershipIntegrity::test_missing_order_returns_409 ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestPaymentOwnershipIntegrity::test_ownership_mismatch_also_fails_closed_on_supplier_route ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestPaymentOwnershipIntegrity::test_unrelated_relationship_is_not_faulted ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestSettledTotal::test_settled_total_equals_sum_of_settled_payments ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestReconciliationTolerance::test_0001_difference_is_accepted ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestReconciliationTolerance::test_001_difference_is_accepted ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestReconciliationTolerance::test_00101_difference_is_rejected ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestRangeCap::test_movements_1001_return_400_range_too_large_before_internal_inconsistent ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestRangeCap::test_movements_1002_return_400_range_too_large ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestRangeCap::test_settled_1001_return_400_range_too_large ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestRangeCap::test_pending_1001_return_400_range_too_large ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestRangeCap::test_range_cap_deterministic_request_id_repro_h2a_r2_f1 ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestRangeCap::test_combined_1001_across_lists_return_400_range_too_large ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestRangeCap::test_at_cap_1000_is_accepted ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestRangeCap::test_sentinel_payment_survives_exact_cleanup ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDisposableSchemaSetupSafety::test_bootstrap_failure_drops_partial_tenant_schema ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDisposableSchemaSetupSafety::test_provisioning_failure_drops_partial_tenant_schema ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDisposableSchemaSetupSafety::test_create_table_failure_drops_partial_statement_schema ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDisposableSchemaSetupSafety::test_cleanup_failure_preserves_both_original_and_cleanup_errors ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDisposableSchemaSetupSafety::test_rollback_failure_is_visible ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDisposableSchemaSetupSafety::test_schema_inconsistency_fails_closed_without_arbitrary_drop ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDisposableSchemaSetupSafety::test_illegal_schema_identifier_rejected_before_dynamic_sql ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDisposableSchemaSetupSafety::test_cleanup_success_propagates_original_exception_exactly ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateBoundaries::test_inclusive_boundaries_capture_today_movements ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestDateBoundaries::test_far_future_period_empty_movements ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestSoftDeletedOrderRetention::test_soft_deleted_order_still_in_statement ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestSoftDeletedOrderRetention::test_active_and_soft_deleted_order_have_identical_accounting_totals ERROR [  8%]
+tests/test_dc12r1_contract_d_statement_print.py::TestOrderIndependence::test_a_first_seeds ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestOrderIndependence::test_b_second_seeds ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_both_routes_reference_the_same_shared_mapper ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[view-ok] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[not_found-404] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[period-400] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[range-too-large-400] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[ledger-scope-409] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[internal-inconsistent-409] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[reconciliation-409] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_byte_contract_table[fallback-404] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[not_found] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[period] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[range] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[scope] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[inconsistent] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[recon] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_supplier_and_client_mapping_are_identical[fallback] ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_mutation_evidence_one_sided_drift_is_detectable ERROR [  9%]
+tests/test_dc12r1_contract_d_statement_print.py::TestWpr004SharedStatementHttpMapper::test_end_to_end_parity_invalid_date_range_both_routes ERROR [  9%]
+tests/test_dc12r1_j1_h2_b_r3_r1_user_role_assignment_async_serialization.py::test_t1_put_roles_200_full_scalars_and_admin_role FAILED [ 19%]
+tests/test_dc12r1_j1_h2_b_r3_r1_user_role_assignment_async_serialization.py::test_t2_serialization_zero_implicit_sql_no_missing_greenlet FAILED [ 19%]
+tests/test_dc12r1_j1_h2_b_r3_r1_user_role_assignment_async_serialization.py::test_t3_fresh_session_binding_persisted_exactly_once FAILED [ 19%]
+tests/test_dc12r1_j1_h2_b_r3_r1_user_role_assignment_async_serialization.py::test_t4_invalid_role_exact_400_and_zero_partial_binding FAILED [ 19%]
+tests/test_dc12r1_j1_h2_b_r3_r1_user_role_assignment_async_serialization.py::test_t5_unknown_user_exact_404_user_not_found FAILED [ 19%]
+tests/test_dc12r1_j1_h2_b_r3_r1_user_role_assignment_async_serialization.py::test_t6_dual_tenant_same_email_isolated_role_assignment FAILED [ 19%]
+tests/test_dc12r1_j1_h2_b_r3_r1_user_role_assignment_async_serialization.py::test_t7_real_permission_chain_and_denial FAILED [ 19%]
+tests/test_dc12r1_j1_h2_b_r3_r1_user_role_assignment_async_serialization.py::test_t8_rollback_leaves_zero_user_roles_residue FAILED [ 19%]
+tests/test_dc12r1_j1_h2a_cross_tenant_invitation_binding.py::test_invitation_binds_only_to_its_inviting_wholesaler FAILED [ 19%]
+tests/test_dc12r1_j1_h2a_cross_tenant_invitation_binding.py::test_used_invitation_cannot_be_reconsumed_by_any_tenant FAILED [ 19%]
+tests/test_dc12r1_j1_h2a_cross_tenant_invitation_binding.py::test_public_lookup_resolves_only_the_inviting_wholesaler FAILED [ 19%]
+tests/test_dc12r1_j1_h2a_cross_tenant_invitation_binding.py::test_lookup_http_response_carries_inviting_wholesaler_code FAILED [ 19%]
+tests/test_dc12r1_j1_h2a_r1_dual_entry_self_join.py::test_register_via_join_intent_binds_to_signed_wholesaler FAILED [ 19%]
+tests/test_dc12r1_j1_h2a_r1_dual_entry_self_join.py::test_register_both_or_neither_credential_rejected FAILED [ 19%]
+tests/test_dc12r1_j1_h2a_r1_dual_entry_self_join.py::test_self_join_is_idempotent FAILED [ 19%]
+tests/test_dc12r1_j1_h2a_r1_dual_entry_self_join.py::test_deactivate_is_tenant_scoped_and_idempotent FAILED [ 19%]
+tests/test_dc12r1_j1_h2a_r1_dual_entry_self_join.py::test_list_derives_join_source FAILED [ 19%]
+tests/test_dc12r1_j1_h2a_r1_dual_entry_self_join.py::test_join_intent_fails_closed_when_wholesaler_deactivates FAILED [ 19%]
+tests/test_dc12r1_j1_h2a_r1_dual_entry_self_join.py::test_invitation_registration_inherits_active_guard FAILED [ 20%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t2_official_lifecycle_account_token_and_email FAILED [ 20%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t4_unrelated_scan_failure_target_found_partial_telemetry FAILED [ 20%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t7_replay_exact_401_token_remains_used_password_not_applied FAILED [ 20%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t9_target_scan_failure_one_internal_event_evidence_preserved FAILED [ 20%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t10_consume_scan_incomplete_token_stays_actionable FAILED [ 20%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t11_consume_partial_scan_fails_closed_both_old_token_intact FAILED [ 20%]
+tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py::test_t12_partial_apply_rolls_back_first_copy_token_intact FAILED [ 20%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_forgot_password_email_carries_db_canonical_uppercase_code FAILED [ 20%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_forgot_password_email_carries_db_canonical_uppercase_code ERROR [ 20%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_forgot_password_email_w_matches_case_insensitive_lookup FAILED [ 20%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_forgot_password_email_w_matches_case_insensitive_lookup ERROR [ 20%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_hc07_hc10_canonical_neutrality_real_http FAILED [ 20%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_hc07_hc10_canonical_neutrality_real_http ERROR [ 20%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_fw1_registration_committed_sentinel_before_sweep FAILED [ 20%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_fw2_token_and_email_created_ids_unregistered FAILED [ 20%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_fw3_canonical_assertion_fails_after_side_effects FAILED [ 20%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_fw4_override_installed_request_fails FAILED [ 20%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_fw5_cleanup_failure_with_body_failure FAILED [ 20%]
+tests/test_dc12r1_j1_h2c_retailer_recovery_discovery.py::test_module_global_state_zero FAILED [ 20%]
+tests/test_dc12r1_s1_r1_corrections.py::test_A_pending_then_B_keeps_both_inactive_and_shared_setup_token ERROR [ 20%]
+tests/test_dc12r1_s1_r1_corrections.py::test_partial_update_failure_leaves_all_copies_unchanged_and_token_unconsumed ERROR [ 20%]
+tests/test_dc12r1_s1_r1_corrections.py::test_missing_retailer_operator_role_rolls_back ERROR [ 20%]
+tests/test_dc12r1_s1_r1_corrections.py::test_create_invitation_without_expires_at_yields_finite_seven_day_default ERROR [ 20%]
+tests/test_dc12r1_s1_r1_corrections.py::test_lookup_expired_invitation_no_500 ERROR [ 20%]
+tests/test_dc12r1_s1_r1_corrections.py::test_migration_seeds_reissue_permission_for_admin ERROR [ 20%]
+tests/test_dc12r1_s1_r1_corrections.py::test_bootstrap_seeds_reissue_permission_for_admin_not_retailer ERROR [ 20%]
+tests/test_dc12r1_s1_r1_corrections.py::test_setup_token_tampered_binding_retailer_mismatch_rejected ERROR [ 20%]
+tests/test_dc12r1_s1_r2_strict_mapping.py::test_missing_mapping_raises_exact_RetailerProvisioningError_with_code ERROR [ 20%]
+tests/test_dc12r1_s1_r2_strict_mapping.py::test_token_remains_usable_after_failed_then_repaired_mapping ERROR [ 21%]
+tests/test_dc12r1_s1_r2_strict_mapping.py::test_migration_seeds_retailer_operator_role_and_client_perms_in_real_pg ERROR [ 21%]
+tests/test_dc12r1_s1_r2_strict_mapping.py::test_malformed_setup_token_table_missing_column_triggers_preflight ERROR [ 21%]
+tests/test_dc12r1_s1_r3_migration_contract.py::test_compatible_setup_token_table_accepted FAILED [ 21%]
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[wrong_purpose_check-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'wrong_purpose'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql0] FAILED [ 21%]
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[missing_used_revoked_check-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            \n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql1] FAILED [ 21%]
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[token_hash_not_unique-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL)\n        )\n    -extra_sql2] FAILED [ 21%]
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[fk_missing_cascade-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id),\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql3] FAILED [ 21%]
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[wrong_column_type-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash TEXT NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql4] FAILED [ 21%]
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[nullable_should_be_not_null-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128),\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql5] FAILED [ 21%]
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[missing_issued_by_column-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            \n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql6] FAILED [ 21%]
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[nonunique_active_index-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql7] FAILED [ 21%]
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[wrong_key_in_active_index-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql8] FAILED [ 21%]
+tests/test_dc12r1_s1_r3_migration_contract.py::test_malformed_setup_token_table_rejected[wrong_predicate_in_active_index-\n        CREATE TABLE public.retailer_credential_setup_tokens (\n            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n            retailer_id UUID NOT NULL REFERENCES public.retailers(id) ON DELETE CASCADE,\n            binding_id UUID NOT NULL REFERENCES public.wholesaler_retailer_bindings(id) ON DELETE CASCADE,\n            issued_by_wholesaler_id UUID,\n            token_hash VARCHAR(128) NOT NULL,\n            purpose VARCHAR(64) NOT NULL DEFAULT 'retailer_credential_setup',\n            expires_at TIMESTAMPTZ NOT NULL,\n            used_at TIMESTAMPTZ,\n            revoked_at TIMESTAMPTZ,\n            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,\n            deleted_at TIMESTAMPTZ,\n            CONSTRAINT ck_retailer_credential_setup_tokens_purpose CHECK (purpose = 'retailer_credential_setup'),\n            CONSTRAINT ck_retailer_credential_setup_tokens_not_used_and_revoked CHECK (used_at IS NULL OR revoked_at IS NULL),\n            CONSTRAINT uq_retailer_credential_setup_tokens_token_hash UNIQUE (token_hash)\n        )\n    -extra_sql9] FAILED [ 21%]
+tests/test_dc12r1_s1_r4_exact_catalog.py::test_composite_unique_rejected_setup FAILED [ 21%]
+tests/test_dc12r1_s1_r4_exact_catalog.py::test_or_true_check_rejected_setup FAILED [ 21%]
+tests/test_dc12r1_s1_r4_exact_catalog.py::test_and_false_extra_check_rejected_setup FAILED [ 21%]
+tests/test_dc12r1_s1_r4_exact_catalog.py::test_extra_predicate_in_index_rejected_setup FAILED [ 21%]
+tests/test_dc12r1_s1_r4_exact_catalog.py::test_wrong_varchar_length_rejected_setup FAILED [ 21%]
+tests/test_dc12r1_s1_r4_exact_catalog.py::test_wrong_fk_target_table_rejected_setup FAILED [ 21%]
+tests/test_dc12r1_s1_r4_exact_catalog.py::test_reset_table_compatible_accepted FAILED [ 21%]
+tests/test_dc12r1_s1_r4_exact_catalog.py::test_reset_table_wrong_varchar_rejected FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_inactive_mapped_user_is_accepted_as_existing_mapping FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_mapped_user_is_rejected_with_exact_code FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_conflicting_active_mapped_hashes_are_rejected FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_inactive_placeholder_hash_does_not_conflict_with_active_hash FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_valid_public_single_column_fk_is_accepted[setup] FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_valid_public_single_column_fk_is_accepted[reset] FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_non_public_same_name_fk_target_is_rejected[setup] FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_composite_fk_is_rejected[setup] FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_composite_fk_is_rejected[reset] FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_wrong_referenced_column_is_rejected[setup] FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_wrong_referenced_column_is_rejected[reset] FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_wrong_target_table_is_rejected[setup] FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_fk_cascade_is_rejected[setup] FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_fk_cascade_is_rejected[reset] FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_primary_key_is_rejected[setup] FAILED [ 21%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_primary_key_is_rejected[reset] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_composite_primary_key_is_rejected[setup] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_composite_primary_key_is_rejected[reset] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_required_default_is_rejected[id-setup] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_required_default_is_rejected[id-reset] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_required_default_is_rejected[purpose-setup] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_required_default_is_rejected[purpose-reset] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_required_default_is_rejected[created_at-setup] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_required_default_is_rejected[created_at-reset] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_required_default_is_rejected[updated_at-setup] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_required_default_is_rejected[updated_at-reset] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_required_default_is_rejected[is_deleted-setup] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_missing_required_default_is_rejected[is_deleted-reset] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_wrong_required_default_is_rejected[id-setup] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_wrong_required_default_is_rejected[id-reset] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_wrong_required_default_is_rejected[purpose-setup] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_wrong_required_default_is_rejected[purpose-reset] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_wrong_required_default_is_rejected[created_at-setup] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_wrong_required_default_is_rejected[created_at-reset] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_wrong_required_default_is_rejected[updated_at-setup] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_wrong_required_default_is_rejected[updated_at-reset] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_wrong_required_default_is_rejected[is_deleted-setup] FAILED [ 22%]
+tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py::test_wrong_required_default_is_rejected[is_deleted-reset] FAILED [ 22%]
+tests/test_dc12r1_s1_retailer_identity.py::test_register_with_invitation_provisions_pending_user_and_setup_token ERROR [ 22%]
+tests/test_dc12r1_s1_retailer_identity.py::test_setup_consumption_activates_user_and_verifies_email ERROR [ 22%]
+tests/test_dc12r1_s1_retailer_identity.py::test_expired_invitation_rejected ERROR [ 22%]
+tests/test_dc12r1_s1_retailer_identity.py::test_phone_mismatch_rejected ERROR [ 22%]
+tests/test_dc12r1_s1_retailer_identity.py::test_reused_invitation_rejected ERROR [ 22%]
+tests/test_dc12r1_s1_retailer_identity.py::test_revoked_invitation_rejected ERROR [ 22%]
+tests/test_dc12r1_s1_retailer_identity.py::test_AB_mapped_copies_preserve_one_effective_password ERROR [ 22%]
+tests/test_dc12r1_s1_retailer_identity.py::test_retailer_self_reset_updates_both_AB_copies ERROR [ 22%]
+tests/test_dc12r1_s1_retailer_identity.py::test_pending_user_cannot_authenticate ERROR [ 22%]
+tests/test_dc12r1_s1_retailer_identity.py::test_reissue_denied_after_credential_established ERROR [ 22%]
+tests/test_dc12r1_s1_retailer_identity.py::test_cross_tenant_reissue_is_neutral_404 ERROR [ 22%]
+tests/test_dc12r1_s1_retailer_identity.py::test_used_setup_token_rejected ERROR [ 23%]
+tests/test_dc12r1_s1_retailer_identity.py::test_invalid_reset_token_rejected ERROR [ 23%]
+tests/test_dc12r1_s1_retailer_identity.py::test_forgot_password_neutral_for_unknown_account ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRetailerLoginHappyPath::test_login_through_A_returns_only_A ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRetailerLoginHappyPath::test_login_through_A_never_references_schema_B ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRetailerLoginHappyPath::test_login_through_B_returns_only_B ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRetailerLoginNeutral401::test_wrong_email_returns_neutral_401 ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRetailerLoginNeutral401::test_wrong_password_returns_neutral_401 ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRetailerLoginNeutral401::test_wrong_wholesaler_code_returns_neutral_401 ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRetailerLoginNeutral401::test_missing_binding_returns_neutral_401 ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRetailerLoginNeutral401::test_inactive_binding_returns_neutral_401 ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRetailerLoginNeutral401::test_missing_retailer_operator_role_returns_neutral_401 ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRetailerLoginNeutral401::test_pending_inactive_user_returns_neutral_401 ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRetailerLoginNeutral401::test_all_401_bodies_are_identical ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestCodeNormalization::test_lowercase_code_is_normalized_and_authenticates ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestCodeNormalization::test_mixed_case_code_is_normalized ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestMalformedCode422::test_symbol_code_executes_zero_sql ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestProductionErrorContract::test_401_is_exact_public_envelope ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestProductionErrorContract::test_401_message_has_no_dict_repr_leak ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestJWTIsContextual::test_access_token_has_tenant_claims ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestJWTIsContextual::test_refresh_token_has_tenant_claims ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestJWTIsContextual::test_no_tmap_in_jwt ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestJWTIsContextual::test_roles_is_retailer_operator_only ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestNoCrossSupplierDisclosure::test_response_contains_only_selected_wholesaler ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestNoCrossSupplierDisclosure::test_schema_in_token_belongs_to_selected_wholesaler ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRefreshPreservesContext::test_refresh_returns_same_tenant_context ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRefreshPreservesContext::test_access_token_carries_full_tenant_context ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRefreshPreservesContext::test_logout_succeeds ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRouteAccess::test_denied_from_orders_read ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRouteAccess::test_denied_from_finance_read ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRouteAccess::test_denied_from_payments_read ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRouteAccess::test_denied_from_invitation_management ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRouteAccess::test_denied_from_platform_admin ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRouteAccess::test_retailer_client_permission_is_allowed ERROR [ 23%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRealRegisteredRouteDenials::test_finance_route_denied_over_http ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRealRegisteredRouteDenials::test_orders_route_denied_over_http ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRealRegisteredRouteDenials::test_payments_route_denied_over_http ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRealRegisteredRouteDenials::test_invitation_route_denied_over_http ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRealRegisteredRouteDenials::test_platform_route_denied_over_http ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRealRegisteredRouteDenials::test_finance_denied_route_body_does_not_execute ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRealRegisteredRouteDenials::test_denied_route_body_does_not_execute ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRealRegisteredRouteDenials::test_retailer_can_still_use_permitted_client_route ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestFailClosedLifecycle::test_soft_deleted_registration_returns_neutral_401 ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestFailClosedLifecycle::test_soft_deleted_user_returns_neutral_401 ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestFailClosedLifecycle::test_soft_deleted_role_returns_neutral_401 ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestFailClosedLifecycle::test_soft_deleted_retailer_returns_neutral_401 ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestFailClosedLifecycle::test_duplicate_active_registrations_rejected_at_db_and_code ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestRateLimit429::test_rate_limited_login_returns_429_with_headers ERROR [ 24%]
+tests/test_dc12r1_s2_supplier_scoped_retailer_login.py::TestOwnerLoginUnchanged::test_owner_login_returns_available_tenants ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestHappyPathPreserved::test_catalog_readable ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestHappyPathPreserved::test_order_lifecycle ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestDualKeyDbScoping::test_list_excludes_wrong_retailer ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestDualKeyDbScoping::test_detail_wrong_retailer_404 ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestDualKeyDbScoping::test_cross_supplier_order_404 ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestDualKeyDbScoping::test_cancel_cross_supplier_404 ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestDualKeyDbScoping::test_malformed_uuid_404 ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestBindingFailClosed::test_inactive_binding_denied ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestBindingFailClosed::test_soft_deleted_binding_denied ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestBindingFailClosed::test_soft_deleted_order_404 ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestBindingFailClosed::test_deleted_sku_rejected_on_create ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestTokenFailClosed::test_identity_only_jwt_denied ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestPermissionDenial::test_catalog_denied ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestPermissionDenial::test_orders_read_denied ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestPermissionDenial::test_orders_create_denied ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestPermissionDenial::test_missing_perm_zero_body_sql ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestGenericRoutesDenied::test_generic_orders_denied ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestGenericRoutesDenied::test_generic_payments_denied ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestGenericRoutesDenied::test_generic_finance_denied ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestProvisioningRolePermissions::test_provisioned_tenant_role_permissions ERROR [ 24%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestSameSchemaWrongEntityExclusion::test_list_excludes_wrong_wholesaler ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestSameSchemaWrongEntityExclusion::test_detail_wrong_wholesaler_404 ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestSameSchemaWrongEntityExclusion::test_cancel_wrong_wholesaler_404 ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestSameSchemaWrongEntityExclusion::test_cancel_wrong_retailer_same_supplier_404 ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestMalformedUuidFailClosed::test_malformed_uuid_zero_order_query ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestMalformedIdentity::test_malformed_wholesaler_id_returns_empty ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestMalformedIdentity::test_malformed_retailer_id_returns_empty ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestRealPgSeederPaths::test_seeder1_onboard_tenant ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestRealPgSeederPaths::test_seeder2_create_wholesaler ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestRealPgSeederPaths::test_seeder3_seed_test_tenant ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestRealPgSeederPaths::test_seeder4_seed_demo_data ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestMalformedIdentityHttp::test_list_malformed_wholesaler_id ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestMalformedIdentityHttp::test_detail_malformed_wholesaler_id ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestMalformedIdentityHttp::test_cancel_malformed_wholesaler_id ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestMalformedIdentityHttp::test_list_malformed_retailer_id ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestMalformedIdentityHttp::test_detail_malformed_retailer_id ERROR [ 25%]
+tests/test_dc12r1_s3_s1_catalog_order_hardening.py::TestMalformedIdentityHttp::test_cancel_malformed_retailer_id ERROR [ 25%]
+tests/test_dc12r1_s3_s2_read_only_retailer_finance.py::TestReadOnlyClientFinanceHappyPath::test_relationship_a_sees_only_a_payments_and_balance ERROR [ 25%]
+tests/test_dc12r1_s3_s2_read_only_retailer_finance.py::TestReadOnlyClientFinanceIsolation::test_same_schema_wrong_rows_and_deleted_rows_are_excluded ERROR [ 25%]
+tests/test_dc12r1_s3_s2_read_only_retailer_finance.py::TestReadOnlyClientFinanceIsolation::test_deleted_binding_blocks_balance_and_payments ERROR [ 25%]
+tests/test_dc12r1_s3_s2_read_only_retailer_finance.py::TestReadOnlyClientFinanceDeniedBeforeFinancialSql::test_missing_permission_returns_403_before_financial_sql ERROR [ 25%]
+tests/test_dc12r1_s3_s2_read_only_retailer_finance.py::TestReadOnlyClientFinanceDeniedBeforeFinancialSql::test_malformed_identity_and_filter_are_controlled_with_zero_financial_sql ERROR [ 25%]
+tests/test_dc12r1_s3_s2_read_only_retailer_finance.py::TestReadOnlyClientFinanceRoutePolicy::test_generic_wholesaler_payment_and_finance_routes_remain_denied ERROR [ 25%]
+tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py::TestMigrationHead::test_head_is_038 FAILED [ 26%]
+tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py::TestMigrationHead::test_sole_head FAILED [ 26%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_cross_tenant_same_key_isolated ERROR [ 27%]
+tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_failures_after_mutation_stages_rollback_all_effects ERROR [ 27%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestParityGate::test_provisioned_tenant_has_i2b_objects ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestAuthenticHarness::test_admin_user_id_differs_from_retailer ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestAuthenticHarness::test_retailer_operator_lacks_confirm_permission ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestAuthenticHarness::test_admin_lacks_client_permissions ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestAuthenticHarness::test_cashier_executes_confirm_successfully ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestAuthenticHarness::test_retailer_lacks_reject_permission ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestSubmitDeclaration::test_submit_creates_pending_declaration_with_zero_financial_effect ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestSubmitDeclaration::test_submit_replay_same_payload_returns_200 ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestSubmitDeclaration::test_submit_same_key_different_payload_returns_409 ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestSubmitDeclaration::test_submit_invalid_amount_rejected_before_sql ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestSubmitDeclaration::test_submit_transfer_requires_reference ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestSubmitDeclaration::test_submit_transfer_with_reference_maps_to_transaction_id ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestSubmitDeclaration::test_submit_wrong_order_404 ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestNamespaceIsolation::test_direct_pay_rejects_reserved_prefix ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestNamespaceIsolation::test_confirm_bare_payment_conflict_fail_closed ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestConfirmDeclaration::test_confirm_full_creates_receipt_and_paid_order ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestConfirmDeclaration::test_confirm_replay_returns_same_payment_and_receipt ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestConfirmDeclaration::test_confirm_partial_yields_completed_payment_and_partially_paid ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestConfirmDeclaration::test_confirm_overpayment_returns_400_pay_exceeds_remaining ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestConfirmDeclaration::test_confirm_overpayment_leaves_declaration_pending_and_zero_writes ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestConfirmDeclaration::test_confirm_malformed_declaration_id_returns_404 ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRejectDeclaration::test_reject_is_terminal_and_zero_financial_effect ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRejectDeclaration::test_reject_then_confirm_returns_not_pending ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRejectDeclaration::test_reject_reason_validated_1_to_256 ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRejectDeclaration::test_reject_reason_missing_returns_400 ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRejectDeclaration::test_reject_reason_oversized_returns_400 ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRejectDeclaration::test_reject_reason_forbidden_html_returns_400 ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestNonLatestRejection::test_reject_older_declaration_with_newer_present ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_wrong_wholesaler_confirm_returns_neutral_404 ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_wrong_retailer_declaration_ownership_fail_closed ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_inactive_binding_confirmation_fail_closed ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_soft_deleted_binding_confirmation_fail_closed ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_concurrent_same_payload_submit_one_declaration ERROR [ 28%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_concurrent_different_payload_same_key_one_success_one_409 ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_concurrent_confirmation_one_payment_one_receipt ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_confirmation_replay_same_payment_and_receipt_zero_writes ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_malformed_replay_receipt_returns_409 ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_overpayment_rejection_leaves_declaration_pending ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_direct_payment_reserved_namespace_rejected ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_unrelated_integrityerror_not_reclassified_as_409 ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_receipt_allocation_rollback_zero_residue ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py::TestRuntimeMatrix::test_rollback_leaves_sequence_transactionally_reusable ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestOrderPrint::test_retailer_order_print_happy_path ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestOrderPrint::test_supplier_order_print_happy_path ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestOrderPrint::test_order_print_wrong_retailer_denied ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestOrderPrint::test_order_print_malformed_uuid ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestDeclarationPrint::test_retailer_pending_declaration_non_receipt ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestDeclarationPrint::test_retailer_rejected_declaration_reason_plain_text ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestDeclarationPrint::test_supplier_confirmed_declaration_print ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestDeclarationPrint::test_declaration_print_malformed_uuid ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestReceipt::test_retailer_valid_receipt ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestReceipt::test_supplier_valid_receipt ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestReceipt::test_pending_declaration_receipt_fail_closed ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestReceipt::test_rejected_declaration_receipt_fail_closed ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestReceipt::test_receipt_repeated_get_same_identity ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestReceipt::test_receipt_malformed_uuid ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestReceipt::test_cross_supplier_receipt_denied ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestZeroWrite::test_all_routes_zero_fingerprint ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestNoLeakage::test_receipt_no_internal_ids ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestNoLeakage::test_declaration_print_no_payment_row_id ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestCrossTenantDenial::test_cross_retailer_order_print_denied ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestCrossTenantDenial::test_cross_retailer_declaration_print_denied ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestCrossTenantDenial::test_cross_supplier_order_print_denied ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestCrossTenantDenial::test_cross_supplier_receipt_denied_real ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestReceiptEligibilityEdgeCases::test_confirmed_null_confirmation_payment_id_fail_closed ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestReceiptEligibilityEdgeCases::test_confirmed_soft_deleted_payment_fail_closed ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestReceiptEligibilityEdgeCases::test_confirmed_malformed_receipt_number_fail_closed ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestReceiptEligibilityEdgeCases::test_confirmed_wrong_order_payment_fail_closed ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestReceiptEligibilityEdgeCases::test_confirmed_ineligible_declaration_print_fail_closed ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestBindingDenial::test_inactive_binding_denies_supplier_receipt ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestBindingDenial::test_inactive_binding_denies_client_route ERROR [ 29%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestSameSchemaPredicateProof::test_supplier_order_wrong_wholesaler_in_same_schema ERROR [ 30%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestSameSchemaPredicateProof::test_supplier_receipt_wrong_wholesaler_order_in_same_schema ERROR [ 30%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestSameSchemaPredicateProof::test_receipt_wrong_retailer_payment_in_same_schema ERROR [ 30%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestSameSchemaPredicateProof::test_receipt_soft_deleted_order_fail_closed ERROR [ 30%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestSameSchemaPredicateProof::test_deleted_binding_denies_supplier_receipt ERROR [ 30%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestCheckReceiptEligibilityDirect::test_wrong_wholesaler_order_returns_false ERROR [ 30%]
+tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py::TestForcedSeedFailureCleanup::test_cleanup_after_partial_seed_failure ERROR [ 30%]
+tests/test_dc1g_retailer_registration_binding_balance.py::test_binding_repository_create_sets_zero_outstanding_balance FAILED [ 30%]
+tests/test_dc1g_retailer_registration_binding_balance.py::test_retailer_registration_creates_binding_with_zero_outstanding_balance FAILED [ 30%]
+tests/test_dc3b_credential_recovery_backend.py::test_forgot_password_neutral_for_existing_and_nonexistent_email FAILED [ 30%]
+tests/test_dc3b_credential_recovery_backend.py::test_broken_tenant_schema_does_not_block_healthy_password_reset FAILED [ 30%]
+tests/test_dc3b_credential_recovery_backend.py::test_reset_token_stored_hash_only_raw_never_persisted FAILED [ 30%]
+tests/test_dc3b_credential_recovery_backend.py::test_reset_with_valid_token_updates_password FAILED [ 30%]
+tests/test_dc3b_credential_recovery_backend.py::test_invalid_states_fail_neutrally FAILED [ 30%]
+tests/test_dc3b_credential_recovery_backend.py::test_query_string_token_rejected FAILED [ 30%]
+tests/test_dc3b_credential_recovery_backend.py::test_reset_updates_both_tenant_copies FAILED [ 30%]
+tests/test_dc3b_credential_recovery_backend.py::test_login_succeeds_after_reset_with_multiple_copies FAILED [ 30%]
+tests/test_dc3b_credential_recovery_backend.py::test_no_internal_ids_tokens_hashes_in_public_responses FAILED [ 30%]
+tests/test_dc3b_credential_recovery_backend.py::test_r1_after_reset_both_copies_login_and_select FAILED [ 30%]
+tests/test_payments_schema_contract.py::TestLiveSchemaContract::test_live_has_retailer_id SKIPPED [ 33%]
+tests/test_payments_schema_contract.py::TestLiveSchemaContract::test_live_retailer_id_not_null SKIPPED [ 33%]
+tests/test_payments_schema_contract.py::TestLiveSchemaContract::test_live_has_transaction_id SKIPPED [ 33%]
+tests/test_payments_schema_contract.py::TestLiveSchemaContract::test_live_transaction_id_nullable SKIPPED [ 33%]
+tests/test_payments_schema_contract.py::TestLiveSchemaContract::test_live_has_order_id_index SKIPPED [ 33%]
+tests/test_payments_schema_contract.py::TestLiveSchemaContract::test_live_has_transaction_id_partial_unique SKIPPED [ 33%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_retailer_id SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_retailer_id_not_null SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_sku_id SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_sku_id_not_null SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_price SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_price_not_null SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_created_at_not_null SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_updated_at_not_null SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_is_deleted_not_null SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_unique_constraint SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_check_constraint SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_retailer_id_index SKIPPED [ 34%]
+tests/test_payments_schema_contract.py::TestLiveRetailerPricesContract::test_live_has_sku_id_index SKIPPED [ 34%]
+tests/test_phase5_order_payment.py::TestRouteLevelOrderPaymentMonkeypatch::test_route_overpayment_rejected_with_400 XFAILmentRepository()
+tests/test_platform_p21_durable_approval_schema.py::test_tables_exist_in_public ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_exact_columns_extra_forbid[durable_approval_audit_events-expected0] ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_exact_columns_extra_forbid[durable_approval_decisions-expected1] ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_exact_columns_extra_forbid[durable_approval_idempotency_keys-expected2] ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_exact_columns_extra_forbid[durable_approval_requests-expected3] ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_exact_columns_extra_forbid[durable_approval_retention_jobs-expected4] ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_key_types ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_no_execution_and_redaction_defaults ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_indexes_exist_in_public[durable_approval_audit_events-expected0] ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_indexes_exist_in_public[durable_approval_decisions-expected1] ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_indexes_exist_in_public[durable_approval_idempotency_keys-expected2] ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_indexes_exist_in_public[durable_approval_requests-expected3] ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_indexes_exist_in_public[durable_approval_retention_jobs-expected4] ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_unique_indexes_present ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_decision_foreign_keys ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_action_class-expected0] ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_actor_role-expected1] ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_audit_result-expected2] ERROR [ 57%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_decision-expected3] ERROR [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_event_type-expected4] ERROR [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_execution_gate-expected5] ERROR [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_identity_context-expected6] ERROR [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_job_status-expected7] ERROR [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_job_type-expected8] ERROR [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_retention_class-expected9] ERROR [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_scope_key-expected10] ERROR [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_source_status-expected11] ERROR [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_state-expected12] ERROR [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_storage_class-expected13] ERROR [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_value_sets[durable_approval_validation_status-expected14] ERROR [ 58%]
+tests/test_platform_p21_durable_approval_schema.py::test_enum_types_live_in_public ERROR [ 58%]
+tests/test_pw1r4_cross_tenant_statement_cache.py::test_exact_route_abab_cycles_survive_ddl_storm ERROR [ 67%]
+tests/test_pw1r4_cross_tenant_statement_cache.py::test_exact_route_without_fix_reproduces_invalid_cached_statement ERROR [ 67%]
+tests/test_pw1r4_cross_tenant_statement_cache.py::test_engine_aba_cycles_survive_ddl_storm ERROR [ 67%]
+tests/test_pw1r4_cross_tenant_statement_cache.py::test_legacy_engine_without_fix_reproduces_invalid_cached_statement ERROR [ 67%]
+tests/test_pw1r4_cross_tenant_statement_cache.py::test_no_cross_tenant_leak_across_cycles ERROR [ 67%]
+tests/test_pw1r4_cross_tenant_statement_cache.py::test_forced_failure_before_ddl_engine_cleans_both_schemas FAILED [ 67%]
+tests/test_pw1r4b4_retailer_permission_context.py::test_login_returns_exact_six_sorted_permissions ERROR [ 67%]
+tests/test_pw1r4b4_retailer_permission_context.py::test_foreign_role_and_user_permissions_do_not_leak ERROR [ 67%]
+tests/test_pw1r4b4_retailer_permission_context.py::test_soft_deleted_permission_not_returned ERROR [ 67%]
+tests/test_pw1r4b4_retailer_permission_context.py::test_empty_permission_user_login_ok_but_route_denied FAILED [ 67%]
+tests/test_pw1r4b4_retailer_permission_context.py::test_no_permission_disclosure_in_errors ERROR [ 67%]
+tests/test_request_validation.py::TestRequestValidation::test_user_create_rejects_missing_email XFAIL [ 69%]
+tests/test_request_validation.py::TestRequestValidation::test_order_create_rejects_empty_items XFAIL [ 69%]
+tests/test_request_validation.py::TestRequestValidation::test_order_item_rejects_invalid_quantity XFAIL [ 69%]
+tests/test_request_validation.py::TestRequestValidation::test_validation_error_has_structured_response XFAIL 422) [ 69%]
+tests/test_request_validation.py::TestQueryParameterValidation::test_list_users_rejects_invalid_page XFAIL [ 69%]
+tests/test_request_validation.py::TestQueryParameterValidation::test_list_users_rejects_excessive_size XFAIL [ 69%]
+tests/test_route_coverage.py::TestOpenAPIRouteCoverage::test_all_openapi_paths_have_routes SKIPPED [ 70%]
+tests/test_route_coverage.py::TestOpenAPIRouteCoverage::test_stub_endpoints_return_501 XFAILfor some) [ 70%]
+tests/test_route_coverage.py::TestRoutePathParameters::test_user_id_path_parameter_accepted XFAIL [ 70%]
+tests/test_route_coverage.py::TestRoutePathParameters::test_order_id_path_parameter_accepted XFAIL [ 70%]
+tests/test_route_coverage.py::TestOpenAPISpecLoading::test_openapi_spec_file_exists SKIPPED [ 70%]
+tests/test_route_coverage.py::TestOpenAPISpecLoading::test_openapi_spec_is_valid_yaml SKIPPED [ 70%]
+tests/test_s3_profiling.py::TestSQLProfilingMiddleware::test_profiling_headers_on_health_endpoint SKIPPED true)) [ 70%]
+tests/test_s3_profiling.py::TestSQLProfilingMiddleware::test_profiling_skips_metrics_endpoint SKIPPED true)) [ 70%]
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveTenantSchemaBootstrapped::test_all_required_tables_present SKIPPEDventory_movements', 'inventory_stocks', 'ledger_entries',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveAdminPermissionsComplete::test_admin_user_exists_and_is_active SKIPPEDventory_movements', 'inventory_stocks', 'ledger_entries',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveAdminPermissionsComplete::test_admin_has_at_least_one_role SKIPPEDventory_movements', 'inventory_stocks', 'ledger_entries',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveAdminPermissionsComplete::test_admin_role_has_all_required_permissions SKIPPEDventory_movements', 'inventory_stocks', 'ledger_entries',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestNearRealContextualJwtFlow::test_encode_decode_roundtrip SKIPPEDventory_movements',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestNearRealContextualJwtFlow::test_decoded_token_is_contextual_not_identity SKIPPEDventory_movements', 'inventory_stocks', 'ledger_entries',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveEndpointSmoke::test_dashboard_kpi_summary SKIPPEDventory_movements',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveEndpointSmoke::test_dashboard_sales_trend SKIPPEDventory_movements',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveEndpointSmoke::test_dashboard_cash_flow SKIPPEDventory_movements',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveEndpointSmoke::test_orders_list SKIPPEDventory_movements', 'inventory_stocks',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveEndpointSmoke::test_skus_list SKIPPEDventory_movements', 'inventory_stocks',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveEndpointSmoke::test_stock_list_endpoint SKIPPEDventory_movements',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveEndpointSmoke::test_pricing_prices SKIPPEDventory_movements', 'inventory_stocks',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveEndpointSmoke::test_payments_list SKIPPEDventory_movements', 'inventory_stocks',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveEndpointSmoke::test_retailers_list SKIPPEDventory_movements', 'inventory_stocks',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveEndpointSmoke::test_retailer_bindings SKIPPEDventory_movements', 'inventory_stocks',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestLiveEndpointSmoke::test_exports_status SKIPPEDventory_movements', 'inventory_stocks',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestBusinessEmptyStateProof::test_pricing_non_200_is_business_not_auth SKIPPEDventory_movements', 'inventory_stocks', 'ledger_entries',
+tests/test_s3b_fresh_tenant_live_runtime_proof.py::TestBusinessEmptyStateProof::test_exports_non_200_is_business_not_auth SKIPPEDventory_movements', 'inventory_stocks', 'ledger_entries',
+tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestFreshEndpointSmoke::test_pricing_prices FAILED [ 72%]
+tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestFreshEndpointSmoke::test_retailers_list FAILED [ 72%]
+tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestFreshEndpointSmoke::test_retailer_bindings FAILED [ 72%]
+tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestFreshEndpointSmoke::test_exports_status FAILED [ 72%]
+tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestBusinessEmptyStateProof::test_pricing_non_200_is_business_not_auth FAILED [ 72%]
+tests/test_s3c_self_contained_fresh_tenant_live_proof.py::TestBusinessEmptyStateProof::test_exports_non_200_is_business_not_auth FAILED [ 72%]
+tests/test_s4_jobs_local.py::test_enqueue_job FAILED                     [ 72%]
+tests/test_s4_jobs_local.py::test_job_execution FAILED                   [ 72%]
+tests/test_s4_jobs_local.py::test_job_execution_with_delay FAILED        [ 72%]
+tests/test_s4_jobs_local.py::test_job_failure_handling FAILED            [ 72%]
+tests/test_s4_jobs_local.py::test_concurrent_job_execution FAILED        [ 72%]
+tests/test_s4_jobs_local.py::test_worker_limit FAILED                    [ 72%]
+tests/test_s4_jobs_local.py::test_queue_status FAILED                    [ 72%]
+tests/test_s4_jobs_local.py::test_graceful_shutdown FAILED               [ 72%]
+tests/test_s4_jobs_local.py::test_job_metrics FAILED                     [ 72%]
+tests/test_s4_jobs_persistence.py::test_job_persistence_happy_path FAILED [ 72%]
+tests/test_s4_jobs_persistence.py::test_job_retry_on_failure FAILED      [ 73%]
+tests/test_s4_jobs_persistence.py::test_job_max_retries_reached FAILED   [ 73%]
+tests/test_s4_jobs_persistence.py::test_job_record_persistence FAILED    [ 73%]
+tests/test_s4_jobs_persistence.py::test_multiple_jobs_persistence FAILED [ 73%]
+tests/test_s5a_fresh_tenant_real_user_journey_gate.py::test_s5a_fresh_tenant_real_user_journey_gate FAILED [ 74%]
+tests/test_s5c_runtime_sku_import_http_integration.py::test_sku_import_preview_validate_apply_happy_path SKIPPEDTIME_TEST_EMAIL,
+tests/test_s5c_runtime_sku_import_http_integration.py::test_sku_import_preview_returns_401_without_token SKIPPEDTIME_TEST_EMAIL,
+tests/test_s5d4b_settled_cash_payment.py::test_route_settlement_failure_rolls_back_payment_order_balance_and_ledger ERROR [ 74%]
+tests/test_s5d5_payment_ledger_runtime_invariant.py::test_full_cash_payment_completes_and_has_balanced_ledger FAILED [ 74%]
+tests/test_s5d5_payment_ledger_runtime_invariant.py::test_partial_cash_payment_only_gets_completed_ledger_coverage_on_final_payment FAILED [ 74%]
+tests/test_s5d5_payment_ledger_runtime_invariant.py::test_partial_transfer_payment_does_not_complete_without_ledger_coverage FAILED [ 74%]
+tests/test_s5d5_payment_ledger_runtime_invariant.py::test_full_transfer_payment_completes_and_has_balanced_ledger FAILED [ 74%]
+tests/test_s5d5_payment_ledger_runtime_invariant.py::test_credit_payment_is_pending_and_excluded_from_completed_ledger_invariant FAILED [ 74%]
+tests/test_s5d6_multi_partial_payment_state_machine.py::test_cash_allows_multiple_partials_then_final_balanced_settlement FAILED [ 74%]
+tests/test_s5d6_multi_partial_payment_state_machine.py::test_transfer_allows_multiple_partials_then_final_balanced_settlement FAILED [ 74%]
+tests/test_s6_p_reporting_constraints.py::test_reporting_user_can_read_public_tables FAILED [ 76%]
+tests/test_sku_b2_catalog_serialization.py::test_t7_rename_and_deactivate_leave_order_snapshots_unchanged FAILED [ 84%]
+tests/test_sku_r1_client_catalog_contract.py::TestProductLevelList::test_one_container_per_product_with_nested_units ERROR [ 86%]
+tests/test_sku_r1_client_catalog_contract.py::TestProductLevelList::test_pagination_counts_products_not_units ERROR [ 86%]
+tests/test_sku_r1_client_catalog_contract.py::TestProductLevelList::test_search_by_unit_sku_code_finds_the_product ERROR [ 86%]
+tests/test_sku_r1_client_catalog_contract.py::TestProductLevelDetail::test_detail_by_catalog_product_id_returns_units ERROR [ 86%]
+tests/test_sku_r1_client_catalog_contract.py::TestProductLevelDetail::test_detail_with_sellable_unit_uuid_is_404_not_the_product ERROR [ 86%]
+tests/test_sku_r1_client_catalog_contract.py::TestProductLevelDetail::test_inactive_product_detail_is_product_inactive_404 ERROR [ 86%]
+tests/test_sku_r1_client_catalog_contract.py::TestIsolationAndVisibility::test_inactive_units_hidden_and_unpriced_units_not_orderable ERROR [ 86%]
+tests/test_sku_r1_client_catalog_contract.py::TestIsolationAndVisibility::test_retailer_price_isolation ERROR [ 86%]
+tests/test_sku_r1_client_catalog_contract.py::TestCanonicalProductIdFailClosed::test_canonical_existing_uuid_returns_200 ERROR [ 86%]
+tests/test_sku_r1_client_catalog_contract.py::TestCanonicalProductIdFailClosed::test_canonical_nonexistent_uuid_returns_clean_404 ERROR [ 86%]
+tests/test_sku_r1_client_catalog_contract.py::TestCanonicalProductIdFailClosed::test_noncanonical_forms_of_real_existing_uuid_still_404 ERROR [ 86%]
+tests/test_sku_r1_client_catalog_contract.py::TestCanonicalProductIdFailClosed::test_handler_reachable_malformed_ids_are_exact_product_not_found ERROR [ 86%]
+tests/test_sku_r1_client_catalog_contract.py::TestCanonicalProductIdFailClosed::test_router_rejected_probes_never_reach_get_product ERROR [ 86%]
+tests/test_u1r1_bootstrap_completeness.py::TestTableCompleteness::test_retailers_in_public_not_tenant FAILED [ 87%]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmoke::test_sidebar_endpoint_returns_200[GET-/api/v1/retailers-Customers] FAILED [ 87%]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/orders-Orders] XFAIL [ 87%]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/skus-Products/SKUs] XFAIL [ 87%]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/inventory/stocks-Stock] XFAIL [ 87%]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/payments-Payments] XFAIL [ 87%]
+tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/pricing/prices-Pricing] XFAIL [ 87%]
+tests/test_u6i2_owner_credential_setup_token_issue.py::test_setup_credential_endpoint_rejects_query_string_tokens ERROR [ 97%]
+_ ERROR at setup of test_concurrent_same_financial_result_replay_creates_one_financial_result _
+_______ ERROR at setup of test_concurrent_different_keys_cannot_overpay ________
+__ ERROR at setup of test_empty_body_and_empty_object_create_no_side_effects ___
+_ ERROR at setup of test_unrelated_integrity_error_is_not_idempotency_conflict_and_rolls_back _
+_ ERROR at setup of test_rollback_after_state_failure_leaves_tables_unchanged __
+___ ERROR at teardown of test_cross_tenant_same_idempotency_key_is_isolated ____
+_ ERROR at setup of TestMigrationStructure.test_all_four_tables_in_public_schema _
+_ ERROR at setup of TestMigrationStructure.test_no_operator_tables_in_tenant_schemas _
+______ ERROR at setup of TestMigrationStructure.test_no_email_hash_column ______
+_ ERROR at setup of TestMigrationStructure.test_platform_operators_has_all_columns _
+_ ERROR at setup of TestMigrationStructure.test_migration_revision_and_down_revision _
+_ ERROR at setup of TestMigrationStructure.test_migration_imports_no_runtime_models _
+___ ERROR at setup of TestEmailNormalization.test_mixed_case_email_rejected ____
+_ ERROR at setup of TestEmailNormalization.test_surrounding_whitespace_rejected _
+______ ERROR at setup of TestEmailNormalization.test_empty_email_rejected ______
+_ ERROR at setup of TestEmailNormalization.test_whitespace_only_email_rejected _
+___ ERROR at setup of TestEmailNormalization.test_normalized_email_accepted ____
+_ ERROR at setup of TestEmailNormalization.test_duplicate_normalized_email_rejected _
+____ ERROR at setup of TestOperatorConstraints.test_invalid_status_rejected ____
+_____ ERROR at setup of TestOperatorConstraints.test_invalid_role_rejected _____
+__ ERROR at setup of TestOperatorConstraints.test_negative_attempts_rejected ___
+__ ERROR at setup of TestOperatorConstraints.test_auth_version_zero_rejected ___
+_ ERROR at setup of TestOperatorConstraints.test_active_without_password_rejected _
+_ ERROR at setup of TestOperatorConstraints.test_active_with_revoked_rejected __
+_ ERROR at setup of TestTokenConstraints.test_setup_used_and_revoked_rejected __
+_ ERROR at setup of TestTokenConstraints.test_duplicate_active_setup_rejected __
+__ ERROR at setup of TestTokenConstraints.test_used_setup_allows_replacement ___
+_ ERROR at setup of TestTokenConstraints.test_expired_setup_still_blocks_index _
+_ ERROR at setup of TestTokenConstraints.test_duplicate_active_reset_rejected __
+_ ERROR at setup of TestTokenConstraints.test_token_hash_globally_unique_within_table _
+___________ ERROR at setup of TestRecoveryConstraints.test_active_ok ___________
+__ ERROR at setup of TestRecoveryConstraints.test_used_with_revoked_rejected ___
+_ ERROR at setup of TestRecoveryConstraints.test_active_with_used_at_rejected __
+_ ERROR at setup of TestRecoveryConstraints.test_duplicate_active_recovery_rejected _
+_ ERROR at setup of TestRecoveryConstraints.test_credential_hash_globally_unique _
+____ ERROR at setup of TestForeignKeyBehavior.test_setup_cascade_on_delete _____
+______ ERROR at setup of TestForeignKeyBehavior.test_invited_by_set_null _______
+__ ERROR at setup of TestSecurityColumns.test_setup_tokens_no_plaintext_cols ___
+__ ERROR at setup of TestSecurityColumns.test_reset_tokens_no_plaintext_cols ___
+____ ERROR at setup of TestSecurityColumns.test_recovery_no_plaintext_cols _____
+_ ERROR at setup of TestORMCatalogParity.test_partial_unique_indexes_exist_in_catalog _
+__ ERROR at setup of TestORMCatalogParity.test_orm_declares_matching_indexes ___
+_ ERROR at setup of TestStatementHappyPath.test_retailer_statement_happy_path __
+_ ERROR at setup of TestStatementHappyPath.test_supplier_statement_happy_path __
+_ ERROR at setup of TestStatementHappyPath.test_opening_closing_arithmetic_invariant _
+_ ERROR at setup of TestDualKeyIsolation.test_supplier_foreign_retailer_denied_neutral _
+________ ERROR at setup of TestDateRangeContract.test_missing_from_date ________
+_________ ERROR at setup of TestDateRangeContract.test_missing_to_date _________
+_________ ERROR at setup of TestDateRangeContract.test_blank_from_date _________
+_______ ERROR at setup of TestDateRangeContract.test_malformed_from_date _______
+__________ ERROR at setup of TestDateRangeContract.test_from_after_to __________
+______ ERROR at setup of TestDateRangeContract.test_span_exceeds_365_days ______
+_ ERROR at setup of TestDateRangeContract.test_supplier_route_shares_the_same_strict_parser _
+_ ERROR at setup of TestDateRangeContract.test_non_zero_padded_date_is_rejected _
+_ ERROR at setup of TestDateRangeContract.test_extra_characters_in_date_are_rejected _
+_ ERROR at setup of TestDateRangeContract.test_invalid_calendar_date_is_rejected _
+__ ERROR at setup of TestDateRangeContract.test_whitespace_suffix_is_rejected __
+__ ERROR at setup of TestDateRangeContract.test_encoded_space_20_is_rejected ___
+___ ERROR at setup of TestDateRangeContract.test_encoded_tab_09_is_rejected ____
+_ ERROR at setup of TestDateRangeContract.test_tab_and_newline_suffixes_are_rejected _
+_ ERROR at setup of TestDateRangeContract.test_parser_rejects_trimmed_input_directly _
+_ ERROR at setup of TestDateRangeContract.test_parser_accepts_canonical_input_directly _
+_ ERROR at setup of TestDateRangeContract.test_malformed_retailer_uuid_supplier _
+____ ERROR at setup of TestZeroWrite.test_statement_routes_zero_fingerprint ____
+_ ERROR at setup of TestIndependentLists.test_movements_and_settled_payments_are_separate_lists _
+_ ERROR at setup of TestIndependentLists.test_pending_declarations_only_when_requested _
+______ ERROR at setup of TestNoLeakage.test_no_internal_ids_in_statement _______
+_ ERROR at setup of TestFailClosed.test_orphan_ledger_ref_returns_409_scope_incomplete _
+_ ERROR at setup of TestFailClosed.test_zero_value_movement_returns_409_internal_inconsistent _
+_ ERROR at setup of TestPaymentOwnershipIntegrity.test_payment_retailer_mismatch_returns_409_internal_inconsistent _
+_ ERROR at setup of TestPaymentOwnershipIntegrity.test_wrong_order_wholesaler_returns_409 _
+_ ERROR at setup of TestPaymentOwnershipIntegrity.test_missing_order_returns_409 _
+_ ERROR at setup of TestPaymentOwnershipIntegrity.test_ownership_mismatch_also_fails_closed_on_supplier_route _
+_ ERROR at setup of TestPaymentOwnershipIntegrity.test_unrelated_relationship_is_not_faulted _
+_ ERROR at setup of TestSettledTotal.test_settled_total_equals_sum_of_settled_payments _
+_ ERROR at setup of TestReconciliationTolerance.test_0001_difference_is_accepted _
+_ ERROR at setup of TestReconciliationTolerance.test_001_difference_is_accepted _
+_ ERROR at setup of TestReconciliationTolerance.test_00101_difference_is_rejected _
+_ ERROR at setup of TestRangeCap.test_movements_1001_return_400_range_too_large_before_internal_inconsistent _
+_ ERROR at setup of TestRangeCap.test_movements_1002_return_400_range_too_large _
+_ ERROR at setup of TestRangeCap.test_settled_1001_return_400_range_too_large __
+_ ERROR at setup of TestRangeCap.test_pending_1001_return_400_range_too_large __
+_ ERROR at setup of TestRangeCap.test_range_cap_deterministic_request_id_repro_h2a_r2_f1 _
+_ ERROR at setup of TestRangeCap.test_combined_1001_across_lists_return_400_range_too_large _
+_________ ERROR at setup of TestRangeCap.test_at_cap_1000_is_accepted __________
+_ ERROR at setup of TestRangeCap.test_sentinel_payment_survives_exact_cleanup __
+_ ERROR at setup of TestDisposableSchemaSetupSafety.test_bootstrap_failure_drops_partial_tenant_schema _
+_ ERROR at setup of TestDisposableSchemaSetupSafety.test_provisioning_failure_drops_partial_tenant_schema _
+_ ERROR at setup of TestDisposableSchemaSetupSafety.test_create_table_failure_drops_partial_statement_schema _
+_ ERROR at setup of TestDisposableSchemaSetupSafety.test_cleanup_failure_preserves_both_original_and_cleanup_errors _
+_ ERROR at setup of TestDisposableSchemaSetupSafety.test_rollback_failure_is_visible _
+_ ERROR at setup of TestDisposableSchemaSetupSafety.test_schema_inconsistency_fails_closed_without_arbitrary_drop _
+_ ERROR at setup of TestDisposableSchemaSetupSafety.test_illegal_schema_identifier_rejected_before_dynamic_sql _
+_ ERROR at setup of TestDisposableSchemaSetupSafety.test_cleanup_success_propagates_original_exception_exactly _
+_ ERROR at setup of TestDateBoundaries.test_inclusive_boundaries_capture_today_movements _
+_ ERROR at setup of TestDateBoundaries.test_far_future_period_empty_movements __
+_ ERROR at setup of TestSoftDeletedOrderRetention.test_soft_deleted_order_still_in_statement _
+_ ERROR at setup of TestSoftDeletedOrderRetention.test_active_and_soft_deleted_order_have_identical_accounting_totals _
+__________ ERROR at setup of TestOrderIndependence.test_a_first_seeds __________
+_________ ERROR at setup of TestOrderIndependence.test_b_second_seeds __________
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_both_routes_reference_the_same_shared_mapper _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_byte_contract_table[view-ok] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_byte_contract_table[not_found-404] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_byte_contract_table[period-400] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_byte_contract_table[range-too-large-400] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_byte_contract_table[ledger-scope-409] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_byte_contract_table[internal-inconsistent-409] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_byte_contract_table[reconciliation-409] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_byte_contract_table[fallback-404] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_supplier_and_client_mapping_are_identical[not_found] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_supplier_and_client_mapping_are_identical[period] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_supplier_and_client_mapping_are_identical[range] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_supplier_and_client_mapping_are_identical[scope] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_supplier_and_client_mapping_are_identical[inconsistent] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_supplier_and_client_mapping_are_identical[recon] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_supplier_and_client_mapping_are_identical[fallback] _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_mutation_evidence_one_sided_drift_is_detectable _
+_ ERROR at setup of TestWpr004SharedStatementHttpMapper.test_end_to_end_parity_invalid_date_range_both_routes _
+_ ERROR at teardown of test_forgot_password_email_carries_db_canonical_uppercase_code _
+_ ERROR at teardown of test_forgot_password_email_w_matches_case_insensitive_lookup _
+______ ERROR at teardown of test_hc07_hc10_canonical_neutrality_real_http ______
+_ ERROR at setup of test_A_pending_then_B_keeps_both_inactive_and_shared_setup_token _
+_ ERROR at setup of test_partial_update_failure_leaves_all_copies_unchanged_and_token_unconsumed _
+_______ ERROR at setup of test_missing_retailer_operator_role_rolls_back _______
+_ ERROR at setup of test_create_invitation_without_expires_at_yields_finite_seven_day_default _
+___________ ERROR at setup of test_lookup_expired_invitation_no_500 ____________
+_____ ERROR at setup of test_migration_seeds_reissue_permission_for_admin ______
+_ ERROR at setup of test_bootstrap_seeds_reissue_permission_for_admin_not_retailer _
+_ ERROR at setup of test_setup_token_tampered_binding_retailer_mismatch_rejected _
+_ ERROR at setup of test_missing_mapping_raises_exact_RetailerProvisioningError_with_code _
+_ ERROR at setup of test_token_remains_usable_after_failed_then_repaired_mapping _
+_ ERROR at setup of test_migration_seeds_retailer_operator_role_and_client_perms_in_real_pg _
+_ ERROR at setup of test_malformed_setup_token_table_missing_column_triggers_preflight _
+_ ERROR at setup of test_register_with_invitation_provisions_pending_user_and_setup_token _
+__ ERROR at setup of test_setup_consumption_activates_user_and_verifies_email __
+______________ ERROR at setup of test_expired_invitation_rejected ______________
+________________ ERROR at setup of test_phone_mismatch_rejected ________________
+______________ ERROR at setup of test_reused_invitation_rejected _______________
+______________ ERROR at setup of test_revoked_invitation_rejected ______________
+___ ERROR at setup of test_AB_mapped_copies_preserve_one_effective_password ____
+______ ERROR at setup of test_retailer_self_reset_updates_both_AB_copies _______
+___________ ERROR at setup of test_pending_user_cannot_authenticate ____________
+______ ERROR at setup of test_reissue_denied_after_credential_established ______
+__________ ERROR at setup of test_cross_tenant_reissue_is_neutral_404 __________
+_______________ ERROR at setup of test_used_setup_token_rejected _______________
+_____________ ERROR at setup of test_invalid_reset_token_rejected ______________
+______ ERROR at setup of test_forgot_password_neutral_for_unknown_account ______
+_ ERROR at setup of TestRetailerLoginHappyPath.test_login_through_A_returns_only_A _
+_ ERROR at setup of TestRetailerLoginHappyPath.test_login_through_A_never_references_schema_B _
+_ ERROR at setup of TestRetailerLoginHappyPath.test_login_through_B_returns_only_B _
+_ ERROR at setup of TestRetailerLoginNeutral401.test_wrong_email_returns_neutral_401 _
+_ ERROR at setup of TestRetailerLoginNeutral401.test_wrong_password_returns_neutral_401 _
+_ ERROR at setup of TestRetailerLoginNeutral401.test_wrong_wholesaler_code_returns_neutral_401 _
+_ ERROR at setup of TestRetailerLoginNeutral401.test_missing_binding_returns_neutral_401 _
+_ ERROR at setup of TestRetailerLoginNeutral401.test_inactive_binding_returns_neutral_401 _
+_ ERROR at setup of TestRetailerLoginNeutral401.test_missing_retailer_operator_role_returns_neutral_401 _
+_ ERROR at setup of TestRetailerLoginNeutral401.test_pending_inactive_user_returns_neutral_401 _
+_ ERROR at setup of TestRetailerLoginNeutral401.test_all_401_bodies_are_identical _
+_ ERROR at setup of TestCodeNormalization.test_lowercase_code_is_normalized_and_authenticates _
+__ ERROR at setup of TestCodeNormalization.test_mixed_case_code_is_normalized __
+__ ERROR at setup of TestMalformedCode422.test_symbol_code_executes_zero_sql ___
+_ ERROR at setup of TestProductionErrorContract.test_401_is_exact_public_envelope _
+_ ERROR at setup of TestProductionErrorContract.test_401_message_has_no_dict_repr_leak _
+__ ERROR at setup of TestJWTIsContextual.test_access_token_has_tenant_claims ___
+__ ERROR at setup of TestJWTIsContextual.test_refresh_token_has_tenant_claims __
+__________ ERROR at setup of TestJWTIsContextual.test_no_tmap_in_jwt ___________
+__ ERROR at setup of TestJWTIsContextual.test_roles_is_retailer_operator_only __
+_ ERROR at setup of TestNoCrossSupplierDisclosure.test_response_contains_only_selected_wholesaler _
+_ ERROR at setup of TestNoCrossSupplierDisclosure.test_schema_in_token_belongs_to_selected_wholesaler _
+_ ERROR at setup of TestRefreshPreservesContext.test_refresh_returns_same_tenant_context _
+_ ERROR at setup of TestRefreshPreservesContext.test_access_token_carries_full_tenant_context _
+______ ERROR at setup of TestRefreshPreservesContext.test_logout_succeeds ______
+________ ERROR at setup of TestRouteAccess.test_denied_from_orders_read ________
+_______ ERROR at setup of TestRouteAccess.test_denied_from_finance_read ________
+_______ ERROR at setup of TestRouteAccess.test_denied_from_payments_read _______
+___ ERROR at setup of TestRouteAccess.test_denied_from_invitation_management ___
+______ ERROR at setup of TestRouteAccess.test_denied_from_platform_admin _______
+_ ERROR at setup of TestRouteAccess.test_retailer_client_permission_is_allowed _
+_ ERROR at setup of TestRealRegisteredRouteDenials.test_finance_route_denied_over_http _
+_ ERROR at setup of TestRealRegisteredRouteDenials.test_orders_route_denied_over_http _
+_ ERROR at setup of TestRealRegisteredRouteDenials.test_payments_route_denied_over_http _
+_ ERROR at setup of TestRealRegisteredRouteDenials.test_invitation_route_denied_over_http _
+_ ERROR at setup of TestRealRegisteredRouteDenials.test_platform_route_denied_over_http _
+_ ERROR at setup of TestRealRegisteredRouteDenials.test_finance_denied_route_body_does_not_execute _
+_ ERROR at setup of TestRealRegisteredRouteDenials.test_denied_route_body_does_not_execute _
+_ ERROR at setup of TestRealRegisteredRouteDenials.test_retailer_can_still_use_permitted_client_route _
+_ ERROR at setup of TestFailClosedLifecycle.test_soft_deleted_registration_returns_neutral_401 _
+_ ERROR at setup of TestFailClosedLifecycle.test_soft_deleted_user_returns_neutral_401 _
+_ ERROR at setup of TestFailClosedLifecycle.test_soft_deleted_role_returns_neutral_401 _
+_ ERROR at setup of TestFailClosedLifecycle.test_soft_deleted_retailer_returns_neutral_401 _
+_ ERROR at setup of TestFailClosedLifecycle.test_duplicate_active_registrations_rejected_at_db_and_code _
+_ ERROR at setup of TestRateLimit429.test_rate_limited_login_returns_429_with_headers _
+_ ERROR at setup of TestOwnerLoginUnchanged.test_owner_login_returns_available_tenants _
+________ ERROR at setup of TestHappyPathPreserved.test_catalog_readable ________
+________ ERROR at setup of TestHappyPathPreserved.test_order_lifecycle _________
+___ ERROR at setup of TestDualKeyDbScoping.test_list_excludes_wrong_retailer ___
+____ ERROR at setup of TestDualKeyDbScoping.test_detail_wrong_retailer_404 _____
+_____ ERROR at setup of TestDualKeyDbScoping.test_cross_supplier_order_404 _____
+____ ERROR at setup of TestDualKeyDbScoping.test_cancel_cross_supplier_404 _____
+________ ERROR at setup of TestDualKeyDbScoping.test_malformed_uuid_404 ________
+_____ ERROR at setup of TestBindingFailClosed.test_inactive_binding_denied _____
+___ ERROR at setup of TestBindingFailClosed.test_soft_deleted_binding_denied ___
+_____ ERROR at setup of TestBindingFailClosed.test_soft_deleted_order_404 ______
+_ ERROR at setup of TestBindingFailClosed.test_deleted_sku_rejected_on_create __
+_____ ERROR at setup of TestTokenFailClosed.test_identity_only_jwt_denied ______
+__________ ERROR at setup of TestPermissionDenial.test_catalog_denied __________
+________ ERROR at setup of TestPermissionDenial.test_orders_read_denied ________
+_______ ERROR at setup of TestPermissionDenial.test_orders_create_denied _______
+____ ERROR at setup of TestPermissionDenial.test_missing_perm_zero_body_sql ____
+_____ ERROR at setup of TestGenericRoutesDenied.test_generic_orders_denied _____
+____ ERROR at setup of TestGenericRoutesDenied.test_generic_payments_denied ____
+____ ERROR at setup of TestGenericRoutesDenied.test_generic_finance_denied _____
+_ ERROR at setup of TestProvisioningRolePermissions.test_provisioned_tenant_role_permissions _
+_ ERROR at setup of TestSameSchemaWrongEntityExclusion.test_list_excludes_wrong_wholesaler _
+_ ERROR at setup of TestSameSchemaWrongEntityExclusion.test_detail_wrong_wholesaler_404 _
+_ ERROR at setup of TestSameSchemaWrongEntityExclusion.test_cancel_wrong_wholesaler_404 _
+_ ERROR at setup of TestSameSchemaWrongEntityExclusion.test_cancel_wrong_retailer_same_supplier_404 _
+_ ERROR at setup of TestMalformedUuidFailClosed.test_malformed_uuid_zero_order_query _
+_ ERROR at setup of TestMalformedIdentity.test_malformed_wholesaler_id_returns_empty _
+_ ERROR at setup of TestMalformedIdentity.test_malformed_retailer_id_returns_empty _
+_____ ERROR at setup of TestRealPgSeederPaths.test_seeder1_onboard_tenant ______
+____ ERROR at setup of TestRealPgSeederPaths.test_seeder2_create_wholesaler ____
+____ ERROR at setup of TestRealPgSeederPaths.test_seeder3_seed_test_tenant _____
+_____ ERROR at setup of TestRealPgSeederPaths.test_seeder4_seed_demo_data ______
+_ ERROR at setup of TestMalformedIdentityHttp.test_list_malformed_wholesaler_id _
+_ ERROR at setup of TestMalformedIdentityHttp.test_detail_malformed_wholesaler_id _
+_ ERROR at setup of TestMalformedIdentityHttp.test_cancel_malformed_wholesaler_id _
+_ ERROR at setup of TestMalformedIdentityHttp.test_list_malformed_retailer_id __
+_ ERROR at setup of TestMalformedIdentityHttp.test_detail_malformed_retailer_id _
+_ ERROR at setup of TestMalformedIdentityHttp.test_cancel_malformed_retailer_id _
+_ ERROR at setup of TestReadOnlyClientFinanceHappyPath.test_relationship_a_sees_only_a_payments_and_balance _
+_ ERROR at setup of TestReadOnlyClientFinanceIsolation.test_same_schema_wrong_rows_and_deleted_rows_are_excluded _
+_ ERROR at setup of TestReadOnlyClientFinanceIsolation.test_deleted_binding_blocks_balance_and_payments _
+_ ERROR at setup of TestReadOnlyClientFinanceDeniedBeforeFinancialSql.test_missing_permission_returns_403_before_financial_sql _
+_ ERROR at setup of TestReadOnlyClientFinanceDeniedBeforeFinancialSql.test_malformed_identity_and_filter_are_controlled_with_zero_financial_sql _
+_ ERROR at setup of TestReadOnlyClientFinanceRoutePolicy.test_generic_wholesaler_payment_and_finance_routes_remain_denied _
+________ ERROR at setup of test_service_cross_tenant_same_key_isolated _________
+_ ERROR at setup of test_service_failures_after_mutation_stages_rollback_all_effects _
+___ ERROR at setup of TestParityGate.test_provisioned_tenant_has_i2b_objects ___
+_ ERROR at setup of TestAuthenticHarness.test_admin_user_id_differs_from_retailer _
+_ ERROR at setup of TestAuthenticHarness.test_retailer_operator_lacks_confirm_permission _
+__ ERROR at setup of TestAuthenticHarness.test_admin_lacks_client_permissions __
+_ ERROR at setup of TestAuthenticHarness.test_cashier_executes_confirm_successfully _
+_ ERROR at setup of TestAuthenticHarness.test_retailer_lacks_reject_permission _
+_ ERROR at setup of TestSubmitDeclaration.test_submit_creates_pending_declaration_with_zero_financial_effect _
+_ ERROR at setup of TestSubmitDeclaration.test_submit_replay_same_payload_returns_200 _
+_ ERROR at setup of TestSubmitDeclaration.test_submit_same_key_different_payload_returns_409 _
+_ ERROR at setup of TestSubmitDeclaration.test_submit_invalid_amount_rejected_before_sql _
+_ ERROR at setup of TestSubmitDeclaration.test_submit_transfer_requires_reference _
+_ ERROR at setup of TestSubmitDeclaration.test_submit_transfer_with_reference_maps_to_transaction_id _
+_____ ERROR at setup of TestSubmitDeclaration.test_submit_wrong_order_404 ______
+_ ERROR at setup of TestNamespaceIsolation.test_direct_pay_rejects_reserved_prefix _
+_ ERROR at setup of TestNamespaceIsolation.test_confirm_bare_payment_conflict_fail_closed _
+_ ERROR at setup of TestConfirmDeclaration.test_confirm_full_creates_receipt_and_paid_order _
+_ ERROR at setup of TestConfirmDeclaration.test_confirm_replay_returns_same_payment_and_receipt _
+_ ERROR at setup of TestConfirmDeclaration.test_confirm_partial_yields_completed_payment_and_partially_paid _
+_ ERROR at setup of TestConfirmDeclaration.test_confirm_overpayment_returns_400_pay_exceeds_remaining _
+_ ERROR at setup of TestConfirmDeclaration.test_confirm_overpayment_leaves_declaration_pending_and_zero_writes _
+_ ERROR at setup of TestConfirmDeclaration.test_confirm_malformed_declaration_id_returns_404 _
+_ ERROR at setup of TestRejectDeclaration.test_reject_is_terminal_and_zero_financial_effect _
+_ ERROR at setup of TestRejectDeclaration.test_reject_then_confirm_returns_not_pending _
+_ ERROR at setup of TestRejectDeclaration.test_reject_reason_validated_1_to_256 _
+_ ERROR at setup of TestRejectDeclaration.test_reject_reason_missing_returns_400 _
+_ ERROR at setup of TestRejectDeclaration.test_reject_reason_oversized_returns_400 _
+_ ERROR at setup of TestRejectDeclaration.test_reject_reason_forbidden_html_returns_400 _
+_ ERROR at setup of TestNonLatestRejection.test_reject_older_declaration_with_newer_present _
+_ ERROR at setup of TestRuntimeMatrix.test_wrong_wholesaler_confirm_returns_neutral_404 _
+_ ERROR at setup of TestRuntimeMatrix.test_wrong_retailer_declaration_ownership_fail_closed _
+_ ERROR at setup of TestRuntimeMatrix.test_inactive_binding_confirmation_fail_closed _
+_ ERROR at setup of TestRuntimeMatrix.test_soft_deleted_binding_confirmation_fail_closed _
+_ ERROR at setup of TestRuntimeMatrix.test_concurrent_same_payload_submit_one_declaration _
+_ ERROR at setup of TestRuntimeMatrix.test_concurrent_different_payload_same_key_one_success_one_409 _
+_ ERROR at setup of TestRuntimeMatrix.test_concurrent_confirmation_one_payment_one_receipt _
+_ ERROR at setup of TestRuntimeMatrix.test_confirmation_replay_same_payment_and_receipt_zero_writes _
+_ ERROR at setup of TestRuntimeMatrix.test_malformed_replay_receipt_returns_409 _
+_ ERROR at setup of TestRuntimeMatrix.test_overpayment_rejection_leaves_declaration_pending _
+_ ERROR at setup of TestRuntimeMatrix.test_direct_payment_reserved_namespace_rejected _
+_ ERROR at setup of TestRuntimeMatrix.test_unrelated_integrityerror_not_reclassified_as_409 _
+_ ERROR at setup of TestRuntimeMatrix.test_receipt_allocation_rollback_zero_residue _
+_ ERROR at setup of TestRuntimeMatrix.test_rollback_leaves_sequence_transactionally_reusable _
+____ ERROR at setup of TestOrderPrint.test_retailer_order_print_happy_path _____
+____ ERROR at setup of TestOrderPrint.test_supplier_order_print_happy_path _____
+___ ERROR at setup of TestOrderPrint.test_order_print_wrong_retailer_denied ____
+_______ ERROR at setup of TestOrderPrint.test_order_print_malformed_uuid _______
+_ ERROR at setup of TestDeclarationPrint.test_retailer_pending_declaration_non_receipt _
+_ ERROR at setup of TestDeclarationPrint.test_retailer_rejected_declaration_reason_plain_text _
+_ ERROR at setup of TestDeclarationPrint.test_supplier_confirmed_declaration_print _
+_ ERROR at setup of TestDeclarationPrint.test_declaration_print_malformed_uuid _
+__________ ERROR at setup of TestReceipt.test_retailer_valid_receipt ___________
+__________ ERROR at setup of TestReceipt.test_supplier_valid_receipt ___________
+__ ERROR at setup of TestReceipt.test_pending_declaration_receipt_fail_closed __
+_ ERROR at setup of TestReceipt.test_rejected_declaration_receipt_fail_closed __
+____ ERROR at setup of TestReceipt.test_receipt_repeated_get_same_identity _____
+__________ ERROR at setup of TestReceipt.test_receipt_malformed_uuid ___________
+_______ ERROR at setup of TestReceipt.test_cross_supplier_receipt_denied _______
+_______ ERROR at setup of TestZeroWrite.test_all_routes_zero_fingerprint _______
+_________ ERROR at setup of TestNoLeakage.test_receipt_no_internal_ids _________
+___ ERROR at setup of TestNoLeakage.test_declaration_print_no_payment_row_id ___
+_ ERROR at setup of TestCrossTenantDenial.test_cross_retailer_order_print_denied _
+_ ERROR at setup of TestCrossTenantDenial.test_cross_retailer_declaration_print_denied _
+_ ERROR at setup of TestCrossTenantDenial.test_cross_supplier_order_print_denied _
+_ ERROR at setup of TestCrossTenantDenial.test_cross_supplier_receipt_denied_real _
+_ ERROR at setup of TestReceiptEligibilityEdgeCases.test_confirmed_null_confirmation_payment_id_fail_closed _
+_ ERROR at setup of TestReceiptEligibilityEdgeCases.test_confirmed_soft_deleted_payment_fail_closed _
+_ ERROR at setup of TestReceiptEligibilityEdgeCases.test_confirmed_malformed_receipt_number_fail_closed _
+_ ERROR at setup of TestReceiptEligibilityEdgeCases.test_confirmed_wrong_order_payment_fail_closed _
+_ ERROR at setup of TestReceiptEligibilityEdgeCases.test_confirmed_ineligible_declaration_print_fail_closed _
+_ ERROR at setup of TestBindingDenial.test_inactive_binding_denies_supplier_receipt _
+_ ERROR at setup of TestBindingDenial.test_inactive_binding_denies_client_route _
+_ ERROR at setup of TestSameSchemaPredicateProof.test_supplier_order_wrong_wholesaler_in_same_schema _
+_ ERROR at setup of TestSameSchemaPredicateProof.test_supplier_receipt_wrong_wholesaler_order_in_same_schema _
+_ ERROR at setup of TestSameSchemaPredicateProof.test_receipt_wrong_retailer_payment_in_same_schema _
+_ ERROR at setup of TestSameSchemaPredicateProof.test_receipt_soft_deleted_order_fail_closed _
+_ ERROR at setup of TestSameSchemaPredicateProof.test_deleted_binding_denies_supplier_receipt _
+_ ERROR at setup of TestCheckReceiptEligibilityDirect.test_wrong_wholesaler_order_returns_false _
+_ ERROR at setup of TestForcedSeedFailureCleanup.test_cleanup_after_partial_seed_failure _
+________________ ERROR at setup of test_tables_exist_in_public _________________
+_ ERROR at setup of test_exact_columns_extra_forbid[durable_approval_audit_events-expected0] _
+_ ERROR at setup of test_exact_columns_extra_forbid[durable_approval_decisions-expected1] _
+_ ERROR at setup of test_exact_columns_extra_forbid[durable_approval_idempotency_keys-expected2] _
+_ ERROR at setup of test_exact_columns_extra_forbid[durable_approval_requests-expected3] _
+_ ERROR at setup of test_exact_columns_extra_forbid[durable_approval_retention_jobs-expected4] _
+_______________________ ERROR at setup of test_key_types _______________________
+__________ ERROR at setup of test_no_execution_and_redaction_defaults __________
+_ ERROR at setup of test_indexes_exist_in_public[durable_approval_audit_events-expected0] _
+_ ERROR at setup of test_indexes_exist_in_public[durable_approval_decisions-expected1] _
+_ ERROR at setup of test_indexes_exist_in_public[durable_approval_idempotency_keys-expected2] _
+_ ERROR at setup of test_indexes_exist_in_public[durable_approval_requests-expected3] _
+_ ERROR at setup of test_indexes_exist_in_public[durable_approval_retention_jobs-expected4] _
+________________ ERROR at setup of test_unique_indexes_present _________________
+_________________ ERROR at setup of test_decision_foreign_keys _________________
+_ ERROR at setup of test_enum_value_sets[durable_approval_action_class-expected0] _
+_ ERROR at setup of test_enum_value_sets[durable_approval_actor_role-expected1] _
+_ ERROR at setup of test_enum_value_sets[durable_approval_audit_result-expected2] _
+_ ERROR at setup of test_enum_value_sets[durable_approval_decision-expected3] __
+_ ERROR at setup of test_enum_value_sets[durable_approval_event_type-expected4] _
+_ ERROR at setup of test_enum_value_sets[durable_approval_execution_gate-expected5] _
+_ ERROR at setup of test_enum_value_sets[durable_approval_identity_context-expected6] _
+_ ERROR at setup of test_enum_value_sets[durable_approval_job_status-expected7] _
+_ ERROR at setup of test_enum_value_sets[durable_approval_job_type-expected8] __
+_ ERROR at setup of test_enum_value_sets[durable_approval_retention_class-expected9] _
+_ ERROR at setup of test_enum_value_sets[durable_approval_scope_key-expected10] _
+_ ERROR at setup of test_enum_value_sets[durable_approval_source_status-expected11] _
+__ ERROR at setup of test_enum_value_sets[durable_approval_state-expected12] ___
+_ ERROR at setup of test_enum_value_sets[durable_approval_storage_class-expected13] _
+_ ERROR at setup of test_enum_value_sets[durable_approval_validation_status-expected14] _
+_______________ ERROR at setup of test_enum_types_live_in_public _______________
+_______ ERROR at setup of test_exact_route_abab_cycles_survive_ddl_storm _______
+_ ERROR at setup of test_exact_route_without_fix_reproduces_invalid_cached_statement _
+__________ ERROR at setup of test_engine_aba_cycles_survive_ddl_storm __________
+_ ERROR at setup of test_legacy_engine_without_fix_reproduces_invalid_cached_statement _
+__________ ERROR at setup of test_no_cross_tenant_leak_across_cycles ___________
+______ ERROR at setup of test_login_returns_exact_six_sorted_permissions _______
+_____ ERROR at setup of test_foreign_role_and_user_permissions_do_not_leak _____
+_________ ERROR at setup of test_soft_deleted_permission_not_returned __________
+__________ ERROR at setup of test_no_permission_disclosure_in_errors ___________
+_ ERROR at setup of test_route_settlement_failure_rolls_back_payment_order_balance_and_ledger _
+_ ERROR at setup of TestProductLevelList.test_one_container_per_product_with_nested_units _
+_ ERROR at setup of TestProductLevelList.test_pagination_counts_products_not_units _
+_ ERROR at setup of TestProductLevelList.test_search_by_unit_sku_code_finds_the_product _
+_ ERROR at setup of TestProductLevelDetail.test_detail_by_catalog_product_id_returns_units _
+_ ERROR at setup of TestProductLevelDetail.test_detail_with_sellable_unit_uuid_is_404_not_the_product _
+_ ERROR at setup of TestProductLevelDetail.test_inactive_product_detail_is_product_inactive_404 _
+_ ERROR at setup of TestIsolationAndVisibility.test_inactive_units_hidden_and_unpriced_units_not_orderable _
+__ ERROR at setup of TestIsolationAndVisibility.test_retailer_price_isolation __
+_ ERROR at setup of TestCanonicalProductIdFailClosed.test_canonical_existing_uuid_returns_200 _
+_ ERROR at setup of TestCanonicalProductIdFailClosed.test_canonical_nonexistent_uuid_returns_clean_404 _
+_ ERROR at setup of TestCanonicalProductIdFailClosed.test_noncanonical_forms_of_real_existing_uuid_still_404 _
+_ ERROR at setup of TestCanonicalProductIdFailClosed.test_handler_reachable_malformed_ids_are_exact_product_not_found _
+_ ERROR at setup of TestCanonicalProductIdFailClosed.test_router_rejected_probes_never_reach_get_product _
+_ ERROR at teardown of test_setup_credential_endpoint_rejects_query_string_tokens _
+E   [SQL: CREATE UNIQUE INDEX ux_r5_bindings_retailer_id_id ON public.wholesaler_retailer_bindings (retailer_id, id)]
+E   [SQL: CREATE UNIQUE INDEX ux_r5_bindings_retailer_id_id ON public.wholesaler_retailer_bindings (retailer_id, id)]
+E   AssertionError: status=500 path=/api/v1/exports/00000000-0000-0000-0000-000000000077 body={'success': False, 'error': {'code': 'EXPORT_STATUS_FAILED', 'message': 'Unable to retrieve export status'}, 'timestamp': '2026-09-14T02:50:45.876215+00:00'}
+E   AssertionError: status=500 path=/api/v1/exports/00000000-0000-0000-0000-000000000077 body={'success': False, 'error': {'code': 'EXPORT_STATUS_FAILED', 'message': 'Unable to retrieve export status'}, 'timestamp': '2026-09-14T02:50:47.125104+00:00'}
+XFAIL tests/test_phase5_order_payment.py::TestRouteLevelOrderPaymentMonkeypatch::test_route_overpayment_rejected_with_400 - Overpayment test blocked by mock complexity: structured path calls PaymentRepository() which must return prior_paid=Decimal('3000') but patch chain OrderService->transition->db.execute is too brittle with MagicMock; seam proves 200-level behavior works for legacy+partial+structured paths, overpayment check logic verified in unit tests
+XFAIL tests/test_request_validation.py::TestRequestValidation::test_user_create_rejects_missing_email - RBAC middleware returns 403 before validation on protected endpoints
+XFAIL tests/test_request_validation.py::TestRequestValidation::test_order_create_rejects_empty_items - RBAC middleware returns 403 before validation on protected endpoints
+XFAIL tests/test_request_validation.py::TestRequestValidation::test_order_item_rejects_invalid_quantity - RBAC middleware returns 403 before validation on protected endpoints
+XFAIL tests/test_request_validation.py::TestRequestValidation::test_validation_error_has_structured_response - Login endpoint returns app-specific error format, not FastAPI default 422
+XFAIL tests/test_request_validation.py::TestQueryParameterValidation::test_list_users_rejects_invalid_page - RBAC middleware returns 403 before validation on protected endpoints
+XFAIL tests/test_request_validation.py::TestQueryParameterValidation::test_list_users_rejects_excessive_size - RBAC middleware returns 403 before validation on protected endpoints
+XFAIL tests/test_route_coverage.py::TestOpenAPIRouteCoverage::test_stub_endpoints_return_501 - Endpoints are implemented (not stubs) and RBAC middleware returns 403 for some
+XFAIL tests/test_route_coverage.py::TestRoutePathParameters::test_user_id_path_parameter_accepted - RBAC middleware returns 403 before reaching endpoint logic
+XFAIL tests/test_route_coverage.py::TestRoutePathParameters::test_order_id_path_parameter_accepted - RBAC middleware returns 403 before reaching endpoint logic
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/orders-Orders] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/skus-Products/SKUs] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/inventory/stocks-Stock] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/payments-Payments] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/pricing/prices-Pricing] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue/home/ubuntu/sku-verify/g1g2-20260914/worktree/backend/core/jobs/local_queue.py:223: RuntimeWarning: coroutine 'Queue.get' was never awaited

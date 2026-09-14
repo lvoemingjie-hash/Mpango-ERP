@@ -1,5 +1,7 @@
 # SKU Delivery R2 — VPS V4 Independent Linux Runtime Verification Report
 
+> ✅ **最新结果(2026-09-14,G1/G2 授权):G1 浏览器 4/4 GREEN(候选树、PG16 运行栈)+ G2 PG16 全量 3284 passed / 169 failed / 371 errors(BC-06 37/37 GREEN;PG16 绑定暴露成片 SQL 兼容性)+ G3 真实重放 001→038 + G5 逐节点 JUnitXML + G7 有界连接观察。详见 G1_G2_RESULTS.md 与 REMAINING_VALIDATION_PLAN.md。**
+
 > ⚠️ **CORRECTION E1 (2026-09-13) — CTO-AUTH-SKU-VPS-V4-R1-EVIDENCE-CORRECTION-E1-2026-09-13**
 > 初版文本存在交付范围/变异聚合/失败归因/独立性方面的已确认错误,更正与剩余缺口见 **CTO_CORRECTION_E1.md** 与 **REMAINING_VALIDATION_PLAN.md**(本分支后继提交)。原文按历史保留,逐项更正以 [E1 CORRECTION] 标注。
 

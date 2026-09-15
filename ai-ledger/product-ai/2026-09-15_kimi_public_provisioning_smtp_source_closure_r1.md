@@ -17,9 +17,10 @@ SHA ledger (exact):
 - R0_CANDIDATE=e88fa8f7d77eaeec61193ffe236fef160bb65608 (delta commit, hooks
   bypassed with `--no-verify` — record preserved, history not rewritten)
 - R0_MANIFEST=4f1f8e04fdaba309cb14ec33a461fc9f1df2ec79 (recorded the R0 SHA)
-- R1_SUCCESSOR=<recorded by the R1 successor commit that introduces this
-  report; exact SHA is stated in the CTO handoff message and equals
-  `git rev-parse HEAD` on the branch above>
+- R1_SUCCESSOR=3961958e04c433c9ca8bd8145f3008bd605dfbe1 (`test(smtp): R1 — layered guard suite,
+  task-DB identity gate, zero-connection proofs`) — the successor commit that
+  introduces this report; recorded by the R1 manifest commit that follows it
+  (repository precedent). No amend, rebase or force; R0 history untouched.
 - Content digests of the R1 test files (sha256, byte-level identity binding):
   - `test_smtp_auth_mode_guard_config.py`
     `cbc326bcd1aea45c120a328d45fdaf5c906d68ff38b637b31a6a2d9ead3bc6da`

@@ -16,6 +16,7 @@ from decimal import Decimal
 from sqlalchemy import select
 
 from models.order import Order, OrderItem, OrderStatus
+from services.order_command_service import OrderCommandService
 from services.order_service import OrderService
 from core.domain.order_state import (
     OrderState,
@@ -104,6 +105,27 @@ def test_partially_paid_self_transition_is_not_globally_valid():
 # Integration Tests: OrderService State Transitions
 # ============================================================================
 
+async def _ensure_sku_stock(db, schema: str):
+    """F1: seed catalog product + SKU + stock; returns (sku_id_hex, sku_code)."""
+    from sqlalchemy import text as _t
+    import uuid as _u
+    prod = (await db.execute(_t(
+        f'INSERT INTO "{schema}".catalog_products (name, is_active, is_deleted) '
+        "VALUES ('S5', true, false) RETURNING id"))).fetchone()
+    code = f"S5-{_u.uuid4().hex[:8]}"
+    row = (await db.execute(_t(
+        f'INSERT INTO "{schema}".skus '
+        "(sku_code, name, unit, is_active, is_deleted, catalog_product_id, package_quantity) "
+        "VALUES (:c, 'S5', 'piece', true, false, :p, 1) RETURNING id"),
+        {"c": code, "p": prod.id})).fetchone()
+    await db.execute(_t(
+        f'INSERT INTO "{schema}".inventory_stocks '
+        "(sku_id, quantity_on_hand, quantity_reserved, is_deleted) "
+        "VALUES (:s, 1000, 0, false)"), {"s": row.id})
+    await db.flush()
+    return str(row.id), code
+
+
 @pytest.fixture
 async def sample_order(async_session):
     """Create a sample order for testing."""
@@ -118,10 +140,15 @@ async def sample_order(async_session):
         notes="Test order"
     )
 
-    # Add an item
+    # Add an item (F1: real SKU so the confirm command can reserve)
+    schema = async_session.info.get("tenant_schema", "t_test")
+    sku_id, _code = await _ensure_sku_stock(async_session, schema)
     item = OrderItem(
+        sellable_unit_id=uuid.UUID(sku_id),
+        identity_status="stable",
+        unit_snapshot="piece",
         product_name="Test Product",
-        sku_code="TEST-001",
+        sku_code=_code,
         quantity=2,
         unit_price=Decimal("50.00"),
         subtotal=Decimal("100.00")
@@ -149,11 +176,8 @@ async def test_happy_path_draft_to_fulfilled(async_session, sample_order):
     order = sample_order
 
     # DRAFT → CONFIRMED
-    order = await service.transition(
-        order_id=order.id,
-        target_state=OrderState.CONFIRMED,
-        reason="Customer confirmed order"
-    )
+    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+
     assert order.status == OrderStatus.CONFIRMED
 
     # CONFIRMED → PAID
@@ -166,11 +190,8 @@ async def test_happy_path_draft_to_fulfilled(async_session, sample_order):
     # Will be PAID once OrderStatus enum is updated
 
     # PAID → FULFILLED
-    order = await service.transition(
-        order_id=order.id,
-        target_state=OrderState.FULFILLED,
-        reason="Order delivered"
-    )
+    order = (await OrderCommandService(async_session).fulfill_order(order.id)).order
+
     # Note: Currently maps to CONFIRMED due to temporary mapping
 
 
@@ -189,11 +210,8 @@ async def test_illegal_transition_draft_to_fulfilled(async_session, sample_order
 
     # Attempt illegal transition
     with pytest.raises(InvalidStateTransitionError) as exc_info:
-        await service.transition(
-            order_id=order.id,
-            target_state=OrderState.FULFILLED,
-            reason="Trying to skip states"
-        )
+        await OrderCommandService(async_session).fulfill_order(order.id)
+
 
     # Verify error details
     assert exc_info.value.from_state == OrderState.DRAFT
@@ -214,7 +232,8 @@ async def test_partially_paid_self_transition_allowed_only_for_payment_context(a
     service = OrderService(async_session)
     order = sample_order
 
-    order = await service.transition(order.id, OrderState.CONFIRMED)
+    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+
     order = await service.transition(order.id, OrderState.PARTIALLY_PAID)
     assert order.status == OrderStatus.PARTIALLY_PAID
 
@@ -260,11 +279,8 @@ async def test_invariant_violation_confirm_zero_total(async_session):
 
     # Attempt to confirm
     with pytest.raises(OrderInvariantViolation) as exc_info:
-        await service.transition(
-            order_id=order.id,
-            target_state=OrderState.CONFIRMED,
-            reason="Trying to confirm zero total"
-        )
+        await OrderCommandService(async_session).confirm_order(order.id)
+
 
     # Verify error message
     assert "zero or negative total" in str(exc_info.value).lower()
@@ -287,18 +303,17 @@ async def test_terminal_state_no_transitions(async_session, sample_order):
     order = sample_order
 
     # Transition to FULFILLED (via CONFIRMED → PAID → FULFILLED)
-    await service.transition(order.id, OrderState.CONFIRMED)
+    await OrderCommandService(async_session).confirm_order(order.id)
+
     await service.transition(order.id, OrderState.PAID)
-    await service.transition(order.id, OrderState.FULFILLED)
+    await OrderCommandService(async_session).fulfill_order(order.id)
+
 
     # Attempt to transition from terminal state
     # State machine check happens before invariant check
     with pytest.raises(InvalidStateTransitionError) as exc_info:
-        await service.transition(
-            order_id=order.id,
-            target_state=OrderState.CANCELLED,
-            reason="Trying to cancel fulfilled order"
-        )
+        await OrderCommandService(async_session).cancel_order(order.id)
+
 
     # Verify error message mentions transition not allowed
     assert "not allowed" in str(exc_info.value).lower()
@@ -337,7 +352,8 @@ async def test_void_vs_cancel_rules(async_session, sample_order):
     # Test 2: VOID from PAID (should fail)
     # State machine doesn't allow PAID → VOIDED, so we get InvalidStateTransitionError
     order2 = sample_order
-    await service.transition(order2.id, OrderState.CONFIRMED)
+    await OrderCommandService(async_session).confirm_order(order2.id)
+
     await service.transition(order2.id, OrderState.PAID)
 
     with pytest.raises(InvalidStateTransitionError) as exc_info:
@@ -349,13 +365,14 @@ async def test_void_vs_cancel_rules(async_session, sample_order):
 
     assert "not allowed" in str(exc_info.value).lower()
 
-    # Test 3: CANCEL from PAID (should succeed)
-    order2 = await service.transition(
-        order_id=order2.id,
-        target_state=OrderState.CANCELLED,
-        reason="Customer requested refund"
-    )
-    assert order2.status == OrderStatus.CANCELLED
+    # Test 3: CANCEL from PAID — R1/F1 frozen decision: fail-closed while
+    # the refund/funds disposition workflow is not implemented.
+    from fastapi import HTTPException as _HttpException
+
+    with pytest.raises(_HttpException) as exc_info:
+        await OrderCommandService(async_session).cancel_order(order2.id)
+    assert exc_info.value.detail["code"] == "REFUND_WORKFLOW_NOT_IMPLEMENTED"
+    await async_session.rollback()
 
 
 @pytest.mark.asyncio
@@ -372,7 +389,8 @@ async def test_partial_payment_flow(async_session, sample_order):
     order = sample_order
 
     # DRAFT → CONFIRMED
-    await service.transition(order.id, OrderState.CONFIRMED)
+    await OrderCommandService(async_session).confirm_order(order.id)
+
 
     # CONFIRMED → PARTIALLY_PAID
     order = await service.transition(
@@ -406,11 +424,8 @@ async def test_concurrent_transition_with_locking(async_session, sample_order):
     order = sample_order
 
     # First transition should succeed
-    order = await service.transition(
-        order_id=order.id,
-        target_state=OrderState.CONFIRMED,
-        reason="First transition"
-    )
+    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+
 
     # Verify state changed
     await async_session.refresh(order)
@@ -430,12 +445,8 @@ async def test_transition_with_updated_by(async_session, sample_order):
     order = sample_order
     user_id = uuid.uuid4()
 
-    order = await service.transition(
-        order_id=order.id,
-        target_state=OrderState.CONFIRMED,
-        reason="User confirmed order",
-        updated_by=user_id
-    )
+    order = (await OrderCommandService(async_session).confirm_order(
+        order.id, updated_by=str(user_id))).order
 
     # Verify updated_by is set
     await async_session.refresh(order)
@@ -453,13 +464,13 @@ async def test_order_not_found(async_session):
     service = OrderService(async_session)
     non_existent_id = uuid.uuid4()
 
-    with pytest.raises(ValueError) as exc_info:
-        await service.transition(
-            order_id=non_existent_id,
-            target_state=OrderState.CONFIRMED
-        )
+    from fastapi import HTTPException as _HttpException
 
-    assert "not found" in str(exc_info.value).lower()
+    with pytest.raises(_HttpException) as exc_info:
+        await OrderCommandService(async_session).confirm_order(non_existent_id)
+
+    assert exc_info.value.detail["code"] == "ORDER_NOT_FOUND"
+    assert "not found" in exc_info.value.detail["message"].lower()
 
 
 @pytest.mark.asyncio
@@ -476,14 +487,12 @@ async def test_cannot_fulfill_unpaid_order(async_session, sample_order):
     order = sample_order
 
     # DRAFT → CONFIRMED
-    await service.transition(order.id, OrderState.CONFIRMED)
+    await OrderCommandService(async_session).confirm_order(order.id)
+
 
     # Attempt CONFIRMED → FULFILLED (should fail - not allowed by state machine)
     with pytest.raises(InvalidStateTransitionError) as exc_info:
-        await service.transition(
-            order_id=order.id,
-            target_state=OrderState.FULFILLED,
-            reason="Trying to fulfill unpaid order"
-        )
+        await OrderCommandService(async_session).fulfill_order(order.id)
+
 
     assert "not allowed" in str(exc_info.value).lower()

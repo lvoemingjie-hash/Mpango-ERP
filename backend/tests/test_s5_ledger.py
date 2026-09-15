@@ -22,6 +22,7 @@ from datetime import datetime, timezone, timedelta
 from models.ledger import LedgerEntry, AccountType
 from models.order import Order, OrderItem, OrderStatus
 from services.ledger_service import LedgerService
+from services.order_command_service import OrderCommandService
 from services.order_service import OrderService
 from core.domain.order_state import OrderState
 from core.exceptions import LedgerIntegrityError
@@ -196,6 +197,27 @@ async def test_get_entries_for_reference(async_session):
 # Integration Tests: Order Lifecycle Accounting
 # ============================================================================
 
+async def _ensure_sku_stock(db, schema: str):
+    """F1: seed catalog product + SKU + stock; returns (sku_id_hex, sku_code)."""
+    from sqlalchemy import text as _t
+    import uuid as _u
+    prod = (await db.execute(_t(
+        f'INSERT INTO "{schema}".catalog_products (name, is_active, is_deleted) '
+        "VALUES ('S5', true, false) RETURNING id"))).fetchone()
+    code = f"S5-{_u.uuid4().hex[:8]}"
+    row = (await db.execute(_t(
+        f'INSERT INTO "{schema}".skus '
+        "(sku_code, name, unit, is_active, is_deleted, catalog_product_id, package_quantity) "
+        "VALUES (:c, 'S5', 'piece', true, false, :p, 1) RETURNING id"),
+        {"c": code, "p": prod.id})).fetchone()
+    await db.execute(_t(
+        f'INSERT INTO "{schema}".inventory_stocks '
+        "(sku_id, quantity_on_hand, quantity_reserved, is_deleted) "
+        "VALUES (:s, 1000, 0, false)"), {"s": row.id})
+    await db.flush()
+    return str(row.id), code
+
+
 @pytest.fixture
 async def sample_order_for_ledger(async_session):
     """Create a sample order for ledger testing."""
@@ -210,10 +232,15 @@ async def sample_order_for_ledger(async_session):
         notes="Test order for ledger"
     )
 
-    # Add an item
+    # Add an item (F1: real SKU so the confirm command can reserve)
+    schema = async_session.info.get("tenant_schema", "t_test")
+    _sku, _code = await _ensure_sku_stock(async_session, schema)
     item = OrderItem(
+        sellable_unit_id=__import__("uuid").UUID(_sku),
+        identity_status="stable",
+        unit_snapshot="piece",
         product_name="Test Product",
-        sku_code="TEST-001",
+        sku_code=_code,
         quantity=2,
         unit_price=Decimal("50.00"),
         subtotal=Decimal("100.00")
@@ -252,11 +279,8 @@ async def test_order_confirmation_creates_ledger_entries(async_session, sample_o
     assert revenue_before == Decimal('0')
 
     # Confirm order
-    order = await order_service.transition(
-        order_id=order.id,
-        target_state=OrderState.CONFIRMED,
-        reason="Customer confirmed order"
-    )
+    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+
 
     # Check balances after confirmation
     receivable_after = await ledger_service.get_balance(AccountType.RECEIVABLE)
@@ -289,10 +313,8 @@ async def test_payment_received_updates_ledger(async_session, sample_order_for_l
     order = sample_order_for_ledger
 
     # Confirm order first
-    order = await order_service.transition(
-        order_id=order.id,
-        target_state=OrderState.CONFIRMED
-    )
+    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+
 
     # Check balances after confirmation
     receivable_after_confirm = await ledger_service.get_balance(AccountType.RECEIVABLE)
@@ -338,10 +360,8 @@ async def test_full_order_lifecycle_accounting(async_session, sample_order_for_l
     order = sample_order_for_ledger
 
     # Step 1: Confirm order
-    order = await order_service.transition(
-        order_id=order.id,
-        target_state=OrderState.CONFIRMED
-    )
+    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+
 
     # Step 2: Mark as paid
     order = await order_service.transition(
@@ -472,10 +492,8 @@ async def test_multiple_orders_accounting(async_session):
         await async_session.refresh(order)
 
         # Confirm order
-        order = await order_service.transition(
-            order_id=order.id,
-            target_state=OrderState.CONFIRMED
-        )
+        order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+
         orders.append(order)
 
     # Check aggregated balances
@@ -529,10 +547,8 @@ async def test_credit_paid_skips_cash_settlement_ledger(async_session, sample_or
     order = sample_order_for_ledger
 
     # Confirm order first → RECEIVABLE +100, REVENUE -100
-    order = await order_service.transition(
-        order_id=order.id,
-        target_state=OrderState.CONFIRMED,
-    )
+    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+
 
     receivable_after_confirm = await ledger_service.get_balance(AccountType.RECEIVABLE)
     cash_after_confirm = await ledger_service.get_balance(AccountType.CASH)
@@ -573,10 +589,8 @@ async def test_default_paid_posts_cash_settlement_ledger(async_session, sample_o
     order = sample_order_for_ledger
 
     # Confirm order
-    order = await order_service.transition(
-        order_id=order.id,
-        target_state=OrderState.CONFIRMED,
-    )
+    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+
 
     # Transition to PAID without payment_method (legacy/default)
     order = await order_service.transition(
@@ -608,10 +622,8 @@ async def test_explicit_cash_paid_posts_cash_settlement(async_session, sample_or
     ledger_service = LedgerService(async_session)
     order = sample_order_for_ledger
 
-    order = await order_service.transition(
-        order_id=order.id,
-        target_state=OrderState.CONFIRMED,
-    )
+    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+
 
     order = await order_service.transition(
         order_id=order.id,

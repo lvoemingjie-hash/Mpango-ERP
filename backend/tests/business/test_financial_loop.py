@@ -22,10 +22,32 @@ from core.domain.order_state import OrderState
 from models.ledger import AccountType
 from models.order import Order, OrderStatus
 from services.ledger_service import LedgerService
+from services.order_command_service import OrderCommandService
 from services.order_service import OrderService
 
 
 @pytest.mark.asyncio
+async def _ensure_sku_stock(db, schema: str):
+    """F1: seed catalog product + SKU + stock; returns (sku_id_hex, sku_code)."""
+    from sqlalchemy import text as _t
+    import uuid as _u
+    prod = (await db.execute(_t(
+        f'INSERT INTO "{schema}".catalog_products (name, is_active, is_deleted) '
+        "VALUES ('S5', true, false) RETURNING id"))).fetchone()
+    code = f"S5-{_u.uuid4().hex[:8]}"
+    row = (await db.execute(_t(
+        f'INSERT INTO "{schema}".skus '
+        "(sku_code, name, unit, is_active, is_deleted, catalog_product_id, package_quantity) "
+        "VALUES (:c, 'S5', 'piece', true, false, :p, 1) RETURNING id"),
+        {"c": code, "p": prod.id})).fetchone()
+    await db.execute(_t(
+        f'INSERT INTO "{schema}".inventory_stocks '
+        "(sku_id, quantity_on_hand, quantity_reserved, is_deleted) "
+        "VALUES (:s, 1000, 0, false)"), {"s": row.id})
+    await db.flush()
+    return str(row.id), code
+
+
 async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
     """Full financial loop: Order $100 → Confirm → Pay → Fulfill."""
 
@@ -40,6 +62,33 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
         total_amount=Decimal("100.00"),
         notes="QA financial loop test",
     )
+    # F1: the confirm command reserves real inventory
+    _schema = async_session.info.get("tenant_schema", "t_test")
+    _sku, _code = await _ensure_sku_stock(async_session, _schema)
+    from models.order import OrderItem as _OI
+    order.items = [_OI(
+        sellable_unit_id=__import__("uuid").UUID(_sku),
+        identity_status="stable",
+        unit_snapshot="piece",
+        product_name="Financial Loop Item",
+        sku_code=_code,
+        quantity=1,
+        unit_price=order.total_amount,
+        subtotal=order.total_amount,
+    )]
+    _schema = async_session.info.get("tenant_schema", "t_test")
+    _sku, _code = await _ensure_sku_stock(async_session, _schema)
+    from models.order import OrderItem as _OI
+    order.items = [_OI(
+        sellable_unit_id=__import__("uuid").UUID(_sku),
+        identity_status="stable",
+        unit_snapshot="piece",
+        product_name="Financial Loop Item",
+        sku_code=_code,
+        quantity=1,
+        unit_price=order.total_amount,
+        subtotal=order.total_amount,
+    )]
     async_session.add(order)
     await async_session.commit()
 
@@ -47,7 +96,8 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
     ledger_svc = LedgerService(async_session)
 
     # ── Step 1: DRAFT → CONFIRMED ─────────────────────────────────
-    order = await order_svc.transition(order.id, OrderState.CONFIRMED)
+    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+
     await async_session.commit()
 
     assert order.status == OrderStatus.CONFIRMED
@@ -83,7 +133,8 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
     )
 
     # ── Step 3: PAID → FULFILLED ──────────────────────────────────
-    order = await order_svc.transition(order.id, OrderState.FULFILLED)
+    order = (await OrderCommandService(async_session).fulfill_order(order.id)).order
+
     await async_session.commit()
 
     assert order.status == OrderStatus.FULFILLED
@@ -116,11 +167,25 @@ async def test_ledger_entries_are_immutable(async_session):
         total_amount=Decimal("50.00"),
         notes="Immutability test",
     )
+    _schema = async_session.info.get("tenant_schema", "t_test")
+    _sku, _code = await _ensure_sku_stock(async_session, _schema)
+    from models.order import OrderItem as _OI
+    order.items = [_OI(
+        sellable_unit_id=__import__("uuid").UUID(_sku),
+        identity_status="stable",
+        unit_snapshot="piece",
+        product_name="Financial Loop Item",
+        sku_code=_code,
+        quantity=1,
+        unit_price=order.total_amount,
+        subtotal=order.total_amount,
+    )]
     async_session.add(order)
     await async_session.commit()
 
     order_svc = OrderService(async_session)
-    await order_svc.transition(order.id, OrderState.CONFIRMED)
+    await OrderCommandService(async_session).confirm_order(order.id)
+
     await async_session.commit()
 
     ledger_svc = LedgerService(async_session)
@@ -168,15 +233,30 @@ async def test_inventory_deduction_gap_documented(async_session):
         total_amount=Decimal("100.00"),
         notes="Inventory gap test",
     )
+    _schema = async_session.info.get("tenant_schema", "t_test")
+    _sku, _code = await _ensure_sku_stock(async_session, _schema)
+    from models.order import OrderItem as _OI
+    order.items = [_OI(
+        sellable_unit_id=__import__("uuid").UUID(_sku),
+        identity_status="stable",
+        unit_snapshot="piece",
+        product_name="Financial Loop Item",
+        sku_code=_code,
+        quantity=1,
+        unit_price=order.total_amount,
+        subtotal=order.total_amount,
+    )]
     async_session.add(order)
     await async_session.commit()
 
     order_svc = OrderService(async_session)
-    await order_svc.transition(order.id, OrderState.CONFIRMED)
+    await OrderCommandService(async_session).confirm_order(order.id)
+
     await async_session.commit()
     await order_svc.transition(order.id, OrderState.PAID)
     await async_session.commit()
-    order = await order_svc.transition(order.id, OrderState.FULFILLED)
+    order = (await OrderCommandService(async_session).fulfill_order(order.id)).order
+
     await async_session.commit()
 
     assert order.status == OrderStatus.FULFILLED

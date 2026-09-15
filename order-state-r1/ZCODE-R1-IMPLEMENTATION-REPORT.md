@@ -234,3 +234,96 @@ self-check file with hashes). D1 branch, evidence anchor and all prior
 logs untouched.
 
 AUTHOR_ORDER_STATE_R1_IMPLEMENTATION_CANDIDATE_READY_FOR_INDEPENDENT_REVIEW_ONLY
+
+---
+
+# F1 ADDENDUM (append-only erratum) — MPANGO_ORDER_STATE_AUTHORITY_R1_IMPLEMENTATION_F1
+
+Parent: b1135646 (REQUIRED_PARENT). This round is LINEAR on the same
+branch; no amend/rebase/squash, not pushed, independent review NOT started.
+Machine-generated exact changed paths vs FROZEN_PRODUCT_BASE 1ee75d9f are
+in `scratch/.../evidence/2026-09-15T2015Z-f1-exact-paths-vs-base.txt`
+(git diff --name-status, 28 entries). Historical sections above are
+retained verbatim; where this addendum conflicts, the addendum governs.
+
+## CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED (STOP clause outcome)
+
+There is NO per-order credit-hold authority persistence field. The only
+credit surface is the aggregate
+`public.wholesaler_retailer_bindings.outstanding_balance`. Per the STOP
+clause this round added NO migration and does NOT infer per-order
+ownership from the aggregate. Consequences, each captured as a NAMED,
+reproduced KNOWN RED (kept RED — never masked):
+
+1. `test_cancel_after_confirm_releases_credit_hold_KNOWN_RED` — confirm
+   adds the order total to the binding (+60.00); cancelling that confirmed
+   order leaves the hold in place (after_cancel == held). The aggregate
+   cannot be decremented without guessing which order's hold it was.
+2. `test_confirm_then_credit_payment_does_not_double_count_KNOWN_RED` —
+   confirm (hold +80.00) followed by a full CREDIT payment adds +80.00
+   again (movement 160.00 for one 80.00 exposure): hold and credit
+   exposure are unlinked.
+3. `test_receivables_summary_counts_exposure_once_KNOWN_RED` — the
+   receivables summary reads the binding aggregate, so it reports the
+   doubled exposure (200.00 for a single 100.00 credit order).
+
+CTO decision required: introduce per-order credit-hold persistence
+(schema + release/convert semantics) or redefine confirmation credit
+occupancy. Until then these three faces stay RED as evidence.
+
+## Fixes delivered this round (all mutation-proven)
+
+- Explicit dispatch-or-reject: generic `apply_transition` refuses the five
+  command-owned targets; new explicit `fulfill_order`/`return_order`
+  commands and `apply_payment_transition` (sole PAID/PARTIALLY_PAID
+  writer, reachable only via CanonicalPaymentService through the adapter);
+  `OrderService.transition` dispatches accordingly. Seed call site
+  rewired; paid seeding goes through the canonical service only.
+- Pre-lock discipline: fulfill/return lock EVERY distinct stock row in one
+  global sorted-sku_id order BEFORE any inventory write (`_prelock_stocks`
+  + `test_prelock.py` spy oracle; mutation M9 removes it and goes RED).
+- Client cancel maps InvalidStateTransitionError/OrderInvariantViolation
+  to 409 CANCEL_NOT_ALLOWED; repeated and paid cancels return the stable
+  409 (face-5 test; mutation M10 removes the mapping and goes RED);
+  cross-tenant neutral 404 preserved.
+- Face 6: two orders × two SKUs × reverse item order with fulfill‖return
+  under an arrival barrier — both succeed, per-SKU on-hand 97/98 exactly
+  as the net ledger implies, zero orphan reservations.
+
+## Mutation runner rebuilt (strict contract)
+
+pristine GREEN gate over every oracle+control BEFORE any mutation;
+anchor count must equal exactly 1; mutated source must ast.parse AND
+compile; a mutation counts ONLY as named-node + expected-marker + rc==1
+semantic RED; rc=4/collection/setup errors and timeouts are VOID
+(teardown errors trailing a real assertion RED do not void it);
+byte+mode restore with per-path `git status --porcelain` clean proof.
+M1 valid syntax; M5 anchored in the REAL HTTP confirm path
+(`OrderCommandService.confirm_order`). Mutations M1–M7 (prior faces,
+re-anchored to the current code) plus NEW M8 generic-bypass, M9
+no-prelock, M10 client-409-mapping-removed: **10/10 PROVEN**
+(`evidence/2026-09-15T1945Z-f1-mutations-run4.txt`).
+
+## Governance
+
+`DEBT-ORDER-STATE-R1-TEST-PATHS` REMOVED (the workaround registration is
+gone; no waiver anywhere). Real semantic inventory node
+`ORDER-STATE-R1-001` added: route_api layer, owner codex-l, status NOT_RUN
+(honest — author-executed, independent rerun pending), real source anchors
+covering the product surface and all ten suite paths + the new test files
+and the mutation runner, mutation mapping MUT-ORDER-STATE-R1-M1-M10.
+Structural gate: **PASS** (16 nodes, 3 pre-existing debts, none opened or
+waived by this task).
+
+## Verification chain (order enforced per directive #8)
+
+focused → mutations → governance all reached their required state BEFORE
+the full run; the backend full suite then ran EXACTLY ONCE with the task
+stack and `PW1R3_TEST_REDIS_URL=redis://127.0.0.1:17773/15` set — result
+recorded in `evidence/2026-09-15T2010Z-f1-backend-full-final.txt` (see the
+final summary appended below after completion).
+
+## Focused result (author-executed)
+
+`tests/order_state_r1/`: 32 tests — 29 passed + the 3 named credit KNOWN
+REDS, rc=1 as expected (`evidence/2026-09-15T2000Z-f1-focused-final.txt`).

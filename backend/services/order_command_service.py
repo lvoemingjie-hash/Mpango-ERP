@@ -138,6 +138,7 @@ class OrderCommandService:
         reservations = await self._reserve_inventory(order)
 
         self._assign_status(order, OrderState.CONFIRMED, updated_by)
+        await self.db.flush()
 
         credit_reserved = await self._reserve_credit(order)
 
@@ -182,6 +183,7 @@ class OrderCommandService:
         released = await self._release_reservations(order)
 
         self._assign_status(order, OrderState.CANCELLED, updated_by)
+        await self.db.flush()
 
         return OrderCommandResult(
             order=order,
@@ -380,8 +382,10 @@ class OrderCommandService:
             and payment_method in {"cash", "transfer"}
         )
         allowed = (
-            (current in (OrderState.CONFIRMED, OrderState.PARTIALLY_PAID)
+            (current == OrderState.CONFIRMED
              and target_state in (OrderState.PAID, OrderState.PARTIALLY_PAID))
+            or (current == OrderState.PARTIALLY_PAID
+                and target_state == OrderState.PAID)
             or is_additional_partial_payment
         )
         if not allowed:

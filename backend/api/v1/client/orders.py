@@ -48,8 +48,8 @@ from crud.order import (
     create_order as crud_create_order,
     get_order_for_retailer,
     get_orders_for_retailer,
-    cancel_order as crud_cancel_order,
 )
+from services.order_command_service import OrderCommandService
 from repositories.payment_declaration_repository import PaymentDeclarationRepository
 from schemas.client import (
     ClientCreateOrderRequest,
@@ -430,29 +430,13 @@ async def cancel_order(
             detail={"code": "ORDER_NOT_FOUND", "message": "Order not found"},
         )
 
-    # Validate cancellation is allowed
-    from crud.order import InvalidStateTransitionError
-    release_reservation = order.status.value == "confirmed"
     try:
-        order = await crud_cancel_order(
-            db=db,
-            order=order,
-            updated_by=client.user_id,
-        )
-        if release_reservation:
-            from services.inventory_service import InventoryService
+        from uuid import UUID as _UUID
 
-            await db.refresh(order, ["items"])
-            await InventoryService().release_on_cancel(db, order=order)
-            await db.flush()
-    except InvalidStateTransitionError as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "CANCEL_NOT_ALLOWED",
-                "message": str(e),
-            },
+        result = await OrderCommandService(db).cancel_order(
+            _UUID(order.id), updated_by=client.user_id
         )
+        order = result.order
     except HTTPException:
         await db.rollback()
         raise

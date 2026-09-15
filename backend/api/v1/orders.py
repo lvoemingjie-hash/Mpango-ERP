@@ -18,6 +18,7 @@ import uuid
 from uuid import UUID
 from decimal import Decimal
 from fastapi import APIRouter, Depends, Header, HTTPException, status, Query
+from fastapi import Request
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
@@ -31,19 +32,20 @@ from core.domain.order_state import (
     InvalidStateTransitionError as DomainInvalidStateTransitionError,
     OrderInvariantViolation,
 )
+from core.domain.order_state import (
+    InvalidStateTransitionError,  # noqa: F401 (pay-path compatibility)
+)
 from models.order import Order as OrderModel
 from crud.order import (
     get_order_by_id,
     get_order_for_wholesaler,
     get_orders_paginated,
     create_order as crud_create_order,
-    confirm_order as crud_confirm_order,
-    pay_order as crud_pay_order,
-    fulfill_order as crud_fulfill_order,
-    cancel_order as crud_cancel_order,
-    return_order as crud_return_order,
     batch_retailer_names,
-    InvalidStateTransitionError
+)
+from services.order_command_service import (
+    OrderCommandService,
+    REFUND_WORKFLOW_NOT_IMPLEMENTED,
 )
 from schemas.order import (
     OrderCreateRequest,
@@ -612,6 +614,7 @@ async def print_order(
 
 @router.post("/{order_id}/confirm", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def confirm_order(
+    request: Request,
     order_id: str,
     token: TokenPayload = Depends(RequirePermission("orders:update")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session)
@@ -625,7 +628,6 @@ async def confirm_order(
         OrderActionResponse with updated status
     """
     order = await get_order_by_id(db, order_id)
-
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -636,20 +638,18 @@ async def confirm_order(
         )
 
     try:
-        order = await crud_confirm_order(db, order, updated_by=token.user_id)
+        from uuid import UUID as _UUID
 
-        from services.inventory_service import InventoryService
-
-        await db.refresh(order, ["items"])
-        await InventoryService().reserve_on_confirm(db, order=order)
-        await db.flush()
-    except InvalidStateTransitionError as e:
+        result = await OrderCommandService(db).confirm_order(
+            _UUID(order_id), updated_by=token.user_id
+        )
+        order = result.order
+        request.state.osd1_notification_intents = result.notification_intents
+    except (InvalidStateTransitionError, DomainInvalidStateTransitionError,
+            OrderInvariantViolation) as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "INVALID_STATE_TRANSITION",
-                "message": str(e)
-            }
+            detail={"code": "INVALID_STATE_TRANSITION", "message": str(e)}
         )
     except HTTPException:
         await db.rollback()
@@ -917,6 +917,7 @@ async def pay_order(
 
 @router.post("/{order_id}/fulfill", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def fulfill_order(
+    request: Request,
     order_id: str,
     token: TokenPayload = Depends(RequirePermission("orders:update")),
     db: AsyncSession = Depends(get_tenant_db_session)
@@ -946,10 +947,7 @@ async def fulfill_order(
         from services.order_service import OrderService
         from core.domain.order_state import OrderState
 
-        # Expire the preflight object so OrderService.transition() reloads the
-        # locked row from the database instead of reusing stale identity-map state.
         order_uuid = order.id
-        db.expire(order)
 
         order_service = OrderService(db)
         order = await order_service.transition(
@@ -957,6 +955,9 @@ async def fulfill_order(
             target_state=OrderState.FULFILLED,
             reason="Order fulfilled",
             updated_by=token.user_id
+        )
+        request.state.osd1_notification_intents = (
+            order_service.last_result.notification_intents
         )
 
         from services.inventory_service import InventoryService
@@ -1011,6 +1012,7 @@ async def fulfill_order(
 
 @router.post("/{order_id}/cancel", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def cancel_order(
+    request: Request,
     order_id: str,
     token: TokenPayload = Depends(RequirePermission("orders:update")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session)
@@ -1024,7 +1026,6 @@ async def cancel_order(
         OrderActionResponse with updated status
     """
     order = await get_order_by_id(db, order_id)
-
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1034,25 +1035,22 @@ async def cancel_order(
             }
         )
 
-    release_reservation = order.status.value == "confirmed"
     try:
-        order = await crud_cancel_order(db, order, updated_by=token.user_id)
-        if release_reservation:
-            from services.inventory_service import InventoryService
+        from uuid import UUID as _UUID
 
-            await db.refresh(order, ["items"])
-            await InventoryService().release_on_cancel(db, order=order)
-            await db.flush()
-    except InvalidStateTransitionError as e:
+        result = await OrderCommandService(db).cancel_order(
+            _UUID(order_id), updated_by=token.user_id
+        )
+        order = result.order
+    except (InvalidStateTransitionError, DomainInvalidStateTransitionError,
+            OrderInvariantViolation) as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "INVALID_STATE_TRANSITION",
-                "message": str(e)
-            }
+            detail={"code": "INVALID_STATE_TRANSITION", "message": str(e)}
         )
-    except HTTPException:
-        await db.rollback()
+    except HTTPException as exc:
+        if (exc.detail or {}).get("code") == REFUND_WORKFLOW_NOT_IMPLEMENTED:
+            await db.rollback()
         raise
     except Exception:
         await db.rollback()
@@ -1071,6 +1069,7 @@ async def cancel_order(
 
 @router.post("/{order_id}/return", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def return_order(
+    request: Request,
     order_id: str,
     token: TokenPayload = Depends(RequirePermission("orders:update")),
     db: AsyncSession = Depends(get_tenant_db_session)
@@ -1111,6 +1110,9 @@ async def return_order(
             target_state=OrderState.RETURNED,
             reason="Full return requested",
             updated_by=token.user_id
+        )
+        request.state.osd1_notification_intents = (
+            order_service.last_result.notification_intents
         )
 
         await db.refresh(order, ["items"])

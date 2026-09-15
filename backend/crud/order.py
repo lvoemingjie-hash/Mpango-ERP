@@ -2,12 +2,12 @@
 CRUD operations for Order model.
 Operates on tenant schema.
 
-Implements order state machine:
-- Draft → Confirmed
-- Confirmed → Paid
-- Paid → Fulfilled (with inventory deduction at API layer)
-- Cancel only allowed in Draft or Confirmed
-- Return only allowed in Fulfilled
+R1 (CTO-AUTH-MPANGO-ORDER-STATE-AUTHORITY-R1-IMPLEMENTATION): this module
+is a NON-WRITING persistence/read helper. All order state transitions live
+in services/order_command_service.py (the single production status
+writer); the former state-writing action helpers and the parallel CRUD
+state matrix were removed. create_order (initial DRAFT insert) and the
+read helpers remain here.
 """
 from typing import Optional, List, Tuple, Dict
 from uuid import UUID
@@ -18,65 +18,13 @@ from sqlalchemy.orm import selectinload
 
 from models.order import Order, OrderItem, OrderStatus
 
-
-class InvalidStateTransitionError(Exception):
-    """Raised when an invalid state transition is attempted."""
-    def __init__(self, current_status: str, action: str, allowed_statuses: List[str]):
-        self.current_status = current_status
-        self.action = action
-        self.allowed_statuses = allowed_statuses
-        super().__init__(
-            f"Cannot {action} order in '{current_status}' status. "
-            f"Allowed statuses: {', '.join(allowed_statuses)}"
-        )
-
-
-# State machine rules
-STATE_TRANSITIONS = {
-    "confirm": {
-        "allowed_from": [OrderStatus.DRAFT],
-        "target": OrderStatus.CONFIRMED
-    },
-    "pay": {
-        "allowed_from": [OrderStatus.CONFIRMED],
-        "target": OrderStatus.PAID
-    },
-    "fulfill": {
-        "allowed_from": [OrderStatus.PAID],
-        "target": OrderStatus.FULFILLED
-    },
-    "cancel": {
-        "allowed_from": [OrderStatus.DRAFT, OrderStatus.CONFIRMED],
-        "target": OrderStatus.CANCELLED
-    },
-    "return": {
-        "allowed_from": [OrderStatus.FULFILLED],
-        "target": OrderStatus.RETURNED
-    }
-}
-
-
-def validate_state_transition(order: Order, action: str) -> None:
-    """
-    Validate that a state transition is allowed.
-
-    Args:
-        order: Order to validate
-        action: Action to perform (confirm, ship, cancel)
-
-    Raises:
-        InvalidStateTransitionError: If transition is not allowed
-    """
-    if action not in STATE_TRANSITIONS:
-        raise ValueError(f"Unknown action: {action}")
-
-    rules = STATE_TRANSITIONS[action]
-    if order.status not in rules["allowed_from"]:
-        raise InvalidStateTransitionError(
-            current_status=order.status.value,
-            action=action,
-            allowed_statuses=[s.value for s in rules["allowed_from"]]
-        )
+# Compatibility re-export: historical callers import the transition
+# exception from this module. The exception type itself lives in the
+# domain module and is raised by the order command service.
+from core.domain.order_state import (  # noqa: F401
+    InvalidStateTransitionError,
+    OrderInvariantViolation,
+)
 
 
 async def batch_retailer_names(
@@ -381,188 +329,6 @@ async def create_order(
             pass
 
     db.add(order)
-    await db.flush()
-    await db.refresh(order, ["items"])
-
-    return order
-
-
-async def confirm_order(
-    db: AsyncSession,
-    order: Order,
-    updated_by: Optional[str] = None
-) -> Order:
-    """
-    Confirm an order (draft → confirmed).
-
-    Args:
-        db: Database session (tenant schema)
-        order: Order to confirm
-        updated_by: UUID of user confirming
-
-    Returns:
-        Updated Order
-
-    Raises:
-        InvalidStateTransitionError: If order is not in draft status
-    """
-    validate_state_transition(order, "confirm")
-
-    order.status = OrderStatus.CONFIRMED
-
-    if updated_by:
-        try:
-            order.updated_by = UUID(updated_by)
-        except ValueError:
-            pass
-
-    await db.flush()
-    await db.refresh(order, ["items"])
-
-    return order
-
-
-async def pay_order(
-    db: AsyncSession,
-    order: Order,
-    updated_by: Optional[str] = None
-) -> Order:
-    """
-    Mark an order as paid (confirmed → paid).
-
-    Args:
-        db: Database session (tenant schema)
-        order: Order to mark as paid
-        updated_by: UUID of user marking payment
-
-    Returns:
-        Updated Order
-
-    Raises:
-        InvalidStateTransitionError: If order is not in confirmed status
-    """
-    validate_state_transition(order, "pay")
-
-    order.status = OrderStatus.PAID
-
-    if updated_by:
-        try:
-            order.updated_by = UUID(updated_by)
-        except ValueError:
-            pass
-
-    await db.flush()
-    await db.refresh(order, ["items"])
-
-    return order
-
-
-async def fulfill_order(
-    db: AsyncSession,
-    order: Order,
-    updated_by: Optional[str] = None
-) -> Order:
-    """
-    Fulfill an order (paid → fulfilled).
-
-    Note: Inventory deduction is handled at the API layer via OrderService,
-    not in this CRUD function.
-
-    Args:
-        db: Database session (tenant schema)
-        order: Order to fulfill
-        updated_by: UUID of user fulfilling
-
-    Returns:
-        Updated Order
-
-    Raises:
-        InvalidStateTransitionError: If order is not in paid status
-    """
-    validate_state_transition(order, "fulfill")
-
-    order.status = OrderStatus.FULFILLED
-
-    if updated_by:
-        try:
-            order.updated_by = UUID(updated_by)
-        except ValueError:
-            pass
-
-    await db.flush()
-    await db.refresh(order, ["items"])
-
-    return order
-
-
-async def cancel_order(
-    db: AsyncSession,
-    order: Order,
-    updated_by: Optional[str] = None
-) -> Order:
-    """
-    Cancel an order (draft/confirmed → cancelled).
-
-    Args:
-        db: Database session (tenant schema)
-        order: Order to cancel
-        updated_by: UUID of user cancelling
-
-    Returns:
-        Updated Order
-
-    Raises:
-        InvalidStateTransitionError: If order is not in draft or confirmed status
-    """
-    validate_state_transition(order, "cancel")
-
-    order.status = OrderStatus.CANCELLED
-
-    if updated_by:
-        try:
-            order.updated_by = UUID(updated_by)
-        except ValueError:
-            pass
-
-    await db.flush()
-    await db.refresh(order, ["items"])
-
-    return order
-
-
-async def return_order(
-    db: AsyncSession,
-    order: Order,
-    updated_by: Optional[str] = None
-) -> Order:
-    """
-    Process a full return on a fulfilled order (fulfilled → returned).
-
-    This function handles status change only. Ledger entries and inventory
-    restocking are handled by OrderService.transition() when used via the
-    API layer.
-
-    Args:
-        db: Database session (tenant schema)
-        order: Order to return
-        updated_by: UUID of user processing the return
-
-    Returns:
-        Updated Order
-
-    Raises:
-        InvalidStateTransitionError: If order is not in fulfilled status
-    """
-    validate_state_transition(order, "return")
-
-    order.status = OrderStatus.RETURNED
-
-    if updated_by:
-        try:
-            order.updated_by = UUID(updated_by)
-        except ValueError:
-            pass
-
     await db.flush()
     await db.refresh(order, ["items"])
 

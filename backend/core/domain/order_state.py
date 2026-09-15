@@ -46,9 +46,17 @@ class OrderState(str, PyEnum):
 # S5-1: State Transition Matrix
 # Defines all legal state transitions
 # Any transition NOT in this matrix is STRICTLY FORBIDDEN
+#
+# R1 (CTO-AUTH-MPANGO-ORDER-STATE-AUTHORITY-R1-IMPLEMENTATION): DRAFT gained
+# the CANCELLED edge — ordinary draft cancellation returns CANCELLED
+# (frozen business decision). VOIDED remains an internal voiding state: no
+# route writes it. PAID/PARTIALLY_PAID -> CANCELLED remains in the matrix
+# text but is rejected fail-closed by the command service while the
+# refund/funds disposition workflow does not exist.
 STATE_TRANSITION_MATRIX: Dict[OrderState, Set[OrderState]] = {
     OrderState.DRAFT: {
         OrderState.CONFIRMED,
+        OrderState.CANCELLED,
         OrderState.VOIDED,
     },
     OrderState.CONFIRMED: {

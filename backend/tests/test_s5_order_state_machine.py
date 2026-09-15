@@ -61,7 +61,10 @@ def test_get_valid_transitions():
     draft_transitions = get_valid_transitions(OrderState.DRAFT)
     assert OrderState.CONFIRMED in draft_transitions
     assert OrderState.VOIDED in draft_transitions
-    assert len(draft_transitions) == 2
+    # R1 frozen decision: ordinary draft cancellation returns CANCELLED,
+    # so the domain matrix now carries the DRAFT -> CANCELLED edge.
+    assert OrderState.CANCELLED in draft_transitions
+    assert len(draft_transitions) == 3
 
     confirmed_transitions = get_valid_transitions(OrderState.CONFIRMED)
     assert OrderState.PAID in confirmed_transitions

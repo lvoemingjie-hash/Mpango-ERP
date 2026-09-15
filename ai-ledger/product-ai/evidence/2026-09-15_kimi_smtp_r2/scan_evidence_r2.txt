@@ -1,0 +1,40 @@
+# R2 scan evidence (generated 2026-09-15)
+
+## detect-secrets pre-commit hook (baseline .secrets.baseline)
+
+$ python -m detect_secrets.pre_commit_hook --baseline .secrets.baseline <R2 files>
+warning: in the working copy of 'backend/tests/test_smtp_auth_mode_guard_config.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/tests/test_smtp_loopback_noauth_contract.py', LF will be replaced by CRLF the next time Git touches it
+exit=0
+
+## mypy (production source unchanged by R2)
+
+$ python -m mypy core/config.py services/email_delivery.py
+services\email_delivery.py:378: error: Incompatible types in assignment (expression has type "type[SMTP]", variable has type "type[SMTP_SSL]")  [assignment]
+services\email_delivery.py:380: error: Argument 4 has incompatible type "**dict[str, SSLContext]"; expected "str | None"  [arg-type]
+services\email_delivery.py:380: error: Argument 4 has incompatible type "**dict[str, SSLContext]"; expected "tuple[Any, ...] | str | Buffer | None"  [arg-type]
+Found 3 errors in 1 file (checked 2 source files)
+
+## forbidden-pattern scans
+
+$ grep -n 'LIKE' tests/test_smtp_loopback_noauth_contract.py   # must be docstring-only (no prefix deletion)
+29:``LIKE``), and only tenant schemas recorded on those registrations are
+465:    """Delete exactly the rows recorded by this run (never a prefix LIKE)."""
+
+$ grep -n 'DATABASE_URL' tests/test_smtp_loopback_noauth_contract.py  # no fallback to DATABASE_URL
+11:  ``KIMI_SMTP_TASK_DATABASE_URL`` (loopback host, ``kimi_smtp_`` database
+12:  name) -- no fallback to ``DATABASE_URL``, defaults, or any other name;
+78:TASK_DATABASE_ENV = "KIMI_SMTP_TASK_DATABASE_URL"
+135:            "database URL; this suite refuses to fall back to DATABASE_URL, "
+586:        "DATABASE_URL": _active_test_database_url(),
+625:        "DATABASE_URL": _active_test_database_url(),
+
+$ grep -nE 'CREATE ROLE|ALTER ROLE|DROP ROLE|CREATE EXTENSION|CREATE DATABASE|CREATE TABLE|CREATE SCHEMA' tests/test_smtp_loopback_noauth_contract.py
+104:# ZERO cluster-level or database-level DDL (no CREATE/ALTER/DROP ROLE, no
+105:# CREATE/DROP EXTENSION, no CREATE/DROP DATABASE, no CREATE TABLE). It only
+
+## pure suite database-free proof
+
+$ TEST_DATABASE_URL=postgresql://127.0.0.1:1/unreachable python -m pytest tests/test_smtp_auth_mode_guard_config.py -q
+
+============================= 34 passed in 0.41s ==============================

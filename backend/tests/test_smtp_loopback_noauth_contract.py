@@ -1,7 +1,7 @@
 """Database-backed public provisioning SMTP contract tests.
 
-Authorization: CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-V1-2026-09-15 and
-successor round CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-R1-2026-09-15.
+Authorization: CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-V1-2026-09-15,
+successor rounds R1 and R2 (CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-R1).
 
 Companion module ``test_smtp_auth_mode_guard_config.py`` holds the pure
 config/guard tests and requires no database. THIS module is the only one that
@@ -10,9 +10,19 @@ touches a database, and it enforces, before its first write:
 - the task database URL must be supplied explicitly through
   ``KIMI_SMTP_TASK_DATABASE_URL`` (loopback host, ``kimi_smtp_`` database
   name) -- no fallback to ``DATABASE_URL``, defaults, or any other name;
+- the task cluster must be declared explicitly through
+  ``KIMI_SMTP_TASK_CLUSTER_ID`` and must equal the live server's immutable
+  ``pg_control_system().system_identifier`` -- a matching database *name*
+  never authorizes a cluster;
 - the ACTUAL ``AsyncSessionLocal``/engine identity is proven with
-  ``SELECT current_database()`` and a URL comparison against the task URL
-  before any row or schema write.
+  ``SELECT current_database()``, the live server address/port and a URL
+  comparison against the task URL before any row write.
+
+R2: this suite performs **zero DDL**. It never creates or alters roles,
+extensions, databases, tables or schemas; the task database is prepared by
+the environment owner (migrated to head ``038_catalog_identity_vertical_slice``,
+which is what creates ``reporting_role``). A read-only preparation check
+refuses to run against an unprepared database instead of creating objects.
 
 Cleanup is targeted: only rows belonging to the exact emails created by this
 module's tests are removed (exact-match ``= ANY(:emails)``, never a prefix
@@ -55,13 +65,6 @@ from api.app import app
 from api.dependencies import get_db_session
 from core.config import Settings
 from database.session import AsyncSessionLocal, async_engine
-from models.tenant_onboarding import (
-    EmailVerificationToken,
-    OnboardingStatusToken,
-    OwnerCredentialSetupToken,
-    TenantRegistration,
-)
-from models.wholesaler import Wholesaler
 from services import email_delivery, onboarding_service
 from services.email_delivery import clear_dev_email_deliveries, get_dev_email_deliveries
 
@@ -73,8 +76,18 @@ VERIFY_EMAIL_URL = "/api/v1/auth/verify-email"
 SETUP_CREDENTIAL_URL = "/api/v1/auth/onboarding/setup-credential"
 
 TASK_DATABASE_ENV = "KIMI_SMTP_TASK_DATABASE_URL"
+TASK_CLUSTER_ENV = "KIMI_SMTP_TASK_CLUSTER_ID"
 TASK_DATABASE_PREFIX = "kimi_smtp_"
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+EXPECTED_MIGRATION_HEAD = "038_catalog_identity_vertical_slice"
+REQUIRED_TABLES = (
+    "tenant_registrations",
+    "email_verification_tokens",
+    "onboarding_status_tokens",
+    "owner_credential_setup_tokens",
+    "wholesalers",
+)
+REQUIRED_ROLE = "reporting_role"  # created by migration 011_s6_p_reporting_role
 
 EMAIL_PREFIX = "kimi_smtp_"
 VALID_PASSWORD = "ValidSignupCred123!"  # pragma: allowlist secret
@@ -85,12 +98,32 @@ LOOPBACK_NOAUTH_PUBLIC_ORIGIN = "https://kimi-smtp-links.invalid"
 
 
 # ---------------------------------------------------------------------------
-# Task-database identity guard (must run before ANY write)
+# Cluster + task-database identity guard (must run before ANY write)
+#
+# A matching database *name* does not authorize a cluster: this suite performs
+# ZERO cluster-level or database-level DDL (no CREATE/ALTER/DROP ROLE, no
+# CREATE/DROP EXTENSION, no CREATE/DROP DATABASE, no CREATE TABLE). It only
+# reads the cluster identity and refuses to touch anything unless the live
+# server's immutable cluster identifier (pg_control_system().system_identifier)
+# matches the task-declared value, on top of loopback host, exact database
+# name, and engine/session identity agreement.
 # ---------------------------------------------------------------------------
 
 
 def _normalized(url: str) -> str:
     return url.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+
+def _task_cluster_id() -> str:
+    """Declared cluster identity (pg_control_system().system_identifier)."""
+    raw = (os.environ.get(TASK_CLUSTER_ENV) or "").strip()
+    if not raw:
+        raise RuntimeError(
+            f"{TASK_CLUSTER_ENV} must be set explicitly to the task-owned "
+            "cluster's system_identifier; this suite refuses to infer cluster "
+            "ownership from a database name and will not run without it."
+        )
+    return raw
 
 
 def _task_database_url() -> str:
@@ -131,9 +164,18 @@ async def _assert_engine_is_task_database() -> dict[str, Any]:
     )
     assert engine_url.port == (task_url.port or 5432)
 
+    declared_cluster = _task_cluster_id()
     async with async_engine.connect() as connection:
         connected_database = await connection.scalar(text("SELECT current_database()"))
         connected_user = await connection.scalar(text("SELECT current_user"))
+        server_addr = await connection.scalar(
+            text("SELECT coalesce(inet_server_addr()::text, 'unix-socket')")
+        )
+        server_port = await connection.scalar(text("SELECT inet_server_port()"))
+        server_version = await connection.scalar(text("SELECT version()"))
+        cluster_identifier = await connection.scalar(
+            text("SELECT system_identifier::text FROM pg_control_system()")
+        )
 
     async with AsyncSessionLocal() as session:
         session_database = await session.scalar(text("SELECT current_database()"))
@@ -142,19 +184,94 @@ async def _assert_engine_is_task_database() -> dict[str, Any]:
         f"server reports {connected_database!r}, engine claims {engine_database!r}"
     )
     assert session_database == engine_database
+    # Cluster ownership: a matching database NAME never authorizes a cluster.
+    assert cluster_identifier == declared_cluster, (
+        f"cluster mismatch: live system_identifier {cluster_identifier!r} != "
+        f"declared {TASK_CLUSTER_ENV} {declared_cluster!r}; refusing before any write"
+    )
+    assert server_port == engine_url.port, (
+        f"live server port {server_port!r} != engine port {engine_url.port!r}"
+    )
     return {
         "database": connected_database,
         "engine_database": engine_database,
         "engine_host": engine_host,
         "engine_port": engine_url.port,
         "user": connected_user,
+        "cluster_identifier": cluster_identifier,
+        "declared_cluster_identifier": declared_cluster,
+        "server_addr": server_addr,
+        "server_port": server_port,
+        "server_version": (server_version or "").split(",")[0],
+    }
+
+
+async def _assert_task_database_prepared() -> dict[str, Any]:
+    """Read-only preparation check: the suite performs ZERO DDL itself.
+
+    The task database must already be migrated to the expected head, with the
+    tables and the ``reporting_role`` that migration 011 creates. If anything
+    is missing the suite refuses to run instead of creating cluster-level or
+    database-level objects.
+    """
+    async with async_engine.connect() as connection:
+        has_version_table = bool(
+            await connection.scalar(
+                text("SELECT to_regclass('public.alembic_version') IS NOT NULL")
+            )
+        )
+        head = (
+            await connection.scalar(text("SELECT version_num FROM public.alembic_version"))
+            if has_version_table
+            else None
+        )
+        missing_tables = [
+            table
+            for table in REQUIRED_TABLES
+            if not await connection.scalar(
+                text("SELECT to_regclass(:qualified) IS NOT NULL"),
+                {"qualified": f"public.{table}"},
+            )
+        ]
+        role_exists = bool(
+            await connection.scalar(
+                text("SELECT 1 FROM pg_roles WHERE rolname = :role"), {"role": REQUIRED_ROLE}
+            )
+        )
+    if not has_version_table:
+        raise RuntimeError(
+            "task database has no public.alembic_version; it is not prepared. "
+            "This suite performs no DDL - migrate the database to "
+            f"{EXPECTED_MIGRATION_HEAD!r} first."
+        )
+    if head != EXPECTED_MIGRATION_HEAD:
+        raise RuntimeError(
+            f"task database is not migrated to {EXPECTED_MIGRATION_HEAD!r} (found "
+            f"{head!r}); this suite performs no DDL - prepare the database first."
+        )
+    if missing_tables:
+        raise RuntimeError(
+            f"task database is missing tables {missing_tables!r}; this suite "
+            "performs no DDL - prepare the database first."
+        )
+    if not role_exists:
+        raise RuntimeError(
+            f"task database is missing role {REQUIRED_ROLE!r} (created by "
+            "migration 011_s6_p_reporting_role); this suite performs no DDL - "
+            "prepare the database first."
+        )
+    return {
+        "migration_head": head,
+        "checked_tables": list(REQUIRED_TABLES),
+        "checked_role": REQUIRED_ROLE,
     }
 
 
 @pytest.fixture(scope="module", autouse=True)
 async def task_database_identity_guard():
-    """Fail closed unless the live engine/session is the task database."""
+    """Fail closed unless the live cluster + engine/session are the task's own."""
     identity = await _assert_engine_is_task_database()
+    identity["preparation"] = await _assert_task_database_prepared()
     yield identity
 
 
@@ -406,9 +523,13 @@ async def _cleanup_recorded_rows() -> dict[str, int]:
 
 
 @pytest.fixture(autouse=True)
-async def _kimi_smtp_schema_and_rows(task_database_identity_guard):
-    """Per-test setup/teardown; runs only after the identity guard passed."""
-    await _ensure_onboarding_tables()
+async def _kimi_smtp_rows(task_database_identity_guard):
+    """Per-test setup/teardown; runs only after the identity + prep guard passed.
+
+    No DDL: the task database is prepared (migrated to head) by the environment
+    owner, and this fixture only clears in-process sinks and the per-run
+    cleanup registry.
+    """
     clear_dev_email_deliveries()
     _CREATED_EMAILS.clear()
     try:
@@ -428,24 +549,6 @@ def _allow_rate_limiter():
     limiter.check_rate_limit = AsyncMock(return_value=(True, 1, 100))
     with patch("api.middleware.rate_limiting.get_rate_limiter", return_value=limiter):
         yield limiter
-
-
-async def _ensure_onboarding_tables() -> None:
-    async with async_engine.begin() as connection:
-        await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
-        await connection.execute(
-            text(
-                "DO $$ BEGIN "
-                "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reporting_role') "
-                "THEN CREATE ROLE reporting_role NOLOGIN; END IF; "
-                "END $$"
-            )
-        )
-        await connection.run_sync(Wholesaler.__table__.create, checkfirst=True)
-        await connection.run_sync(TenantRegistration.__table__.create, checkfirst=True)
-        await connection.run_sync(EmailVerificationToken.__table__.create, checkfirst=True)
-        await connection.run_sync(OnboardingStatusToken.__table__.create, checkfirst=True)
-        await connection.run_sync(OwnerCredentialSetupToken.__table__.create, checkfirst=True)
 
 
 async def _client() -> AsyncClient:

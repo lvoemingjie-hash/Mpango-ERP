@@ -1,0 +1,67 @@
+{
+  "g6_database_removed": true,
+  "negatives": [
+    {
+      "detail": "    raise RuntimeError( | E   RuntimeError: KIMI_SMTP_TASK_DATABASE_URL must be set explicitly to the task-owned database URL; this suite refuses to fall back to DATABASE_URL, test defaults, or any other database.",
+      "exit_code": 1,
+      "expected_marker": "must be set explicitly",
+      "id": "G1_task_db_url_missing",
+      "marker_present": true,
+      "refused": true
+    },
+    {
+      "detail": "    raise RuntimeError( | E   RuntimeError: KIMI_SMTP_TASK_DATABASE_URL must name the task-owned database (prefix 'kimi_smtp_'), got 'mpango_test_s2'.",
+      "exit_code": 1,
+      "expected_marker": "task-owned database",
+      "id": "G2_database_name_not_task_owned",
+      "marker_present": true,
+      "refused": true
+    },
+    {
+      "detail": "E   AssertionError: engine database 'kimi_smtp_src_20260915' != task database 'kimi_smtp_other_20260915' | E   AssertionError: engine database 'kimi_smtp_src_20260915' != task database 'kimi_smtp_other_20260915'",
+      "exit_code": 1,
+      "expected_marker": "!= task database",
+      "id": "G3_engine_vs_declared_mismatch",
+      "marker_present": true,
+      "refused": true
+    },
+    {
+      "detail": "E   AssertionError: cluster mismatch: live system_identifier '7606570715255205923' != declared KIMI_SMTP_TASK_CLUSTER_ID '0'; refusing before any write | E   AssertionError: cluster mismatch: live system_identifier '7606570715255205923' != declared KIMI_SMTP_TASK_CLUSTER_ID '0'; refusing before any write",
+      "exit_code": 1,
+      "expected_marker": "cluster mismatch",
+      "id": "G4_declared_cluster_wrong",
+      "marker_present": true,
+      "refused": true
+    },
+    {
+      "detail": "    raise RuntimeError( | E   RuntimeError: KIMI_SMTP_TASK_CLUSTER_ID must be set explicitly to the task-owned cluster's system_identifier; this suite refuses to infer cluster ownership from a database name and will not run without it.",
+      "exit_code": 1,
+      "expected_marker": "must be set explicitly",
+      "id": "G5_declared_cluster_missing",
+      "marker_present": true,
+      "refused": true
+    },
+    {
+      "database": "kimi_smtp_unprepared_20260915",
+      "detail": "    raise RuntimeError( | E   RuntimeError: task database has no public.alembic_version; it is not prepared. This suite performs no DDL - migrate the database to '038_catalog_identity_vertical_slice' first.",
+      "exit_code": 1,
+      "id": "G6_task_named_unprepared_database",
+      "marker_present": true,
+      "objects_after": {
+        "public_tables": 0,
+        "t_test_schema_present": false
+      },
+      "objects_before": {
+        "public_tables": 0,
+        "t_test_schema_present": false
+      },
+      "refused": true,
+      "zero_ddl": true
+    }
+  ],
+  "verdict": {
+    "all_markers_present": true,
+    "all_refused": true,
+    "g6_zero_ddl": true
+  }
+}

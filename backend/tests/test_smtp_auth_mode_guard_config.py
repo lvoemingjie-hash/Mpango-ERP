@@ -1,7 +1,7 @@
 """Pure SMTP auth-mode / loopback-guard tests (no database dependency).
 
 Authorization: CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-R1-2026-09-15
-(successor round of CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-V1-2026-09-15).
+(successor rounds of CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-V1-2026-09-15).
 
 This module is deliberately database-free: it imports only
 ``core.config`` and ``services.email_delivery``, requests no database
@@ -10,7 +10,7 @@ even when ``TEST_DATABASE_URL`` points at an unreachable database. The
 database-backed public lifecycle tests live in
 ``test_smtp_loopback_noauth_contract.py``.
 
-Covered required paths (R1 items 1-3):
+Covered required paths (R1 items 1-3 and R2 item 1):
 
 1. ``SMTP_AUTH_MODE`` default is authenticated ``login``; ``none`` is rejected
    for every non-loopback ``SMTP_HOST`` and accepted only for literal loopback
@@ -19,13 +19,18 @@ Covered required paths (R1 items 1-3):
    ``EmailDeliveryNotConfiguredError``) *before any transport work*;
 3. zero-connection assertions: neither ``smtplib.SMTP`` nor
    ``smtplib.SMTP_SSL`` is ever constructed on any guard-rejection path
-   (including the implicit-TLS variant), proven with tripwire spies.
+   (including the implicit-TLS variant), proven with tripwire spies;
+4. the database suite's source contains no cluster-level or database-level
+   DDL: it cannot create/alter/drop roles, extensions or databases, and it
+   creates no tables or schemas (its own DDL surface is exactly the targeted
+   ``DROP SCHEMA`` for schemas the suite itself provisioned during a test).
 """
 
 from __future__ import annotations
 
 import os
 import uuid
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -34,6 +39,32 @@ from pydantic import ValidationError
 
 from core.config import Settings, is_loopback_smtp_host
 from services import email_delivery
+
+DATABASE_SUITE_SOURCE = Path(__file__).with_name("test_smtp_loopback_noauth_contract.py")
+
+# Cluster-level and database-level DDL this suite must never perform. Role and
+# extension creation belongs to migrations (011_s6_p_reporting_role) and to the
+# environment owner, not to tests.
+FORBIDDEN_DDL_KEYWORDS = (
+    "CREATE ROLE",
+    "ALTER ROLE",
+    "DROP ROLE",
+    "CREATE USER",
+    "ALTER USER",
+    "DROP USER",
+    "CREATE EXTENSION",
+    "ALTER EXTENSION",
+    "DROP EXTENSION",
+    "CREATE DATABASE",
+    "ALTER DATABASE",
+    "DROP DATABASE",
+    "CREATE TABLESPACE",
+    "DROP TABLESPACE",
+    "ALTER SYSTEM",
+    "CREATE TABLE",
+    "CREATE SCHEMA",
+    "CREATE INDEX",
+)
 
 
 # Kept in sync with the database-backed module; these are task-local
@@ -274,3 +305,26 @@ async def test_send_layer_unknown_mode_guard_blocks_before_transport(monkeypatch
             body="body",
         )
     assert _TransportTripwire.constructed == []
+
+
+# ---------------------------------------------------------------------------
+# 4. Zero-DDL invariant of the database suite (static, deterministic)
+# ---------------------------------------------------------------------------
+
+
+async def test_database_suite_performs_no_cluster_or_database_level_ddl():
+    """The database suite must not create roles/extensions/databases or tables.
+
+    Comments are stripped so the invariant can be documented in prose; the
+    targeted ``DROP SCHEMA`` cleanup for schemas the suite itself provisioned
+    is deliberately not in the forbidden set (it is database-scoped,
+    target-enumerated, and asserted zero in teardown).
+    """
+    source = DATABASE_SUITE_SOURCE.read_text(encoding="utf-8")
+    executable_lines = [line.split("#", 1)[0] for line in source.splitlines()]
+    executable = "\n".join(executable_lines).upper()
+    offenders = [keyword for keyword in FORBIDDEN_DDL_KEYWORDS if keyword in executable]
+    assert offenders == [], (
+        f"database suite contains forbidden DDL keywords {offenders}; "
+        "cluster/database-level objects belong to migrations and the environment owner"
+    )

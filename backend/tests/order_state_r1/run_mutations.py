@@ -237,7 +237,7 @@ MUTATIONS = [
         """COMMAND_OWNED_TARGETS = frozenset(
     {OrderState.CONFIRMED, OrderState.CANCELLED, OrderState.PAID,
      OrderState.FULFILLED, OrderState.RETURNED})  # MUTATION M11""",
-        "tests/order_state_r1/test_f1_faces.py::test_generic_transition_refuses_command_owned_targets",
+        "tests/order_state_r1/test_f1_faces.py::test_generic_refuses_partially_paid_on_confirmed",
         "DID NOT RAISE",
         "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",
     ),
@@ -274,13 +274,8 @@ MUTATIONS = [
     m(
         "M13_CROSS_COMMAND_LOCK_ORDER",
         "services/order_command_service.py",
-        """        stocks = await self._prelock_stocks(items)
-
-        released = await self._release_reservations(order, stocks)""",
-        """        stocks = await self._prelock_stocks(
-            list(reversed(items)))  # MUTATION M13: inverse lock order
-
-        released = await self._release_reservations(order, stocks)""",
+        """        for sku_id in sorted({str(i.sellable_unit_id) for i in items}):""",
+        """        for sku_id in sorted({str(i.sellable_unit_id) for i in items}, reverse=True):  # MUTATION M13""",
         "tests/order_state_r1/test_prelock.py::test_cancel_prelocks_all_stocks_in_global_order",
         "cancel prelock wrong/incomplete",
         "tests/order_state_r1/test_baseline.py::test_cancel_from_confirmed_releases_and_keeps_no_ledger",

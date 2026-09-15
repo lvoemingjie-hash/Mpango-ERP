@@ -16,10 +16,12 @@ SHA ledger (exact):
 
 - BASE=1ee75d9faaa00cdcadfe9f46d1e0ac960efc632e
   (`test(sku): isolate BC06 schemas and owned sessions`)
-- CANDIDATE_SHA=PENDING_MANIFEST_COMMIT (recorded by the candidate-manifest
-  commit that follows the candidate delta commit; the candidate delta is the
-  single source/test/env/report commit on the branch above; no amend, rebase
-  or force is used at any point)
+- CANDIDATE_SHA=e88fa8f7d77eaeec61193ffe236fef160bb65608
+  (`fix(smtp): explicit loopback-only no-auth transport policy + public
+  provisioning contract closure (Kimi V1)`) — the single source/test/env/report
+  delta commit on the branch above; no amend, rebase or force is used at any
+  point. This SHA is recorded by the candidate-manifest commit that follows
+  the delta commit (repository precedent: content commit + manifest commit).
 - PRIOR_EVIDENCE=Kilo Revision B commit `4e4e07aaf68571c24ac02de9a7a86e9f86e22934`
   — **evidence-only, not present in this repository, not cited as proof** of
   the public provisioning lifecycle or the runtime-mode requirement. A fresh

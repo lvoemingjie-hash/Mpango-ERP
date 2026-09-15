@@ -149,7 +149,7 @@ MUTATIONS = [
             )""",
         """        # MUTATION M6: paid-cancellation fail-closed gate removed""",
         "tests/order_state_r1/test_baseline.py::test_paid_cancel_fail_closed_with_workflow_code",
-        "REFUND_WORKFLOW_NOT_IMPLEMENTED|assert 409",
+        "REFUND_WORKFLOW_NOT_IMPLEMENTED|HTTPStatus.CONFLICT|assert 409",
         "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",
     ),
     m(
@@ -252,16 +252,19 @@ def run_node(node: str, timeout: float = 600.0) -> tuple[int, str]:
 def classify(rc: int, out: str, node: str, marker: str) -> str:
     if rc == 0:
         return "NOT_RED"
-    if rc == 4 or rc == 5 or "no tests ran" in out:
+    failed = re.findall(r"^FAILED (\S+)", out, re.M)
+    # A genuine semantic RED is decided FIRST: exactly the named node must
+    # fail with the expected assertion marker. Teardown errors trailing a
+    # real assertion failure do not void it.
+    if failed == [node] and re.search(marker, out):
+        return "SEMANTIC_RED"
+    if rc == 4 or rc == 5 or "no tests ran" in out or not failed:
         return "VOID_COLLECTION"
     if "ERROR at " in out or "ERROR collecting" in out:
         return "VOID_SETUP"
-    failed = re.findall(r"^FAILED (\S+)", out, re.M)
     if failed != [node]:
         return f"WRONG_NODE:{failed}"
-    if not re.search(marker, out):
-        return "MARKER_MISSING"
-    return "SEMANTIC_RED"
+    return "MARKER_MISSING"
 
 
 def main() -> int:

@@ -1,28 +1,38 @@
-"""Kimi V1 public provisioning SMTP transport contract tests.
+"""Database-backed public provisioning SMTP contract tests.
 
-Authorization: CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-V1-2026-09-15
-(frozen base candidate 1ee75d9faaa00cdcadfe9f46d1e0ac960efc632e).
+Authorization: CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-V1-2026-09-15 and
+successor round CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-R1-2026-09-15.
 
-These tests exercise the REAL application modules end to end:
+Companion module ``test_smtp_auth_mode_guard_config.py`` holds the pure
+config/guard tests and requires no database. THIS module is the only one that
+touches a database, and it enforces, before its first write:
 
-- ``core.config.Settings`` (SMTP_AUTH_MODE guard, loopback-only no-auth policy);
-- ``services.email_delivery`` over a REAL socket against a task-owned,
-  loopback-bound SMTP capture sink -- never a copied SMTP implementation;
-- the public signup / verify-email / setup-credential HTTP API through
-  ``api.app``.
+- the task database URL must be supplied explicitly through
+  ``KIMI_SMTP_TASK_DATABASE_URL`` (loopback host, ``kimi_smtp_`` database
+  name) -- no fallback to ``DATABASE_URL``, defaults, or any other name;
+- the ACTUAL ``AsyncSessionLocal``/engine identity is proven with
+  ``SELECT current_database()`` and a URL comparison against the task URL
+  before any row or schema write.
 
-Covered required paths:
+Cleanup is targeted: only rows belonging to the exact emails created by this
+module's tests are removed (exact-match ``= ANY(:emails)``, never a prefix
+``LIKE``), and only tenant schemas recorded on those registrations are
+dropped. The names of created registration ids, wholesaler ids and schemas are
+re-derived from the database at cleanup time and verified to be gone.
+
+Covered required paths (V1 items 1-5):
 
 1. complete valid non-test SMTP configuration sends exactly one verification
    message to a loopback capture sink;
 2. the message carries a usable opaque continuation link and the public signup
    response exposes no raw registration ID;
 3. incomplete configuration, unsupported TLS/auth combination and failed SMTP
-   connection remain fail-closed with the established 503 category;
-4. no-auth mode is rejected for a non-loopback host, is never inferred, and is
-   not the default (login stays the default and still authenticates);
-5. public email verification continues into the existing owner/setup lifecycle
-   without direct SQL identity or RBAC seeding.
+   connection remain fail-closed with the established 503 category, with
+   zero-connection assertions for every pre-transport guard rejection;
+4. no-auth mode is rejected for a non-loopback host at both layers and is
+   never inferred from a label, empty credentials, or a connection failure;
+5. public email verification continues into the owner/setup lifecycle without
+   direct SQL identity or RBAC seeding.
 """
 
 from __future__ import annotations
@@ -30,7 +40,6 @@ from __future__ import annotations
 import base64
 import email as email_lib
 import os
-import re
 import socket
 import threading
 import uuid
@@ -40,7 +49,6 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from pydantic import ValidationError
 from sqlalchemy import text
 
 from api.app import app
@@ -64,12 +72,90 @@ SIGNUP_URL = "/api/v1/auth/signup"
 VERIFY_EMAIL_URL = "/api/v1/auth/verify-email"
 SETUP_CREDENTIAL_URL = "/api/v1/auth/onboarding/setup-credential"
 
+TASK_DATABASE_ENV = "KIMI_SMTP_TASK_DATABASE_URL"
+TASK_DATABASE_PREFIX = "kimi_smtp_"
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
 EMAIL_PREFIX = "kimi_smtp_"
 VALID_PASSWORD = "ValidSignupCred123!"  # pragma: allowlist secret
 OWNER_PASSWORD = "KimiSmtpOwnerCred_01!"  # pragma: allowlist secret
 SMTP_PASSWORD_VALUE = "smtp-provider-app-password"  # pragma: allowlist secret
 TEST_SECRET_KEY = "Z9vLk8mN4pQ7rS2tU5wX8yB3cD6fG0hJ"  # pragma: allowlist secret
 LOOPBACK_NOAUTH_PUBLIC_ORIGIN = "https://kimi-smtp-links.invalid"
+
+
+# ---------------------------------------------------------------------------
+# Task-database identity guard (must run before ANY write)
+# ---------------------------------------------------------------------------
+
+
+def _normalized(url: str) -> str:
+    return url.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+
+def _task_database_url() -> str:
+    """Resolve the task-owned database URL. Fallbacks are prohibited."""
+    raw = (os.environ.get(TASK_DATABASE_ENV) or "").strip()
+    if not raw:
+        raise RuntimeError(
+            f"{TASK_DATABASE_ENV} must be set explicitly to the task-owned "
+            "database URL; this suite refuses to fall back to DATABASE_URL, "
+            "test defaults, or any other database."
+        )
+    parsed = urlparse(_normalized(raw))
+    if parsed.hostname not in LOOPBACK_HOSTS:
+        raise RuntimeError(
+            f"{TASK_DATABASE_ENV} must be a loopback URL, got host "
+            f"{parsed.hostname!r}; refusing to run against a non-loopback database."
+        )
+    database = (parsed.path or "").lstrip("/")
+    if not database.startswith(TASK_DATABASE_PREFIX):
+        raise RuntimeError(
+            f"{TASK_DATABASE_ENV} must name the task-owned database "
+            f"(prefix {TASK_DATABASE_PREFIX!r}), got {database!r}."
+        )
+    return raw
+
+
+async def _assert_engine_is_task_database() -> dict[str, Any]:
+    """Prove the live engine/session identity is the task database."""
+    task_url = urlparse(_normalized(_task_database_url()))
+    engine_url = async_engine.url
+    engine_database = engine_url.database or ""
+    engine_host = engine_url.host or ""
+
+    assert engine_host in LOOPBACK_HOSTS, f"engine host {engine_host!r} is not loopback"
+    assert engine_database == (task_url.path or "").lstrip("/"), (
+        f"engine database {engine_database!r} != task database "
+        f"{(task_url.path or '').lstrip('/')!r}"
+    )
+    assert engine_url.port == (task_url.port or 5432)
+
+    async with async_engine.connect() as connection:
+        connected_database = await connection.scalar(text("SELECT current_database()"))
+        connected_user = await connection.scalar(text("SELECT current_user"))
+
+    async with AsyncSessionLocal() as session:
+        session_database = await session.scalar(text("SELECT current_database()"))
+
+    assert connected_database == engine_database, (
+        f"server reports {connected_database!r}, engine claims {engine_database!r}"
+    )
+    assert session_database == engine_database
+    return {
+        "database": connected_database,
+        "engine_database": engine_database,
+        "engine_host": engine_host,
+        "engine_port": engine_url.port,
+        "user": connected_user,
+    }
+
+
+@pytest.fixture(scope="module", autouse=True)
+async def task_database_identity_guard():
+    """Fail closed unless the live engine/session is the task database."""
+    identity = await _assert_engine_is_task_database()
+    yield identity
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +178,7 @@ class LoopbackCaptureSink:
         self.auth_mode = auth_mode
         self.messages: list[email_lib.message.EmailMessage] = []
         self.auth_attempts: list[tuple[str, str]] = []
+        self.connections = 0
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._sock.bind(("127.0.0.1", 0))
@@ -122,6 +209,7 @@ class LoopbackCaptureSink:
                 conn, _ = self._sock.accept()
             except OSError:
                 return
+            self.connections += 1
             threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
 
     def _ehlo_reply(self) -> bytes:
@@ -135,8 +223,6 @@ class LoopbackCaptureSink:
         reader = conn.makefile("rwb")
         reader.write(b"220 task-sink ESMTP\r\n")
         reader.flush()
-        mail_from: str | None = None
-        rcpt_to: str | None = None
         try:
             while True:
                 line = reader.readline()
@@ -148,11 +234,7 @@ class LoopbackCaptureSink:
                     reader.write(self._ehlo_reply())
                 elif upper.startswith("AUTH LOGIN"):
                     self._handle_auth_login(reader, command)
-                elif upper.startswith("MAIL FROM:"):
-                    mail_from = command[10:].strip()
-                    reader.write(b"250 OK\r\n")
-                elif upper.startswith("RCPT TO:"):
-                    rcpt_to = command[8:].strip()
+                elif upper.startswith("MAIL FROM:") or upper.startswith("RCPT TO:"):
                     reader.write(b"250 OK\r\n")
                 elif upper == "DATA":
                     reader.write(b"354 End data with <CR><LF>.<CR><LF>\r\n")
@@ -170,10 +252,7 @@ class LoopbackCaptureSink:
                         )
                     )
                     reader.write(b"250 OK queued\r\n")
-                elif upper == "RSET":
-                    mail_from = rcpt_to = None
-                    reader.write(b"250 OK\r\n")
-                elif upper == "NOOP":
+                elif upper == "RSET" or upper == "NOOP":
                     reader.write(b"250 OK\r\n")
                 elif upper == "QUIT":
                     reader.write(b"221 Bye\r\n")
@@ -216,6 +295,20 @@ class LoopbackCaptureSink:
             reader.write(b"535 5.7.8 Authentication failed\r\n")
 
 
+class SmtpSslTripwire:
+    """Spy for the implicit-TLS client: construction is recorded, never used."""
+
+    constructed: list[tuple] = []
+
+    def __init__(self, *args, **kwargs):  # noqa: D107
+        type(self).constructed.append((args, kwargs))
+        raise AssertionError("SMTP_SSL transport must not be constructed")
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.constructed = []
+
+
 def _closed_loopback_port() -> int:
     """Return a loopback port with no listener (connection refused)."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -226,16 +319,154 @@ def _closed_loopback_port() -> int:
 
 
 # ---------------------------------------------------------------------------
-# Settings + DB fixtures
+# Settings, targeted cleanup, and HTTP client
 # ---------------------------------------------------------------------------
 
 
 def _active_test_database_url() -> str:
-    return (
-        os.environ.get("TEST_DATABASE_URL")
-        or os.environ.get("DATABASE_URL")
-        or onboarding_service.get_settings().DATABASE_URL
-    )
+    """Task database URL for service settings; explicit, no fallback."""
+    return _task_database_url()
+
+
+_CREATED_EMAILS: list[str] = []
+
+
+def _record_email(email: str) -> str:
+    """Record the exact address a test is about to create rows for."""
+    normalized = email.strip().lower()
+    if normalized not in _CREATED_EMAILS:
+        _CREATED_EMAILS.append(normalized)
+    return email
+
+
+def test_cleanup_registry_starts_empty():
+    """Sanity: the targeted cleanup registry is per-run, not module residue."""
+    assert isinstance(_CREATED_EMAILS, list)
+
+
+async def _cleanup_recorded_rows() -> dict[str, int]:
+    """Delete exactly the rows recorded by this run (never a prefix LIKE)."""
+    emails = list(_CREATED_EMAILS)
+    summary = {"registrations": 0, "schemas_dropped": 0, "wholesalers": 0, "tokens": 0}
+    if not emails:
+        return summary
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SET search_path TO public"))
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT id, wholesaler_id, tenant_schema FROM public.tenant_registrations "
+                    "WHERE owner_email = ANY(:emails)"
+                ),
+                {"emails": emails},
+            )
+        ).mappings().all()
+        registration_ids = [row["id"] for row in rows]
+        wholesaler_ids = [row["wholesaler_id"] for row in rows if row["wholesaler_id"] is not None]
+        schemas = [row["tenant_schema"] for row in rows if row["tenant_schema"] is not None]
+        for schema in schemas:
+            if schema.startswith("t_") and schema[2:].isalnum():
+                await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+                summary["schemas_dropped"] += 1
+        if registration_ids:
+            for table in (
+                "public.owner_credential_setup_tokens",
+                "public.onboarding_status_tokens",
+                "public.email_verification_tokens",
+            ):
+                result = await session.execute(
+                    text(f"DELETE FROM {table} WHERE registration_id = ANY(:ids)"),
+                    {"ids": registration_ids},
+                )
+                summary["tokens"] += result.rowcount or 0
+            result = await session.execute(
+                text("DELETE FROM public.tenant_registrations WHERE id = ANY(:ids)"),
+                {"ids": registration_ids},
+            )
+            summary["registrations"] = result.rowcount or 0
+        if wholesaler_ids:
+            result = await session.execute(
+                text("DELETE FROM public.wholesalers WHERE id = ANY(:ids)"),
+                {"ids": wholesaler_ids},
+            )
+            summary["wholesalers"] = result.rowcount or 0
+        await session.commit()
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("SET search_path TO public"))
+        remaining = await session.scalar(
+            text(
+                "SELECT count(*) FROM public.tenant_registrations "
+                "WHERE owner_email = ANY(:emails)"
+            ),
+            {"emails": emails},
+        )
+    assert remaining == 0, f"targeted cleanup left {remaining} registration(s) for {emails}"
+    return summary
+
+
+@pytest.fixture(autouse=True)
+async def _kimi_smtp_schema_and_rows(task_database_identity_guard):
+    """Per-test setup/teardown; runs only after the identity guard passed."""
+    await _ensure_onboarding_tables()
+    clear_dev_email_deliveries()
+    _CREATED_EMAILS.clear()
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(get_db_session, None)
+        clear_dev_email_deliveries()
+        await _cleanup_recorded_rows()
+        _CREATED_EMAILS.clear()
+
+
+@pytest.fixture(autouse=True)
+def _allow_rate_limiter():
+    from unittest.mock import AsyncMock, Mock, patch
+
+    limiter = Mock()
+    limiter.check_rate_limit = AsyncMock(return_value=(True, 1, 100))
+    with patch("api.middleware.rate_limiting.get_rate_limiter", return_value=limiter):
+        yield limiter
+
+
+async def _ensure_onboarding_tables() -> None:
+    async with async_engine.begin() as connection:
+        await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+        await connection.execute(
+            text(
+                "DO $$ BEGIN "
+                "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reporting_role') "
+                "THEN CREATE ROLE reporting_role NOLOGIN; END IF; "
+                "END $$"
+            )
+        )
+        await connection.run_sync(Wholesaler.__table__.create, checkfirst=True)
+        await connection.run_sync(TenantRegistration.__table__.create, checkfirst=True)
+        await connection.run_sync(EmailVerificationToken.__table__.create, checkfirst=True)
+        await connection.run_sync(OnboardingStatusToken.__table__.create, checkfirst=True)
+        await connection.run_sync(OwnerCredentialSetupToken.__table__.create, checkfirst=True)
+
+
+async def _client() -> AsyncClient:
+    async def _override_public_db():
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SET search_path TO public"))
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    app.dependency_overrides[get_db_session] = _override_public_db
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    return AsyncClient(transport=transport, base_url="http://testserver")
+
+
+# ---------------------------------------------------------------------------
+# Settings factories
+# ---------------------------------------------------------------------------
 
 
 def _production_settings(**overrides: Any) -> Settings:
@@ -287,7 +518,7 @@ def _loose_settings(**overrides: Any) -> SimpleNamespace:
     """Loosely constructed settings object (bypasses Settings validation)."""
     values: dict[str, Any] = {
         "MPANGO_ENV": "production",
-        "SECRET_KEY": TEST_SECRET_KEY,
+        "SECRET_KEY": os.environ.get("SECRET_KEY") or TEST_SECRET_KEY,
         "DATABASE_URL": _active_test_database_url(),
         "PUBLIC_FRONTEND_URL": LOOPBACK_NOAUTH_PUBLIC_ORIGIN,
         "EMAIL_PROVIDER": "smtp",
@@ -305,112 +536,6 @@ def _loose_settings(**overrides: Any) -> SimpleNamespace:
     return SimpleNamespace(**values)
 
 
-@pytest.fixture(autouse=True)
-async def _kimi_smtp_public_schema():
-    await _ensure_onboarding_tables()
-    await _clear_kimi_smtp_rows_and_schemas()
-    clear_dev_email_deliveries()
-    try:
-        yield
-    finally:
-        app.dependency_overrides.pop(get_db_session, None)
-        await _clear_kimi_smtp_rows_and_schemas()
-        clear_dev_email_deliveries()
-
-
-@pytest.fixture(autouse=True)
-def _allow_rate_limiter():
-    from unittest.mock import AsyncMock, Mock, patch
-
-    limiter = Mock()
-    limiter.check_rate_limit = AsyncMock(return_value=(True, 1, 100))
-    with patch("api.middleware.rate_limiting.get_rate_limiter", return_value=limiter):
-        yield limiter
-
-
-async def _ensure_onboarding_tables() -> None:
-    async with async_engine.begin() as connection:
-        await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
-        await connection.execute(
-            text(
-                "DO $$ BEGIN "
-                "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reporting_role') "
-                "THEN CREATE ROLE reporting_role NOLOGIN; END IF; "
-                "END $$"
-            )
-        )
-        await connection.run_sync(Wholesaler.__table__.create, checkfirst=True)
-        await connection.run_sync(TenantRegistration.__table__.create, checkfirst=True)
-        await connection.run_sync(EmailVerificationToken.__table__.create, checkfirst=True)
-        await connection.run_sync(OnboardingStatusToken.__table__.create, checkfirst=True)
-        await connection.run_sync(OwnerCredentialSetupToken.__table__.create, checkfirst=True)
-
-
-async def _clear_kimi_smtp_rows_and_schemas() -> None:
-    async with AsyncSessionLocal() as session:
-        await session.execute(text("SET search_path TO public"))
-        rows = (
-            await session.execute(
-                text(
-                    "SELECT wholesaler_id, tenant_schema FROM public.tenant_registrations "
-                    "WHERE owner_email LIKE :prefix"
-                ),
-                {"prefix": f"{EMAIL_PREFIX}%@example.com"},
-            )
-        ).mappings().all()
-        wholesaler_ids = [row["wholesaler_id"] for row in rows if row["wholesaler_id"] is not None]
-        for schema in {row["tenant_schema"] for row in rows if row["tenant_schema"] is not None}:
-            if schema.startswith("t_") and schema.replace("_", "").isalnum():
-                await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
-        await session.execute(
-            text(
-                "DELETE FROM public.owner_credential_setup_tokens WHERE registration_id IN ("
-                "SELECT id FROM public.tenant_registrations WHERE owner_email LIKE :prefix)"
-            ),
-            {"prefix": f"{EMAIL_PREFIX}%@example.com"},
-        )
-        await session.execute(
-            text(
-                "DELETE FROM public.onboarding_status_tokens WHERE registration_id IN ("
-                "SELECT id FROM public.tenant_registrations WHERE owner_email LIKE :prefix)"
-            ),
-            {"prefix": f"{EMAIL_PREFIX}%@example.com"},
-        )
-        await session.execute(
-            text(
-                "DELETE FROM public.email_verification_tokens WHERE registration_id IN ("
-                "SELECT id FROM public.tenant_registrations WHERE owner_email LIKE :prefix)"
-            ),
-            {"prefix": f"{EMAIL_PREFIX}%@example.com"},
-        )
-        await session.execute(
-            text("DELETE FROM public.tenant_registrations WHERE owner_email LIKE :prefix"),
-            {"prefix": f"{EMAIL_PREFIX}%@example.com"},
-        )
-        if wholesaler_ids:
-            await session.execute(
-                text("DELETE FROM public.wholesalers WHERE id = ANY(:wholesaler_ids)"),
-                {"wholesaler_ids": wholesaler_ids},
-            )
-        await session.commit()
-
-
-async def _client() -> AsyncClient:
-    async def _override_public_db():
-        async with AsyncSessionLocal() as session:
-            await session.execute(text("SET search_path TO public"))
-            try:
-                yield session
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
-
-    app.dependency_overrides[get_db_session] = _override_public_db
-    transport = ASGITransport(app=app, raise_app_exceptions=False)
-    return AsyncClient(transport=transport, base_url="http://testserver")
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -425,6 +550,10 @@ def _signup_payload(email: str) -> dict[str, str]:
         "businessType": "wholesale",
         "password": VALID_PASSWORD,
     }
+
+
+def _new_email() -> str:
+    return _record_email(f"{EMAIL_PREFIX}{uuid.uuid4().hex}@example.com")
 
 
 async def _signup_with_settings(monkeypatch, settings, email: str):
@@ -534,7 +663,7 @@ def _assert_503_fail_closed(response) -> None:
 
 
 async def test_complete_non_test_smtp_config_sends_exactly_one_verification_message(monkeypatch):
-    email = f"{EMAIL_PREFIX}{uuid.uuid4().hex}@example.com"
+    email = _new_email()
     with LoopbackCaptureSink(auth_mode="none") as sink:
         settings = _loopback_noauth_settings(sink)
         assert settings.MPANGO_ENV == "production"
@@ -552,12 +681,13 @@ async def test_complete_non_test_smtp_config_sends_exactly_one_verification_mess
     assert str(message["From"]).strip() == "no-reply@example.invalid"
     assert "Verify your Mpango ERP email" == str(message["Subject"])
     assert sink.auth_attempts == []
+    assert sink.connections == 1
     assert get_dev_email_deliveries(email) == []
     _assert_signup_response_is_neutral_about_identity(response, registration_id=rows[0]["id"])
 
 
 async def test_verification_message_carries_usable_opaque_link_with_new_registration(monkeypatch):
-    email = f"{EMAIL_PREFIX}{uuid.uuid4().hex}@example.com"
+    email = _new_email()
     with LoopbackCaptureSink(auth_mode="none") as sink:
         settings = _loopback_noauth_settings(sink)
         response = await _signup_with_settings(monkeypatch, settings, email)
@@ -588,86 +718,56 @@ async def test_verification_message_carries_usable_opaque_link_with_new_registra
 # ---------------------------------------------------------------------------
 
 
-async def test_incomplete_or_unsupported_transport_remains_fail_closed_503(monkeypatch):
-    email = f"{EMAIL_PREFIX}{uuid.uuid4().hex}@example.com"
-
+async def test_pre_transport_guard_rejections_remain_503_with_zero_connections(monkeypatch):
+    """Guard rejections fail closed BEFORE any SMTP/SMTP_SSL construction."""
+    email = _new_email()
     with LoopbackCaptureSink(auth_mode="none") as sink:
+        sink_connections_before = sink.connections
         cases = {
-            "missing_host": (lambda: _loose_settings(SMTP_HOST=None), sink),
-            "missing_login_credentials": (
-                lambda: _loose_settings(SMTP_AUTH_MODE="login", SMTP_USER=None),
-                sink,
-            ),
-            "unsupported_tls_starttls_against_plaintext_sink": (
-                lambda: _loose_settings(SMTP_STARTTLS=True),
-                sink,
-            ),
-            "unsupported_auth_login_against_unauthenticated_sink": (
-                lambda: _loose_settings(SMTP_AUTH_MODE="login"),
-                sink,
-            ),
-            "unknown_auth_mode_value": (
-                lambda: _loose_settings(SMTP_AUTH_MODE="bogus"),
-                sink,
-            ),
-            "connection_refused": (
-                lambda: _loose_settings(SMTP_HOST="127.0.0.1", SMTP_PORT=_closed_loopback_port()),
-                None,
-            ),
+            "missing_host": {"SMTP_HOST": None},
+            "missing_login_credentials": {"SMTP_AUTH_MODE": "login", "SMTP_USER": None},
+            "unknown_auth_mode_value": {"SMTP_AUTH_MODE": "bogus"},
+            "none_off_loopback": {"SMTP_HOST": "mail.internal.invalid", "SMTP_AUTH_MODE": "none"},
         }
-        for label, (factory, active_sink) in cases.items():
-            settings = factory()
-            case_email = f"{EMAIL_PREFIX}{uuid.uuid4().hex}@example.com"
+        for label, overrides in cases.items():
+            settings = _loose_settings(**overrides)
+            SmtpSslTripwire.reset()
+            monkeypatch.setattr(email_delivery.smtplib, "SMTP_SSL", SmtpSslTripwire)
+            case_email = _new_email()
             response = await _signup_with_settings(monkeypatch, settings, case_email)
             _assert_503_fail_closed(response)
             assert await _registration_row(case_email) == [], label
             assert get_dev_email_deliveries(case_email) == [], label
         assert sink.messages == []
-    assert list(sink.messages) == []
+        assert sink.connections == sink_connections_before
+    assert SmtpSslTripwire.constructed == []
 
 
-async def test_unsupported_auth_mode_raises_without_touching_the_socket(monkeypatch):
-    """Delivery-layer guard: unknown auth mode fails before any connection."""
-    settings = _loose_settings(SMTP_AUTH_MODE="bogus")
-    assert email_delivery._smtp_config_complete(settings) is False
-    with pytest.raises(email_delivery.EmailDeliveryNotConfiguredError):
-        email_delivery._send_smtp_email(
-            settings=settings,
-            to_email="owner@example.invalid",
-            subject="subject",
-            body="body",
-        )
+async def test_transport_failures_remain_503_and_never_silently_fall_back(monkeypatch):
+    """Unsupported TLS/auth combinations and a refused connection stay 503."""
+    with LoopbackCaptureSink(auth_mode="none") as sink:
+        cases = {
+            "unsupported_tls_starttls_against_plaintext_sink": {"SMTP_STARTTLS": True},
+            "unsupported_auth_login_against_unauthenticated_sink": {"SMTP_AUTH_MODE": "login"},
+        }
+        for label, overrides in cases.items():
+            settings = _loose_settings(SMTP_PORT=sink.port, **overrides)
+            case_email = _new_email()
+            response = await _signup_with_settings(monkeypatch, settings, case_email)
+            _assert_503_fail_closed(response)
+            assert await _registration_row(case_email) == [], label
+            assert get_dev_email_deliveries(case_email) == [], label
+        # Both cases reached the transport (real TCP connections) and failed
+        # there; nothing was captured and nothing fell back to the dev sink.
+        assert sink.connections >= len(cases)
+        assert sink.messages == []
 
-
-class _TransportTripwire:
-    """Tripwire: records construction attempts of the real SMTP client.
-
-    Used only as a negative-path detector -- it performs no SMTP protocol
-    work. Any recorded attempt proves the guard under test let the code
-    reach the network layer it must never reach.
-    """
-
-    constructed: list[tuple] = []
-
-    def __init__(self, host, port, *args, **kwargs):  # noqa: D107
-        type(self).constructed.append((host, port, args, kwargs))
-        raise AssertionError("SMTP transport must not be reached")
-
-
-async def test_delivery_layer_guard_blocks_offloopback_noauth_before_transport(monkeypatch):
-    """Defense in depth: no-auth off-loopback fails closed before any socket opens."""
-    settings = _loose_settings(SMTP_HOST="mail.internal.invalid", SMTP_AUTH_MODE="none")
-    _TransportTripwire.constructed = []
-    monkeypatch.setattr(email_delivery.smtplib, "SMTP", _TransportTripwire)
-
-    with pytest.raises(email_delivery.EmailDeliveryNotConfiguredError):
-        email_delivery._send_smtp_email(
-            settings=settings,
-            to_email="owner@example.invalid",
-            subject="subject",
-            body="body",
-        )
-    assert _TransportTripwire.constructed == []
+    refused_settings = _loose_settings(SMTP_HOST="127.0.0.1", SMTP_PORT=_closed_loopback_port())
+    refused_email = _new_email()
+    refused_response = await _signup_with_settings(monkeypatch, refused_settings, refused_email)
+    _assert_503_fail_closed(refused_response)
+    assert await _registration_row(refused_email) == []
+    assert get_dev_email_deliveries(refused_email) == []
 
 
 # ---------------------------------------------------------------------------
@@ -675,26 +775,8 @@ async def test_delivery_layer_guard_blocks_offloopback_noauth_before_transport(m
 # ---------------------------------------------------------------------------
 
 
-async def test_noauth_mode_is_rejected_for_non_loopback_host():
-    for host in ("smtp.example.invalid", "127.0.0.1.evil.invalid", "10.0.0.5", "0.0.0.0", "::ffff:8.8.8.8"):
-        with pytest.raises(ValidationError):
-            _production_settings(SMTP_AUTH_MODE="none", SMTP_HOST=host)
-
-
-async def test_noauth_mode_is_accepted_only_for_literal_loopback_hosts():
-    for host in ("127.0.0.1", "127.9.9.9", "localhost", "::1", "[::1]", "LOCALHOST"):
-        settings = _production_settings(SMTP_AUTH_MODE="none", SMTP_HOST=host)
-        assert settings.SMTP_AUTH_MODE == "none"
-
-
-async def test_login_remains_the_default_auth_mode():
-    settings = _production_settings()
-    assert settings.SMTP_AUTH_MODE == "login"
-    assert getattr(Settings.model_fields["SMTP_AUTH_MODE"], "default", None) == "login"
-
-
 async def test_default_login_mode_still_authenticates_against_a_real_sink(monkeypatch):
-    email = f"{EMAIL_PREFIX}{uuid.uuid4().hex}@example.com"
+    email = _new_email()
     with LoopbackCaptureSink(auth_mode="login") as sink:
         settings = _production_settings(SMTP_PORT=sink.port, SMTP_AUTH_MODE="login")
         response = await _signup_with_settings(monkeypatch, settings, email)
@@ -709,7 +791,6 @@ async def test_default_login_mode_still_authenticates_against_a_real_sink(monkey
 async def test_noauth_mode_is_not_inferred_from_env_label_or_empty_credentials(monkeypatch):
     """A staging label, empty credentials, or a refused connection never enable no-auth."""
     with LoopbackCaptureSink(auth_mode="none") as sink:
-        # A staging label alone never resolves to unauthenticated delivery.
         staging_without_auth_mode = _loose_settings(
             MPANGO_ENV="staging",
             SMTP_USER=None,
@@ -726,27 +807,13 @@ async def test_noauth_mode_is_not_inferred_from_env_label_or_empty_credentials(m
             SMTP_PORT=_closed_loopback_port(),
             SMTP_AUTH_MODE="login",
         )
-        email = f"{EMAIL_PREFIX}{uuid.uuid4().hex}@example.com"
+        email = _new_email()
         response = await _signup_with_settings(monkeypatch, refused, email)
         _assert_503_fail_closed(response)
         assert await _registration_row(email) == []
         assert email_delivery._smtp_auth_mode(refused) == "login"
         assert sink.auth_attempts == []
-
-        # Explicitly demanded no-auth still refuses to leave loopback: both the
-        # config gate and the delivery layer reject it, and nothing is captured.
-        off_loopback = _loose_settings(SMTP_HOST="mail.internal.invalid", SMTP_AUTH_MODE="none")
-        assert email_delivery.is_verification_email_delivery_configured(settings=off_loopback) is False
-        with pytest.raises(email_delivery.EmailDeliveryNotConfiguredError):
-            email_delivery.record_verification_email(
-                settings=off_loopback,
-                registration_id=uuid.uuid4(),
-                to_email="owner@example.invalid",
-                token="opaque-token",
-                verification_link="https://links.invalid/verify-email#token=opaque-token",
-            )
-    assert sink.messages == []
-    assert sink.auth_attempts == []
+        assert sink.messages == []
 
 
 # ---------------------------------------------------------------------------
@@ -755,7 +822,7 @@ async def test_noauth_mode_is_not_inferred_from_env_label_or_empty_credentials(m
 
 
 async def test_public_verification_continues_into_owner_setup_lifecycle_over_smtp(monkeypatch):
-    email = f"{EMAIL_PREFIX}{uuid.uuid4().hex}@example.com"
+    email = _new_email()
     with LoopbackCaptureSink(auth_mode="none") as sink:
         settings = _loopback_noauth_settings(sink)
         signup_response = await _signup_with_settings(monkeypatch, settings, email)

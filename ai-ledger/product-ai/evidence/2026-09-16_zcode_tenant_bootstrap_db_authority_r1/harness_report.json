@@ -1,0 +1,182 @@
+{
+  "task": "MPANGO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1",
+  "authorization": "CTO-AUTH-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-2026-09-16",
+  "started_at": "2026-09-15T20:07:25.456365+00:00",
+  "image": "postgres:16.15",
+  "container": "mpango-v3-auth-3a8d1ca581",
+  "port": 64458,
+  "base_commit": "2665f0ee 01930229 1bfca1d3 f579cf85 2bc633ff",
+  "phases": {
+    "alembic_heads": {
+      "v3_ok": "038_catalog_identity_vertical_slice",
+      "v3_nofunc": "038_catalog_identity_vertical_slice",
+      "v3_badsig": "038_catalog_identity_vertical_slice",
+      "v3_wrongown": "038_catalog_identity_vertical_slice",
+      "v3_nopriv": "038_catalog_identity_vertical_slice"
+    },
+    "suite_runs": [
+      {
+        "scenario": "v3_ok",
+        "label": "v3_ok",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_ok.log"
+      },
+      {
+        "scenario": "v3_nofunc",
+        "label": "v3_nofunc",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_nofunc.log"
+      },
+      {
+        "scenario": "v3_badsig",
+        "label": "v3_badsig",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_badsig.log"
+      },
+      {
+        "scenario": "v3_wrongown",
+        "label": "v3_wrongown",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_wrongown.log"
+      },
+      {
+        "scenario": "v3_nopriv",
+        "label": "v3_nopriv",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_nopriv.log"
+      }
+    ],
+    "mutations": [
+      {
+        "mutation": "M1",
+        "title": "runtime_create_or_replace_reintroduced",
+        "scenario": "v3_ok",
+        "rationale": "reintroducing the runtime CREATE OR REPLACE of the migration-owned public guard must be refused by PostgreSQL (the runtime role is not the owner and holds no CREATE privilege on public); the lifecycle must fail closed with zero active tenant and the guard must stay migration-owned",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_mutation_m1_sentinel_reintroducing_runtime_replace_is_refused",
+          "tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role"
+        ],
+        "mutated_sha256": "6d7d4654 4b610010 0ec3ad07 7a1cd854 33b049f4 d3c515ba 38638784 0ecb79e5",
+        "run": {
+          "scenario": "v3_ok",
+          "label": "mutation_M1",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_never_replaces_or_reowns_public_guard"
+          ],
+          "errors": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_mutation_m1_sentinel_reintroducing_runtime_replace_is_refused",
+            "tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role",
+            "tests/test_tenant_bootstrap_db_authority.py::test_r2_tenant_contains_required_tables_two_views_mv_and_unique_index",
+            "tests/test_tenant_bootstrap_db_authority.py::test_r3_guard_owner_and_definition_preserved_across_tenant_creation",
+            "tests/test_tenant_bootstrap_db_authority.py::test_r4_ledger_update_and_delete_blocked_by_migration_owned_guard",
+            "tests/test_tenant_bootstrap_db_authority.py::test_r5_runtime_role_cannot_replace_reown_or_escalate"
+          ],
+          "log": "pytest_mutation_M1.log"
+        },
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_mutation_m1_sentinel_reintroducing_runtime_replace_is_refused",
+          "tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role"
+        ],
+        "restored_sha256": "a3ef3a4f d485f409 65843478 4120aa17 89ff35d5 5bc727d4 ac2be681 0d55fa3a",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "M2",
+        "title": "ownership_precondition_removed",
+        "scenario": "v3_wrongown",
+        "rationale": "removing the ownership precondition must let a runtime-owned guard through; the wrong-owner negative tests are the named RED detectors proving the precondition is load-bearing",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_never_replaces_or_reowns_public_guard",
+          "tests/test_tenant_bootstrap_db_authority.py::test_mutation_m2_sentinel_ownership_precondition_is_load_bearing",
+          "tests/test_tenant_bootstrap_db_authority.py::test_n3_runtime_owned_guard_function_fails_closed_zero_partial_tenant"
+        ],
+        "mutated_sha256": "6f619d22 8397ae8d f6ba739d 04d2fdf1 d07a3ed7 4f6a55a3 a372394c 82a38048",
+        "run": {
+          "scenario": "v3_wrongown",
+          "label": "mutation_M2",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_never_replaces_or_reowns_public_guard",
+            "tests/test_tenant_bootstrap_db_authority.py::test_mutation_m2_sentinel_ownership_precondition_is_load_bearing",
+            "tests/test_tenant_bootstrap_db_authority.py::test_n3_runtime_owned_guard_function_fails_closed_zero_partial_tenant"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_M2.log"
+        },
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_never_replaces_or_reowns_public_guard",
+          "tests/test_tenant_bootstrap_db_authority.py::test_mutation_m2_sentinel_ownership_precondition_is_load_bearing",
+          "tests/test_tenant_bootstrap_db_authority.py::test_n3_runtime_owned_guard_function_fails_closed_zero_partial_tenant"
+        ],
+        "restored_sha256": "a3ef3a4f d485f409 65843478 4120aa17 89ff35d5 5bc727d4 ac2be681 0d55fa3a",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": null,
+        "title": "post_restore_reproducibility",
+        "run": {
+          "scenario": "v3_ok",
+          "label": "post_restore",
+          "rc": 0,
+          "failed": [],
+          "errors": [],
+          "log": "pytest_post_restore.log"
+        },
+        "post_restore_green": true
+      }
+    ],
+    "guard_snapshots": {
+      "v3_ok": {
+        "function_exists": true,
+        "owner": "mpango_migrate",
+        "return_type": "trigger",
+        "args": "",
+        "definition_md5": "39640330 8c83ee4c 01d0d6bc d63135b2"
+      },
+      "v3_nofunc": {
+        "function_exists": false
+      },
+      "v3_badsig": {
+        "function_exists": true,
+        "owner": "mpango_migrate",
+        "return_type": "void",
+        "args": "",
+        "definition_md5": "77260891 3aace7af 9dea4f6a 56bfe894"
+      },
+      "v3_wrongown": {
+        "function_exists": true,
+        "owner": "mpango_app",
+        "return_type": "trigger",
+        "args": "",
+        "definition_md5": "39640330 8c83ee4c 01d0d6bc d63135b2"
+      },
+      "v3_nopriv": {
+        "function_exists": true,
+        "owner": "mpango_migrate",
+        "return_type": "trigger",
+        "args": "",
+        "definition_md5": "39640330 8c83ee4c 01d0d6bc d63135b2"
+      }
+    },
+    "bootstrap_script_sha256_restored": "a3ef3a4f d485f409 65843478 4120aa17 89ff35d5 5bc727d4 ac2be681 0d55fa3a",
+    "grants_script_sha256": "20b107bd eda63508 07991e38 18ee56ed 59b365a1 bb59f9f8 c59c9682 2712a024",
+    "finished_at": "2026-09-15T20:09:53.393803+00:00"
+  },
+  "server_version_num": "160015",
+  "cluster_system_identifier": "7685856202415009836",
+  "bootstrap_script_sha256": "a3ef3a4f d485f409 65843478 4120aa17 89ff35d5 5bc727d4 ac2be681 0d55fa3a",
+  "verdict": "PASS"
+}

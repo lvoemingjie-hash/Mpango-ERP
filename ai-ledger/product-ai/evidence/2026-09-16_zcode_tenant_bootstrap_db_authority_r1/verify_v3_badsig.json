@@ -1,0 +1,56 @@
+[grants] 8 minimum grants applied as mpango_migrate
+{
+  "database": "v3_badsig",
+  "checks": {
+    "role_mpango_migrate": {
+      "ok": true,
+      "attributes": {
+        "rolsuper": false,
+        "rolcreatedb": false,
+        "rolcreaterole": true,
+        "rolreplication": false,
+        "rolcanlogin": true
+      },
+      "reason": ""
+    },
+    "role_mpango_app": {
+      "ok": true,
+      "attributes": {
+        "rolsuper": false,
+        "rolcreatedb": false,
+        "rolcreaterole": false,
+        "rolreplication": false,
+        "rolcanlogin": true
+      },
+      "reason": ""
+    },
+    "database_owner": {
+      "ok": true,
+      "owner": "mpango_migrate"
+    },
+    "ledger_guard_function": {
+      "ok": true,
+      "owner": "mpango_migrate",
+      "return_type": "trigger",
+      "identity_arguments": ""
+    },
+    "public_schema_owner": {
+      "ok": true,
+      "owner": "pg_database_owner",
+      "database_owner": "mpango_migrate"
+    },
+    "app_execute_on_guard": {
+      "ok": true,
+      "can_execute": true
+    },
+    "app_create_on_database": {
+      "ok": true,
+      "can_create": true
+    },
+    "app_cannot_replace_guard": {
+      "ok": true,
+      "reason": ""
+    }
+  },
+  "ok": true
+}

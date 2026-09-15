@@ -50,6 +50,132 @@ CANONICAL_ORDER_STATUSES = (
     "returned",
 )
 
+# ---------------------------------------------------------------------------
+# MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1
+#
+# Frozen architectural decision: the migration authority owns the public
+# schema and the shared security function public.prevent_ledger_modification().
+# The runtime role must never own or replace it.  Tenant bootstrap may create
+# tenant-owned objects (tables, triggers) and may only REFERENCE the existing
+# migration-owned function.
+#
+# MPANGO_MIGRATION_AUTHORITY_ROLE (optional) declares the role that owns the
+# shared function.  When set, the precondition requires the function owner to
+# equal that role exactly.  When unset, the single-role deployment topology
+# applies (docker-entrypoint runs migrations and bootstrap with one role), so
+# the precondition requires the owner to equal the connected role itself.
+# ---------------------------------------------------------------------------
+LEDGER_GUARD_SCHEMA = "public"
+LEDGER_GUARD_FUNCTION = "prevent_ledger_modification"
+LEDGER_GUARD_SIGNATURE = f"{LEDGER_GUARD_SCHEMA}.{LEDGER_GUARD_FUNCTION}()"
+MIGRATION_AUTHORITY_ROLE_ENV = "MPANGO_MIGRATION_AUTHORITY_ROLE"
+
+
+class LedgerGuardAuthorityError(RuntimeError):
+    """Fail-closed refusal to bootstrap without an authoritative ledger guard.
+
+    Raised before any tenant DDL is executed when the shared
+    public.prevent_ledger_modification() function is missing, has an
+    incompatible signature or owner, or is not executable by the connected
+    (runtime) role.  No tenant schema is created and no tenant is activated.
+    """
+
+
+async def _assert_ledger_guard_function_authority(db) -> None:
+    """Fail closed unless the migration-owned ledger guard is exactly intact.
+
+    Runs as the FIRST statement of every bootstrap, before CREATE SCHEMA, so a
+    refusal leaves zero partial tenant objects and no tenant can be activated.
+
+    Verified against the live catalog (never against assumptions):
+    1. Existence: public.prevent_ledger_modification() resolves to one
+       pg_proc entry.
+    2. Exact signature: zero identity arguments, RETURNS trigger, LANGUAGE
+       plpgsql, in the public schema.
+    3. Ownership: the function owner is the migration authority role (declared
+       via MPANGO_MIGRATION_AUTHORITY_ROLE) or, when undeclared, the connected
+       role of a single-role deployment.  The function owned by any other role
+       — including a runtime role under a declared authority — is refused.
+    4. Privilege: the connected role holds EXECUTE on the function, so the
+       tenant trigger can fire at runtime.
+    """
+    from sqlalchemy import text
+
+    row = (await db.execute(
+        text(
+            "SELECT to_regprocedure(:signature) IS NOT NULL AS function_exists, "
+            "format_type(p.prorettype, NULL) AS return_type, "
+            "pg_get_function_identity_arguments(p.oid) AS identity_arguments, "
+            "l.lanname AS language_name, "
+            "n.nspname AS function_schema, "
+            "pg_get_userbyid(p.proowner) AS owner_name, "
+            "current_user AS connected_role, "
+            "has_function_privilege("
+            "    current_user, probe.func_oid, 'EXECUTE') AS can_execute "
+            "FROM (SELECT to_regprocedure(:signature) AS func_oid) probe "
+            "LEFT JOIN pg_proc p ON p.oid = probe.func_oid "
+            "LEFT JOIN pg_namespace n ON n.oid = p.pronamespace "
+            "LEFT JOIN pg_language l ON l.oid = p.prolang"
+        ),
+        {"signature": LEDGER_GUARD_SIGNATURE},
+    )).mappings().first()
+
+    if row is None or not row["function_exists"]:
+        raise LedgerGuardAuthorityError(
+            "Bootstrap precondition failed: shared ledger guard function "
+            f"{LEDGER_GUARD_SIGNATURE} does not exist. It is owned by the "
+            "migration authority and must be created by migrations "
+            "(010_s5_5_ledger_hardening), never by tenant bootstrap. "
+            "Refusing to create a partial tenant."
+        )
+
+    violations: list[str] = []
+    if _catalog_code(row["function_schema"]) != LEDGER_GUARD_SCHEMA:
+        violations.append(
+            f"function schema is {_catalog_code(row['function_schema'])!r}, "
+            f"expected {LEDGER_GUARD_SCHEMA!r}"
+        )
+    if _catalog_code(row["identity_arguments"]).strip() != "":
+        violations.append(
+            "identity arguments are "
+            f"{_catalog_code(row['identity_arguments'])!r}, expected none"
+        )
+    if _normalize_type(_catalog_code(row["return_type"]) or "") != "trigger":
+        violations.append(
+            f"return type is {_catalog_code(row['return_type'])!r}, "
+            "expected 'trigger'"
+        )
+    if _catalog_code(row["language_name"]) != "plpgsql":
+        violations.append(
+            f"language is {_catalog_code(row['language_name'])!r}, "
+            "expected 'plpgsql'"
+        )
+
+    declared_authority = os.environ.get(MIGRATION_AUTHORITY_ROLE_ENV, "").strip()
+    owner_name = _catalog_code(row["owner_name"])
+    connected_role = _catalog_code(row["connected_role"])
+    required_owner = declared_authority or connected_role
+    if owner_name != required_owner:
+        violations.append(
+            f"owner is {owner_name!r}, expected migration authority "
+            f"{required_owner!r}"
+        )
+
+    if not row["can_execute"]:
+        violations.append(
+            f"connected role {connected_role!r} lacks EXECUTE on "
+            f"{LEDGER_GUARD_SIGNATURE}"
+        )
+
+    if violations:
+        violation_list = "\n  - ".join(violations)
+        raise LedgerGuardAuthorityError(
+            "Bootstrap precondition failed: shared ledger guard function "
+            f"{LEDGER_GUARD_SIGNATURE} is incompatible with the migration "
+            f"authority contract:\n  - {violation_list}\n"
+            "Refusing to create a partial tenant. No DDL has been executed."
+        )
+
 RETAILER_PRICE_COLUMNS = {
     "id": ("uuid", True),
     "retailer_id": ("uuid", True),
@@ -1612,6 +1738,12 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
     ts = tenant_schema
 
     async with async_session() as db:
+        # MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1: the shared migration-owned
+        # ledger guard function must exist, match its exact signature, be
+        # owned by the migration authority and be executable BEFORE any tenant
+        # DDL runs.  Raising here leaves zero partial tenant objects and no
+        # tenant registration can be activated.
+        await _assert_ledger_guard_function_authority(db)
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))
         await _ensure_public_binding_balance_constraint(db)
@@ -1947,16 +2079,11 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             f'ON "{ts}".inventory_reservations(order_item_id) WHERE status = \'reserved\''
         ))
 
-        # Ledger immutability trigger
-        await db.execute(text(
-            "CREATE OR REPLACE FUNCTION public.prevent_ledger_modification() "
-            "RETURNS TRIGGER AS $$ BEGIN "
-            "IF TG_OP = 'UPDATE' THEN RAISE EXCEPTION 'Ledger immutable' "
-            "USING ERRCODE = 'integrity_constraint_violation'; END IF; "
-            "IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'Ledger immutable' "
-            "USING ERRCODE = 'integrity_constraint_violation'; END IF; "
-            "RETURN OLD; END; $$ LANGUAGE plpgsql"
-        ))
+        # Ledger immutability trigger.
+        # MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1: the shared guard function is
+        # owned by the migration authority and was verified by the precondition
+        # above; the tenant bootstrap must only REFERENCE it here, never
+        # replace or re-own it.
         await db.execute(text(
             f'DROP TRIGGER IF EXISTS prevent_ledger_mod ON "{ts}".ledger_entries'
         ))

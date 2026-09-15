@@ -140,11 +140,12 @@ async def test_confirm_after_external_cancel_uses_locked_fresh_state(
     CANCELLED — the confirm COMMAND must decide on the locked-fresh row
     (terminal CANCELLED) and reject; without populate_existing the stale
     DRAFT passes and the confirmation succeeds (mutation RED)."""
-    from services.order_command_service import (
+    from core.domain.order_state import (
         InvalidStateTransitionError as _Iste,
-        OrderCommandService as _Ocs,
+        OrderInvariantViolation as _Oiv,
     )
-    from core.domain.order_state import OrderInvariantViolation as _Oiv
+    from models.order import Order as _Order
+    from services.order_command_service import OrderCommandService as _Ocs
 
     db, reg = s2_clean_db
     token = await osd1_cashier_token(r1_client, cashier_identity)
@@ -156,7 +157,7 @@ async def test_confirm_after_external_cancel_uses_locked_fresh_state(
     session = await _second_session(schema, ws_id)
     try:
         preloaded = (await session.execute(
-            select(Order).where(Order.id == uuid.UUID(oid))
+            select(_Order).where(_Order.id == uuid.UUID(oid))
         )).scalar_one()
         assert preloaded.status.value == "draft"
 

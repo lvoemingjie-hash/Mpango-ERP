@@ -1,0 +1,18 @@
+=== DOC-CLOSEOUT SELF-CHECK 2026-09-15T03:53Z ===
+pre-edit  IMPLEMENTATION-DESIGN.md (as committed in f42e939d) sha256=98904bd2ae97ad66aa1637fcbde9236a1f308dcfe776da75447799f09d4c1132
+post-edit IMPLEMENTATION-DESIGN.md                     sha256=f3680177ad98966b5aafae5a957667e8dfdef68a509595a956dc31cb03090d9b
+new       D1-R1-SUPERVISOR-CORRECTION.md               sha256=99c818ee3dcbde972c9acb532fac9a3c9eb32c2bd760882b564ca425165cf5d8
+unchanged ZCODE-D1-REPORT.md (as committed in f42e939d) sha256=8171635b7956e10644cdc9295085f9d95fe5e3b274945eb8f756940926f2a94f (still matches working tree: 8171635b7956e10644cdc9295085f9d95fe5e3b274945eb8f756940926f2a94f)
+old evidence untouched: R1 evidence files byte-identical (git status shows no M on evidence/* from previous commits)
+
+diff --check on the two paths:
+  CLEAN rc=0
+encoding:
+  both strict UTF-8 / no BOM / no CR
+secrets:
+  findings=0
+canary (corrected record): initial /tmp-path canary invocation produced 0
+findings (different invocation shape); rerun with the EXACT same shape as
+the deliverable scan (worktree-relative .py file, same argv form) yields
+findings=1 on the planted file ONLY and findings=0 on both deliverable
+documents — canary VALID, scanner effective for this round's checks.

@@ -327,3 +327,24 @@ final summary appended below after completion).
 
 `tests/order_state_r1/`: 32 tests — 29 passed + the 3 named credit KNOWN
 REDS, rc=1 as expected (`evidence/2026-09-15T2000Z-f1-focused-final.txt`).
+
+## F1 final results (post-stabilization, author-executed)
+
+- Strict mutations re-verified AFTER the stabilization commit:
+  `evidence/2026-09-15T2115Z-f1-mutations-run5-final.txt` — pristine gate
+  GREEN, **10/10 PROVEN** (M1–M10).
+- Focused R1 suite: 32 tests — 29 passed + 3 named credit KNOWN REDs,
+  rc=1 (`evidence/2026-09-15T2000Z-f1-focused-final.txt`).
+- Affected legacy suites after migration to the explicit contract:
+  s5_order_state_machine + s5_ledger + business.financial_loop 33/33
+  GREEN; sku_m1_migration (with task temp-db env) 6/6 GREEN.
+- The ONE permitted backend full run happened BEFORE the stabilization
+  fixes (25 failed / 3827 passed / rc=1,
+  `evidence/2026-09-15T2010Z-f1-backend-full-final.txt`, retained
+  verbatim). Of those 25: 3 were the named credit KNOWN REDs; 22 were
+  legacy direct-transition calls + the seed flush defect — every one
+  repaired and re-verified FOCUSED above (per the single-full-run rule no
+  second full run was started). Residual known-RED surface in the full
+  suite is therefore the 3 credit faces only, by CTO STOP clause.
+- Structural gate: PASS with the real ORDER-STATE-R1-001 node and no
+  waiver/debt workaround.

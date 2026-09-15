@@ -191,3 +191,148 @@ Codex-L review of (1) the four REDs' acceptance-test framing, (2) the
 implementation design and its adjudication items, (3) the handoffctl
 executor-whitelist digest change, (4) the governance accounting path for
 the governed-prefix test additions.
+
+---
+
+# R1 ADDENDUM — bounded follow-up after Codex-L review
+
+Reviewer verdict: `NEEDS_BOUNDED_EVIDENCE_AND_DESIGN_CORRECTION`
+(source + retained-evidence review; reviewer executed 0 product tests).
+This addendum closes findings 1–6 in one bounded round, linearly on top of
+`6f7e2efe`, within the frozen R1 path list (handoff event SCOPE_FROZEN).
+Claim ceiling: `AUTHOR_ORDER_STATE_D1_R1_READY_FOR_CODEXL_REVIEW_ONLY`.
+
+## CTO original directive — now read
+
+`/home/ivy/.codex/attachments/377d0907-2413-4ac2-ac1d-85cae0d2ff96/pasted-text.txt`
+(106 lines, read in full this round). Business baseline v0.60: location
+`AI_REPORT_INBOX/external-architecture-2026-09-06/Mpango_业务语义与治理开放问题_决策文档.md`
+(Windows host), SHA256 `a20e130c04720ceabe60b41c507c1301068e18da2e5fbdf79e831659da148664`
+— the original is NOT present on this host and was NOT reconstructed from
+the hash; approved BC-01/02/04 originals remain missing and nothing was
+invented about their content or approval status.
+
+## Finding-by-finding disposition
+
+**F1 (design conflicts) — CLOSED (rewrite).** `IMPLEMENTATION-DESIGN.md`
+replaced in full: notification strategy is post-commit only with rollback
+suppression (§1.2; no success facts while the transaction can roll back —
+no new job framework, middleware-dispatched best-effort with logged
+failures); the draft-cancel matrix contradiction is resolved by exactly
+one normative matrix — Option A (domain matrix gains DRAFT→CANCELLED,
+explicit CTO-approved edit) recommended over Option B (HTTP maps to
+VOIDED) with API-impact analysis (§1.3); "mechanical" withdrawn — the
+design now lists every financial/state behavior change as a gated decision
+(§1.4: confirmation ledger defaults OFF via `post_confirmation_ledger`,
+service-path revenue NOT treated as approved); paid-cancel stays closed
+via a data-driven `prior_paid == 0` guard independent of matrix text
+(§1.5); lock-order diagram drawn from actual call sequences with cycle
+analysis and the create-path gap identified with a concrete closure
+(§1.6).
+
+**F2 (SKU proof confounded; concurrency boundary unproven) — CLOSED.**
+Group 5 rewritten: `identity_history_causes` independently verifies every
+history precondition, so rejections are attributed to the order reference
+alone; `test_first_order_reference_alone_freezes_package_identity` (real
+HTTP creation, then stock zeroed and price retired, preconditions asserted
+GREEN before the guard runs); `test_all_zero_placeholder_stock_is_not_
+history_positive_control` proves the placeholder exemption directly;
+`test_cancelled_order_history_alone_blocks_repackaging` proves a cancelled
+order's reference still freezes identity against an otherwise-identical
+no-order control; legacy cancel keeps identity snapshots byte-identical;
+`test_first_reference_insert_vs_guard_history_race` drives REAL HTTP
+create against the REAL guard chain with the create parked before INSERT
+and the guard de-confounded to have nothing but the reference to reject —
+**new product RED R6**: first reference and packaging change BOTH commit
+(create's SKU read holds no `skus` lock; INSERT not serialized). Exact
+create-path transaction/lock sequences for both create routes are recorded
+in the design §1.6 lock diagram (binding SELECT → skus SELECT no-lock →
+INSERT → middleware commit).
+
+**F3 (unknown-exception/notification rollback evidence; permission and
+cross-tenant controls) — CLOSED.** `test_unknown_exception_after_state_
+write_rolls_back_everything` injects a non-domain RuntimeError after the
+FULFILLED status write and reservation consumption: the request rolls back
+fully (status stays paid, reservations intact, zero movements), BUT the
+SMS is dispatched inside the rolled-back transaction — **new product RED
+R5**, exactly the CTO's "错误成功通知" prohibition; recorded as a defect,
+not normalized. `test_confirm_permission_denied_control` (orders:update-
+less JWT → RBAC denial, order untouched) and
+`test_confirm_cross_tenant_isolation_control` (REAL tenant-B cashier via
+the canonical owner lifecycle `make_tenant_cashier` → schema-blind 404,
+order untouched) both GREEN.
+
+**F4 (ORM finding overstated persistence) — CLOSED (both halves).** The
+stale-state test's docstring now claims exactly "accepts + flushes with
+stale state" and does NOT claim a committed overwrite; the test's own
+final invariant (no status change without a committed write) was tightened.
+`test_preloaded_transition_committed_overwrite_DIAGNOSTIC` is added as a
+separately labelled fixture-only diagnostic: it commits in a dedicated
+session, reads the persisted row from a fresh independent session, proves
+the stale write persists as PAID over CANCELLED (currently passes), and
+carries an explicit update-on-fix note. The original rejection expectation
+was NOT weakened.
+
+**F5 (concurrency lifecycle and result capture) — CLOSED.** All races now
+run under `RaceOrchestrator` (support.py): every spawned task is owned and
+drained (cancel+await) on every exit path; timeout surfaces as
+ORCHESTRATION_TIMEOUT with diagnostics and is never interpreted as a
+product defect; responses and DB fact vectors are captured BEFORE failing
+assertions (double-cancel RED now carries final_facts in the assertion
+message); arrival synchronization uses explicit events inside the barrier
+wrappers, and commit observation is a bounded fresh-DB read (HTTP response
+alone is not treated as proof of commit).
+
+**F6 (provenance/tool claims) — CLOSED (recorded, not repaired).**
+GitNexus `detect_changes` returns "No changes detected" for the nonempty
+R1 delta — recorded in `evidence/2026-09-15T1300Z-r1-self-check.txt` as a
+COVERAGE limitation: the graph does not map markdown/assertion-text edits
+to indexed symbols; the authoritative path list comes from git. Fresh
+detailed logs retained (`2026-09-15T1155Z-r1-focused-groups-run1.txt`,
+`2026-09-15T1240Z-r1-full-directory-run1.txt` with exact argv/rc); earlier
+logs unchanged. handoffctl whitelist change recorded with before/after
+lines and digests in `evidence/2026-09-15T1255Z-handoffctl-whitelist-diff.txt`
+— the MISSING formal authorization reference is recorded as missing, not
+reconstructed; supervisor to ratify, re-pin, or revert.
+
+## R1 test results (final full-directory run, rc=1)
+
+33 tests: 27 passed, 6 failed — all six failures are named product REDs
+with GREEN legitimate-order and duplicate-effect controls:
+
+| ID | Test | Evidence line |
+|---|---|---|
+| R1 | race cancel‖cancel both 200 | `RED_EVIDENCE racing double-cancel accepted both … final_facts={'status':'cancelled','reserved_rows':0,…}` |
+| R2 | confirm-then-cancel orphans reservations | `{'status':'cancelled','reserved_rows':1,'reserved_total':'5.00'}` |
+| R3 | stale-state transition acceptance (+ committed diagnostic passes) | `DID NOT RAISE …` |
+| R4 | pay-committed-then-cancel non-sequential combo | `RED_EVIDENCE racing outcome … matches no sequential history` |
+| R5 (new) | success SMS inside rolled-back transaction | `RED: fulfill SMS dispatched … ['sms']` |
+| R6 (new) | first-reference‖packaging-change boundary gap | `RED_EVIDENCE boundary gap: first reference committed … verdict=None` |
+
+Fixture/environment iterations this round (recorded, none erased): asyncio
+import missing in support.py; ASGITransport surfaces non-HTTP exceptions to
+the caller (real server would 500) — fault test now expects the exception
+and asserts DB truth; RBAC/cross-tenant control token preparation corrected
+(real B-tenant cashier via canonical lifecycle); asyncpg rejects
+`:x::uuid`-style text; pooled-connection RESET ALL silently drops a pinned
+search_path after rollback/commit — guard verdicts now run one fresh
+session per call; race wrapper must forward `*args` (endpoint calls
+`crud_create_order(db=db, …)` keyword-style). None of these were
+reinterpreted as product REDs; the one timeout observed
+(ORCHESTRATION_TIMEOUT, pre-fix) was diagnosed as a fixture defect and
+repaired, never counted as a race verdict.
+
+## Runtime, self-check, cleanup (R1)
+
+Runtime verified before reuse: containers `92307bfe4305` (order-state-d1-pg16,
+127.0.0.1:17761) and `c45f30120c58` (order-state-d1-redis, 17763), roles
+`orderstated1`/`osd1_migrator`/`osd1_runtime`, alembic head 038 — all
+task-owned, shared resources untouched. Self-check: detect-secrets 0
+findings on the 10 R1-changed files with a VALID same-shape canary;
+encoding strict UTF-8/no-BOM/no-CR on 10/10; `git diff --check` clean;
+GitNexus limitation recorded honestly (above). Structural accounting
+(read-only): `SYNC-SEMANTIC-MISSING` for the 10
+`backend/tests/order_state_d1/*` paths — supervisor disposition item; no
+governance files touched. DB sessions closed by test-process exit; task
+containers stopped and removed after evidence capture (exact IDs and
+results in the handoff event log).

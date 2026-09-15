@@ -1,0 +1,26 @@
+=== R1 SELF-CHECK RECORD 2026-09-15T03:42Z ===
+1. detect-secrets on 10 changed/new R1 files (xargs scan): 0 findings
+   canary VALID: same invocation shape, planted keyword secret -> 1 finding
+2. encoding: 10/10 strict UTF-8, no BOM, no CR
+3. git diff --check: rc=0 clean
+4. GitNexus detect_changes (eval-server, scope=unstaged): 'No changes detected.'
+   LIMITATION (per reviewer finding 6): this is a COVERAGE limitation, NOT
+   evidence of a clean delta. The R1 delta is nonempty: 6 test files
+   modified, IMPLEMENTATION-DESIGN.md rewritten, 3 evidence files added.
+   The knowledge graph does not map prose/markdown edits or assertion-text
+   changes to indexed symbols, so 'No changes detected' must not be read
+   as graph validation of this scope. Authoritative path list is from git:
+    M backend/tests/order_state_d1/support.py
+    M backend/tests/order_state_d1/test_matrix_2_double_connection_races.py
+    M backend/tests/order_state_d1/test_matrix_3_locked_orm_freshness.py
+    M backend/tests/order_state_d1/test_matrix_4_whole_request_rollback.py
+    M backend/tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py
+    M backend/tests/order_state_d1/test_matrix_6_payment_cancel_race.py
+    M order-state-d1/IMPLEMENTATION-DESIGN.md
+   ?? order-state-d1/evidence/2026-09-15T1155Z-r1-focused-groups-run1.txt
+   ?? order-state-d1/evidence/2026-09-15T1240Z-r1-full-directory-run1.txt
+   ?? order-state-d1/evidence/2026-09-15T1255Z-handoffctl-whitelist-diff.txt
+   ?? order-state-d1/evidence/2026-09-15T1300Z-r1-self-check.txt
+5. structural accounting (read-only, earlier): SYNC-SEMANTIC-MISSING lists 10
+   backend/tests/order_state_d1/* paths lacking a semantic inventory record —
+   recorded as supervisor disposition; no self-authorized governance change.

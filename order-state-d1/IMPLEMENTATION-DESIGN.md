@@ -1,209 +1,281 @@
-# IMPLEMENTATION-DESIGN — MPANGO-ORDER-STATE-AUTHORITY-D1
+# IMPLEMENTATION-DESIGN — MPANGO-ORDER-STATE-AUTHORITY-D1 (R1)
+
+R1 revision after Codex-L review `NEEDS_BOUNDED_EVIDENCE_AND_DESIGN_CORRECTION`
+(review kind: source + retained evidence only). Replaces the D0 design in
+full; the D0 document's contradictions identified by the reviewer are
+resolved here as follows: notification timing is POST-COMMIT only (CTO
+contract: no success facts may be observable while the transaction can
+still roll back); the draft-cancellation matrix contradiction is resolved
+by ONE normative matrix (Option A below) with the alternative spelled out;
+the word "mechanical" is withdrawn — unifying the entry points changes
+financial and state-compatibility behavior and every such change is listed
+as a decision, not a consequence; service-path confirmation revenue is NOT
+treated as approved (it is the single largest open CTO decision).
 
 Author evidence by ZCode (executor) for Codex-L review. Claim ceiling:
-`AUTHOR_ORDER_STATE_D1_READY_FOR_CODEXL_REVIEW_ONLY`. Nothing here is
-self-authorized for product implementation; every product change listed
-below requires CTO approval of this design first.
+`AUTHOR_ORDER_STATE_D1_R1_READY_FOR_CODEXL_REVIEW_ONLY`. Nothing here is
+self-authorized for product implementation.
 
-BASE: `1ee75d9faaa00cdcadfe9f46d1e0ac960efc632e` (tree
-`5712eb85e6bf76d8662a6bb7890e609d09bd7ec0`). Behavior evidence:
-`order-state-d1/BEHAVIOR-MATRIX.csv` (14 entries) and the six matrix
-groups under `backend/tests/order_state_d1/` (26 tests; 22 GREEN, 4 honest
-product REDs with GREEN controls).
+BASE: `1ee75d9faaa00cdcadfe9f46d1e0ac960efc632e`; candidate line:
+`6f7e2efe` + one R1 commit. Evidence: `order-state-d1/BEHAVIOR-MATRIX.csv`
+and `backend/tests/order_state_d1/` (33 tests; final R1 run
+`evidence/2026-09-15T1240Z-r1-full-directory-run1.txt`: 27 passed,
+6 named product REDs, pytest rc=1 — acceptance criterion "credible and
+bounded, not all green" is met).
 
 ---
 
-## 0. Problem statement (what the evidence establishes)
+## 0. What the evidence establishes (current behavior, not contract)
 
-Order state is written by two divergent machines plus one locked service:
+Two divergent write paths plus one locked service (full table:
+BEHAVIOR-MATRIX.csv):
 
-| Writer | Matrix | Lock | Fresh after lock | Ledger | Inventory |
+| Writer | Matrix source | Order-row lock | Fresh after lock | Confirm ledger | Notifications |
 |---|---|---|---|---|---|
-| `crud/order.py` (HTTP confirm/cancel, both client+wholesaler cancel) | 6-state CRUD | none | n/a (no lock) | none | reserve/release at endpoint |
-| `OrderService.transition` (HTTP fulfill/return; pay via canonical) | 8-state domain | orders FOR UPDATE | **NO** (no `populate_existing`; identity map keeps stale attrs) | confirm/pay/return entries | at endpoint |
-| `CanonicalPaymentService.confirm_payment` (HTTP pay, declare) | computed target (PAID/PARTIALLY_PAID/credit-collection) | orders FOR UPDATE (first read is the locking read) | yes (locked read is first read) | per transition + credit deltas | none |
+| `crud/order.py` actions (HTTP confirm; both cancels) | CRUD `STATE_TRANSITIONS` | none | n/a | none | none |
+| `OrderService.transition` (HTTP fulfill/return; pay via canonical) | domain `STATE_TRANSITION_MATRIX` | FOR UPDATE, **no populate_existing** | NO (stale identity-map attrs validated) | posts receivable/revenue | fired INSIDE the transaction (pre-commit) |
+| `CanonicalPaymentService` (pay; declare) | computed target | FOR UPDATE, locked read is first read | yes | per transition method | via transition only |
 
-Four demonstrated defects (all reproduced deterministically, controls
-GREEN — see `order-state-d1/evidence/`):
+Named REDs reproduced (assertions kept; each has GREEN legitimate-order and
+duplicate-effect controls):
 
-- **D1 (RED: cancel||cancel)** both concurrent cancels succeed (200+200);
-  no sequential history produces two successes.
-- **D2 (RED: confirm||cancel)** cancel, validated on a pre-loaded DRAFT
-  object, overwrites a committed CONFIRMED and leaves its committed
-  reservations `reserved` forever (orphaned inventory).
-- **D3 (RED: stale-after-lock)** `OrderService.transition` validates the
-  stale identity-map status after taking the row lock and overwrites a
-  committed concurrent CANCELLED with PAID.
-- **D4 (RED: pay||cancel)** cancel, validated on a pre-loaded CONFIRMED
-  object, overwrites a committed PAID: final state cancelled + completed
-  payment + settlement ledger, no refund path, matches no sequential
-  history.
+- **R1** racing cancel‖cancel: both accepted (200+200); no sequential history matches.
+- **R2** confirm-committed-then-cancel: cancelled order keeps `reserved`
+  reservations (orphaned inventory), release decision was made on a stale read.
+- **R3** `transition` accepts CONFIRMED→PAID validating STALE identity-map
+  state after taking the row lock (DID NOT RAISE); the separately labelled
+  committed diagnostic (`test_preloaded_transition_committed_overwrite_DIAGNOSTIC`,
+  fixture-only, fresh-session read) shows the flushed write DOES persist as
+  PAID over the concurrent CANCELLED when committed.
+- **R4** pay-committed-then-cancel: cancelled + completed payment +
+  settlement ledger; matches no sequential history; no refund path exists.
+- **R5** fault injection after the state write (non-domain RuntimeError mid
+  fulfillment): the whole request rolls back correctly, but the FULFILLED
+  SMS is dispatched INSIDE the transaction that later rolled back — a
+  success fact emitted for a request that never happened.
+- **R6** first-reference‖packaging-change (de-confounded: order reference is
+  the ONLY possible history cause while create is parked before INSERT):
+  BOTH the first order reference and the packaging change commit — the
+  create path's SKU read holds no `skus` lock and the INSERT is not
+  serialized against the shared guard lock (`skus` FOR UPDATE).
 
-Root cause common to all four: **state decisions are made on unlocked or
-stale reads; the only locked writer does not refresh the ORM object after
-locking.** The fix family is therefore mechanical, not semantic: decide
-*after* locking, on locked-fresh data, inside one transaction owner.
-
-## 1. Target architecture (proposed)
+## 1. Target architecture
 
 One state-write authority: `OrderService.transition` becomes the ONLY
-order-status writer; the CRUD action helpers stop writing status and the
-endpoints delegate to the service. Identity-map staleness is closed inside
-the service itself so callers cannot get it wrong.
+order-status writer; CRUD action helpers stop writing status and the
+endpoints delegate. Staleness is closed inside the service so callers
+cannot get it wrong. Everything below is a DECISION LIST, not a mechanical
+substitution: the two current entry points differ in state names AND
+financial side effects, and each difference is either preserved (with a
+guard) or explicitly approved before wiring.
 
-### 1.1 `OrderService.transition` hardening (function-level)
+### 1.1 Function-level changes
 
-`backend/services/order_service.py`:
+`backend/services/order_service.py` — `OrderService.transition`:
 
-1. **Locked-fresh read.** Change the locking select to
-   `.execution_options(populate_existing=True)` (mirrors
-   `services/package_identity.py:lock_sku_row`). The FOR UPDATE statement
-   then repopulates the identity-map object; matrix validation and
-   invariants decide on locked-fresh state. This alone closes D3 and is
-   the exact pattern the fulfill endpoint already applies manually via
-   `db.expire(order)` (api/v1/orders.py:952) — after this change that
-   manual `expire` becomes redundant-but-harmless (keep it this round;
-   removing it is cosmetic).
-2. **Lock order.** orders row lock FIRST (already the case), then
-   inventory stock locks in the caller, then reservations — the existing
-   sorted-by-`sku_code` discipline in `InventoryService` is kept. No
-   change to inventory internals.
-
-### 1.2 Endpoint re-wiring (call-level)
+1. Locked-fresh read: add `.execution_options(populate_existing=True)` to
+   the FOR UPDATE select (the codebase's own `lock_sku_row` pattern). The
+   matrix check then decides on locked-fresh state. This closes R3.
+2. Cancel/void guard (new, in-transition, locked): when target is
+   CANCELLED or VOIDED, require `prior_paid == 0` (payments table, sum of
+   completed/pending amounts for the order) and raise
+   `OrderInvariantViolation` otherwise. Data-driven; it prevents the
+   re-wiring from silently OPENING paid/partially_paid cancellation
+   (domain matrix currently allows PAID→CANCELLED with non-existent
+   "refund logic"). Whether to ever allow paid cancellation is CTO
+   decision C below; this guard keeps it closed regardless of matrix.
+3. Reservation decision (new, in-transition, locked): for CANCELLED/VOIDED,
+   compute `had_active_reservations = EXISTS(reservations reserved WHERE
+   order_id = …)` on locked state and expose it on the returned order
+   (transient attribute `order._osd1_release_reservation`, set before
+   return). Endpoints use this flag instead of the pre-lock
+   `status == "confirmed"` read. Closes the decision half of R2 (the
+   status half is closed by 1.2).
+4. Notification intents (new): `_send_transition_notifications` no longer
+   executes sends. It returns a list of intent dicts
+   (`{"kind": "email"|"sms", "to": …, "subject": …, "body": …}`) attached
+   to the returned order (transient `order._osd1_notification_intents`).
+   Nothing is sent before commit. This closes R5's root cause.
 
 `backend/api/v1/orders.py`:
 
-- **confirm** (line ~639): replace `crud_confirm_order(db, order, ...)` with
-  `OrderService(db).transition(order_id, CONFIRMED)`; keep
-  `InventoryService.reserve_on_confirm` in the same request transaction.
-  The preflight `get_order_by_id` stays for the 404 only.
-- **cancel** (line ~1039) and `client cancel`
-  (`api/v1/client/orders.py:437`): replace `crud_cancel_order` with
-  `OrderService(db).transition(order_id, CANCELLED)`; the
-  `release_reservation = status == "confirmed"` flag is computed INSIDE
-  the service after the lock (see 1.3) instead of on the stale preflight
-  object; `release_on_cancel` stays at the endpoint, keyed off the value
-  the service returns/records.
-- **pay**: unchanged — already locked-fresh via
-  `_get_order_by_id_for_update` + canonical service.
-- **fulfill/return**: unchanged in structure (already service-based);
-  they gain D3 protection from 1.1.
+- **confirm** (endpoint `confirm_order`): replace
+  `crud_confirm_order(db, order, updated_by=…)` with
+  `OrderService(db).transition(order_id, OrderState.CONFIRMED, updated_by=…)`;
+  keep `InventoryService.reserve_on_confirm(db, order=order)` in the same
+  request transaction, after the transition. Error mapping unchanged
+  (domain errors → 409 INVALID_STATE_TRANSITION).
+- **cancel** (`cancel_order`) and **client cancel**
+  (`api/v1/client/orders.py cancel_order`): replace `crud_cancel_order`
+  with `transition(order_id, OrderState.CANCELLED, updated_by=…)`;
+  call `release_on_cancel` iff the service-returned flag (1.1.3) is true.
+  Client route keeps the dual-key scoped fetch for ownership/404.
+- **fulfill / return**: already service-based; they gain R3 protection
+  from 1.1.1; keep the explicit `db.expire(order)` in fulfill (redundant
+  after populate_existing, harmless) or drop it in the same commit —
+  either is fine; keeping it minimizes diff.
+- **pay**: unchanged (already canonical; payment_method/target_state
+  computation stays).
 
-`backend/crud/order.py`: `confirm_order/pay_order/fulfill_order/
-cancel_order/return_order` lose their status writes (either deleted or
-reduced to validation-only helpers — deletion preferred; the CRUD
-`STATE_TRANSITIONS` dict dies with them). `create_order` (initial DRAFT)
-stays: initial creation is not a transition.
+`backend/crud/order.py`: delete `confirm_order`, `pay_order`,
+`fulfill_order`, `cancel_order`, `return_order` and the CRUD
+`STATE_TRANSITIONS` dict. Online callers (census): only the two cancel
+endpoints and HTTP confirm — all re-wired above; no other production
+callers (grep evidence in BEHAVIOR-MATRIX.csv census). `create_order`
+(initial DRAFT INSERT, not a transition) and all read helpers stay.
 
-### 1.3 Cancel-with-release decision (new, small)
+### 1.2 Notification strategy (post-commit, no new framework)
 
-Move the decision into `transition`: when target is CANCELLED (or VOIDED),
-after the locked-fresh read, determine `had_active_reservations =
-exists(reservations reserved for order)` and expose it on the returned
-order (e.g. a transient attribute or a small result object). Endpoints
-call `release_on_cancel` iff that flag is true — computed on locked state,
-not on the preflight snapshot. This closes D2's release half; the status
-half is closed by 1.2.
+`backend/api/middleware/auth.py` — after `finalize_tenant_context`
+SUCCEEDS (commit landed, response status < 400): read
+`order._osd1_notification_intents` from the response model where the
+endpoint attached them, and `await notification_service.send_*` per intent
+inside a `try/except Exception: logger.warning("post_commit_notification_failed", …)`
+— failures are logged and never re-raised (no retry, no job queue; the
+existing job-queue TODO remains future work and is NOT built in D1).
+On rollback (status ≥ 400 or exception) the intents are dropped with the
+session — nothing is sent. Endpoints attach the returned order's intents
+onto the response (a one-line `response.history`-style side-channel is NOT
+needed: the endpoint returns `OrderActionResponse`; attach intents as a
+module-level request-state list populated by the endpoint from the service
+result).
 
-### 1.4 Transaction ownership & exception propagation (unchanged contract)
+Semantics: at-most-once, post-commit, best-effort, logged failures.
+Rollback suppression is structural (intents live in the transaction's
+state). This satisfies CTO §C: customers never receive success facts for
+requests that rolled back (R5 class closed).
 
-- The tenant-context middleware stays the single committer
-  (`finalize_tenant_context`, api/middleware/auth.py:97). No endpoint
-  gains its own commit.
-- Service raises `InvalidStateTransitionError`/`OrderInvariantViolation` →
-  endpoints map to 409 `INVALID_STATE_TRANSITION` exactly as today
-  (fulfill/return already do; confirm/cancel adopt the same mapping —
-  the CRUD-flavored message with allowed-statuses text is retired).
-- Notifications stay fire-and-forget after refresh inside the request
-  transaction (failure semantics unchanged: logged, never raised).
+### 1.3 Draft cancellation compatibility (the matrix contradiction, resolved)
 
-## 2. Estimated file scope
+Current facts: crud matrix allows DRAFT→CANCELLED (in production use via
+both cancel endpoints); domain matrix allows only DRAFT→VOIDED; VOIDED is
+written by no route. After unification exactly ONE matrix must govern.
+The CTO decides between:
 
-Product (all behind CTO approval of this design):
+- **Option A (recommended): extend the domain matrix —
+  `STATE_TRANSITION_MATRIX[DRAFT] = {CONFIRMED, CANCELLED, VOIDED}`.**
+  Implementable draft: edit `backend/core/domain/order_state.py` matrix
+  entry only; the DRAFT→CANCELLED edge keeps today's client-visible
+  contract (both cancel surfaces return status "cancelled"); VOIDED stays
+  service-only (no route writes it) until a CTO decision wires it. API
+  impact: none (no response changes). This is an explicit matrix EDIT and
+  requires CTO approval as such — the D0 design's "matrix not touched"
+  exclusion is withdrawn because it contradicted retaining
+  draft→cancelled.
+- **Option B: map HTTP draft-cancel to VOIDED.** Domain matrix untouched;
+  both cancel endpoints transition to VOIDED for pre-payment orders.
+  API impact: response `status` becomes "voided" for draft cancellations —
+  a client-visible change; client status mapping
+  (`map_order_status_for_client` already maps voided→CANCELLED) hides it
+  from retailer clients but not from wholesaler API consumers.
+
+Recommendation: Option A. It preserves every current externally-observable
+value; Option B changes wholesaler-visible status values.
+
+### 1.4 Financial effects on confirm (decision, NOT approved by re-wiring)
+
+- Current HTTP confirm: status + reservation ONLY (no ledger) — proven and
+  asserted (group 1 control).
+- Current service confirm: posts `post_order_confirmation`
+  (receivable/revenue). After the 1.2 re-wiring, confirm goes through the
+  service — WITHOUT a decision, every confirm would START posting revenue
+  entries. That is a financial-behavior change and is therefore gated:
+  the service gains a parameter `post_confirmation_ledger: bool` (read
+  from settings, default **False** = preserve current HTTP behavior) and
+  the confirm endpoint passes/inherit the default. The CTO chooses (with
+  BC evidence) whether/when to flip it to True. The CTO directive also
+  distinguishes confirmation-stage credit-reservation semantics from
+  delivery-stage receivable semantics — that distinction lives in this
+  flag's future semantics, not in this round.
+- Ledger on confirm remains NONE until an explicit CTO decision says
+  otherwise. This is the D0 design's largest correction.
+
+### 1.5 Paid/partially_paid cancellation
+
+HTTP stays 409 (crud matrix retired; domain matrix still lists
+PAID→CANCELLED/PARTIALLY_PAID→CANCELLED). The 1.1.2 `prior_paid == 0`
+guard keeps every path closed at the data layer regardless of matrix text.
+Opening paid-cancel requires: a refund/settlement design, a BC-02/04
+receipt-allocation decision, and an explicit CTO matrix decision. Out of
+scope for D1 implementation.
+
+### 1.6 Lock order (actual, including release vs reserve/fulfill)
+
+Drawn from the current call sequences (unchanged by this design):
+
+```
+confirm :  orders(FOR UPDATE, in transition)          [proposed]
+           → inventory_stocks(FOR UPDATE, sorted sku_code) → INSERT reservations
+cancel  :  orders(FOR UPDATE, in transition)          [proposed]
+           → inventory_reservations(FOR UPDATE, sorted sku_code,id)
+           → inventory_stocks(FOR UPDATE, per reservation)
+fulfill :  orders(FOR UPDATE, transition)
+           → per item: inventory_stocks(FOR UPDATE)
+             → reservations(FOR UPDATE, item-owned) → INSERT movements
+return  :  orders(FOR UPDATE, transition) → ledger INSERTs
+           → inventory_stocks(FOR UPDATE) → INSERT movements
+pay     :  orders(FOR UPDATE, canonical first read)
+           → INSERT payments → ledger INSERTs → retailers balance UPDATE
+create  :  [today] binding SELECT → skus SELECT (join stocks/prices, NO lock)
+           → INSERT orders/order_items → middleware commit
+sku-guard: skus(FOR UPDATE, populate_existing) → history SELECTs → price SELECTs
+           → (accepted) skus UPDATE
+set_price: skus(FOR UPDATE) → retailer_prices write
+```
+
+Cycle analysis: order-path lock chains always take `orders` first, then
+inventory tables in sorted order, then journals — strictly acyclic. The
+SKU path (`skus` → history/price reads) never takes `orders` or inventory
+locks while holding `skus`, so no cycle exists between the two families.
+
+GAP (proven RED R6): `create` takes NO `skus` lock between its catalog
+read and the order_items INSERT, so it is not serialized against
+`sku-guard`/`set_price`. **Proposed closure (product change, CTO-approved
+before implementation):** inside the creating transaction, take
+`lock_sku_row(db, sku_id=item.sellable_unit_id)` for each item immediately
+before building the OrderItem (locking read is the freshness read; the
+snapshot fields come from that locked row). Cost: one extra row lock per
+item on a low-frequency path. Alternative rejected: doing nothing (leaves
+R6 open); doing it in the guard instead (impossible — the guard cannot
+know an uncommitted in-flight create).
+
+### 1.7 What deliberately does NOT change
+
+`CanonicalPaymentService` (payments stay canonical; no new refund or cash
+event paths), `core/domain/order_state.py` EXCEPT the single CTO-approved
+Option A line, SKU/SMTP implementations, shared fixtures, governance
+tooling, `protocol-deltas.json`. No second SKU guard is created; the
+create-path lock reuses `lock_sku_row` exactly as set_price/update do.
+
+## 2. Estimated file scope of the implementing round
 
 | File | Change |
 |---|---|
-| `backend/services/order_service.py` | populate_existing on lock; cancel/void reservation-flag decision; (optional) accept reason metadata |
-| `backend/api/v1/orders.py` | confirm/cancel delegate to service; error mapping; drop stale pre-write release flag |
-| `backend/api/v1/client/orders.py` | cancel delegates to service (dual-key fetch stays for the 404/ownership) |
-| `backend/crud/order.py` | remove 5 status-writing action helpers + CRUD matrix; keep create/reads |
-| `backend/tests/...` (existing suites touching crud actions) | follow-ups where they monkeypatch/call the removed helpers |
+| `backend/services/order_service.py` | populate_existing; cancel/void paid-guard + reservation flag; notification intents (no sends) |
+| `backend/api/v1/orders.py` | confirm/cancel delegate to service; reservation flag + intent plumbing; drop stale pre-write flag |
+| `backend/api/v1/client/orders.py` | cancel delegates to service (dual-key fetch stays) |
+| `backend/crud/order.py` | remove 5 status-writing helpers + CRUD matrix |
+| `backend/api/middleware/auth.py` | post-commit notification dispatch (try/except logged) |
+| `backend/core/domain/order_state.py` | Option A single-line matrix edit (ONLY with CTO approval) |
+| `backend/api/v1/orders.py` (create) | per-item `lock_sku_row` before OrderItem build (R6 closure) |
+| existing suites pinning CRUD actions | follow-ups only where they call removed helpers |
 
-NOT touched: `CanonicalPaymentService` (payments stay canonical — no new
-refund/cash-event paths), `core/domain/order_state.py` matrix, SKU/SMTP
-implementations, shared fixtures, governance runner, status enum, ledger
-service internals.
+## 3. Adjudication items for the CTO (decisions, not implementations)
 
-## 3. Adjudication items (separated deliberately)
-
-These are decisions, not implementations. Each states current behavior,
-the approved-contract status, and a recommendation; the CTO decides.
-
-### A. Should confirmation post ledger entries?
-
-- **Current:** HTTP confirm posts NONE (asserted GREEN in group 1); the
-  service path posts `post_order_confirmation` (receivable/revenue) — but
-  no HTTP route reaches it for confirm today; pay/fulfill/return do run
-  through the service, so a service-routed confirm WILL start posting
-  confirmation ledger for every confirmed order.
-- **Approved contract:** BC-01/02/04 approved texts were NOT found on disk
-  (marked 待取证); business baseline v0.60 SHA not verifiable without the
-  CTO-given SHA. No guessed semantics applied.
-- **Recommendation:** treat posting-on-confirm as the majority behavior of
-  the codebase's own service layer (S5-B design) — but require an explicit
-  CTO decision because it changes reported revenue timing for every order.
-  If approved, the four group-1/6 assertions documenting "no ledger on
-  confirm" flip to asserting presence (test change listed in scope).
-
-### B. DRAFT-cancel compatibility
-
-- **Current:** HTTP cancel allows DRAFT→CANCELLED (crud matrix); domain
-  matrix allows only DRAFT→VOIDED, and VOIDED is unreachable from any HTTP
-  route (nothing ever writes it).
-- **Recommendation:** keep DRAFT→CANCELLED reachable (both matrices stay
-  in use in production data expectations) and add DRAFT→VOIDED as an
-  explicit service-only capability for the clean pre-payment cancellation
-  the domain matrix describes. Requires CTO confirmation of the intended
-  client-visible contract before wiring any route to VOIDED.
-
-### C. Paid/partially-paid cancel boundary
-
-- **Current:** domain matrix allows PAID→CANCELLED ("with refund logic" —
-  which does not exist anywhere) and PARTIALLY_PAID→CANCELLED; HTTP forbids
-  both (409, asserted GREEN).
-- **Recommendation:** keep the HTTP boundary as-is (409) until a refund
-  design exists; alternatively tighten the domain matrix to forbid both
-  until then. Do NOT silently enable paid-cancel via the service re-wiring:
-  `transition(CANCELLED)` from paid would otherwise become reachable
-  through any future caller. Guard: the service checks, before
-  CANCELLED/VOIDED, `prior_paid == 0` (payments table) and raises
-  `OrderInvariantViolation` otherwise — a data-driven guard, not a matrix
-  edit, leaving the matrix decision with the CTO.
-
-### D. Post-commit notifications and failure semantics
-
-- **Current:** fire-and-forget inside the request transaction; failures
-  logged, swallowed. With 1.2 the confirm email would be sent by the
-  service path (CONFIRMED target) — i.e., confirm starts emailing.
-- **Recommendation:** acceptable for MVP (stub transport); if the CTO
-  wants post-commit semantics, move dispatch after middleware commit via
-  the existing job-queue TODO — out of scope for D1.
+| # | Decision | Current behavior | Approved-contract status | Recommendation |
+|---|---|---|---|---|
+| A | Ledger on confirm | HTTP: none; service path: receivable/revenue | BC-01/02/04 originals not on disk; baseline v0.60 SHA known (`a20e13…8664`), original NOT on this host — nothing inferred | Default False (preserve HTTP); flip only with BC-backed CTO decision |
+| B | Draft-cancel compatibility | DRAFT→CANCELLED in production; domain matrix says VOIDED only | same evidence gap | Option A (matrix gains CANCELLED edge); Option B documented |
+| C | Paid/partially_paid cancel | 409 everywhere; data guard proposed | same evidence gap; no refund design exists | Keep closed via 1.1.2 guard; revisit with refund design |
+| D | Notification timing | pre-commit fire-and-forget (RED R5) | CTO directive: no success facts pre-commit | Post-commit best-effort dispatch (1.2) |
+| E | VOIDED reachability | unreachable from any route | domain matrix defines it | Keep service-only until a route is mandated |
 
 ## 4. Verification plan for the implementing round
 
-1. The four RED tests in `backend/tests/order_state_d1/` must turn GREEN
-   with no assertion weakening (they are the acceptance tests; controls
-   must stay GREEN too).
-2. Existing suites that pin current CRUD behavior
-   (`test_orders_api.py` mock family, `test_s5_order_state_machine.py`,
-   `test_phase5_order_payment.py`, sku/BC-06 real-PG suites) run
-   unchanged-or-updated only where they monkeypatch removed helpers.
-3. Governance accounting: `backend/` is a governed prefix; the
-   implementing round must carry its own protocol-delta/semantic record
-   authorization (this task deliberately did NOT self-serve it).
-
-## 5. Explicitly out of scope (per task contract)
-
-No new refunds, cash events, second SKU guard, repricing, snapshot
-rewrites, legacy-identity rewrites, matrix edits, or migration of historical
-statuses. Payments remain exclusively on `CanonicalPaymentService`.
+1. The six named REDs must turn GREEN with assertions intact (they are the
+   acceptance tests); all controls stay GREEN; the committed diagnostic
+   flips with its explicit update note.
+2. Focused suites that pin current behavior run unchanged or updated only
+   where they call removed CRUD helpers.
+3. Governance accounting for the re-wired product paths is part of the
+   implementing round's protocol delta — not self-served here.

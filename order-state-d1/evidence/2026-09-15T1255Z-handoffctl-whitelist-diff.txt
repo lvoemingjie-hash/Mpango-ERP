@@ -1,0 +1,21 @@
+=== handoffctl executor whitelist change — BEFORE/AFTER (R1 evidence) ===
+file: bin/handoffctl (NOT under git; control-plane digest pinned in ACTIVE-TASKS.json LUBUNTU task)
+
+--- init validation (cmd_init) ---
+BEFORE: [[ "$executor" == "Codex-L" || "$executor" == "OpenCode2" ]] || die "invalid executor"
+AFTER : [[ "$executor" == "Codex-L" || "$executor" == "OpenCode2" || "$executor" == "ZCode" ]] || die "invalid executor"
+
+--- verify schema (validate_current_schema jq) ---
+BEFORE: (.executor == "Codex-L" or .executor == "OpenCode2") and
+AFTER : (.executor == "Codex-L" or .executor == "OpenCode2" or .executor == "ZCode") and
+
+digest: sha256sum README.md bin/handoffctl | sha256sum
+BEFORE: a14d4a6aefe95c607817c2b282491c28848f07fa631c0d8a328af7f04de941a6
+AFTER : d4fd6a248680d36890e49c919b3ec74adc3ac2fe36c2e8f4c121e8391ffef51a
+
+AUTHORIZATION STATUS: in-session CTO-channel message authorized ZCode as
+executor for THIS task; NO formal CTO authorization reference exists for
+modifying the pinned handoffctl itself. Recorded as MISSING, not
+reconstructed. Supervisor disposition: ratify, re-pin, or revert.
+
+current digest check: d4fd6a248680d36890e49c919b3ec74adc3ac2fe36c2e8f4c121e8391ffef51a

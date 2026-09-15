@@ -17,6 +17,7 @@ direct-service tests state their narrower boundary in each module header.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -325,3 +326,142 @@ async def bound_retailer(db: AsyncSession, provisioned_pool, registry, user_id: 
         registry=registry,
     )
     yield str(ret_id), a["schema"], a["ws_id"]
+
+
+# ---------------------------------------------------------------------------
+# Race orchestration (R1): bounded lifecycle for concurrent HTTP tasks
+# ---------------------------------------------------------------------------
+
+
+class RaceOrchestrator:
+    """Own every spawned task; drain (cancel+await) on EVERY exit path.
+
+    A failing assertion or a timeout must never leave requests parked on an
+    Event. Timeout is recorded as ORCHESTRATION_TIMEOUT — never interpreted
+    as a product race defect on its own.
+    """
+
+    def __init__(self, budget: float = 30.0):
+        self.budget = budget
+        self.tasks: list[asyncio.Task] = []
+        self.timed_out = False
+
+    def spawn(self, coro) -> asyncio.Task:
+        task = asyncio.create_task(coro)
+        self.tasks.append(task)
+        return task
+
+    async def gather_all(self):
+        """Gather all owned tasks under the budget; record timeouts honestly."""
+        try:
+            async with asyncio.timeout(self.budget):
+                return await asyncio.gather(*self.tasks, return_exceptions=True)
+        except TimeoutError:
+            self.timed_out = True
+            raise
+
+    async def drain(self):
+        """Cancel and await every owned task (idempotent, swallow results)."""
+        for task in self.tasks:
+            if not task.done():
+                task.cancel()
+        if self.tasks:
+            await asyncio.gather(*self.tasks, return_exceptions=True)
+        self.tasks.clear()
+
+
+async def seed_bare_sku(db: AsyncSession, schema: str) -> tuple[str, str]:
+    """Seed a catalog product + SKU with NO stock row and NO retailer price.
+
+    Such a SKU has zero identity-use history causes except explicit order
+    references; the automatic all-zero stock placeholder (if later created
+    via ensure_stock_row) is by contract NOT history. Returns (sku_code, sku_id).
+    """
+    product = (await db.execute(text(
+        f'INSERT INTO "{schema}".catalog_products (name, is_active, is_deleted) '
+        "VALUES ('OSD1Bare', true, false) RETURNING id"
+    ))).fetchone()
+    code = f"OSD1BARE{uuid.uuid4().hex[:8].upper()}"
+    row = (await db.execute(text(
+        f'INSERT INTO "{schema}".skus '
+        "(sku_code, name, unit, is_active, is_deleted, catalog_product_id, package_quantity) "
+        "VALUES (:c, 'OSD1Bare', 'piece', true, false, :p, 1.000) RETURNING id"),
+        {"c": code, "p": product.id},
+    )).fetchone()
+    await db.commit()
+    return code, str(row.id)
+
+
+async def identity_history_causes(
+    db: AsyncSession, schema: str, sku_id: str, sku_code: str
+) -> dict[str, bool]:
+    """Independently verify each has_identity_use_history precondition so a
+    guard rejection can be attributed to the order reference alone."""
+    order_ref = (await db.execute(text(
+        f'SELECT 1 FROM "{schema}".order_items '
+        "WHERE sellable_unit_id = :s OR sku_code = :c LIMIT 1"),
+        {"s": sku_id, "c": sku_code})).scalar() is not None
+    movement = (await db.execute(text(
+        f'SELECT 1 FROM "{schema}".inventory_movements WHERE sku_id = :s LIMIT 1'),
+        {"s": sku_id})).scalar() is not None
+    nonzero_stock = (await db.execute(text(
+        f'SELECT 1 FROM "{schema}".inventory_stocks '
+        "WHERE sku_id = :s AND (quantity_on_hand <> 0 OR quantity_reserved <> 0) LIMIT 1"),
+        {"s": sku_id})).scalar() is not None
+    any_reservation = (await db.execute(text(
+        f'SELECT 1 FROM "{schema}".inventory_reservations WHERE sku_id = :s LIMIT 1'),
+        {"s": sku_id})).scalar() is not None
+    return {"order_reference": order_ref, "movement": movement,
+            "nonzero_stock": nonzero_stock, "any_reservation": any_reservation}
+
+
+async def strip_price_and_zero_stock(
+    db: AsyncSession, schema: str, sku_id: str
+) -> None:
+    """Post-creation isolation: zero the stock aggregate and retire the price
+    row so the order reference is the ONLY remaining history cause."""
+    await db.execute(text(
+        f'UPDATE "{schema}".inventory_stocks SET quantity_on_hand = 0, '
+        "quantity_reserved = 0 WHERE sku_id = :s"), {"s": sku_id})
+    await db.execute(text(
+        f'DELETE FROM "{schema}".retailer_prices WHERE sku_id = :s'), {"s": sku_id})
+    await db.commit()
+
+
+_CASHIER_PW = "CashierTestPass99!"  # noqa: S105 (task fixture password, non-production)
+
+
+async def make_tenant_cashier(db: AsyncSession, registry, tenant: dict) -> dict:
+    """Canonical owner-lifecycle cashier for ANY pool tenant (A or B).
+
+    Mirrors the I2B cashier fixture: OwnerCredentialSetupService issues the
+    setup token and creates the first admin with the full canonical RBAC
+    set. Cleanup is registered in the ownership registry. Returns an
+    identity dict consumable by ``osd1_cashier_token``.
+    """
+    import uuid as _uuid
+
+    from services.owner_credential_service import OwnerCredentialSetupService
+
+    reg_id = _uuid.UUID(tenant["reg_id"])
+    svc = OwnerCredentialSetupService(db)
+    await db.execute(
+        text("DELETE FROM public.owner_credential_setup_tokens "
+             "WHERE registration_id = :rid"),
+        {"rid": reg_id},
+    )
+    await db.flush()
+
+    issue = await svc.issue_setup_token(reg_id)
+    assert issue.action == "issued", f"setup token issue failed: {issue}"
+    consume = await svc.consume_setup_token(issue.raw_token, _CASHIER_PW)
+    result = await svc.create_first_admin_rbac(consume)
+    await db.commit()
+    registry.register_tenant_user(tenant["schema"], str(result.user_id))
+    return {
+        "email": result.owner_email,
+        "password": _CASHIER_PW,
+        "user_id": result.user_id,
+        "schema": tenant["schema"],
+        "ws_id": tenant["ws_id"],
+    }

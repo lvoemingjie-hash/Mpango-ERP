@@ -1,0 +1,751 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: asyncio-1.4.0, anyio-4.12.1
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collected 33 items
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py ......     [ 18%]
+tests/order_state_d1/test_matrix_2_double_connection_races.py .FF        [ 27%]
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py .F.           [ 36%]
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py ....F..     [ 57%]
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py ...... [ 75%]
+F                                                                        [ 78%]
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py ..F            [ 87%]
+tests/order_state_d1/test_matrix_assertion_controls.py ....              [100%]
+
+=================================== FAILURES ===================================
+____________ test_race_cancel_cancel_must_match_sequential_history _____________
+tests/order_state_d1/test_matrix_2_double_connection_races.py:174: in test_race_cancel_cancel_must_match_sequential_history
+    assert statuses == [HTTPStatus.OK, HTTPStatus.CONFLICT], (
+E   AssertionError: RED_EVIDENCE racing double-cancel accepted both: statuses=[200, 200] responses=['{"success":true,"data":{"order_id":"4b356366-f6d5-4b83-aa9e-3764db38ad78","status":"cancelled"},"message":"Order cancelled successfully","timestamp":"2026-09-15T03:37:06.199886"}', '{"success":true,"data":{"order_id":"4b356366-f6d5-4b83-aa9e-3764db38ad78","status":"cancelled"},"message":"Order cancelled successfully","timestamp":"2026-09-15T03:37:06.237751"}'] final_facts={'status': 'cancelled', 'reserved_rows': 0, 'reserved_total': '0', 'row_statuses': ['released']}; sequential control is 200 then 409
+E   assert [200, 200] == [<HTTPStatus....ONFLICT: 409>]
+E     
+E     At index 1 diff: 200 != <HTTPStatus.CONFLICT: 409>
+E     Use -v to get more diff
+------------------------------ Captured log call -------------------------------
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 13 queries, 24.66ms total
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 19 queries, 37.45ms total
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 28 queries, 66.22ms total
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 14 queries, 127.98ms total
+________ test_race_confirm_then_cancel_last_writer_orphans_reservation _________
+tests/order_state_d1/test_matrix_2_double_connection_races.py:259: in test_race_confirm_then_cancel_last_writer_orphans_reservation
+    assert facts["reserved_rows"] == 0, (
+E   AssertionError: RED_EVIDENCE orphan reservations on cancelled order: {'status': 'cancelled', 'reserved_rows': 1, 'reserved_total': '5.00', 'row_statuses': ['reserved']}
+E   assert 1 == 0
+------------------------------ Captured log call -------------------------------
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 13 queries, 34.19ms total
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 19 queries, 64.55ms total
+---------------------------- Captured log teardown -----------------------------
+WARNING  core.sql_profiling:sql_profiling.py:191 Slow SQL query detected (233.41ms)
+WARNING  core.sql_profiling:sql_profiling.py:191 Slow SQL query detected (244.20ms)
+WARNING  core.sql_profiling:sql_profiling.py:191 Slow SQL query detected (218.55ms)
+______ test_preloaded_session_transition_uses_stale_state_current_defect _______
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py:144: in test_preloaded_session_transition_uses_stale_state_current_defect
+    with pytest.raises((InvalidStateTransitionError, OrderInvariantViolation)):
+E   Failed: DID NOT RAISE any of (InvalidStateTransitionError, OrderInvariantViolation)
+------------------------------ Captured log call -------------------------------
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 13 queries, 28.90ms total
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 19 queries, 46.43ms total
+________ test_unknown_exception_after_state_write_rolls_back_everything ________
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py:275: in test_unknown_exception_after_state_write_rolls_back_everything
+    assert notification_calls == [], (
+E   AssertionError: RED: fulfill SMS dispatched inside the transaction that later rolled back (success fact before commit): ['sms']
+E   assert ['sms'] == []
+E     
+E     Left contains one more item: 'sms'
+E     Use -v to get more diff
+------------------------------ Captured log call -------------------------------
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 13 queries, 26.98ms total
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 19 queries, 52.30ms total
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 23 queries, 66.77ms total
+INFO     mpango.notifications.sms:notification_service.py:95 TO=+254000000000 | MESSAGE=Order #660d5e3b is on the way! Amount: KES 80.00
+ERROR    api.middleware.request_logging:request_logging.py:97 Request failed: RuntimeError
+Traceback (most recent call last):
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/request_logging.py", line 72, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 115, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 101, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 355, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 243, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/v1/orders.py", line 967, in fulfill_order
+    await inventory_service.deduct_on_fulfillment(
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/tests/order_state_d1/test_matrix_4_whole_request_rollback.py", line 251, in exploding_deduct
+    raise RuntimeError("OSD1 fault injection after state writes")
+RuntimeError: OSD1 fault injection after state writes
+ERROR    api.middleware.auth:auth.py:132 Authentication middleware error: RuntimeError
+  + Exception Group Traceback (most recent call last):
+  |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 79, in collapse_excgroups
+  |     yield
+  |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 192, in __call__
+  |     async with anyio.create_task_group() as task_group:
+  |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 783, in __aexit__
+  |     raise BaseExceptionGroup(
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/auth.py", line 93, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |   File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/rate_limiting.py", line 118, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |   File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/core/prometheus_metrics.py", line 89, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |   File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/sql_profiling.py", line 47, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |   File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/request_logging.py", line 72, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 716, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 736, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 290, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 115, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 101, in app
+    |     response = await f(request)
+    |                ^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 355, in app
+    |     raw_response = await run_endpoint_function(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 243, in run_endpoint_function
+    |     return await dependant.call(**values)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/v1/orders.py", line 967, in fulfill_order
+    |     await inventory_service.deduct_on_fulfillment(
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/tests/order_state_d1/test_matrix_4_whole_request_rollback.py", line 251, in exploding_deduct
+    |     raise RuntimeError("OSD1 fault injection after state writes")
+    | RuntimeError: OSD1 fault injection after state writes
+    +------------------------------------
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/auth.py", line 93, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/rate_limiting.py", line 118, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/core/prometheus_metrics.py", line 89, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/sql_profiling.py", line 47, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/request_logging.py", line 72, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 115, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 101, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 355, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 243, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/v1/orders.py", line 967, in fulfill_order
+    await inventory_service.deduct_on_fulfillment(
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/tests/order_state_d1/test_matrix_4_whole_request_rollback.py", line 251, in exploding_deduct
+    raise RuntimeError("OSD1 fault injection after state writes")
+RuntimeError: OSD1 fault injection after state writes
+ERROR    core.error_codes:error_codes.py:437 Unhandled exception: RuntimeError
+  + Exception Group Traceback (most recent call last):
+  |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 79, in collapse_excgroups
+  |     yield
+  |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 192, in __call__
+  |     async with anyio.create_task_group() as task_group:
+  |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 783, in __aexit__
+  |     raise BaseExceptionGroup(
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    |     await self.app(scope, receive, _send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |   File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/idempotency.py", line 92, in dispatch
+    |     return await call_next(request)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |   File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/auth.py", line 93, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |   File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/rate_limiting.py", line 118, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |   File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/core/prometheus_metrics.py", line 89, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |   File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/sql_profiling.py", line 47, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |   File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/request_logging.py", line 72, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 716, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 736, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 290, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 115, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    |     raise exc
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 101, in app
+    |     response = await f(request)
+    |                ^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 355, in app
+    |     raw_response = await run_endpoint_function(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 243, in run_endpoint_function
+    |     return await dependant.call(**values)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/v1/orders.py", line 967, in fulfill_order
+    |     await inventory_service.deduct_on_fulfillment(
+    |   File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/tests/order_state_d1/test_matrix_4_whole_request_rollback.py", line 251, in exploding_deduct
+    |     raise RuntimeError("OSD1 fault injection after state writes")
+    | RuntimeError: OSD1 fault injection after state writes
+    +------------------------------------
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/idempotency.py", line 92, in dispatch
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/auth.py", line 93, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/rate_limiting.py", line 118, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/core/prometheus_metrics.py", line 89, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/sql_profiling.py", line 47, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/middleware/request_logging.py", line 72, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 115, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 101, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 355, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/fastapi/routing.py", line 243, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/v1/orders.py", line 967, in fulfill_order
+    await inventory_service.deduct_on_fulfillment(
+  File "/home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/tests/order_state_d1/test_matrix_4_whole_request_rollback.py", line 251, in exploding_deduct
+    raise RuntimeError("OSD1 fault injection after state writes")
+RuntimeError: OSD1 fault injection after state writes
+______________ test_first_reference_insert_vs_guard_history_race _______________
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py:442: in test_first_reference_insert_vs_guard_history_race
+    assert guard_result["verdict"] is not None, (
+E   AssertionError: RED_EVIDENCE boundary gap: first reference committed (order_items=1) while the packaging change ALSO succeeded (verdict=None); create's SKU read holds no skus lock and the INSERT is not serialized against the shared guard lock
+E   assert None is not None
+----------------------------- Captured stdout call -----------------------------
+GUARD_PROBE search_path='t_d59c8bfc3cf445c9906840930965571a, public' skus_count=1
+------------------------------ Captured log call -------------------------------
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 13 queries, 30.53ms total
+---------------------------- Captured log teardown -----------------------------
+WARNING  core.sql_profiling:sql_profiling.py:191 Slow SQL query detected (250.52ms)
+WARNING  core.sql_profiling:sql_profiling.py:191 Slow SQL query detected (242.83ms)
+WARNING  core.sql_profiling:sql_profiling.py:191 Slow SQL query detected (258.84ms)
+________ test_race_pay_committed_then_cancel_overwrites_current_defect _________
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py:201: in test_race_pay_committed_then_cancel_overwrites_current_defect
+    assert linearizable_final(facts, sequential_histories), (
+E   AssertionError: RED_EVIDENCE racing outcome {'status': 'cancelled', 'payments': 1, 'completed_payments': 1, 'ledger': 2, 'reserved_rows': 0} matches no sequential history [{'status': 'paid', 'payments': 1, 'completed_payments': 1, 'ledger': 2, 'reserved_rows': 1}, {'status': 'cancelled', 'payments': 0, 'completed_payments': 0, 'ledger': 0, 'reserved_rows': 0}]; cancel=200 {"success":true,"data":{"order_id":"9c9ed674-42ab-4431-8cbc-05a3735d9428","status":"cancelled"},"message":"Order cancelled successfully","timestamp":"2026-09-15T03:38:21.057238"}
+E   assert False
+E    +  where False = linearizable_final({'status': 'cancelled', 'payments': 1, 'completed_payments': 1, 'ledger': 2, ...}, [{'status': 'paid', 'payments': 1, 'completed_payments': 1, 'ledger': 2, ...}, {'status': 'cancelled', 'payments': 0, 'completed_payments': 0, 'ledger': 0, ...}])
+------------------------------ Captured log call -------------------------------
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 13 queries, 35.33ms total
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 19 queries, 41.10ms total
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 23 queries, 58.33ms total
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 28 queries, 67.42ms total
+---------------------------- Captured log teardown -----------------------------
+WARNING  core.sql_profiling:sql_profiling.py:191 Slow SQL query detected (221.42ms)
+WARNING  core.sql_profiling:sql_profiling.py:191 Slow SQL query detected (200.27ms)
+WARNING  core.sql_profiling:sql_profiling.py:191 Slow SQL query detected (200.09ms)
+=============================== warnings summary ===============================
+../../../../scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+    from crypt import crypt as _crypt
+
+database/base.py:7
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/database/base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 12 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 6 warnings
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py: 6 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 18 warnings
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py: 14 warnings
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 6 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 6 warnings
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 6 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 3 warnings
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py: 3 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 9 warnings
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py: 7 warnings
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 3 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 3 warnings
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 12 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 6 warnings
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py: 6 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 18 warnings
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py: 14 warnings
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 6 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 6 warnings
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 6 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 3 warnings
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py: 3 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 9 warnings
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py: 7 warnings
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 3 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 3 warnings
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 6 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 3 warnings
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py: 3 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 7 warnings
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py: 5 warnings
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 3 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 3 warnings
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 4 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 3 warnings
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py: 3 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 3 warnings
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py: 1 warning
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 3 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 1 warning
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 3 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 3 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 1 warning
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py: 1 warning
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 2 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 3 warnings
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py::test_cancel_from_paid_is_unreachable_via_http
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_fulfill_insufficient_stock_rolls_back_transition_too
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_pay_over_remaining_rolls_back_payment_row
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_unknown_exception_after_state_write_rolls_back_everything
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py::test_state_operations_never_touch_item_snapshots
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_cancel_then_pay_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py::test_cancel_from_paid_is_unreachable_via_http
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_fulfill_insufficient_stock_rolls_back_transition_too
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_unknown_exception_after_state_write_rolls_back_everything
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py::test_state_operations_never_touch_item_snapshots
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py::test_cancel_from_paid_is_unreachable_via_http
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_fulfill_insufficient_stock_rolls_back_transition_too
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_unknown_exception_after_state_write_rolls_back_everything
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py::test_state_operations_never_touch_item_snapshots
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py::test_cancel_from_paid_is_unreachable_via_http
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_fulfill_insufficient_stock_rolls_back_transition_too
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_unknown_exception_after_state_write_rolls_back_everything
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py::test_state_operations_never_touch_item_snapshots
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_cancel_cancel_must_match_sequential_history
+FAILED tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_then_cancel_last_writer_orphans_reservation
+FAILED tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_preloaded_session_transition_uses_stale_state_current_defect
+FAILED tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_unknown_exception_after_state_write_rolls_back_everything
+FAILED tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py::test_first_reference_insert_vs_guard_history_race
+FAILED tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+============ 6 failed, 27 passed, 293 warnings in 118.68s (0:01:58) ============
+argv=pytest tests/order_state_d1/ -q --tb=short rc=1

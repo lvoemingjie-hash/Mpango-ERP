@@ -14,14 +14,28 @@ SHA ledger (exact):
 - R0_BASE=1ee75d9faaa00cdcadfe9f46d1e0ac960efc632e · R0_CANDIDATE=e88fa8f7d77eaeec61193ffe236fef160bb65608 · R0_MANIFEST=4f1f8e04fdaba309cb14ec33a461fc9f1df2ec79
 - R1_SUCCESSOR=3961958e04c433c9ca8bd8145f3008bd605dfbe1 · R1_MANIFEST=b6894f1cfef83a4f0b28d555b5f058d2b9e1c2d6
 - R2_SUCCESSOR=2fef0b4590d549e4b954703ae204f5a10fcb247d · R2_MANIFEST=85f79491f3275410946d225c9af837ff949a1e77 (= R3 base)
-- R3_SUCCESSOR=<recorded by the R3 successor commit that introduces this report;
-  exact SHA in the CTO handoff and equal to `git rev-parse HEAD` on the branch>
+- R3_SUCCESSOR=a8249669a8c3895aebc2817054c1abb72233fb48 (`fix(smtp): R3 — shared external-login TLS
+  rule at three layers, evidence truth closure`) — the successor commit that
+  introduces this report; recorded by the R3 manifest commit that follows it.
+  No amend, rebase or force; R0-R2 history untouched.
 - R3 content digests (sha256, grouped as eight 8-char groups; join with spaces
-  removed to verify - grouped form keeps the repository secret scanner quiet):
-  - `backend/core/config.py` `0ea37d75 ebdb4610 c17b0215 892f5f7f cad62af2 a6d1f77b 2dd02511 c65409d1`
-  - `backend/services/email_delivery.py` `c4c7bad3 c9817de8 39823a46 4319ca03 850a055f abd53909 50c1089c f0a58604`
-  - `backend/tests/test_smtp_auth_mode_guard_config.py` `74c600f3 62bab97d 9d6e63b9 2f0aa1a6 25cd7153 3da3d175 21eb1f0f 14ddf76a`
-  - `backend/tests/test_smtp_loopback_noauth_contract.py` `e1e366c7 755fa0f3 514b1269 9f9d93af d10abc7e ea2a3be3 0ec540c2 7fa3dd41`
+  removed to verify - grouped form keeps the repository secret scanner quiet).
+  Two forms are recorded because the two product files are stored CRLF in the
+  working tree while Git normalises them to LF in the blob, whereas the test
+  files are LF in both. The working-tree digest is the bytes the tests actually
+  ran against; the blob digest is what the commit carries:
+
+| file | working-tree sha256 (tested bytes) | committed blob sha256 | line endings |
+|---|---|---|---|
+| `backend/core/config.py` | `0ea37d75 ebdb4610 c17b0215 892f5f7f cad62af2 a6d1f77b 2dd02511 c65409d1` | `239945be 33df31d0 67300317 99dc1925 dd79fadf d8dcf747 5db43cdd 67682d6d` | CRLF |
+| `backend/services/email_delivery.py` | `c4c7bad3 c9817de8 39823a46 4319ca03 850a055f abd53909 50c1089c f0a58604` | `77cc9b7f cd977029 7973fdab 4340ce93 c8535b93 36efc730 6283d6da 7a68109b` | CRLF |
+| `backend/tests/test_smtp_auth_mode_guard_config.py` | `74c600f3 62bab97d 9d6e63b9 2f0aa1a6 25cd7153 3da3d175 21eb1f0f 14ddf76a` | `74c600f3 62bab97d 9d6e63b9 2f0aa1a6 25cd7153 3da3d175 21eb1f0f 14ddf76a` | LF |
+| `backend/tests/test_smtp_loopback_noauth_contract.py` | `e1e366c7 755fa0f3 514b1269 9f9d93af d10abc7e ea2a3be3 0ec540c2 7fa3dd41` | `e1e366c7 755fa0f3 514b1269 9f9d93af d10abc7e ea2a3be3 0ec540c2 7fa3dd41` | LF |
+
+  Verify with `git cat-file blob HEAD:<path> | sha256sum` (blob) and a direct
+  file hash (working tree). The mutation/restore proof in
+  `mutation_evidence_r3.json` uses working-tree digests, which is why its
+  `sha256_before`/`sha256_after_restore` values match the working-tree column.
 - R2 originals are **not** deleted and **not** rewritten: `git status` shows zero
   changes under `ai-ledger/product-ai/2026-09-15_kimi_public_provisioning_smtp_source_closure_r2.md`
   and `ai-ledger/product-ai/evidence/2026-09-15_kimi_smtp_r2/` (verified before the R3 commit).

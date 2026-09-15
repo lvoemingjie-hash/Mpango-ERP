@@ -45,11 +45,12 @@ def m(mid, rel, old, new, oracle, marker, control):
     return Mutation(mid, rel, old, new, oracle, marker, control)
 
 
-CONFIRM_LEDGER_INSERT = '''        reservations = await self._reserve_inventory(order)
+CONFIRM_LEDGER_INSERT = """        reservations = await self._reserve_inventory(order, stocks)
 
-        self._assign_status(order, OrderState.CONFIRMED, updated_by)'''
+        self._assign_status(order, OrderState.CONFIRMED, updated_by)
+        await self.db.flush()"""
 
-CONFIRM_LEDGER_MUTATED = '''        reservations = await self._reserve_inventory(order)
+CONFIRM_LEDGER_MUTATED = """        reservations = await self._reserve_inventory(order, stocks)
 
         # MUTATION M5: restore confirmation accounting on the real confirm path
         from services.ledger_service import LedgerService
@@ -59,7 +60,8 @@ CONFIRM_LEDGER_MUTATED = '''        reservations = await self._reserve_inventory
             description=f"Order {order.id} confirmed - Total: {order.total_amount}",
         )
 
-        self._assign_status(order, OrderState.CONFIRMED, updated_by)'''
+        self._assign_status(order, OrderState.CONFIRMED, updated_by)
+        await self.db.flush()"""
 
 MUTATIONS = [
     m(
@@ -95,7 +97,13 @@ MUTATIONS = [
     m(
         "M3_STALE_CANCEL_RELEASE_DECISION",
         "services/order_command_service.py",
-        """        released = await self._release_reservations(order)
+        """        items = sorted(
+            order.items,
+            key=lambda i: str(i.sellable_unit_id),
+        )
+        stocks = await self._prelock_stocks(items)
+
+        released = await self._release_reservations(order, stocks)
 
         self._assign_status(order, OrderState.CANCELLED, updated_by)""",
         """        # MUTATION M3: release decision no longer owned by the command
@@ -290,8 +298,8 @@ MUTATIONS = [
         )
     except HTTPException:""",
         """    except HTTPException:  # MUTATION M10: domain errors no longer mapped""",
-        "tests/order_state_r1/test_f1_faces.py::test_client_repeated_and_paid_cancel_return_stable_409",
-        "CANCEL_NOT_ALLOWED|assert 409|Exception",
+        "tests/order_state_r1/test_f1_faces.py::test_client_domain_errors_map_to_409_clean",
+        "unmapped domain exception",
         "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",
     ),
 ]

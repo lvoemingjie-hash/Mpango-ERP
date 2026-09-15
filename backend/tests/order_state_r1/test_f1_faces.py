@@ -627,3 +627,73 @@ async def test_cancel_vs_fulfill_two_orders_two_skus_reverse(
     for oid in (oid_a, oid_b):
         resv = await reservation_vector(db, schema, oid)
         assert all(r["status"] in {"released", "consumed"} for r in resv), resv
+
+
+async def test_generic_refuses_partially_paid_on_confirmed(
+    r1_client, s2_clean_db, provisioned_pool, cashier_identity
+):
+    """M11 oracle: even a matrix-legal CONFIRMED->PARTIALLY_PAID edge must
+    be refused by the GENERIC transition (PARTIALLY_PAID is command-owned;
+    only the canonical payment command may write it)."""
+    db, reg = s2_clean_db
+    token = await osd1_cashier_token(r1_client, cashier_identity)
+    ret_id, schema, ws_id = await make_bound_retailer(db, provisioned_pool, reg)
+    sku, _sid = await seed_sku_with_stock(db, schema, ret_id)
+    oid = await http_create_order(r1_client, token, ret_id,
+                                  [{"sku_code": sku, "quantity": 2}])
+    assert (await http_action(r1_client, token, oid, "confirm")).status_code == 200
+
+    session = await _second_session(schema, ws_id)
+    try:
+        with pytest.raises(InvalidStateTransitionError):
+            await OrderCommandService(session).apply_transition(
+                uuid.UUID(oid), OrderState.PARTIALLY_PAID)
+    finally:
+        await session.rollback()
+        await session.close()
+
+
+async def test_client_domain_errors_map_to_409_clean(
+    r1_client, s2_clean_db, provisioned_pool, cashier_identity, two_tenants
+):
+    """M10 oracle (clean, no pytest-error propagation): cancelling a
+    terminal/duplicate order through the CLIENT route must surface as an
+    HTTP 409 — if the domain error escapes unmapped, this captures it and
+    fails with the named marker instead of erroring the test."""
+    from tests.test_dc12r1_s3_s2b_i2b_payment_declarations import (
+        _resolve_binding_retailer,
+    )
+
+    db, reg = s2_clean_db
+    code_a, _b, _sb, email, password, uid_a, _ub = two_tenants
+    a = provisioned_pool.tenants["a"]
+    schema = a["schema"]
+
+    resp = await r1_client.post(
+        "/api/v1/client/auth/login",
+        json={"email": email, "password": password, "wholesaler_code": code_a})
+    assert resp.status_code == 200, resp.text
+    token_c = resp.json()["data"]["tokens"]["access_token"]
+    ret_id = await _resolve_binding_retailer(db, a["ws_id"], uid_a)
+    sku, _sid = await seed_sku_with_stock(db, schema, ret_id, price="10.00")
+
+    created = await r1_client.post(
+        "/api/v1/client/orders",
+        json={"items": [{"sku_code": sku, "quantity": 1}]},
+        headers={"Authorization": f"Bearer {token_c}"})
+    assert created.status_code == 201, created.text
+    oid = created.json()["data"]["id"]
+    first = await r1_client.post(f"/api/v1/client/orders/{oid}/cancel",
+                                 headers={"Authorization": f"Bearer {token_c}"})
+    assert first.status_code == 200, first.text
+
+    try:
+        second = await r1_client.post(
+            f"/api/v1/client/orders/{oid}/cancel",
+            headers={"Authorization": f"Bearer {token_c}"})
+        assert second.status_code == 409, (
+            f"expected stable 409, got {second.status_code}: {second.text}")
+    except Exception as exc:  # unmapped domain exception escaped the route
+        raise AssertionError(
+            f"unmapped domain exception propagated to the client: "
+            f"{type(exc).__name__}: {exc}") from exc

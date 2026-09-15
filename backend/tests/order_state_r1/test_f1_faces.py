@@ -100,15 +100,34 @@ async def test_confirm_then_credit_payment_does_not_double_count_KNOWN_RED(
     oid = await http_create_order(r1_client, token, ret_id,
                                   [{"sku_code": sku, "quantity": 2}])  # 80
     assert (await http_action(r1_client, token, oid, "confirm")).status_code == 200
+    held = await binding_balance(db, ws_id, ret_id)
+    assert held - before == Decimal("80.00")
     pay = await http_action(r1_client, token, oid, "pay",
                             {"amount": 80.00, "method": "credit"})
     assert pay.status_code == HTTPStatus.OK, pay.text
 
+    # control with cash/transfer on an identical second order: exactly one
+    # hold movement (no credit delta on the binding for cash tenders)
+    oid2 = await http_create_order(r1_client, token, ret_id,
+                                   [{"sku_code": sku, "quantity": 2}])
+    assert (await http_action(r1_client, token, oid2, "confirm")).status_code == 200
+    mid = await binding_balance(db, ws_id, ret_id)
+    pay2 = await http_action(r1_client, token, oid2, "pay",
+                             {"amount": 80.00, "method": "transfer"})
+    assert pay2.status_code == HTTPStatus.OK, pay2.text
     after = await binding_balance(db, ws_id, ret_id)
-    assert after - before == Decimal("80.00"), (
+    # control: cash/transfer payment must NOT move the binding at all
+    # (the mid value itself embeds the known-RED double count and is not
+    # asserted absolutely here)
+    assert after == mid, (
+        "control face: cash/transfer payment must not move the binding "
+        f"(mid={mid} after={after})")
+
+    credit_order_after = after - Decimal("80.00")  # strip the control hold
+    assert credit_order_after - before == Decimal("80.00"), (
         f"CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED: confirm-time hold + "
         f"credit payment double-counted the exposure "
-        f"(movement={after - before}, expected one total of 80.00)")
+        f"(movement={credit_order_after - before}, expected one total of 80.00)")
 
 
 # ---------------------------------------------------------------------------
@@ -119,19 +138,35 @@ async def test_confirm_then_credit_payment_does_not_double_count_KNOWN_RED(
 async def test_receivables_summary_counts_exposure_once_KNOWN_RED(
     r1_client, s2_clean_db, provisioned_pool, cashier_identity
 ):
-    """After confirm + full credit payment the retailer's receivables
-    summary must report the exposure exactly ONCE. Current summary reads
-    the binding aggregate, which already double-counts (face 2), so the
-    summary duplicates the same exposure. KNOWN RED pending the same
-    decision."""
+    """Two ISOLATED retailers: (a) confirm-only control — the summary
+    reports its hold exactly once (GREEN control face); (b) credit flow —
+    the same credit exposure must be counted ONCE in the summary. The
+    summary reads the binding aggregate, which double-counts hold+credit
+    for the same exposure -> KNOWN RED pending the CTO credit decision."""
+    from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (
+        _create_binding,
+        _create_retailer,
+    )
     from services.receivables_service import ReceivablesService
 
     db, reg = s2_clean_db
     token = await osd1_cashier_token(r1_client, cashier_identity)
-    ret_id, schema, ws_id = await make_bound_retailer(db, provisioned_pool, reg)
-    sku, _sid = await seed_sku_with_stock(db, schema, ret_id, price="25.00")
-    oid = await http_create_order(r1_client, token, ret_id,
-                                  [{"sku_code": sku, "quantity": 4}])  # 100
+    ret_ctrl, schema, ws_id = await make_bound_retailer(db, provisioned_pool, reg)
+    # second, isolated retailer for the credit flow
+    ret_cred = await _create_retailer(db, name="F2 Credit Retailer", registry=reg)
+    await _create_binding(db, wholesaler_id=ws_id, retailer_id=ret_cred,
+                          tenant_user_id=str(uuid.uuid4()), registry=reg)
+    sku, _sid = await seed_sku_with_stock(db, schema, ret_ctrl, price="25.00")
+    sku2, _sid2 = await seed_sku_with_stock(db, schema, ret_cred, price="25.00")
+
+    # (a) confirm-only control: hold 50.00, no payment
+    oid_ctrl = await http_create_order(r1_client, token, ret_ctrl,
+                                       [{"sku_code": sku, "quantity": 2}])
+    assert (await http_action(r1_client, token, oid_ctrl, "confirm")).status_code == 200
+
+    # (b) credit flow: hold 100 then full credit payment
+    oid = await http_create_order(r1_client, token, ret_cred,
+                                  [{"sku_code": sku2, "quantity": 4}])
     assert (await http_action(r1_client, token, oid, "confirm")).status_code == 200
     pay = await http_action(r1_client, token, oid, "pay",
                             {"amount": 100.00, "method": "credit"})
@@ -141,23 +176,29 @@ async def test_receivables_summary_counts_exposure_once_KNOWN_RED(
     try:
         summary = await ReceivablesService().get_receivables_summary(
             tenant_db=reader, wholesaler_id=ws_id)
-        rows = summary.get("data") or summary.get("retailers") or summary
-        outstanding = None
-        if isinstance(rows, dict):
-            outstanding = rows.get("total_outstanding")
-        if outstanding is None and isinstance(rows, list):
-            for row in rows:
-                if str(row.get("retailer_id", "")) == ret_id or True:
-                    outstanding = Decimal(str(row.get("outstanding_balance", 0)))
-                    break
-        assert outstanding is not None, f"summary shape: {summary!r}"
+        rows = summary.get("by_retailer") or []
+        by_ret = {str(r.get("retailer_id", "")): r for r in rows}
+
+        ctrl_row = by_ret.get(ret_ctrl)
+        assert ctrl_row is not None, f"summary lacks control retailer: {rows}"
+        ctrl_out = Decimal(str(ctrl_row.get("outstanding_balance", 0)))
+        # control face (current aggregation semantics): the confirm-only
+        # order contributes binding hold 50.00 + unpaid_order_balance 50.00
+        # = 100.00 — both tracks visible, the hold counted once
+        assert ctrl_out == Decimal("100.00"), (
+            f"confirm-only control face failed: summary={ctrl_out}, "
+            f"expected binding-hold(50)+unpaid(50)=100")
+
+        cred_row = by_ret.get(str(ret_cred))
+        assert cred_row is not None, f"summary lacks credit retailer: {rows}"
+        cred_out = Decimal(str(cred_row.get("outstanding_balance", 0)))
     finally:
         await reader.close()
 
-    assert outstanding == Decimal("100.00"), (
+    assert cred_out == Decimal("100.00"), (
         f"CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED: receivables summary "
-        f"double-counts the same exposure (got {outstanding}, expected "
-        f"100.00 exactly once)")
+        f"double-counts the same exposure (got {cred_out}, expected "
+        f"100.00 exactly once for the credit order)")
 
 
 # ---------------------------------------------------------------------------
@@ -181,8 +222,8 @@ async def test_generic_transition_refuses_command_owned_targets(
     session = await _second_session(schema, ws_id)
     try:
         for target in (OrderState.CONFIRMED, OrderState.CANCELLED,
-                       OrderState.PAID, OrderState.FULFILLED,
-                       OrderState.RETURNED):
+                       OrderState.PAID, OrderState.PARTIALLY_PAID,
+                       OrderState.FULFILLED, OrderState.RETURNED):
             with pytest.raises(InvalidStateTransitionError):
                 await OrderCommandService(session).apply_transition(
                     uuid.UUID(oid), target)
@@ -381,3 +422,208 @@ async def test_fulfill_and_return_concurrent_two_orders_two_skus(
         assert all(r["status"] in {"consumed", "released"} for r in resv), resv
     assert (await order_vector(db, schema, oid_a))["status"] == "fulfilled"
     assert (await order_vector(db, schema, oid_b))["status"] == "returned"
+
+
+# ---------------------------------------------------------------------------
+# F2 faces: confirm‖fulfill and cancel‖fulfill — two orders, two SKUs,
+# reverse item order, real PG, arrival barriers
+# ---------------------------------------------------------------------------
+
+
+async def _seed_two_sku_paid_pair(r1_client, token, db, pool, reg):
+    """Return (schema, sku pair, draft order A reverse, paid order B)."""
+    ret_id, schema, _ws = await make_bound_retailer(db, pool, reg)
+    sku_a, sid_a = await seed_sku_with_stock(db, schema, ret_id, quantity=100, price="10.00")
+    sku_b, sid_b = await seed_sku_with_stock(db, schema, ret_id, quantity=100, price="20.00")
+    # order A: REVERSE item order (B then A), left DRAFT
+    oid_a = await http_create_order(r1_client, token, ret_id,
+                                    [{"sku_code": sku_b, "quantity": 2},
+                                     {"sku_code": sku_a, "quantity": 3}])
+    # order B: (A then B), confirmed + paid, ready to fulfill
+    oid_b = await http_create_order(r1_client, token, ret_id,
+                                    [{"sku_code": sku_a, "quantity": 4},
+                                     {"sku_code": sku_b, "quantity": 5}])
+    assert (await http_action(r1_client, token, oid_b, "confirm")).status_code == 200
+    pay = await http_action(r1_client, token, oid_b, "pay",
+                            {"amount": 140.00, "method": "cash"})
+    assert pay.status_code == 200, pay.text
+    return schema, (sid_a, sid_b), oid_a, oid_b
+
+
+def _gated_command(r1_client_module_orders, gate_first, gate_second):
+    """Build a GatedService releasing both after arrival, first-writer
+    deterministic via gate_first/gate_second events."""
+    import asyncio
+
+    real_service = r1_client_module_orders.OrderCommandService
+    arrive = {"a": False, "b": False}
+    both = asyncio.Event()
+
+    class GatedService(real_service):
+        async def confirm_order(self, *args, **kwargs):
+            arrive["a"] = True
+            if arrive["b"]:
+                both.set()
+            await asyncio.wait_for(both.wait(), 30.0)
+            await gate_first.wait()
+            return await super().confirm_order(*args, **kwargs)
+
+        async def cancel_order(self, *args, **kwargs):
+            arrive["a"] = True
+            if arrive["b"]:
+                both.set()
+            await asyncio.wait_for(both.wait(), 30.0)
+            await gate_first.wait()
+            return await super().cancel_order(*args, **kwargs)
+
+        async def fulfill_order(self, *args, **kwargs):
+            arrive["b"] = True
+            if arrive["a"]:
+                both.set()
+            await asyncio.wait_for(both.wait(), 30.0)
+            await gate_second.wait()
+            return await super().fulfill_order(*args, **kwargs)
+
+    return real_service, GatedService
+
+
+async def test_confirm_vs_fulfill_two_orders_two_skus_reverse(
+    r1_client, s2_clean_db, provisioned_pool, cashier_identity
+):
+    """Order A (draft, reverse items) CONFIRMS while order B (paid, A-then-B
+    items) FULFILLS concurrently under an arrival barrier with the shared
+    prelock strategy: both succeed; aggregates exact; zero orphans."""
+    import asyncio
+    from http import HTTPStatus as HS
+
+    db, reg = s2_clean_db
+    token = await osd1_cashier_token(r1_client, cashier_identity)
+    schema, (sid_a, sid_b), oid_a, oid_b = await _seed_two_sku_paid_pair(
+        r1_client, token, db, provisioned_pool, reg)
+
+    import api.v1.orders as orders_api
+    real_service = orders_api.OrderCommandService
+
+    a_arrived = asyncio.Event()
+    b_arrived = asyncio.Event()
+    both = asyncio.Event()
+    flags = {"a": False, "b": False}
+    release = asyncio.Event()
+
+    class GatedService(real_service):
+        async def confirm_order(self, *args, **kwargs):
+            flags["a"] = True; a_arrived.set()
+            if flags["b"]: both.set()
+            await asyncio.wait_for(both.wait(), 30.0)
+            await asyncio.wait_for(release.wait(), 30.0)
+            return await super().confirm_order(*args, **kwargs)
+
+        async def fulfill_order(self, *args, **kwargs):
+            flags["b"] = True; b_arrived.set()
+            if flags["a"]: both.set()
+            await asyncio.wait_for(both.wait(), 30.0)
+            await asyncio.wait_for(release.wait(), 30.0)
+            return await super().fulfill_order(*args, **kwargs)
+
+    orders_api.OrderCommandService = GatedService
+    orch = RaceOrchestrator(30.0)
+    try:
+        t_confirm = orch.spawn(http_action(r1_client, token, oid_a, "confirm"))
+        t_fulfill = orch.spawn(http_action(r1_client, token, oid_b, "fulfill"))
+        async with asyncio.timeout(30.0):
+            await asyncio.wait_for(asyncio.gather(
+                a_arrived.wait(), b_arrived.wait()), 30.0)
+            release.set()
+            results = await asyncio.gather(t_confirm, t_fulfill,
+                                           return_exceptions=True)
+    except TimeoutError:
+        orch.timed_out = True
+        raise AssertionError("ORCHESTRATION_TIMEOUT — not a product verdict")
+    finally:
+        await orch.drain()
+        orders_api.OrderCommandService = real_service
+
+    assert not any(isinstance(r, BaseException) for r in results), results
+    for r in results:
+        assert r.status_code == HS.OK, r.text
+
+    inv = await inventory_vector(db, schema, [sid_a, sid_b])
+    # A reserves a3/b2; B fulfillment consumes its reserved a4/b5 (deduct
+    # on-hand only): a=96/7? no — deduct on_hand -4/-5, reserved -4/-5.
+    assert inv[sid_a] == "96/3", inv
+    assert inv[sid_b] == "95/2", inv
+    assert (await order_vector(db, schema, oid_a))["status"] == "confirmed"
+    assert (await order_vector(db, schema, oid_b))["status"] == "fulfilled"
+
+
+async def test_cancel_vs_fulfill_two_orders_two_skus_reverse(
+    r1_client, s2_clean_db, provisioned_pool, cashier_identity
+):
+    """Order A (confirmed earlier, reverse items) CANCELS while order B
+    (paid, A-then-B) FULFILLS concurrently: both succeed; released and
+    consumed aggregates exact; zero reserved rows remain."""
+    import asyncio
+    from http import HTTPStatus as HS
+
+    db, reg = s2_clean_db
+    token = await osd1_cashier_token(r1_client, cashier_identity)
+    schema, (sid_a, sid_b), oid_a, oid_b = await _seed_two_sku_paid_pair(
+        r1_client, token, db, provisioned_pool, reg)
+    # order A must be CONFIRMED to have reservations to release
+    assert (await http_action(r1_client, token, oid_a, "confirm")).status_code == 200
+
+    import api.v1.orders as orders_api
+    real_service = orders_api.OrderCommandService
+
+    a_arrived = asyncio.Event()
+    b_arrived = asyncio.Event()
+    both = asyncio.Event()
+    flags = {"a": False, "b": False}
+    release = asyncio.Event()
+
+    class GatedService(real_service):
+        async def cancel_order(self, *args, **kwargs):
+            flags["a"] = True; a_arrived.set()
+            if flags["b"]: both.set()
+            await asyncio.wait_for(both.wait(), 30.0)
+            await asyncio.wait_for(release.wait(), 30.0)
+            return await super().cancel_order(*args, **kwargs)
+
+        async def fulfill_order(self, *args, **kwargs):
+            flags["b"] = True; b_arrived.set()
+            if flags["a"]: both.set()
+            await asyncio.wait_for(both.wait(), 30.0)
+            await asyncio.wait_for(release.wait(), 30.0)
+            return await super().fulfill_order(*args, **kwargs)
+
+    orders_api.OrderCommandService = GatedService
+    orch = RaceOrchestrator(30.0)
+    try:
+        t_cancel = orch.spawn(http_action(r1_client, token, oid_a, "cancel"))
+        t_fulfill = orch.spawn(http_action(r1_client, token, oid_b, "fulfill"))
+        async with asyncio.timeout(30.0):
+            await asyncio.wait_for(asyncio.gather(
+                a_arrived.wait(), b_arrived.wait()), 30.0)
+            release.set()
+            results = await asyncio.gather(t_cancel, t_fulfill,
+                                           return_exceptions=True)
+    except TimeoutError:
+        orch.timed_out = True
+        raise AssertionError("ORCHESTRATION_TIMEOUT — not a product verdict")
+    finally:
+        await orch.drain()
+        orders_api.OrderCommandService = real_service
+
+    assert not any(isinstance(r, BaseException) for r in results), results
+    for r in results:
+        assert r.status_code == HS.OK, r.text
+
+    inv = await inventory_vector(db, schema, [sid_a, sid_b])
+    # A released its a3/b2; B consumed its a4/b5: net a=96/0, b=95/0
+    assert inv[sid_a] == "96/0", inv
+    assert inv[sid_b] == "95/0", inv
+    for oid, want in ((oid_a, "cancelled"), (oid_b, "fulfilled")):
+        assert (await order_vector(db, schema, oid))["status"] == want
+    for oid in (oid_a, oid_b):
+        resv = await reservation_vector(db, schema, oid)
+        assert all(r["status"] in {"released", "consumed"} for r in resv), resv

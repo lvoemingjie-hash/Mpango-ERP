@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.structured_logging import get_logger
-from core.domain.order_state import OrderState
+from core.domain.order_state import InvalidStateTransitionError, OrderState
 from models.order import Order
 from services.order_command_service import OrderCommandResult, OrderCommandService
 
@@ -45,26 +45,28 @@ class OrderService:
         result (including notification intents) is available via
         ``last_result`` after the call.
         """
+        # F2: the compatibility adapter REFUSES payment states outright —
+        # payment status writes belong to the explicit payment command,
+        # reachable only from CanonicalPaymentService (AST-guarded).
+        if target_state in (OrderState.PAID, OrderState.PARTIALLY_PAID):
+            raise InvalidStateTransitionError(
+                from_state=target_state,
+                to_state=target_state,
+                reason=(
+                    "OrderService.transition refuses payment states; "
+                    "CanonicalPaymentService must call "
+                    "OrderCommandService.apply_payment_transition directly"),
+            )
+
         command = OrderCommandService(self.db)
         try:
-            if target_state in (OrderState.PAID, OrderState.PARTIALLY_PAID):
-                # ONLY the canonical payment service reaches here; the
-                # explicit payment command enforces the payment context.
-                result: OrderCommandResult = await command.apply_payment_transition(
-                    order_id,
-                    target_state,
-                    payment_method=payment_method,
-                    updated_by=str(updated_by) if updated_by else None,
-                    reason=reason,
-                )
-            else:
-                result: OrderCommandResult = await command.apply_transition(
-                    order_id,
-                    target_state,
-                    reason=reason,
-                    updated_by=str(updated_by) if updated_by else None,
-                    payment_method=payment_method,
-                )
+            result: OrderCommandResult = await command.apply_transition(
+                order_id,
+                target_state,
+                reason=reason,
+                updated_by=str(updated_by) if updated_by else None,
+                payment_method=payment_method,
+            )
         except HTTPException as exc:
             # historical contract: direct service callers see ValueError
             # for a missing order; HTTP routes pre-check with 404.

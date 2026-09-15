@@ -221,6 +221,63 @@ MUTATIONS = [
         "tests/order_state_r1/test_baseline.py::test_cancel_from_confirmed_releases_and_keeps_no_ledger",
     ),
     m(
+        "M11_PARTIALLY_PAID_BYPASS",
+        "services/order_command_service.py",
+        """COMMAND_OWNED_TARGETS = frozenset(
+    {OrderState.CONFIRMED, OrderState.CANCELLED, OrderState.PAID,
+     OrderState.PARTIALLY_PAID, OrderState.FULFILLED, OrderState.RETURNED})""",
+        """COMMAND_OWNED_TARGETS = frozenset(
+    {OrderState.CONFIRMED, OrderState.CANCELLED, OrderState.PAID,
+     OrderState.FULFILLED, OrderState.RETURNED})  # MUTATION M11""",
+        "tests/order_state_r1/test_f1_faces.py::test_generic_transition_refuses_command_owned_targets",
+        "DID NOT RAISE",
+        "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",
+    ),
+    m(
+        "M12_NON_CANONICAL_PAYMENT_CALLER",
+        "api/v1/orders.py",
+        """    order = await _get_order_by_id_for_update(db, order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "ORDER_NOT_FOUND",
+                "message": f"Order with ID '{order_id}' not found",
+            },
+        )""",
+        """    order = await _get_order_by_id_for_update(db, order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "ORDER_NOT_FOUND",
+                "message": f"Order with ID '{order_id}' not found",
+            },
+        )
+    # MUTATION M12: non-canonical direct payment-command call
+    from services.order_command_service import OrderCommandService as _OCS
+    from core.domain.order_state import OrderState as _OS
+    await _OCS(db).apply_payment_transition(
+        order.id, _OS.PARTIALLY_PAID, payment_method="cash")""",
+        "tests/order_state_r1/test_static_guards.py::test_payment_command_single_caller_guard",
+        "non-canonical caller",
+        "tests/order_state_r1/test_static_guards.py::test_no_placeholder_notification_values_in_production",
+    ),
+    m(
+        "M13_CROSS_COMMAND_LOCK_ORDER",
+        "services/order_command_service.py",
+        """        stocks = await self._prelock_stocks(items)
+
+        released = await self._release_reservations(order, stocks)""",
+        """        stocks = await self._prelock_stocks(
+            list(reversed(items)))  # MUTATION M13: inverse lock order
+
+        released = await self._release_reservations(order, stocks)""",
+        "tests/order_state_r1/test_prelock.py::test_cancel_prelocks_all_stocks_in_global_order",
+        "cancel prelock wrong/incomplete",
+        "tests/order_state_r1/test_baseline.py::test_cancel_from_confirmed_releases_and_keeps_no_ledger",
+    ),
+    m(
         "M10_CLIENT_409_MAPPING_REMOVED",
         "api/v1/client/orders.py",
         """    except (InvalidStateTransitionError, OrderInvariantViolation) as e:
@@ -250,21 +307,24 @@ def run_node(node: str, timeout: float = 600.0) -> tuple[int, str]:
 
 
 def classify(rc: int, out: str, node: str, marker: str) -> str:
+    """F2 contract: ONLY rc==1 with exactly the named FAILED node, the
+    unique named assertion marker, and ZERO setup/teardown/collection
+    errors counts as a semantic RED."""
     if rc == 0:
         return "NOT_RED"
-    failed = re.findall(r"^FAILED (\S+)", out, re.M)
-    # A genuine semantic RED is decided FIRST: exactly the named node must
-    # fail with the expected assertion marker. Teardown errors trailing a
-    # real assertion failure do not void it.
-    if failed == [node] and re.search(marker, out):
-        return "SEMANTIC_RED"
-    if rc == 4 or rc == 5 or "no tests ran" in out or not failed:
+    if rc != 1:
+        return f"VOID_RC_{rc}"
+    if "no tests ran" in out or "ERROR collecting" in out:
         return "VOID_COLLECTION"
-    if "ERROR at " in out or "ERROR collecting" in out:
-        return "VOID_SETUP"
+    if "ERROR at " in out or "errors in" in out:
+        return "VOID_TEARDOWN_OR_SETUP_ERROR"
+    failed = re.findall(r"^FAILED (\S+)", out, re.M)
     if failed != [node]:
         return f"WRONG_NODE:{failed}"
-    return "MARKER_MISSING"
+    hits = re.findall(marker, out)
+    if len(hits) != 1:
+        return f"MARKER_NOT_UNIQUE({len(hits)})"
+    return "SEMANTIC_RED"
 
 
 def main() -> int:

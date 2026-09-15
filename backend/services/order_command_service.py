@@ -71,7 +71,7 @@ REFUND_WORKFLOW_NOT_IMPLEMENTED = "REFUND_WORKFLOW_NOT_IMPLEMENTED"
 # return) or the canonical payment service (PAID/PARTIALLY_PAID).
 COMMAND_OWNED_TARGETS = frozenset(
     {OrderState.CONFIRMED, OrderState.CANCELLED, OrderState.PAID,
-     OrderState.FULFILLED, OrderState.RETURNED})
+     OrderState.PARTIALLY_PAID, OrderState.FULFILLED, OrderState.RETURNED})
 
 
 @dataclass(frozen=True)
@@ -135,7 +135,16 @@ class OrderCommandService:
         self._validate_transition(order, OrderState.CONFIRMED)
         self._validate_item_identities(order)
 
-        reservations = await self._reserve_inventory(order)
+        items = sorted(order.items, key=lambda i: str(i.sellable_unit_id))
+        for item in items:
+            if item.sellable_unit_id is None:
+                raise _conflict(
+                    "ORDER_ITEM_SELLABLE_ID_REQUIRED",
+                    f"Order item '{item.id}' requires explicit legacy mapping",
+                )
+        stocks = await self._prelock_stocks(items, require_active=True)
+
+        reservations = await self._reserve_inventory(order, stocks)
 
         self._assign_status(order, OrderState.CONFIRMED, updated_by)
         await self.db.flush()
@@ -180,7 +189,13 @@ class OrderCommandService:
                 "is not implemented",
             )
 
-        released = await self._release_reservations(order)
+        items = sorted(
+            order.items,
+            key=lambda i: str(i.sellable_unit_id),
+        )
+        stocks = await self._prelock_stocks(items)
+
+        released = await self._release_reservations(order, stocks)
 
         self._assign_status(order, OrderState.CANCELLED, updated_by)
         await self.db.flush()
@@ -402,9 +417,13 @@ class OrderCommandService:
         await self.db.refresh(order)
         return OrderCommandResult(order=order)
 
-    async def _prelock_stocks(self, items) -> dict:
+    async def _prelock_stocks(self, items, *, require_active: bool = False) -> dict:
         """Lock EVERY distinct stock row in ONE global order (sorted
-        sku_id) BEFORE any inventory write; returns the locked stocks."""
+        sku_id) BEFORE any inventory write; returns the locked stocks.
+
+        Shared by confirm/cancel/fulfill/return — the single lock-order
+        strategy of the command layer.
+        """
         from services.inventory_service import InventoryService
 
         inventory = InventoryService()
@@ -415,6 +434,7 @@ class OrderCommandService:
                 self.db,
                 sku_id=uuid.UUID(sku_id),
                 sku_code=item.sku_code,
+                require_active=require_active,
             )
         return stocks
 
@@ -468,31 +488,17 @@ class OrderCommandService:
                     "sellable unit reference",
                 )
 
-    async def _reserve_inventory(self, order: Order) -> list[InventoryReservation]:
-        """Create owned reservations with deterministic stock lock order.
-
-        Stock rows are locked ordered by (sku_code, sku_id) — the same
-        ordering policy the cancel path uses for its reservation locks.
-        """
-        from services.inventory_service import InventoryService
-
-        inventory = InventoryService()
+    async def _reserve_inventory(
+        self, order: Order, stocks: dict
+    ) -> list[InventoryReservation]:
+        """Create owned reservations from the ALREADY pre-locked stock rows
+        (shared sorted-sku_id strategy — no inline locking here)."""
         reserved: list[InventoryReservation] = []
         for item in sorted(
             order.items,
-            key=lambda i: (i.sku_code, str(i.sellable_unit_id)),
+            key=lambda i: str(i.sellable_unit_id),
         ):
-            if item.sellable_unit_id is None:
-                raise _conflict(
-                    "ORDER_ITEM_SELLABLE_ID_REQUIRED",
-                    f"Order item '{item.id}' requires explicit legacy mapping",
-                )
-            stock = await inventory._locked_stock_by_sku_id(
-                self.db,
-                sku_id=item.sellable_unit_id,
-                sku_code=item.sku_code,
-                require_active=True,
-            )
+            stock = stocks[item.sellable_unit_id]
             quantity = Decimal(str(item.quantity))
             available = stock.quantity_on_hand - stock.quantity_reserved
             if available < quantity:
@@ -517,10 +523,11 @@ class OrderCommandService:
         await self.db.flush()
         return reserved
 
-    async def _release_reservations(self, order: Order) -> list[InventoryReservation]:
-        """Release the order's own active reservations (deterministic order)."""
-        from services.inventory_service import InventoryService
-
+    async def _release_reservations(
+        self, order: Order, stocks: dict
+    ) -> list[InventoryReservation]:
+        """Release the order's own active reservations using the ALREADY
+        pre-locked stock rows (no inline locking here)."""
         result = await self.db.execute(
             select(InventoryReservation)
             .where(InventoryReservation.order_id == order.id)
@@ -531,13 +538,8 @@ class OrderCommandService:
             .execution_options(populate_existing=True)
         )
         reservations = list(result.scalars().all())
-        inventory = InventoryService()
         for reservation in reservations:
-            stock = await inventory._locked_stock_by_sku_id(
-                self.db,
-                sku_id=reservation.sku_id,
-                sku_code=reservation.sku_code,
-            )
+            stock = stocks[reservation.sku_id]
             if stock.quantity_reserved < reservation.quantity:
                 raise _conflict(
                     "RESERVATION_AGGREGATE_MISMATCH",

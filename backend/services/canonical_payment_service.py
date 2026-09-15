@@ -14,7 +14,7 @@ from core.domain.order_state import OrderState
 from models.order import Order as OrderModel
 import repositories.payment_repository as payment_repository_module
 import services.ledger_service as ledger_service_module
-import services.order_service as order_service_module
+import services.order_command_service as order_command_module
 import services.payment_service as payment_service_module
 
 
@@ -355,13 +355,18 @@ class CanonicalPaymentService:
                         retailer_id=order.retailer_id,
                         delta=amount,
                     )
-                order = await order_service_module.OrderService(db).transition(
-                    order_id=order.id,
-                    target_state=target_state,
-                    reason="Payment recorded",
-                    updated_by=created_by,
-                    payment_method=method,
-                )
+                # F2: canonical payment service calls the ONE payment
+                # status command directly (AST-guarded call site).
+                order = (
+                    await order_command_module.OrderCommandService(
+                        db
+                    ).apply_payment_transition(
+                        order.id,
+                        target_state,
+                        payment_method=method,
+                        updated_by=created_by,
+                    )
+                ).order
                 order_status = getattr(order.status, "value", order.status)
                 if not force_completed and order_status == OrderState.PAID.value:
                     await self._repo.update_cash_transfer_to_completed(db, order_id=order.id)

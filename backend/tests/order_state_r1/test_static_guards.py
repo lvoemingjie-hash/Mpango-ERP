@@ -101,3 +101,69 @@ def test_no_placeholder_notification_values_in_production():
             if marker in src:
                 offenders.append(f"{_relative(path)} contains {marker!r}")
     assert not offenders, offenders
+
+
+def test_payment_command_single_caller_guard():
+    """F2: apply_payment_transition may be CALLED only by
+    CanonicalPaymentService (production)."""
+    allowed_caller = "services/canonical_payment_service.py"
+    offenders: list[str] = []
+    for path in _production_files():
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                name = None
+                if isinstance(func, ast.Attribute):
+                    name = func.attr
+                elif isinstance(func, ast.Name):
+                    name = func.id
+                if name == "apply_payment_transition":
+                    if _relative(path) != allowed_caller:
+                        offenders.append(
+                            f"{_relative(path)}:{node.lineno}")
+    assert not offenders, (
+        f"non-canonical caller(s) of the payment command: {offenders}")
+
+
+def test_adapter_refuses_payment_states():
+    """F2 source shape: OrderService.transition makes no payment-command
+    CALL (docstring mentions are fine) and refuses payment states."""
+    src = (BACKEND / "services" / "order_service.py").read_text()
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr == "apply_payment_transition":
+            raise AssertionError(
+                f"adapter calls the payment command at line {node.lineno}")
+    assert "target_state in (OrderState.PAID, OrderState.PARTIALLY_PAID)" in src, (
+        "adapter must explicitly refuse payment states")
+
+
+def test_all_commands_share_prelock_strategy():
+    """F2 source shape: confirm/cancel/fulfill/return all route inventory
+    writes through the shared _prelock_stocks; no command locks stocks
+    inline in its item loop."""
+    src = (BACKEND / "services" / "order_command_service.py").read_text()
+    tree = ast.parse(src)
+    prelock_calls = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr == "_prelock_stocks":
+            prelock_calls.append(node.lineno)
+    assert len(prelock_calls) >= 4, (
+        f"expected >=4 _prelock_stocks call sites (confirm/cancel/fulfill/"
+        f"return), found {prelock_calls}")
+    # _locked_stock_by_sku_id may appear ONLY inside _prelock_stocks
+    prelock_ranges = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                and node.name == "_prelock_stocks":
+            prelock_ranges.append((node.lineno, node.end_lineno))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr == "_locked_stock_by_sku_id":
+            if not any(a <= node.lineno <= b for a, b in prelock_ranges):
+                raise AssertionError(
+                    f"command module locks stocks outside _prelock_stocks at "
+                    f"line {node.lineno}")

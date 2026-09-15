@@ -1,0 +1,35 @@
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_preloaded_session_transition_uses_stale_state_current_defect
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/core/security.py:108: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_fresh_session_transition_sees_committed_change_positive_control
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_preloaded_session_transition_uses_stale_state_current_defect
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/v1/auth.py:325: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_fresh_session_transition_sees_committed_change_positive_control
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_fresh_session_transition_sees_committed_change_positive_control
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_preloaded_session_transition_uses_stale_state_current_defect
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_preloaded_session_transition_uses_stale_state_current_defect
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/core/security.py:150: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_fresh_session_transition_sees_committed_change_positive_control
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_preloaded_session_transition_uses_stale_state_current_defect
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/v1/auth.py:441: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_fresh_session_transition_sees_committed_change_positive_control
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_preloaded_session_transition_uses_stale_state_current_defect
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/v1/orders.py:519: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_fresh_session_transition_sees_committed_change_positive_control
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_preloaded_session_transition_uses_stale_state_current_defect
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/v1/orders.py:668: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_preloaded_session_transition_uses_stale_state_current_defect
+================== 1 failed, 1 passed, 18 warnings in 11.91s ===================

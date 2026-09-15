@@ -1,0 +1,84 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: asyncio-1.4.0, anyio-4.12.1
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collected 3 items
+
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py ..F            [100%]
+
+=================================== FAILURES ===================================
+________ test_race_pay_committed_then_cancel_overwrites_current_defect _________
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py:176: in test_race_pay_committed_then_cancel_overwrites_current_defect
+    assert linearizable_final(final, sequential_histories), (
+E   AssertionError: racing outcome {'status': 'cancelled', 'payments': 1, 'ledger': 2, 'reserved_rows': 0} matches no sequential history [{'status': 'paid', 'payments': 1, 'ledger': 2, 'reserved_rows': 1}, {'status': 'cancelled', 'payments': 0, 'ledger': 0, 'reserved_rows': 0}]; cancel=200 {"success":true,"data":{"order_id":"45e6bbf9-2c09-44b3-93ec-e6bb9247c040","status":"cancelled"},"message":"Order cancelled successfully","timestamp":"2026-09-15T02:26:35.082577"}
+E   assert False
+E    +  where False = linearizable_final({'status': 'cancelled', 'payments': 1, 'ledger': 2, 'reserved_rows': 0}, [{'status': 'paid', 'payments': 1, 'ledger': 2, 'reserved_rows': 1}, {'status': 'cancelled', 'payments': 0, 'ledger': 0, 'reserved_rows': 0}])
+------------------------------ Captured log call -------------------------------
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 13 queries, 27.10ms total
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 19 queries, 36.21ms total
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 23 queries, 54.52ms total
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 28 queries, 55.97ms total
+---------------------------- Captured log teardown -----------------------------
+WARNING  core.sql_profiling:sql_profiling.py:191 Slow SQL query detected (184.43ms)
+WARNING  core.sql_profiling:sql_profiling.py:191 Slow SQL query detected (205.25ms)
+WARNING  core.sql_profiling:sql_profiling.py:191 Slow SQL query detected (188.47ms)
+=============================== warnings summary ===============================
+../../../../scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+    from crypt import crypt as _crypt
+
+database/base.py:7
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/database/base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_cancel_then_pay_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_cancel_then_pay_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_cancel_then_pay_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_cancel_then_pay_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_cancel_then_pay_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_cancel_then_pay_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_cancel_then_pay_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_cancel_then_pay_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_cancel_then_pay_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_cancel_then_pay_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+================== 1 failed, 2 passed, 37 warnings in 14.42s ===================

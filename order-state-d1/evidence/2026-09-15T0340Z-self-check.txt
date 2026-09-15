@@ -1,0 +1,6 @@
+=== SELF-CHECK RECORD 2026-09-15T02:37Z ===
+1. detect-secrets scan (default plugins, worktree-relative paths) on 19 staged files: 0 findings
+2. canary VALID: same invocation shape on planted keyword secret in worktree -> 1 finding (Secret Keyword line 1); --force-use-all-plugins also detects
+3. encoding: 19/19 strict UTF-8, no BOM, no CR
+4. git diff --check: rc=0 clean; git diff --cached --check: rc=0 clean
+5. GitNexus detect_changes (eval-server POST /tool/detect_changes scope staged/unstaged/compare): 'No changes detected.' - delta is new-files-only, zero modifications to existing indexed code, consistent with frozen scope

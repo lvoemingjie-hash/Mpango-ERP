@@ -1,0 +1,112 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: asyncio-1.4.0, anyio-4.12.1
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collected 26 items
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py ......     [ 23%]
+tests/order_state_d1/test_matrix_2_double_connection_races.py .FF        [ 34%]
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py .F            [ 42%]
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py ....        [ 57%]
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py ....   [ 73%]
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py ..F            [ 84%]
+tests/order_state_d1/test_matrix_assertion_controls.py ....              [100%]
+
+=============================== warnings summary ===============================
+../../../../scratch/MPANGO-ORDER-STATE-AUTHORITY-D1/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+    from crypt import crypt as _crypt
+
+database/base.py:7
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/database/base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 12 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 6 warnings
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py: 4 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 8 warnings
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py: 8 warnings
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 6 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 6 warnings
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 6 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 3 warnings
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py: 2 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 4 warnings
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py: 4 warnings
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 3 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 3 warnings
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 12 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 6 warnings
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py: 4 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 8 warnings
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py: 8 warnings
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 6 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 6 warnings
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 6 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 3 warnings
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py: 2 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 4 warnings
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py: 4 warnings
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 3 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 3 warnings
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 6 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 3 warnings
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py: 2 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 4 warnings
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py: 3 warnings
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 3 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 3 warnings
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 4 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 3 warnings
+tests/order_state_d1/test_matrix_3_locked_orm_freshness.py: 2 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 2 warnings
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py: 1 warning
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 3 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 1 warning
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py: 3 warnings
+tests/order_state_d1/test_matrix_2_double_connection_races.py: 3 warnings
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py: 1 warning
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py: 2 warnings
+tests/order_state_d1/test_matrix_assertion_controls.py: 3 warnings
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py::test_cancel_from_paid_is_unreachable_via_http
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_fulfill_insufficient_stock_rolls_back_transition_too
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_pay_over_remaining_rolls_back_payment_row
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py::test_state_operations_never_touch_item_snapshots
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_cancel_then_pay_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py::test_cancel_from_paid_is_unreachable_via_http
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_fulfill_insufficient_stock_rolls_back_transition_too
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py::test_state_operations_never_touch_item_snapshots
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py::test_cancel_from_paid_is_unreachable_via_http
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_fulfill_insufficient_stock_rolls_back_transition_too
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py::test_state_operations_never_touch_item_snapshots
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+tests/order_state_d1/test_matrix_1_confirm_cancel_baseline.py::test_cancel_from_paid_is_unreachable_via_http
+tests/order_state_d1/test_matrix_4_whole_request_rollback.py::test_fulfill_insufficient_stock_rolls_back_transition_too
+tests/order_state_d1/test_matrix_5_identity_snapshot_packaging.py::test_state_operations_never_touch_item_snapshots
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_sequential_pay_then_cancel_control
+tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_cancel_cancel_must_match_sequential_history
+FAILED tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_then_cancel_last_writer_orphans_reservation
+FAILED tests/order_state_d1/test_matrix_3_locked_orm_freshness.py::test_preloaded_session_transition_uses_stale_state_current_defect
+FAILED tests/order_state_d1/test_matrix_6_payment_cancel_race.py::test_race_pay_committed_then_cancel_overwrites_current_defect
+============ 4 failed, 22 passed, 226 warnings in 94.93s (0:01:34) =============
+pytest_rc=1

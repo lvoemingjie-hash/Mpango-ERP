@@ -1,0 +1,41 @@
+    timestamp=datetime.utcnow(),
+
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_confirm_exactly_one_success
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_confirm_exactly_one_success
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_cancel_cancel_must_match_sequential_history
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_cancel_cancel_must_match_sequential_history
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_then_cancel_last_writer_orphans_reservation
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_then_cancel_last_writer_orphans_reservation
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/core/security.py:150: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_confirm_exactly_one_success
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_cancel_cancel_must_match_sequential_history
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_then_cancel_last_writer_orphans_reservation
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/v1/auth.py:441: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_confirm_exactly_one_success
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_cancel_cancel_must_match_sequential_history
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_then_cancel_last_writer_orphans_reservation
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/v1/orders.py:519: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_confirm_exactly_one_success
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_cancel_cancel_must_match_sequential_history
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_then_cancel_last_writer_orphans_reservation
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/v1/orders.py:668: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_cancel_cancel_must_match_sequential_history
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_cancel_cancel_must_match_sequential_history
+tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_then_cancel_last_writer_orphans_reservation
+  /home/ivy/Documents/Codex/worktrees/mpango-erp/MPANGO-ORDER-STATE-AUTHORITY-D1/backend/api/v1/orders.py:1068: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_cancel_cancel_must_match_sequential_history
+FAILED tests/order_state_d1/test_matrix_2_double_connection_races.py::test_race_confirm_then_cancel_last_writer_orphans_reservation
+================== 2 failed, 1 passed, 29 warnings in 15.39s ===================
+rc=0

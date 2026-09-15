@@ -62,9 +62,9 @@ async def test_preloaded_session_transition_uses_locked_fresh_state(
             await other.commit()
         finally:
             await other.close()
-        await service_session.rollback()
-        await rebind_search_path(service_session, schema)
-
+        # NO rollback here: the identity map must still hold the stale
+        # CONFIRMED object when the locked transition runs — only
+        # populate_existing forces the refresh that sees CANCELLED.
         with pytest.raises((InvalidStateTransitionError, OrderInvariantViolation)):
             await OrderCommandService(service_session).apply_transition(
                 uuid.UUID(oid), OrderState.PAID)

@@ -35,9 +35,13 @@ import hashlib
 import io
 import json
 import os
+import re
+import sys
 import tokenize
 import uuid
 from typing import Any
+
+from urllib.parse import urlsplit, urlunsplit
 
 import asyncpg
 import pytest
@@ -327,6 +331,131 @@ def test_grants_script_declares_only_minimum_runtime_grants():
 
 
 # ---------------------------------------------------------------------------
+# R1-R1 static invariants (always run, no database)
+# ---------------------------------------------------------------------------
+
+
+def test_static_owner_fallback_removed_and_authority_derived_from_db_owner():
+    """R1-R1 fix 3: the bootstrap precondition must derive the migration
+    authority from the database owner (catalog fact) and must contain NO
+    connected-role fallback; the single-role topology must be refused."""
+    source = _normalized(BOOTSTRAP_SCRIPT)
+    assert "database_owner" in source, (
+        "authority must be derived from the database owner (pg_database)"
+    )
+    assert " or connected_role" not in source, (
+        "connected-role owner fallback must not exist"
+    )
+    assert "single-role topology" in source, (
+        "the single-role (runtime == authority) topology must be explicitly "
+        "refused"
+    )
+    assert "pg_has_role" in source, (
+        "membership/SET ROLE escalation path must be checked"
+    )
+
+
+def test_static_verify_is_pure_catalog_read_only():
+    """R1-R1 fix 1: --verify must be strictly read-only — no DDL statement
+    and no transactional probe anywhere inside Provisioner.verify."""
+    import ast
+
+    with open(GRANTS_SCRIPT, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+
+    verify_functions = [
+        node for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "verify"
+    ]
+    assert verify_functions, "Provisioner.verify not found"
+    ddl_pattern = re.compile(r"^\s*(create|alter|drop|grant|revoke)\b", re.I)
+    for function in verify_functions:
+        body = list(function.body)
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            body = body[1:]  # skip the docstring
+        for node in ast.walk(ast.Module(body=body, type_ignores=[])):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                assert not ddl_pattern.match(node.value), (
+                    f"verify() contains DDL-looking string: {node.value[:60]!r}"
+                )
+            if isinstance(node, ast.Attribute) and node.attr == "transaction":
+                pytest.fail("verify() must not open transactions (no DDL probe)")
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                assert node.func.id != "execute", (
+                    "verify() must not call raw execute()"
+                )
+
+
+def test_static_identifier_validation_wired_in_all_modes():
+    """R1-R1 fix 5: strict allowlist identifier validation must run for the
+    migration role, the runtime role and the database in Provisioner.__init__
+    (every mode), and the bootstrap script must validate the tenant schema
+    identifier before interpolating it."""
+    with open(GRANTS_SCRIPT, encoding="utf-8") as handle:
+        source = handle.read()
+    for fragment in (
+        "validate_identifier(migrate_role",
+        "validate_identifier(app_role",
+        "validate_identifier(database",
+        "_SAFE_IDENTIFIER_RE",
+    ):
+        assert fragment in source, f"missing identifier-validation element: {fragment}"
+    # Reject quotes/semicolons/comments by construction (allowlist).
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "v3r1_provision_check", GRANTS_SCRIPT
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    for malicious in (
+        'x" ; DROP FUNCTION public.prevent_ledger_modification(); --',
+        "x'; --",
+        "a b",
+        "a-b",
+        "UPPER",
+    ):
+        with pytest.raises(ValueError):
+            module.validate_identifier(malicious, "probe")
+
+    bootstrap_source = _normalized(BOOTSTRAP_SCRIPT)
+    assert "fullmatch" in bootstrap_source and "a-za-z0-9_" in bootstrap_source.replace(" ", ""), (
+        "bootstrap must allowlist-validate the tenant schema identifier"
+    )
+
+
+def test_static_cluster_binding_precedes_writes():
+    """R1-R1 fix 6: the binding preflight must run inside both write modes
+    before any role/database/grant statement is rendered."""
+    with open(GRANTS_SCRIPT, encoding="utf-8") as handle:
+        source = handle.read()
+
+    def _method_segment(name: str) -> str:
+        start = source.index(f"async def {name}")
+        next_def = re.search(r"\n    async def |\n\ndef |\n\nclass ", source[start:])
+        end = start + (next_def.start() if next_def else len(source))
+        return source[start:end]
+
+    provision_segment = _method_segment("create_roles_and_database")
+    assert "_assert_cluster_binding" in provision_segment
+    assert provision_segment.index("_assert_cluster_binding") < (
+        provision_segment.index("_ensure_role")
+    ), "binding must precede role creation"
+
+    grants_segment = _method_segment("apply_minimum_grants")
+    assert "_assert_cluster_binding" in grants_segment
+    assert grants_segment.index("_assert_cluster_binding") < (
+        grants_segment.index("render_minimum_grant_statements")
+    ), "binding must precede grant rendering"
+
+
+# ---------------------------------------------------------------------------
 # read-only preparation gate
 # ---------------------------------------------------------------------------
 
@@ -393,19 +522,48 @@ async def test_v3_preparation_gate_authority_topology_is_wired():
             "SELECT version_num FROM public.alembic_version"
         )
         assert version_rows, "public.alembic_version is empty: migrations not run"
-        app_owned = await migrate.fetchval(
-            "SELECT count(*) FROM pg_class c "
-            "JOIN pg_namespace n ON n.oid = c.relnamespace "
-            "WHERE n.nspname = 'public' AND pg_get_userbyid(c.relowner) = $1",
+        if manifest["active_scenario"] != "v3_verify_wrongown":
+            # (the wrong-owner counterexample database deliberately has the
+            # runtime role owning the guard in public)
+            app_owned = await migrate.fetchval(
+                "SELECT count(*) FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = 'public' "
+                "AND pg_get_userbyid(c.relowner) = $1",
+                RUNTIME_ROLE,
+            )
+            assert not app_owned, "the runtime role must own nothing in public"
+        # R1-R1 fix 4: no SET ROLE escalation path from runtime to authority,
+        # and the runtime role has no CREATE in schema public.
+        member = await migrate.fetchval(
+            "SELECT pg_has_role($1, $2, 'MEMBER') OR pg_has_role($1, $2, 'USAGE')",
+            RUNTIME_ROLE, MIGRATION_AUTHORITY_ROLE,
+        )
+        assert not member, (
+            "runtime role must not be a member of the migration authority "
+            "(SET ROLE escalation path)"
+        )
+        app_create_public = await migrate.fetchval(
+            "SELECT has_schema_privilege($1, 'public', 'CREATE')",
             RUNTIME_ROLE,
         )
-        assert not app_owned, "the runtime role must own nothing in public"
+        assert not app_create_public, (
+            "runtime role must not hold CREATE on schema public "
+            "(DROP+CREATE substitution path)"
+        )
     finally:
         await migrate.close()
 
     app = await _connect(app_url)
     try:
         assert await app.fetchval("SELECT current_user") == RUNTIME_ROLE
+        # R1-R1 fix 4: runtime differs from the derived authority.
+        assert await app.fetchval("SELECT current_user") != (
+            await app.fetchval(
+                "SELECT pg_get_userbyid(datdba) FROM pg_database "
+                "WHERE datname = current_database()"
+            )
+        ), "single-role topology: runtime connection binds the authority"
     finally:
         await app.close()
 
@@ -1088,6 +1246,259 @@ async def test_n4_missing_execute_privilege_fails_closed_zero_partial_tenant():
     await _assert_induced_state("v3_nopriv", migrate_url)
     await _negative_lifecycle_assertions(app_url)
     await _direct_bootstrap_refusal(app_url, "v3_nopriv", "lacks EXECUTE")
+
+
+# ---------------------------------------------------------------------------
+# R1-R1 behavioral proofs: fail-closed authority, read-only verify,
+# injection refusal, cross-cluster refusal
+# ---------------------------------------------------------------------------
+
+
+async def _guard_identity_via_asyncpg(url: str) -> dict | None:
+    conn = await _connect(url)
+    try:
+        row = await conn.fetchrow(
+            "SELECT p.oid::bigint AS oid, "
+            "pg_get_userbyid(p.proowner) AS owner_name, "
+            "md5(pg_get_functiondef(p.oid)) AS definition_md5 "
+            "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+            "WHERE n.nspname = 'public' "
+            "AND p.proname = 'prevent_ledger_modification'"
+        )
+        return dict(row) if row else None
+    finally:
+        await conn.close()
+
+
+def _run_cli(args: list[str], extra_env: dict[str, str]):
+    import subprocess
+
+    env = os.environ.copy()
+    env.update(extra_env)
+    return subprocess.run(
+        [sys.executable, GRANTS_SCRIPT, *args],
+        capture_output=True, text=True, env=env, cwd=BACKEND_DIR,
+        timeout=300,
+    )
+
+
+@_only_scenario("v3_ok")
+@pytest.mark.asyncio
+async def test_r0_single_role_topology_refused_zero_partial_tenant():
+    """R1-R1 fix 3/4: bootstrapping AS the migration authority (the
+    single-role topology) must fail closed - the runtime role must be a
+    different, non-privileged role - and must leave zero tenant objects."""
+    from scripts.bootstrap_tenant_schema import (
+        LedgerGuardAuthorityError,
+        bootstrap,
+    )
+
+    manifest = _manifest()
+    migrate_url, app_url, _ = _scenario_urls(_scenario(manifest, "v3_ok"))
+    tenant_schema = f"t_v3single_{uuid.uuid4().hex[:12]}"
+    with pytest.raises(LedgerGuardAuthorityError) as excinfo:
+        await bootstrap(tenant_schema, migrate_url)
+    message = str(excinfo.value)
+    assert "single-role topology" in message, message
+    assert MIGRATION_AUTHORITY_ROLE in message, message
+
+    app_engine = _app_engine(app_url)
+    try:
+        async with app_engine.connect() as conn:
+            rows = await _fetch_rows(
+                conn,
+                "SELECT 1 FROM information_schema.schemata "
+                "WHERE schema_name LIKE :prefix",
+                {"prefix": "t\\_v3single%"},
+            )
+    finally:
+        await app_engine.dispose()
+    assert not rows, "single-role refusal still left a partial tenant schema"
+
+
+@_only_scenario("v3_wrongown")
+@pytest.mark.asyncio
+async def test_r0_owner_fallback_removed_env_undeclared(monkeypatch):
+    """R1-R1 fix 3: with the authority env UNDECLARED, a runtime-owned guard
+    must still be refused - the authority is the database owner from the
+    catalog, never the connected role.  (Restoring the fallback lets this
+    bootstrap proceed - the named RED for mutation MM2.)"""
+    from scripts.bootstrap_tenant_schema import (
+        LedgerGuardAuthorityError,
+        bootstrap,
+    )
+
+    manifest = _manifest()
+    _, app_url, _ = _scenario_urls(_scenario(manifest, "v3_wrongown"))
+    monkeypatch.delenv("MPANGO_MIGRATION_AUTHORITY_ROLE", raising=False)
+    tenant_schema = f"t_v3noenv_{uuid.uuid4().hex[:12]}"
+    with pytest.raises(LedgerGuardAuthorityError) as excinfo:
+        await bootstrap(tenant_schema, app_url)
+    assert "expected migration authority" in str(excinfo.value), excinfo.value
+
+    app_engine = _app_engine(app_url)
+    try:
+        async with app_engine.connect() as conn:
+            rows = await _fetch_rows(
+                conn,
+                "SELECT 1 FROM information_schema.schemata "
+                "WHERE schema_name LIKE :prefix",
+                {"prefix": "t\\_v3noenv%"},
+            )
+    finally:
+        await app_engine.dispose()
+    assert not rows, "refusal still left a partial tenant schema"
+
+
+@_only_scenario("v3_verify_wrongown")
+@pytest.mark.asyncio
+async def test_verify_cli_wrongowner_nonzero_and_read_only():
+    """R1-R1 fixes 1+2: against a database whose guard is owned by the
+    RUNTIME role, --verify must exit non-zero AND leave the function OID,
+    owner and body digest byte-identical (strict read-only proof)."""
+    import json as _json
+
+    manifest = _manifest()
+    migrate_url, app_url, database = _scenario_urls(
+        _scenario(manifest, "v3_verify_wrongown")
+    )
+    admin_scenario_url = manifest["admin_url"].rsplit("/", 1)[0] + "/" + database
+
+    before = await _guard_identity_via_asyncpg(migrate_url)
+    assert before is not None, "counterexample database must have the guard"
+    assert before["owner_name"] == RUNTIME_ROLE, (
+        "harness must have induced runtime ownership first"
+    )
+
+    result = _run_cli(
+        ["--verify", "--admin-url", admin_scenario_url,
+         "--migrate-url", migrate_url, "--app-url", app_url],
+        extra_env={},
+    )
+    assert result.returncode != 0, (
+        "--verify must exit non-zero when the runtime role owns the guard"
+    )
+    stdout_json = result.stdout[result.stdout.index("{"):]
+    report = _json.loads(stdout_json)
+    assert report["ok"] is False
+    assert report["checks"]["ledger_guard_function"]["ok"] is False
+    assert report["checks"]["ledger_guard_function"]["owner"] == RUNTIME_ROLE
+    assert report["checks"]["runtime_differs_from_authority"]["ok"] is True
+
+    after = await _guard_identity_via_asyncpg(migrate_url)
+    assert after is not None, "read-only verify must not drop the function"
+    assert after["oid"] == before["oid"], "guard OID changed under --verify"
+    assert after["owner_name"] == before["owner_name"]
+    assert after["definition_md5"] == before["definition_md5"], (
+        "guard BODY changed under --verify - verify is not read-only"
+    )
+
+
+INJECTION_ROLE = (
+    'v3inject" ; DROP FUNCTION public.prevent_ledger_modification(); --'
+)
+
+
+@_only_scenario("v3_verify_wrongown")
+@pytest.mark.asyncio
+async def test_injection_identifiers_rejected_zero_writes():
+    """R1-R1 fix 5: a malicious role identifier (quote + semicolon + comment
+    aimed at dropping the guard) must be rejected by the allowlist BEFORE
+    any connection or statement, leaving the role set and the guard
+    byte-identical.  (Bypassing validation lets the payload execute - the
+    named RED for mutation MM3.)"""
+    manifest = _manifest()
+    migrate_url, app_url, database = _scenario_urls(
+        _scenario(manifest, "v3_verify_wrongown")
+    )
+    admin_scenario_url = manifest["admin_url"].rsplit("/", 1)[0] + "/" + database
+    parsed = urlsplit(app_url)
+    host_part = parsed.netloc.split("@")[1]
+    malicious_app_url = urlunsplit(parsed._replace(
+        netloc=f"{INJECTION_ROLE}:{parsed.password}@{host_part}"
+    ))
+
+    async def _cluster_state():
+        conn = await _connect(admin_scenario_url)
+        try:
+            roles = tuple(await conn.fetchval(
+                "SELECT array_agg(rolname ORDER BY rolname) FROM pg_roles"
+            ) or [])
+        finally:
+            await conn.close()
+        return roles, await _guard_identity_via_asyncpg(migrate_url)
+
+    before_roles, before_guard = await _cluster_state()
+
+    result = _run_cli(
+        ["--provision", "--admin-url", admin_scenario_url,
+         "--migrate-url", migrate_url, "--app-url", malicious_app_url],
+        extra_env={"MPANGO_DB_APP_ROLE": INJECTION_ROLE},
+    )
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "invalid runtime role identifier" in combined, combined[-600:]
+    assert "quotes, semicolons, comments" in combined, combined[-600:]
+
+    after_roles, after_guard = await _cluster_state()
+    assert "v3inject" not in after_roles, (
+        "injection created a role despite identifier validation"
+    )
+    assert after_roles == before_roles, "cluster role set changed"
+    assert after_guard == before_guard, (
+        "guard identity changed - injection survived validation"
+    )
+
+
+@_only_scenario("v3_ok")
+@pytest.mark.asyncio
+async def test_cluster_binding_mismatch_zero_writes():
+    """R1-R1 fix 6: an admin URL on ANOTHER cluster with migrate/app URLs on
+    this cluster must be refused by the binding preflight with ZERO writes
+    on the second cluster.  (Bypassing binding writes roles/database there -
+    the named RED for mutation MM4.)"""
+    manifest = _manifest()
+    second = manifest.get("second_cluster") or {}
+    second_admin_url = second.get("admin_url")
+    if not second_admin_url:
+        pytest.skip("manifest has no second cluster wired")
+    migrate_url, app_url, _ = _scenario_urls(_scenario(manifest, "v3_ok"))
+
+    async def _second_cluster_state():
+        conn = await _connect(second_admin_url)
+        try:
+            roles = tuple(r["rolname"] for r in await conn.fetch(
+                "SELECT rolname FROM pg_roles "
+                "WHERE rolname IN ($1, $2, 'v3inject') ORDER BY rolname",
+                MIGRATION_AUTHORITY_ROLE, RUNTIME_ROLE,
+            ))
+            databases = tuple(r["datname"] for r in await conn.fetch(
+                "SELECT datname FROM pg_database "
+                "WHERE datname NOT IN ('postgres', 'template0', 'template1') "
+                "ORDER BY datname"
+            ))
+        finally:
+            await conn.close()
+        return roles, databases
+
+    before_roles, before_databases = await _second_cluster_state()
+
+    result = _run_cli(
+        ["--provision", "--admin-url", second_admin_url,
+         "--migrate-url", migrate_url, "--app-url", app_url],
+        extra_env={},
+    )
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0, "cross-cluster provision must be refused"
+    assert "cluster binding preflight failed" in combined, combined[-600:]
+
+    after_roles, after_databases = await _second_cluster_state()
+    assert after_roles == before_roles, (
+        "roles were written to the second cluster despite binding refusal"
+    )
+    assert after_databases == before_databases, (
+        "databases were written to the second cluster despite binding refusal"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,86 @@
+rc=0
+
+{
+  "database": "v3_ok",
+  "checks": {
+    "role_mpango_migrate": {
+      "ok": true,
+      "attributes": {
+        "rolsuper": false,
+        "rolcreatedb": false,
+        "rolcreaterole": true,
+        "rolreplication": false,
+        "rolcanlogin": true
+      },
+      "reason": ""
+    },
+    "role_mpango_app": {
+      "ok": true,
+      "attributes": {
+        "rolsuper": false,
+        "rolcreatedb": false,
+        "rolcreaterole": false,
+        "rolreplication": false,
+        "rolcanlogin": true
+      },
+      "reason": ""
+    },
+    "database_owner": {
+      "ok": true,
+      "owner": "mpango_migrate"
+    },
+    "ledger_guard_function": {
+      "ok": true,
+      "owner": "mpango_migrate",
+      "return_type": "trigger",
+      "identity_arguments": "",
+      "definition_md5": "39640330 8c83ee4c 01d0d6bc d63135b2",
+      "function_oid": 16495
+    },
+    "public_schema_owner": {
+      "ok": true,
+      "owner": "pg_database_owner",
+      "database_owner": "mpango_migrate"
+    },
+    "app_no_create_on_public_schema": {
+      "ok": true,
+      "has_create": false,
+      "reason": ""
+    },
+    "runtime_differs_from_authority": {
+      "ok": true,
+      "runtime": "mpango_app",
+      "authority": "mpango_migrate",
+      "reason": ""
+    },
+    "runtime_not_member_of_authority": {
+      "ok": true,
+      "member_or_usage": false,
+      "reason": ""
+    },
+    "app_execute_on_guard": {
+      "ok": true,
+      "can_execute": true
+    },
+    "app_create_on_database": {
+      "ok": true,
+      "can_create": true
+    },
+    "app_no_replace_path_on_guard": {
+      "ok": true,
+      "app_is_owner": false,
+      "app_member_of_owner": false,
+      "app_superuser": false,
+      "reason": ""
+    }
+  },
+  "ok": true,
+  "cluster_binding": {
+    "system_identifier": "7685911298783559724",
+    "database": "v3_ok",
+    "admin_user": "postgres",
+    "migrate_user": "mpango_migrate",
+    "app_user": "mpango_app",
+    "mode": "live"
+  }
+}

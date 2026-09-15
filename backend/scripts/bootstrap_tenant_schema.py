@@ -92,12 +92,22 @@ async def _assert_ledger_guard_function_authority(db) -> None:
        pg_proc entry.
     2. Exact signature: zero identity arguments, RETURNS trigger, LANGUAGE
        plpgsql, in the public schema.
-    3. Ownership: the function owner is the migration authority role (declared
-       via MPANGO_MIGRATION_AUTHORITY_ROLE) or, when undeclared, the connected
-       role of a single-role deployment.  The function owned by any other role
-       — including a runtime role under a declared authority — is refused.
-    4. Privilege: the connected role holds EXECUTE on the function, so the
+    3. Ownership: the migration authority is DERIVED from the live catalog as
+       the owner of the current database (pg_database.datdba; on PG15+ that
+       role also owns schema public).  The function owner must equal that
+       authority exactly.  There is deliberately NO fallback to the connected
+       role: a runtime role that owns the function, or a single-role
+       deployment where runtime == authority, is refused.
+    4. Separation: the connected (runtime) role must differ from the
+       authority, must not be a superuser, and must not hold membership
+       (direct or indirect, usable or not) in the authority role — no SET
+       ROLE escalation path may exist.
+    5. Privilege: the connected role holds EXECUTE on the function, so the
        tenant trigger can fire at runtime.
+
+    MPANGO_MIGRATION_AUTHORITY_ROLE, when declared, is treated as a
+    consistency assertion only: it must EQUAL the derived database owner or
+    bootstrap refuses (mis-wired deployment).
     """
     from sqlalchemy import text
 
@@ -110,6 +120,16 @@ async def _assert_ledger_guard_function_authority(db) -> None:
             "n.nspname AS function_schema, "
             "pg_get_userbyid(p.proowner) AS owner_name, "
             "current_user AS connected_role, "
+            "(SELECT pg_get_userbyid(datdba) FROM pg_database "
+            " WHERE datname = current_database()) AS database_owner, "
+            "(SELECT rolsuper FROM pg_roles "
+            " WHERE rolname = current_user) AS connected_is_superuser, "
+            "COALESCE(pg_has_role("
+            "    current_user, pg_get_userbyid(p.proowner), 'MEMBER'), "
+            "    false) AS connected_member_of_owner, "
+            "COALESCE(pg_has_role("
+            "    current_user, pg_get_userbyid(p.proowner), 'USAGE'), "
+            "    false) AS connected_usage_of_owner, "
             "has_function_privilege("
             "    current_user, probe.func_oid, 'EXECUTE') AS can_execute "
             "FROM (SELECT to_regprocedure(:signature) AS func_oid) probe "
@@ -151,14 +171,45 @@ async def _assert_ledger_guard_function_authority(db) -> None:
             "expected 'plpgsql'"
         )
 
-    declared_authority = os.environ.get(MIGRATION_AUTHORITY_ROLE_ENV, "").strip()
+    authority = _catalog_code(row["database_owner"])
     owner_name = _catalog_code(row["owner_name"])
     connected_role = _catalog_code(row["connected_role"])
-    required_owner = declared_authority or connected_role
-    if owner_name != required_owner:
+    if not authority:
         violations.append(
-            f"owner is {owner_name!r}, expected migration authority "
-            f"{required_owner!r}"
+            "cannot derive the migration authority: the current database has "
+            "no owner in pg_database"
+        )
+    else:
+        if owner_name != authority:
+            violations.append(
+                f"owner is {owner_name!r}, expected migration authority "
+                f"{authority!r} (the database owner)"
+            )
+        if connected_role == authority:
+            violations.append(
+                f"connected role {connected_role!r} IS the migration "
+                f"authority {authority!r} (single-role topology). The "
+                "runtime role must be a different, non-privileged role; "
+                "refusing to bootstrap in place of the authority."
+            )
+    declared_authority = os.environ.get(MIGRATION_AUTHORITY_ROLE_ENV, "").strip()
+    if declared_authority and declared_authority != authority:
+        violations.append(
+            f"declared {MIGRATION_AUTHORITY_ROLE_ENV}={declared_authority!r} "
+            f"does not match the derived database owner {authority!r}"
+        )
+    if row["connected_is_superuser"]:
+        violations.append(
+            f"connected role {connected_role!r} is a superuser; the runtime "
+            "role must be non-superuser"
+        )
+    if (
+        owner_name != connected_role
+        and (row["connected_member_of_owner"] or row["connected_usage_of_owner"])
+    ):
+        violations.append(
+            f"connected role {connected_role!r} is a member of the function "
+            f"owner {owner_name!r}; a SET ROLE escalation path must not exist"
         )
 
     if not row["can_execute"]:
@@ -1743,6 +1794,17 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
         # owned by the migration authority and be executable BEFORE any tenant
         # DDL runs.  Raising here leaves zero partial tenant objects and no
         # tenant registration can be activated.
+        #
+        # R1-R1: the tenant schema identifier is allowlist-validated here as
+        # defense in depth (callers validate too); interpolation of a
+        # rejected identifier must be impossible regardless of caller.
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", ts):
+            raise LedgerGuardAuthorityError(
+                f"Bootstrap precondition failed: tenant schema identifier "
+                f"{ts!r} is not a plain [A-Za-z0-9_] identifier "
+                "(quotes, semicolons, comments and other SQL syntax are "
+                "rejected)"
+            )
         await _assert_ledger_guard_function_authority(db)
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))

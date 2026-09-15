@@ -1,0 +1,155 @@
+$ pytest tests/test_tenant_bootstrap_db_authority.py (scenario=v3_verify_wrongown, label=mutation_MM3, backend=C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend)
+rc=1
+
+============================= test session starts =============================
+collecting ... collected 25 items
+
+tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_never_replaces_or_reowns_public_guard FAILED [  4%]
+tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics FAILED [  8%]
+tests/test_tenant_bootstrap_db_authority.py::test_grants_script_declares_only_minimum_runtime_grants PASSED [ 12%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner FAILED [ 16%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only FAILED [ 20%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes FAILED [ 24%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes PASSED [ 28%]
+tests/test_tenant_bootstrap_db_authority.py::test_v3_preparation_gate_authority_topology_is_wired PASSED [ 32%]
+tests/test_tenant_bootstrap_db_authority.py::test_v3_ok_preparation_gate_guard_function_is_intact SKIPPED [ 36%]
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role SKIPPED [ 40%]
+tests/test_tenant_bootstrap_db_authority.py::test_r2_tenant_contains_required_tables_two_views_mv_and_unique_index SKIPPED [ 44%]
+tests/test_tenant_bootstrap_db_authority.py::test_r3_guard_owner_and_definition_preserved_across_tenant_creation SKIPPED [ 48%]
+tests/test_tenant_bootstrap_db_authority.py::test_r4_ledger_update_and_delete_blocked_by_migration_owned_guard SKIPPED [ 52%]
+tests/test_tenant_bootstrap_db_authority.py::test_r5_runtime_role_cannot_replace_reown_or_escalate SKIPPED [ 56%]
+tests/test_tenant_bootstrap_db_authority.py::test_n1_missing_guard_function_fails_closed_zero_partial_tenant SKIPPED [ 60%]
+tests/test_tenant_bootstrap_db_authority.py::test_n2_incompatible_guard_signature_fails_closed_zero_partial_tenant SKIPPED [ 64%]
+tests/test_tenant_bootstrap_db_authority.py::test_n3_runtime_owned_guard_function_fails_closed_zero_partial_tenant SKIPPED [ 68%]
+tests/test_tenant_bootstrap_db_authority.py::test_n4_missing_execute_privilege_fails_closed_zero_partial_tenant SKIPPED [ 72%]
+tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant SKIPPED [ 76%]
+tests/test_tenant_bootstrap_db_authority.py::test_r0_owner_fallback_removed_env_undeclared SKIPPED [ 80%]
+tests/test_tenant_bootstrap_db_authority.py::test_verify_cli_wrongowner_nonzero_and_read_only PASSED [ 84%]
+tests/test_tenant_bootstrap_db_authority.py::test_injection_identifiers_rejected_zero_writes FAILED [ 88%]
+tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes SKIPPED [ 92%]
+tests/test_tenant_bootstrap_db_authority.py::test_mutation_m1_sentinel_reintroducing_runtime_replace_is_refused SKIPPED [ 96%]
+tests/test_tenant_bootstrap_db_authority.py::test_mutation_m2_sentinel_ownership_precondition_is_load_bearing SKIPPED [100%]
+
+================================== FAILURES ===================================
+_________ test_bootstrap_script_never_replaces_or_reowns_public_guard _________
+tests\test_tenant_bootstrap_db_authority.py:229: in test_bootstrap_script_never_replaces_or_reowns_public_guard
+    source = _normalized(BOOTSTRAP_SCRIPT)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:167: in _normalized
+    return " ".join(_executable_source_text(path).lower().split())
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:135: in _executable_source_text
+    tree = ast.parse(source)
+           ^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python312\Lib\ast.py:52: in parse
+    return compile(source, filename, mode, flags,
+E     File "<unknown>", line 815
+E       """Idempotent reconciliation of payments table to match 021 contract.
+E                                                               ^
+E   SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+_______ test_bootstrap_script_keeps_fail_closed_precondition_semantics ________
+tests\test_tenant_bootstrap_db_authority.py:253: in test_bootstrap_script_keeps_fail_closed_precondition_semantics
+    source = _normalized(BOOTSTRAP_SCRIPT)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:167: in _normalized
+    return " ".join(_executable_source_text(path).lower().split())
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:135: in _executable_source_text
+    tree = ast.parse(source)
+           ^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python312\Lib\ast.py:52: in parse
+    return compile(source, filename, mode, flags,
+E     File "<unknown>", line 815
+E       """Idempotent reconciliation of payments table to match 021 contract.
+E                                                               ^
+E   SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+___ test_static_owner_fallback_removed_and_authority_derived_from_db_owner ____
+tests\test_tenant_bootstrap_db_authority.py:342: in test_static_owner_fallback_removed_and_authority_derived_from_db_owner
+    source = _normalized(BOOTSTRAP_SCRIPT)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:167: in _normalized
+    return " ".join(_executable_source_text(path).lower().split())
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:135: in _executable_source_text
+    tree = ast.parse(source)
+           ^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python312\Lib\ast.py:52: in parse
+    return compile(source, filename, mode, flags,
+E     File "<unknown>", line 815
+E       """Idempotent reconciliation of payments table to match 021 contract.
+E                                                               ^
+E   SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+________________ test_static_verify_is_pure_catalog_read_only _________________
+tests\test_tenant_bootstrap_db_authority.py:384: in test_static_verify_is_pure_catalog_read_only
+    assert not ddl_pattern.match(node.value), (
+E   AssertionError: verify() contains DDL-looking string: 'CREATE OR REPLACE FUNCTION '
+E   assert not <re.Match object; span=(0, 6), match='CREATE'>
+E    +  where <re.Match object; span=(0, 6), match='CREATE'> = <built-in method match of re.Pattern object at 0x0000023B26E772A0>('CREATE OR REPLACE FUNCTION ')
+E    +    where <built-in method match of re.Pattern object at 0x0000023B26E772A0> = re.compile('^\\s*(create|alter|drop|grant|revoke)\\b', re.IGNORECASE).match
+E    +    and   'CREATE OR REPLACE FUNCTION ' = <ast.Constant object at 0x0000023B27386E90>.value
+____________ test_static_identifier_validation_wired_in_all_modes _____________
+tests\test_tenant_bootstrap_db_authority.py:424: in test_static_identifier_validation_wired_in_all_modes
+    with pytest.raises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE <class 'ValueError'>
+_______________ test_injection_identifiers_rejected_zero_writes _______________
+tests\test_tenant_bootstrap_db_authority.py:1440: in test_injection_identifiers_rejected_zero_writes
+    assert "invalid runtime role identifier" in combined, combined[-600:]
+E   AssertionError: File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\scripts\provision_runtime_db_roles.py", line 370, in create_roles_and_database
+E         binding = await self._assert_cluster_binding(require_live=False)
+E                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\scripts\provision_runtime_db_roles.py", line 330, in _assert_cluster_binding
+E         result["app_user"] = live["app"]["bound_user"]
+E                              ~~~~^^^^^^^
+E     KeyError: 'app'
+E
+E   assert 'invalid runtime role identifier' in 'Traceback (most recent call last):\n  File "C:\\Users\\Jeff0\\MPANGO ERP\\worktrees\\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\\backend\\scripts\\provision_runtime_db_roles.py", line 735, in <module>\n    main()\n  File "C:\\Users\\Jeff0\\MPANGO ERP\\worktrees\\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\\backend\\scripts\\provision_runtime_db_roles.py", line 731, in main\n    sys.exit(asyncio.run(_async_main(args)))\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\\Users\\Jeff0\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\asyncio\\runners.py", line 195, in run\n    return runner.run(main)\n           ^^^^^^^^^^^^^^^^\n  File "C:\\Users\\Jeff0\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\asyncio\\runners.py", line 118, in run\n    return self._loop.run_until_complete(task)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\\Users\\Jeff0\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\asyncio\\base_events.py", line 691, in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\n  File "C:\\Users\\Jeff0\\MPANGO ERP\\worktrees\\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\\backend\\scripts\\provision_runtime_db_roles.py", line 698, in _async_main\n    await provisioner.create_roles_and_database(\n  File "C:\\Users\\Jeff0\\MPANGO ERP\\worktrees\\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\\backend\\scripts\\provision_runtime_db_roles.py", line 370, in create_roles_and_database\n    binding = await self._assert_cluster_binding(require_live=False)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\\Users\\Jeff0\\MPANGO ERP\\worktrees\\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\\backend\\scripts\\provision_runtime_db_roles.py", line 330, in _assert_cluster_binding\n    result["app_user"] = live["app"]["bound_user"]\n                         ~~~~^^^^^^^\nKeyError: \'app\'\n'
+=================================== PASSES ====================================
+=========================== short test summary info ===========================
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_grants_script_declares_only_minimum_runtime_grants
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_v3_preparation_gate_authority_topology_is_wired
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_verify_cli_wrongowner_nonzero_and_read_only
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:571: test targets scenario v3_ok (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:768: test targets scenario v3_ok (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:808: test targets scenario v3_ok (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:863: test targets scenario v3_ok (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:891: test targets scenario v3_ok (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:984: test targets scenario v3_ok (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1207: test targets scenario v3_nofunc (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1217: test targets scenario v3_badsig (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1229: test targets scenario v3_wrongown (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1241: test targets scenario v3_nopriv (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1285: test targets scenario v3_ok (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1319: test targets scenario v3_wrongown (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1453: test targets scenario v3_ok (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1509: test targets scenario v3_ok (active: v3_verify_wrongown)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1525: test targets scenario v3_wrongown (active: v3_verify_wrongown)
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_never_replaces_or_reowns_public_guard -   File "<unknown>", line 815
+    """Idempotent reconciliation of payments table to match 021 contract.
+                                                            ^
+SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics -   File "<unknown>", line 815
+    """Idempotent reconciliation of payments table to match 021 contract.
+                                                            ^
+SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner -   File "<unknown>", line 815
+    """Idempotent reconciliation of payments table to match 021 contract.
+                                                            ^
+SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only - AssertionError: verify() contains DDL-looking string: 'CREATE OR REPLACE FUNCTION '
+assert not <re.Match object; span=(0, 6), match='CREATE'>
+ +  where <re.Match object; span=(0, 6), match='CREATE'> = <built-in method match of re.Pattern object at 0x0000023B26E772A0>('CREATE OR REPLACE FUNCTION ')
+ +    where <built-in method match of re.Pattern object at 0x0000023B26E772A0> = re.compile('^\\s*(create|alter|drop|grant|revoke)\\b', re.IGNORECASE).match
+ +    and   'CREATE OR REPLACE FUNCTION ' = <ast.Constant object at 0x0000023B27386E90>.value
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes - Failed: DID NOT RAISE <class 'ValueError'>
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_injection_identifiers_rejected_zero_writes - AssertionError: File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\scripts\provision_runtime_db_roles.py", line 370, in create_roles_and_database
+      binding = await self._assert_cluster_binding(require_live=False)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\scripts\provision_runtime_db_roles.py", line 330, in _assert_cluster_binding
+      result["app_user"] = live["app"]["bound_user"]
+                           ~~~~^^^^^^^
+  KeyError: 'app'
+
+assert 'invalid runtime role identifier' in 'Traceback (most recent call last):\n  File "C:\\Users\\Jeff0\\MPANGO ERP\\worktrees\\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\\backend\\scripts\\provision_runtime_db_roles.py", line 735, in <module>\n    main()\n  File "C:\\Users\\Jeff0\\MPANGO ERP\\worktrees\\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\\backend\\scripts\\provision_runtime_db_roles.py", line 731, in main\n    sys.exit(asyncio.run(_async_main(args)))\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\\Users\\Jeff0\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\asyncio\\runners.py", line 195, in run\n    return runner.run(main)\n           ^^^^^^^^^^^^^^^^\n  File "C:\\Users\\Jeff0\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\asyncio\\runners.py", line 118, in run\n    return self._loop.run_until_complete(task)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\\Users\\Jeff0\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\asyncio\\base_events.py", line 691, in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\n  File "C:\\Users\\Jeff0\\MPANGO ERP\\worktrees\\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\\backend\\scripts\\provision_runtime_db_roles.py", line 698, in _async_main\n    await provisioner.create_roles_and_database(\n  File "C:\\Users\\Jeff0\\MPANGO ERP\\worktrees\\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\\backend\\scripts\\provision_runtime_db_roles.py", line 370, in create_roles_and_database\n    binding = await self._assert_cluster_binding(require_live=False)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\\Users\\Jeff0\\MPANGO ERP\\worktrees\\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\\backend\\scripts\\provision_runtime_db_roles.py", line 330, in _assert_cluster_binding\n    result["app_user"] = live["app"]["bound_user"]\n                         ~~~~^^^^^^^\nKeyError: \'app\'\n'
+=================== 6 failed, 4 passed, 15 skipped in 1.85s ===================

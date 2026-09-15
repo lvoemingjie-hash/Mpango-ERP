@@ -14,9 +14,21 @@ MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1 (frozen architectural decision):
 This tool is the ONLY sanctioned place where runtime grants are declared.
 The statement vocabulary is declarative (``MINIMUM_GRANT_STATEMENTS``,
 ``DATABASE_SCOPE_GRANT_TEMPLATES``, ``RUNTIME_ROLE_DDL_TEMPLATE``) and every
-statement is checked against ``FORBIDDEN_SQL_FRAGMENTS`` before execution, so
-``ALTER SCHEMA public OWNER``, ``ALTER FUNCTION ... OWNER`` and ``GRANT ALL``
-can never be issued here.  ``--verify`` re-checks the live cluster.
+statement is checked against ``FORBIDDEN_SQL_FRAGMENTS`` (a grant-minimality
+policy) before execution, so ``ALTER SCHEMA public OWNER``, ``ALTER FUNCTION
+... OWNER`` and ``GRANT ALL`` can never be issued here.  Injection defense
+is separate and structural: every role/database identifier passes the strict
+allowlist ``validate_identifier`` in ALL modes before any connection opens.
+
+R1-R1 hardening:
+- ``--verify`` is STRICTLY read-only: pure catalog checks only, no DDL probe
+  (not even in a rolled-back transaction).
+- Every write mode first passes ``_assert_cluster_binding``: the
+  admin/migrate/app URLs must resolve to one cluster (same
+  ``pg_control_system().system_identifier``), migrate/app must target the
+  configured database, and each URL must bind its expected ``current_user``
+  (admin user superuser, migration authority, runtime role).  Any mismatch
+  refuses with ZERO writes.
 
 Topology (fresh PG15+/PG16 cluster):
     step 1 (admin, superuser): create roles + application database
@@ -55,6 +67,10 @@ LEDGER_GUARD_SIGNATURE = "public.prevent_ledger_modification()"
 # collapsed) against every rendered statement before execution; a match
 # aborts.  Role/database creation is this tool's declared job; re-owning or
 # blanket-granting existing objects is not.
+#
+# NOTE: this list is a GRANT-MINIMALITY policy, not an injection defense.
+# Injection defense is the strict allowlist validation below: identifiers
+# that fail validation can never reach SQL text at all.
 FORBIDDEN_SQL_FRAGMENTS = (
     "alter schema",
     "owner to",
@@ -64,6 +80,30 @@ FORBIDDEN_SQL_FRAGMENTS = (
     "with grant option",
     "alter database",
 )
+
+# R1-R1 fix 5: strict allowlist identifier validation, applied uniformly in
+# EVERY run mode (provision / apply-grants / verify) BEFORE any connection or
+# statement.  A plain [a-z_][a-z0-9_] name (PostgreSQL NAMEDATALEN-1 bound)
+# cannot contain quotes, semicolons, comments, whitespace or any other SQL
+# syntax, so safely quoted interpolation of a VALIDATED identifier is
+# injection-proof by construction — no blacklist involved.
+_SAFE_IDENTIFIER_RE = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
+
+
+def validate_identifier(value: str, label: str) -> str:
+    """Validate a role/database identifier against the strict allowlist.
+
+    Rejects (by never allowing in the first place) double quotes, single
+    quotes, semicolons, comment markers, spaces, dashes, unicode and every
+    other character outside [a-z0-9_].  Raises ValueError on violation.
+    """
+    if not isinstance(value, str) or not _SAFE_IDENTIFIER_RE.fullmatch(value):
+        raise ValueError(
+            f"invalid {label} identifier: {value!r} — only plain "
+            "'[a-z_][a-z0-9_]*' names (max 63 chars) are accepted; quotes, "
+            "semicolons, comments and any other SQL syntax are rejected"
+        )
+    return value
 
 # Role creation: the RUNTIME role is born with the frozen decision-3
 # attributes and can never gain more through this tool.  The migration
@@ -125,21 +165,178 @@ def _assert_sanctioned_sql(sql: str) -> str:
     return sql
 
 
+class ClusterBindingError(RuntimeError):
+    """Zero-write refusal: the three URLs do not describe one deployment."""
+
+
 class Provisioner:
     def __init__(self, admin_url: str, migrate_url: str, app_url: str,
                  migrate_role: str, app_role: str, database: str) -> None:
+        # R1-R1 fix 5: uniform identifier validation in EVERY mode, before
+        # any connection is opened or any statement rendered.
+        validate_identifier(migrate_role, "migration authority role")
+        validate_identifier(app_role, "runtime role")
+        validate_identifier(database, "database")
         self.admin_url = admin_url
         self.migrate_url = migrate_url
         self.app_url = app_url
         self.migrate_role = migrate_role
         self.app_role = app_role
         self.database = database
+        self._expected_admin_user = urlsplit(admin_url).username or ""
+
+    # ------------------------------------------------------- binding preflight
+    async def _assert_cluster_binding(self, *, require_live: bool = True) -> dict:
+        """Prove the three URLs describe ONE deployment; refuse with zero
+        writes on any mismatch.
+
+        Layer 1 (always, before any connection): URL consistency — the
+        migrate and app URLs must share one host:port and one database name
+        (equal to the configured database), and their usernames must equal
+        the migration-authority and runtime roles respectively.
+
+        Layer 2 (always): the admin URL is connected live; its current_user
+        must equal the URL user and that user must be a superuser, and the
+        cluster system identifier is captured.
+
+        Layer 3 (when the roles/database already exist — always the case for
+        --apply-grants and --verify, and re-asserted right after --provision
+        creates them): migrate and app URLs are connected live; all three
+        connections must report the SAME pg_control_system().system_identifier,
+        both must resolve current_database() to the configured database, and
+        each current_user must equal its expected role.
+
+        ``require_live=False`` is used only for the FIRST --provision call,
+        where the migrate/app roles and database do not exist yet and cannot
+        connect; the deferred result is recorded and the full live proof is
+        re-asserted immediately after creation.
+        """
+        import asyncpg
+
+        problems: list[str] = []
+        migrate_parsed = urlsplit(self.migrate_url)
+        app_parsed = urlsplit(self.app_url)
+        if (migrate_parsed.hostname or "").lower() != (app_parsed.hostname or "").lower()                 or (migrate_parsed.port or 5432) != (app_parsed.port or 5432):
+            problems.append(
+                "migrate and app URLs target different hosts/ports "
+                f"({migrate_parsed.netloc} vs {app_parsed.netloc})"
+            )
+        if (migrate_parsed.path or "/") != (app_parsed.path or "/")                 or (migrate_parsed.path or "/").lstrip("/") != self.database:
+            problems.append(
+                "migrate and app URLs do not both target the configured "
+                f"database {self.database!r} "
+                f"(got {migrate_parsed.path!r} / {app_parsed.path!r})"
+            )
+        if (migrate_parsed.username or "") != self.migrate_role:
+            problems.append(
+                f"migrate URL username {migrate_parsed.username!r} does not "
+                f"equal the migration authority role {self.migrate_role!r}"
+            )
+        if (app_parsed.username or "") != self.app_role:
+            problems.append(
+                f"app URL username {app_parsed.username!r} does not equal "
+                f"the runtime role {self.app_role!r}"
+            )
+
+        async def _probe(url: str) -> dict:
+            conn = await asyncpg.connect(url)
+            try:
+                return dict(await conn.fetchrow(
+                    "SELECT system_identifier, "
+                    "       current_user AS bound_user, "
+                    "       current_database() AS bound_database, "
+                    "       (SELECT rolsuper FROM pg_roles "
+                    "        WHERE rolname = current_user) AS is_superuser "
+                    "FROM pg_control_system()"
+                ))
+            finally:
+                await conn.close()
+
+        admin = await _probe(self.admin_url)
+        if admin["bound_user"] != self._expected_admin_user:
+            problems.append(
+                f"admin URL binds current_user {admin['bound_user']!r}, "
+                f"expected {self._expected_admin_user!r}"
+            )
+        if not admin["is_superuser"]:
+            problems.append(
+                f"admin URL user {admin['bound_user']!r} is not a superuser"
+            )
+
+        live: dict = {}
+        if not problems:
+            deferred = False
+            try:
+                live["migrate"] = await _probe(self.migrate_url)
+                live["app"] = await _probe(self.app_url)
+            except (asyncpg.InvalidPasswordError,
+                    asyncpg.InvalidAuthorizationSpecificationError,
+                    asyncpg.InvalidCatalogNameError,
+                    asyncpg.UndefinedObjectError,
+                    ConnectionError, OSError):
+                deferred = True
+            if not deferred:
+                identifiers = {
+                    "admin": admin["system_identifier"],
+                    "migrate": live["migrate"]["system_identifier"],
+                    "app": live["app"]["system_identifier"],
+                }
+                if len(set(identifiers.values())) != 1:
+                    problems.append(
+                        f"URLs target different clusters (system identifiers: "
+                        f"{identifiers})"
+                    )
+                if not (
+                    live["migrate"]["bound_database"] == self.database
+                    and live["app"]["bound_database"] == self.database
+                ):
+                    problems.append(
+                        "migrate/app connections do not both resolve the "
+                        f"configured database {self.database!r} (got "
+                        f"{live['migrate']['bound_database']!r} / "
+                        f"{live['app']['bound_database']!r})"
+                    )
+                if live["migrate"]["bound_user"] != self.migrate_role:
+                    problems.append(
+                        f"migrate URL binds current_user "
+                        f"{live['migrate']['bound_user']!r}, expected "
+                        f"migration authority {self.migrate_role!r}"
+                    )
+                if live["app"]["bound_user"] != self.app_role:
+                    problems.append(
+                        f"app URL binds current_user "
+                        f"{live['app']['bound_user']!r}, expected runtime "
+                        f"role {self.app_role!r}"
+                    )
+            elif require_live:
+                problems.append(
+                    "live binding impossible: the migrate/app URLs cannot be "
+                    "connected although require_live=True (roles/database "
+                    "missing or credentials wrong)"
+                )
+
+        if problems:
+            raise ClusterBindingError(
+                "cluster binding preflight failed (zero writes performed):\n"
+                "  - " + "\n  - ".join(problems)
+            )
+        result = {
+            "system_identifier": str(admin["system_identifier"]),
+            "database": self.database,
+            "admin_user": admin["bound_user"],
+        }
+        if live:
+            result["migrate_user"] = live["migrate"]["bound_user"]
+            result["app_user"] = live["app"]["bound_user"]
+            result["mode"] = "live"
+        else:
+            result["mode"] = "deferred-first-provision"
+        return result
 
     # ------------------------------------------------------------------ admin
     async def _ensure_role(self, admin, role: str, password: str | None,
                            template: str) -> None:
-        if not re.fullmatch(r"[a-z_][a-z0-9_]*", role):
-            raise RuntimeError(f"unsafe role name: {role!r}")
+        validate_identifier(role, "role")
         existing = await admin.fetchval(
             "SELECT 1 FROM pg_roles WHERE rolname = $1", role
         )
@@ -165,6 +362,15 @@ class Provisioner:
                                         migrate_password: str | None) -> None:
         import asyncpg
 
+        # R1-R1 fix 6: binding preflight BEFORE any role or database is
+        # created; a mismatch refuses with zero writes.  On the very first
+        # run the migrate/app URLs cannot connect yet (nothing exists), so
+        # the deferred URL-consistency + live-admin proof runs first and the
+        # FULL live proof is re-asserted immediately after creation.
+        binding = await self._assert_cluster_binding(require_live=False)
+        print(f"[binding] cluster {binding['system_identifier']} / "
+              f"database {binding['database']} verified "
+              f"({binding['mode']}) for admin user {binding['admin_user']}")
         admin = await asyncpg.connect(self.admin_url)
         try:
             await self._ensure_role(
@@ -196,6 +402,11 @@ class Provisioner:
                 )
         finally:
             await admin.close()
+        # Full live proof now that the roles/database exist.
+        binding = await self._assert_cluster_binding(require_live=True)
+        print(f"[binding] post-creation live proof ok: cluster "
+              f"{binding['system_identifier']}, "
+              f"{binding['migrate_user']} / {binding['app_user']} bound")
 
     # ------------------------------------------------------- migration authority
     async def apply_minimum_grants(self) -> None:
@@ -207,6 +418,10 @@ class Provisioner:
         """
         import asyncpg
 
+        # R1-R1 fix 6: binding preflight precedes every write statement.
+        binding = await self._assert_cluster_binding()
+        print(f"[binding] cluster {binding['system_identifier']} / "
+              f"database {binding['database']} verified before grants")
         statements = render_minimum_grant_statements(
             self.app_role, self.database
         )
@@ -226,7 +441,18 @@ class Provisioner:
 
     # ----------------------------------------------------------------- verify
     async def verify(self) -> dict:
-        """Read-only verification of the frozen authority contract."""
+        """Strictly READ-ONLY verification of the frozen authority contract.
+
+        R1-R1 fix 1: every check below is a pure catalog read.  There is
+        deliberately NO DDL probe — not even inside a transaction — so
+        --verify can never mutate the cluster under any outcome.  The
+        runtime role's inability to replace the guard is proven from the
+        catalog instead: PostgreSQL allows CREATE OR REPLACE / DROP on an
+        existing function only for its owner, a superuser, or a member of
+        the owning role, and creating a shadow function in public
+        additionally requires CREATE on that schema — each of those paths
+        is separately asserted to be closed.
+        """
         import asyncpg
 
         report: dict = {"database": self.database, "checks": {}, "ok": True}
@@ -235,6 +461,14 @@ class Provisioner:
             report["checks"][name] = {"ok": ok, **detail}
             if not ok:
                 report["ok"] = False
+
+        # Uniform read-only preflight; also proves the URL binding.
+        try:
+            report["cluster_binding"] = await self._assert_cluster_binding()
+        except ClusterBindingError as exc:
+            report["cluster_binding"] = {"ok": False, "error": str(exc)}
+            report["ok"] = False
+            return report
 
         admin = await asyncpg.connect(self.admin_url)
         try:
@@ -280,9 +514,11 @@ class Provisioner:
         migrate = await asyncpg.connect(self.migrate_url)
         try:
             row = await migrate.fetchrow(
-                "SELECT pg_get_userbyid(p.proowner) AS owner, "
+                "SELECT p.oid::bigint AS function_oid, "
+                "pg_get_userbyid(p.proowner) AS owner, "
                 "format_type(p.prorettype, NULL) AS return_type, "
-                "pg_get_function_identity_arguments(p.oid) AS identity_arguments "
+                "pg_get_function_identity_arguments(p.oid) AS identity_arguments, "
+                "md5(pg_get_functiondef(p.oid)) AS definition_md5 "
                 "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
                 "WHERE n.nspname = 'public' "
                 "AND p.proname = 'prevent_ledger_modification'"
@@ -301,6 +537,8 @@ class Provisioner:
                 identity_arguments=(
                     row["identity_arguments"] if row else None
                 ),
+                definition_md5=row["definition_md5"] if row else None,
+                function_oid=row["function_oid"] if row else None,
             )
             schema_row = await migrate.fetchrow(
                 "SELECT pg_get_userbyid(nspowner) AS owner FROM pg_namespace "
@@ -308,7 +546,7 @@ class Provisioner:
             )
             # PG15+/PG16: the public schema is owned by the pseudo-role
             # pg_database_owner, whose implicit member is the database owner
-            # (the migration authority here) — equivalent ownership.
+            # (the migration authority here) - equivalent ownership.
             public_owner = schema_row["owner"] if schema_row else None
             public_owner_ok = (
                 public_owner == self.migrate_role
@@ -323,11 +561,51 @@ class Provisioner:
                 owner=public_owner,
                 database_owner=db_owner,
             )
+            app_create_on_public = await migrate.fetchval(
+                "SELECT has_schema_privilege($1, 'public', 'CREATE')",
+                self.app_role,
+            )
+            _record(
+                "app_no_create_on_public_schema",
+                not app_create_on_public,
+                has_create=app_create_on_public,
+                reason=(
+                    "" if not app_create_on_public
+                    else "runtime can create objects in schema public "
+                         "(DROP+CREATE substitution path)"
+                ),
+            )
         finally:
             await migrate.close()
 
         app = await asyncpg.connect(self.app_url)
         try:
+            app_user = await app.fetchval("SELECT current_user")
+            _record(
+                "runtime_differs_from_authority",
+                app_user != self.migrate_role,
+                runtime=app_user,
+                authority=self.migrate_role,
+                reason=(
+                    "" if app_user != self.migrate_role
+                    else "single-role topology: runtime IS the authority"
+                ),
+            )
+            member_of_authority = await app.fetchval(
+                "SELECT pg_has_role($1, $2, 'MEMBER') "
+                "OR pg_has_role($1, $2, 'USAGE')",
+                self.app_role, self.migrate_role,
+            )
+            _record(
+                "runtime_not_member_of_authority",
+                not member_of_authority,
+                member_or_usage=bool(member_of_authority),
+                reason=(
+                    "" if not member_of_authority
+                    else "SET ROLE escalation path exists from runtime to "
+                         "the authority"
+                ),
+            )
             can_execute = await app.fetchval(
                 "SELECT has_function_privilege(current_user, $1, 'EXECUTE')",
                 LEDGER_GUARD_SIGNATURE,
@@ -340,24 +618,37 @@ class Provisioner:
             )
             _record("app_create_on_database", bool(can_create_schema),
                     can_create=can_create_schema)
-            # The refusal probe: what the runtime role must NEVER be able to
-            # do.  Executed inside a transaction that is always rolled back,
-            # so even a misconfigured cluster is left byte-identical.
-            cannot_replace = True
-            try:
-                async with app.transaction():
-                    await app.execute(
-                        f"CREATE OR REPLACE FUNCTION {LEDGER_GUARD_SIGNATURE} "
-                        "RETURNS TRIGGER AS $$ BEGIN RETURN OLD; END; "
-                        "$$ LANGUAGE plpgsql"
-                    )
-                    cannot_replace = False
-            except asyncpg.InsufficientPrivilegeError:
-                cannot_replace = True
-            _record(
-                "app_cannot_replace_guard", cannot_replace,
-                reason="" if cannot_replace else "replacement succeeded",
-            )
+            # Pure-catalog replace-capability proof: replacing or dropping
+            # the existing guard requires being its owner, a superuser, or
+            # a member of the owning role.  All three paths asserted closed.
+            if row is not None:
+                guard_owner = row["owner"]
+                app_is_owner = guard_owner == self.app_role
+                app_member_of_owner = await app.fetchval(
+                    "SELECT pg_has_role($1, $2, 'MEMBER') "
+                    "OR pg_has_role($1, $2, 'USAGE')",
+                    self.app_role, guard_owner,
+                )
+                app_superuser = await app.fetchval(
+                    "SELECT rolsuper FROM pg_roles WHERE rolname = current_user"
+                )
+                no_replace_path = (
+                    not app_is_owner
+                    and not bool(app_member_of_owner)
+                    and not app_superuser
+                )
+                _record(
+                    "app_no_replace_path_on_guard",
+                    no_replace_path,
+                    app_is_owner=app_is_owner,
+                    app_member_of_owner=bool(app_member_of_owner),
+                    app_superuser=app_superuser,
+                    reason=(
+                        "" if no_replace_path
+                        else "runtime can replace or drop the guard via "
+                             "ownership, membership or superuser"
+                    ),
+                )
         finally:
             await app.close()
         return report

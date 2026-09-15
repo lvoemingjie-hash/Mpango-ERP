@@ -1,0 +1,399 @@
+$ pytest tests/test_tenant_bootstrap_db_authority.py (scenario=v3_ok, label=v3_ok, backend=C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend)
+rc=0
+
+============================= test session starts =============================
+collecting ... collected 25 items
+
+tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_never_replaces_or_reowns_public_guard PASSED [  4%]
+tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics PASSED [  8%]
+tests/test_tenant_bootstrap_db_authority.py::test_grants_script_declares_only_minimum_runtime_grants PASSED [ 12%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner PASSED [ 16%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only PASSED [ 20%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes PASSED [ 24%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes PASSED [ 28%]
+tests/test_tenant_bootstrap_db_authority.py::test_v3_preparation_gate_authority_topology_is_wired PASSED [ 32%]
+tests/test_tenant_bootstrap_db_authority.py::test_v3_ok_preparation_gate_guard_function_is_intact PASSED [ 36%]
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role PASSED [ 40%]
+tests/test_tenant_bootstrap_db_authority.py::test_r2_tenant_contains_required_tables_two_views_mv_and_unique_index PASSED [ 44%]
+tests/test_tenant_bootstrap_db_authority.py::test_r3_guard_owner_and_definition_preserved_across_tenant_creation PASSED [ 48%]
+tests/test_tenant_bootstrap_db_authority.py::test_r4_ledger_update_and_delete_blocked_by_migration_owned_guard PASSED [ 52%]
+tests/test_tenant_bootstrap_db_authority.py::test_r5_runtime_role_cannot_replace_reown_or_escalate PASSED [ 56%]
+tests/test_tenant_bootstrap_db_authority.py::test_n1_missing_guard_function_fails_closed_zero_partial_tenant SKIPPED [ 60%]
+tests/test_tenant_bootstrap_db_authority.py::test_n2_incompatible_guard_signature_fails_closed_zero_partial_tenant SKIPPED [ 64%]
+tests/test_tenant_bootstrap_db_authority.py::test_n3_runtime_owned_guard_function_fails_closed_zero_partial_tenant SKIPPED [ 68%]
+tests/test_tenant_bootstrap_db_authority.py::test_n4_missing_execute_privilege_fails_closed_zero_partial_tenant SKIPPED [ 72%]
+tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant PASSED [ 76%]
+tests/test_tenant_bootstrap_db_authority.py::test_r0_owner_fallback_removed_env_undeclared SKIPPED [ 80%]
+tests/test_tenant_bootstrap_db_authority.py::test_verify_cli_wrongowner_nonzero_and_read_only SKIPPED [ 84%]
+tests/test_tenant_bootstrap_db_authority.py::test_injection_identifiers_rejected_zero_writes SKIPPED [ 88%]
+tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes PASSED [ 92%]
+tests/test_tenant_bootstrap_db_authority.py::test_mutation_m1_sentinel_reintroducing_runtime_replace_is_refused PASSED [ 96%]
+tests/test_tenant_bootstrap_db_authority.py::test_mutation_m2_sentinel_ownership_precondition_is_load_bearing SKIPPED [100%]
+
+============================== warnings summary ===============================
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+  C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\database\base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+  C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\onboarding_service.py:299: DeprecationWarning: deprecated
+    if request.password is not None:
+
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+  C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\v1\auth.py:154: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+  C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\v1\auth.py:197: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+  C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\v1\auth.py:716: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+  C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\core\security.py:108: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+  C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\v1\auth.py:325: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+  C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\core\security.py:150: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+  C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\v1\auth.py:441: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+  C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\v1\auth.py:661: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=================================== PASSES ====================================
+__________ test_r1_public_lifecycle_activates_tenant_as_runtime_role __________
+---------------------------- Captured stdout setup ----------------------------
+[reconcile] t_c02bd5e3b48d4b99966606d125246b56.payments: ensured ix_payments_order_id
+[reconcile] t_c02bd5e3b48d4b99966606d125246b56.payments: ensured uq_payments_transaction_id
+[reconcile] t_c02bd5e3b48d4b99966606d125246b56.retailer_prices: contract validated, indexes ensured
+[reconcile] t_c02bd5e3b48d4b99966606d125246b56: granted schema USAGE to reporting_role
+[reconcile] t_c02bd5e3b48d4b99966606d125246b56: created mv_sales_daily
+[reconcile] t_c02bd5e3b48d4b99966606d125246b56: ensured idx_mv_sales_daily_u1
+[reconcile] t_c02bd5e3b48d4b99966606d125246b56: ensured reporting_role table privileges
+[reconcile] t_c02bd5e3b48d4b99966606d125246b56.import_runs: ensured indexes
+[reconcile] t_c02bd5e3b48d4b99966606d125246b56: ensured U4 intake apply audit contract
+[reconcile] t_c02bd5e3b48d4b99966606d125246b56: ensured DC-12R1-S1 retailer_operator RBAC + email index
+[reconcile] t_c02bd5e3b48d4b99966606d125246b56: ensured DC-12R1-S3-S2B-I1 payment_declarations + receipt_sequences + receipt_number
+[bootstrap] Tenant schema 't_c02bd5e3b48d4b99966606d125246b56' ready (22 tables, reconciled).
+----------------------------- Captured log setup ------------------------------
+ERROR    core.rate_limiter:rate_limiter.py:130 Rate limiter error: ConnectionError
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 290, in connect
+    await self.retry.call_with_retry(
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 723, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\core\rate_limiter.py", line 84, in check_rate_limit
+    count = await redis.incr(redis_key)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\client.py", line 641, in execute_command
+    conn = self.connection or await pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1100, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1133, in ensure_connection
+    await connection.connect()
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 298, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 11001 connecting to redis:6379. getaddrinfo failed.
+ERROR    core.rate_limiter:rate_limiter.py:130 Rate limiter error: ConnectionError
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 290, in connect
+    await self.retry.call_with_retry(
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 723, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\core\rate_limiter.py", line 84, in check_rate_limit
+    count = await redis.incr(redis_key)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\client.py", line 641, in execute_command
+    conn = self.connection or await pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1100, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1133, in ensure_connection
+    await connection.connect()
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 298, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 11001 connecting to redis:6379. getaddrinfo failed.
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 18 queries, 65.17ms total
+ERROR    core.rate_limiter:rate_limiter.py:130 Rate limiter error: ConnectionError
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 290, in connect
+    await self.retry.call_with_retry(
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 723, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\core\rate_limiter.py", line 84, in check_rate_limit
+    count = await redis.incr(redis_key)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\client.py", line 641, in execute_command
+    conn = self.connection or await pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1100, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1133, in ensure_connection
+    await connection.connect()
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 298, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 11001 connecting to redis:6379. getaddrinfo failed.
+WARNING  api.middleware.sql_profiling:sql_profiling.py:70 High SQL load detected: 103 queries, 296.67ms total
+ERROR    core.rate_limiter:rate_limiter.py:130 Rate limiter error: ConnectionError
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 290, in connect
+    await self.retry.call_with_retry(
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 723, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\core\rate_limiter.py", line 84, in check_rate_limit
+    count = await redis.incr(redis_key)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\client.py", line 641, in execute_command
+    conn = self.connection or await pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1100, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1133, in ensure_connection
+    await connection.connect()
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 298, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 11001 connecting to redis:6379. getaddrinfo failed.
+ERROR    core.rate_limiter:rate_limiter.py:130 Rate limiter error: ConnectionError
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 290, in connect
+    await self.retry.call_with_retry(
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 723, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\core\rate_limiter.py", line 84, in check_rate_limit
+    count = await redis.incr(redis_key)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\client.py", line 641, in execute_command
+    conn = self.connection or await pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1100, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1133, in ensure_connection
+    await connection.connect()
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 298, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 11001 connecting to redis:6379. getaddrinfo failed.
+ERROR    core.rate_limiter:rate_limiter.py:130 Rate limiter error: ConnectionError
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 290, in connect
+    await self.retry.call_with_retry(
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 723, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\core\rate_limiter.py", line 84, in check_rate_limit
+    count = await redis.incr(redis_key)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\client.py", line 641, in execute_command
+    conn = self.connection or await pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1100, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1133, in ensure_connection
+    await connection.connect()
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 298, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 11001 connecting to redis:6379. getaddrinfo failed.
+WARNING  core.cache:cache.py:253 Cache get error: Error 11001 connecting to redis:6379. getaddrinfo failed.
+WARNING  core.cache:cache.py:292 Cache set error: Error 11001 connecting to redis:6379. getaddrinfo failed.
+=========================== short test summary info ===========================
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_never_replaces_or_reowns_public_guard
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_grants_script_declares_only_minimum_runtime_grants
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_v3_preparation_gate_authority_topology_is_wired
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_v3_ok_preparation_gate_guard_function_is_intact
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_r2_tenant_contains_required_tables_two_views_mv_and_unique_index
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_r3_guard_owner_and_definition_preserved_across_tenant_creation
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_r4_ledger_update_and_delete_blocked_by_migration_owned_guard
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_r5_runtime_role_cannot_replace_reown_or_escalate
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_mutation_m1_sentinel_reintroducing_runtime_replace_is_refused
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1207: test targets scenario v3_nofunc (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1217: test targets scenario v3_badsig (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1229: test targets scenario v3_wrongown (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1241: test targets scenario v3_nopriv (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1319: test targets scenario v3_wrongown (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1353: test targets scenario v3_verify_wrongown (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1402: test targets scenario v3_verify_wrongown (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1525: test targets scenario v3_wrongown (active: v3_ok)
+================= 17 passed, 8 skipped, 12 warnings in 28.02s =================

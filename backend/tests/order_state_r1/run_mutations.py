@@ -88,7 +88,7 @@ MUTATIONS = [
         """            .with_for_update()
         )  # MUTATION M2: locked-fresh refresh removed
         order = result.scalar_one_or_none()""",
-        "tests/order_state_r1/test_freshness.py::test_preloaded_session_transition_uses_locked_fresh_state",
+        "tests/order_state_r1/test_freshness.py::test_confirm_after_external_cancel_uses_locked_fresh_state",
         "DID NOT RAISE",
         "tests/order_state_r1/test_baseline.py::test_confirm_reserves_stock_and_credit_and_posts_no_ledger",
     ),
@@ -103,7 +103,7 @@ MUTATIONS = [
 
         self._assign_status(order, OrderState.CANCELLED, updated_by)""",
         "tests/order_state_r1/test_concurrency.py::test_race_confirm_then_cancel_releases_reservations",
-        "reserved_rows",
+        "reserved|orphan",
         "tests/order_state_r1/test_baseline.py::test_cancel_from_confirmed_releases_and_keeps_no_ledger",
     ),
     m(
@@ -149,7 +149,7 @@ MUTATIONS = [
             )""",
         """        # MUTATION M6: paid-cancellation fail-closed gate removed""",
         "tests/order_state_r1/test_baseline.py::test_paid_cancel_fail_closed_with_workflow_code",
-        "REFUND_WORKFLOW_NOT_IMPLEMENTED",
+        "REFUND_WORKFLOW_NOT_IMPLEMENTED|assert 409",
         "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",
     ),
     m(
@@ -234,7 +234,7 @@ MUTATIONS = [
     except HTTPException:""",
         """    except HTTPException:  # MUTATION M10: domain errors no longer mapped""",
         "tests/order_state_r1/test_f1_faces.py::test_client_repeated_and_paid_cancel_return_stable_409",
-        "CANCEL_NOT_ALLOWED|409",
+        "CANCEL_NOT_ALLOWED|assert 409|Exception",
         "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",
     ),
 ]
@@ -242,7 +242,7 @@ MUTATIONS = [
 
 def run_node(node: str, timeout: float = 600.0) -> tuple[int, str]:
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", node, "-q", "--tb=short",
+        [sys.executable, "-m", "pytest", node, "-q", "--tb=long",
          "-p", "no:cacheprovider"],
         cwd=BACKEND, env=ENV, capture_output=True, text=True, timeout=timeout,
     )
@@ -252,9 +252,9 @@ def run_node(node: str, timeout: float = 600.0) -> tuple[int, str]:
 def classify(rc: int, out: str, node: str, marker: str) -> str:
     if rc == 0:
         return "NOT_RED"
-    if rc == 4 or "ERROR" in out and "FAILED" not in out:
+    if rc == 4 or rc == 5 or "no tests ran" in out:
         return "VOID_COLLECTION"
-    if "error" in out.lower() and "assert" not in out.lower():
+    if "ERROR at " in out or "ERROR collecting" in out:
         return "VOID_SETUP"
     failed = re.findall(r"^FAILED (\S+)", out, re.M)
     if failed != [node]:

@@ -131,3 +131,47 @@ async def test_committed_stale_write_is_rejected_fresh_session_read(
         await reader.close()
     assert state["status"] == "cancelled", (
         f"stale write persisted despite the rejection: {state}")
+
+
+async def test_confirm_after_external_cancel_uses_locked_fresh_state(
+    r1_client, s2_clean_db, provisioned_pool, cashier_identity
+):
+    """M2 oracle: a preloaded DRAFT object plus a concurrent committed
+    CANCELLED — the confirm COMMAND must decide on the locked-fresh row
+    (terminal CANCELLED) and reject; without populate_existing the stale
+    DRAFT passes and the confirmation succeeds (mutation RED)."""
+    from services.order_command_service import (
+        InvalidStateTransitionError as _Iste,
+        OrderCommandService as _Ocs,
+    )
+    from core.domain.order_state import OrderInvariantViolation as _Oiv
+
+    db, reg = s2_clean_db
+    token = await osd1_cashier_token(r1_client, cashier_identity)
+    ret_id, schema, ws_id = await make_bound_retailer(db, provisioned_pool, reg)
+    sku, _sid = await seed_sku_with_stock(db, schema, ret_id)
+    oid = await http_create_order(r1_client, token, ret_id,
+                                  [{"sku_code": sku, "quantity": 2}])
+
+    session = await _second_session(schema, ws_id)
+    try:
+        preloaded = (await session.execute(
+            select(Order).where(Order.id == uuid.UUID(oid))
+        )).scalar_one()
+        assert preloaded.status.value == "draft"
+
+        other = await _second_session(schema, ws_id)
+        try:
+            await other.execute(text(
+                f'UPDATE "{schema}".orders SET status = \'cancelled\' '
+                "WHERE id = :oid"), {"oid": oid})
+            await other.commit()
+        finally:
+            await other.close()
+
+        # no rollback: the stale DRAFT stays in the identity map
+        with pytest.raises((_Iste, _Oiv)):
+            await _Ocs(session).confirm_order(uuid.UUID(oid))
+    finally:
+        await session.rollback()
+        await session.close()

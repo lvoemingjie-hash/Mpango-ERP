@@ -4,12 +4,36 @@ Loads settings from environment variables with .env file support.
 
 S2-1: Implements strict validation and fail-fast behavior for production secrets.
 """
+import ipaddress
 import os
 import sys
 from functools import lru_cache
 from typing import List, Literal
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def is_loopback_smtp_host(host: str | None) -> bool:
+    """Return True only for literal loopback SMTP hosts.
+
+    Deliberately does NOT resolve DNS names: a name that happens to resolve
+    to a loopback address is not accepted. Only ``localhost`` and literal
+    loopback IPs (127.0.0.0/8, ::1) qualify, so the SMTP_AUTH_MODE=none
+    policy cannot be smuggled onto a routed host.
+    """
+    if host is None:
+        return False
+    normalized = str(host).strip().lower()
+    if not normalized:
+        return False
+    if normalized == "localhost":
+        return True
+    if normalized.startswith("[") and normalized.endswith("]"):
+        normalized = normalized[1:-1]
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
 
 
 class Settings(BaseSettings):
@@ -148,6 +172,16 @@ class Settings(BaseSettings):
     EMAIL_FROM: str | None = Field(default=None, description="From address for outbound email")
     SMTP_USE_TLS: bool = Field(default=False, description="Use implicit TLS for SMTP")
     SMTP_STARTTLS: bool = Field(default=True, description="Upgrade SMTP connection with STARTTLS")
+    SMTP_AUTH_MODE: Literal["login", "none"] = Field(
+        default="login",
+        description=(
+            "SMTP authentication mode. 'login' (default) authenticates with "
+            "SMTP_USER/SMTP_PASSWORD and is required for external SMTP. 'none' "
+            "skips AUTH and is valid only for a task-owned loopback capture sink "
+            "(SMTP_HOST must be 127.0.0.0/8, ::1, or localhost); it is never "
+            "inferred from environment, empty credentials, or connection failures."
+        ),
+    )
 
     # DC-12A-R2: Public frontend URL for absolute credential email links
     PUBLIC_FRONTEND_URL: str | None = Field(
@@ -245,6 +279,22 @@ class Settings(BaseSettings):
                 )
 
         return v
+
+    @model_validator(mode="after")
+    def validate_smtp_auth_mode(self) -> "Settings":
+        """Reject SMTP_AUTH_MODE=none for any non-loopback SMTP_HOST.
+
+        Authentication is the default for external SMTP. The unauthenticated
+        mode exists only for a task-owned, loopback-bound capture sink and
+        must be chosen deliberately; it is rejected everywhere else.
+        """
+        if self.SMTP_AUTH_MODE == "none" and not is_loopback_smtp_host(self.SMTP_HOST):
+            raise ValueError(
+                "SMTP_AUTH_MODE=none is permitted only for a task-owned "
+                "loopback capture sink (SMTP_HOST in 127.0.0.0/8, ::1, or "
+                "localhost). External SMTP must use SMTP_AUTH_MODE=login."
+            )
+        return self
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

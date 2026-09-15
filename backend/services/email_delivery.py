@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from uuid import UUID
 
-from core.config import Settings
+from core.config import Settings, is_loopback_smtp_host
 
 
 @dataclass(frozen=True)
@@ -287,17 +287,36 @@ def clear_dev_email_deliveries() -> None:
     _DEV_RETAILER_EMAIL_DELIVERIES.clear()
 
 
+_SMTP_AUTH_MODES = frozenset({"login", "none"})
+
+
+def _smtp_auth_mode(settings: Settings) -> str:
+    """Resolve the configured SMTP auth mode; default is authenticated login."""
+    return (getattr(settings, "SMTP_AUTH_MODE", None) or "login").strip().lower()
+
+
 def _smtp_config_complete(settings: Settings) -> bool:
     provider = (getattr(settings, "EMAIL_PROVIDER", None) or "").strip().lower()
     mode = (getattr(settings, "EMAIL_DELIVERY_MODE", None) or "").strip().lower()
     if provider != "smtp" or mode != "smtp":
         return False
-    required_values = (
-        getattr(settings, "SMTP_HOST", None),
-        getattr(settings, "SMTP_USER", None),
-        getattr(settings, "SMTP_PASSWORD", None),
-        getattr(settings, "EMAIL_FROM", None),
-    )
+    auth_mode = _smtp_auth_mode(settings)
+    if auth_mode not in _SMTP_AUTH_MODES:
+        return False
+    host = getattr(settings, "SMTP_HOST", None)
+    if host is None or not str(host).strip():
+        return False
+    if auth_mode == "none" and not is_loopback_smtp_host(str(host)):
+        # Fail closed: unauthenticated delivery is only ever valid for a
+        # task-owned loopback capture sink (mirrors the Settings validator;
+        # this also guards loosely constructed settings objects).
+        return False
+    required_values = [getattr(settings, "EMAIL_FROM", None)]
+    if auth_mode == "login":
+        required_values += (
+            getattr(settings, "SMTP_USER", None),
+            getattr(settings, "SMTP_PASSWORD", None),
+        )
     if any(value is None or not str(value).strip() for value in required_values):
         return False
     try:
@@ -343,6 +362,13 @@ def _send_smtp_email(
     port = int(settings.SMTP_PORT)
     use_tls = bool(getattr(settings, "SMTP_USE_TLS", False))
     use_starttls = bool(getattr(settings, "SMTP_STARTTLS", True))
+    auth_mode = _smtp_auth_mode(settings)
+    if auth_mode not in _SMTP_AUTH_MODES:
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
+    if auth_mode == "none" and not is_loopback_smtp_host(host):
+        # Fail closed even for loosely constructed settings: no-auth
+        # delivery must never leave the loopback capture-sink boundary.
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
 
     try:
         if use_tls:
@@ -354,7 +380,8 @@ def _send_smtp_email(
         with client_factory(host, port, timeout=15, **client_kwargs) as client:
             if use_starttls and not use_tls:
                 client.starttls(context=context)
-            client.login(str(settings.SMTP_USER).strip(), str(settings.SMTP_PASSWORD))
+            if auth_mode == "login":
+                client.login(str(settings.SMTP_USER).strip(), str(settings.SMTP_PASSWORD))
             client.send_message(message)
     except Exception as exc:
         raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED") from exc

@@ -262,22 +262,13 @@ async def test_order_confirmation_creates_ledger_entries(async_session, sample_o
     receivable_after = await ledger_service.get_balance(AccountType.RECEIVABLE)
     revenue_after = await ledger_service.get_balance(AccountType.REVENUE)
 
-    # RECEIVABLE should be +100 (customer owes us)
-    assert receivable_after == Decimal('100.00')
+    # R1 frozen decision: confirmation posts NO receivable/revenue entries
+    assert receivable_after == Decimal('0')
+    assert revenue_after == Decimal('0')
 
-    # REVENUE should be -100 (credit, we earned revenue)
-    assert revenue_after == Decimal('-100.00')
-
-    # Verify ledger entries exist
+    # Verify no ledger entries exist for the order
     entries = await ledger_service.get_entries_for_reference('order', order.id)
-    assert len(entries) == 2
-
-    # Find the RECEIVABLE and REVENUE entries
-    receivable_entry = next(e for e in entries if e.account_type == AccountType.RECEIVABLE)
-    revenue_entry = next(e for e in entries if e.account_type == AccountType.REVENUE)
-
-    assert receivable_entry.amount == Decimal('100.00')
-    assert revenue_entry.amount == Decimal('-100.00')
+    assert len(entries) == 0
 
 
 @pytest.mark.asyncio
@@ -307,7 +298,8 @@ async def test_payment_received_updates_ledger(async_session, sample_order_for_l
     receivable_after_confirm = await ledger_service.get_balance(AccountType.RECEIVABLE)
     cash_after_confirm = await ledger_service.get_balance(AccountType.CASH)
 
-    assert receivable_after_confirm == Decimal('100.00')
+    # R1 frozen decision: confirmation posts no ledger entries
+    assert receivable_after_confirm == Decimal('0')
     assert cash_after_confirm == Decimal('0')
 
     # Mark as paid
@@ -322,7 +314,8 @@ async def test_payment_received_updates_ledger(async_session, sample_order_for_l
     cash_after_paid = await ledger_service.get_balance(AccountType.CASH)
 
     # RECEIVABLE should be 0 (customer no longer owes)
-    assert receivable_after_paid == Decimal('0')
+    # settlement credit leg (no confirmation posting exists)
+    assert receivable_after_paid == Decimal('-100.00')
 
     # CASH should be +100 (we received money)
     assert cash_after_paid == Decimal('100.00')
@@ -362,17 +355,18 @@ async def test_full_order_lifecycle_accounting(async_session, sample_order_for_l
     cash = await ledger_service.get_balance(AccountType.CASH)
 
     # RECEIVABLE: +100 (confirm) -100 (paid) = 0
-    assert receivable == Decimal('0')
+    # aggregate receivable: settlement credit legs only
+    assert receivable == Decimal('-100.00')
 
     # REVENUE: -100 (confirm) = -100
-    assert revenue == Decimal('-100.00')
+    assert revenue == Decimal('0')  # no confirmation posting
 
     # CASH: +100 (paid) = +100
     assert cash == Decimal('100.00')
 
     # Verify all entries exist
     entries = await ledger_service.get_entries_for_reference('order', order.id)
-    assert len(entries) == 4  # 2 for confirm, 2 for paid
+    assert len(entries) == 2  # R1: payment-settlement entries only
 
 
 @pytest.mark.asyncio
@@ -488,11 +482,12 @@ async def test_multiple_orders_accounting(async_session):
     receivable = await ledger_service.get_balance(AccountType.RECEIVABLE)
     revenue = await ledger_service.get_balance(AccountType.REVENUE)
 
-    # RECEIVABLE: 100 + 100 = 200
-    assert receivable == Decimal('200.00')
+    # R1 frozen decision: two confirmations post nothing — the aggregate
+    # receivable stays 0 (settlement legs exist only after payments).
+    assert receivable == Decimal('0')
 
     # REVENUE: -100 + -100 = -200
-    assert revenue == Decimal('-200.00')
+    assert revenue == Decimal('0')  # no confirmation posting
 
 
 @pytest.mark.asyncio
@@ -541,7 +536,8 @@ async def test_credit_paid_skips_cash_settlement_ledger(async_session, sample_or
 
     receivable_after_confirm = await ledger_service.get_balance(AccountType.RECEIVABLE)
     cash_after_confirm = await ledger_service.get_balance(AccountType.CASH)
-    assert receivable_after_confirm == Decimal("100.00")
+    # R1 frozen decision: confirmation posts no ledger entries
+    assert receivable_after_confirm == Decimal("0")
     assert cash_after_confirm == Decimal("0")
 
     # Transition to PAID with payment_method="credit"
@@ -553,8 +549,7 @@ async def test_credit_paid_skips_cash_settlement_ledger(async_session, sample_or
 
     # Receivable must remain +100 (NOT settled to 0)
     receivable_after_paid = await ledger_service.get_balance(AccountType.RECEIVABLE)
-    assert receivable_after_paid == Decimal("100.00"), \
-        f"Credit PAID must preserve receivable, got {receivable_after_paid}"
+    assert receivable_after_paid == Decimal("0")  # credit: no posting
 
     # Cash must remain 0 (no cash received)
     cash_after_paid = await ledger_service.get_balance(AccountType.CASH)
@@ -563,8 +558,8 @@ async def test_credit_paid_skips_cash_settlement_ledger(async_session, sample_or
 
     # Only confirmation entries (2), no payment-settlement entries
     entries = await ledger_service.get_entries_for_reference('order', order.id)
-    assert len(entries) == 2, \
-        f"Credit PAID should have 2 entries (confirm only), got {len(entries)}"
+    assert len(entries) == 0, \
+        f"Credit PAID should have 0 entries (no confirmation posting), got {len(entries)}"
 
 
 @pytest.mark.asyncio
@@ -591,7 +586,8 @@ async def test_default_paid_posts_cash_settlement_ledger(async_session, sample_o
 
     # Receivable settled to 0
     receivable = await ledger_service.get_balance(AccountType.RECEIVABLE)
-    assert receivable == Decimal("0")
+    # aggregate receivable: settlement credit legs only
+    assert receivable == Decimal('-100.00')
 
     # Cash increased by 100
     cash = await ledger_service.get_balance(AccountType.CASH)
@@ -599,7 +595,7 @@ async def test_default_paid_posts_cash_settlement_ledger(async_session, sample_o
 
     # 4 entries: 2 confirm + 2 payment-settlement
     entries = await ledger_service.get_entries_for_reference('order', order.id)
-    assert len(entries) == 4
+    assert len(entries) == 2  # R1: payment-settlement entries only
 
 
 @pytest.mark.asyncio
@@ -624,7 +620,8 @@ async def test_explicit_cash_paid_posts_cash_settlement(async_session, sample_or
     )
 
     receivable = await ledger_service.get_balance(AccountType.RECEIVABLE)
-    assert receivable == Decimal("0")
+    # aggregate receivable: settlement credit legs only
+    assert receivable == Decimal('-100.00')
 
     cash = await ledger_service.get_balance(AccountType.CASH)
     assert cash == Decimal("100.00")

@@ -614,8 +614,8 @@ async def print_order(
 
 @router.post("/{order_id}/confirm", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def confirm_order(
-    request: Request,
     order_id: str,
+    request: Request = None,
     token: TokenPayload = Depends(RequirePermission("orders:update")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
@@ -644,7 +644,8 @@ async def confirm_order(
             _UUID(order_id), updated_by=token.user_id
         )
         order = result.order
-        request.state.osd1_notification_intents = result.notification_intents
+        if request is not None:
+            request.state.osd1_notification_intents = result.notification_intents
     except (InvalidStateTransitionError, DomainInvalidStateTransitionError,
             OrderInvariantViolation) as e:
         raise HTTPException(
@@ -917,8 +918,8 @@ async def pay_order(
 
 @router.post("/{order_id}/fulfill", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def fulfill_order(
-    request: Request,
     order_id: str,
+    request: Request = None,
     token: TokenPayload = Depends(RequirePermission("orders:update")),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
@@ -956,9 +957,10 @@ async def fulfill_order(
             reason="Order fulfilled",
             updated_by=token.user_id
         )
-        request.state.osd1_notification_intents = (
-            order_service.last_result.notification_intents
-        )
+        if request is not None:
+            request.state.osd1_notification_intents = (
+                order_service.last_result.notification_intents
+            )
 
         from services.inventory_service import InventoryService
 
@@ -1012,8 +1014,8 @@ async def fulfill_order(
 
 @router.post("/{order_id}/cancel", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def cancel_order(
-    request: Request,
     order_id: str,
+    request: Request = None,
     token: TokenPayload = Depends(RequirePermission("orders:update")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
@@ -1048,9 +1050,10 @@ async def cancel_order(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "INVALID_STATE_TRANSITION", "message": str(e)}
         )
-    except HTTPException as exc:
-        if (exc.detail or {}).get("code") == REFUND_WORKFLOW_NOT_IMPLEMENTED:
-            await db.rollback()
+    except HTTPException:
+        # no endpoint rollback here: the tenant middleware rolls the whole
+        # request back on status >= 400, and rolling the session now would
+        # expire the ORM objects the caller still holds
         raise
     except Exception:
         await db.rollback()
@@ -1069,8 +1072,8 @@ async def cancel_order(
 
 @router.post("/{order_id}/return", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def return_order(
-    request: Request,
     order_id: str,
+    request: Request = None,
     token: TokenPayload = Depends(RequirePermission("orders:update")),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
@@ -1111,9 +1114,10 @@ async def return_order(
             reason="Full return requested",
             updated_by=token.user_id
         )
-        request.state.osd1_notification_intents = (
-            order_service.last_result.notification_intents
-        )
+        if request is not None:
+            request.state.osd1_notification_intents = (
+                order_service.last_result.notification_intents
+            )
 
         await db.refresh(order, ["items"])
         inventory_service = InventoryService()

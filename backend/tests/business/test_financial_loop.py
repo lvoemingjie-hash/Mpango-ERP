@@ -52,14 +52,15 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
 
     assert order.status == OrderStatus.CONFIRMED
 
-    # Ledger check: RECEIVABLE +100, REVENUE -100
+    # R1 FROZEN DECISION: confirmation posts NO receivable/revenue entries
+    # (credit reservation on the binding replaces the former posting).
     receivable_balance = await ledger_svc.get_balance(AccountType.RECEIVABLE)
     revenue_balance = await ledger_svc.get_balance(AccountType.REVENUE)
-    assert receivable_balance == Decimal("100.0000"), (
-        f"Expected RECEIVABLE +100, got {receivable_balance}"
+    assert receivable_balance == Decimal("0"), (
+        f"Confirmation must not post receivable entries, got {receivable_balance}"
     )
-    assert revenue_balance == Decimal("-100.0000"), (
-        f"Expected REVENUE -100, got {revenue_balance}"
+    assert revenue_balance == Decimal("0"), (
+        f"Confirmation must not post revenue entries, got {revenue_balance}"
     )
 
     # ── Step 2: CONFIRMED → PAID ──────────────────────────────────
@@ -74,8 +75,11 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
     assert cash_balance == Decimal("100.0000"), (
         f"Expected CASH +100, got {cash_balance}"
     )
-    assert receivable_balance == Decimal("0.0000"), (
-        f"Expected RECEIVABLE net 0, got {receivable_balance}"
+    # With no confirmation posting, the settlement's credit leg makes the
+    # receivable balance -100 (the +100 leg belongs to the future
+    # delivery-accounting task).
+    assert receivable_balance == Decimal("-100.0000"), (
+        f"Expected RECEIVABLE -100 (settlement credit leg only), got {receivable_balance}"
     )
 
     # ── Step 3: PAID → FULFILLED ──────────────────────────────────
@@ -86,11 +90,12 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
 
     # ── Step 4: Verify all ledger entries ─────────────────────────
     entries = await ledger_svc.get_entries_for_reference("order", order.id)
-    assert len(entries) == 4, (
-        f"Expected 4 ledger entries (2 confirm + 2 payment), got {len(entries)}"
+    assert len(entries) == 2, (
+        f"Expected 2 ledger entries (payment-settlement only under the R1 "
+        f"frozen decision), got {len(entries)}"
     )
 
-    # Verify double-entry balance: sum of all entries must be 0
+    # Double-entry holds: settlement is CASH +100 / RECEIVABLE -100.
     total = sum(e.amount for e in entries)
     assert total == Decimal("0"), (
         f"Ledger is unbalanced! Sum of all entries = {total}"
@@ -119,6 +124,16 @@ async def test_ledger_entries_are_immutable(async_session):
     await async_session.commit()
 
     ledger_svc = LedgerService(async_session)
+    entries = await ledger_svc.get_entries_for_reference("order", order.id)
+    assert len(entries) == 0  # R1 frozen decision: confirmation posts nothing
+
+    # Create a real entry via the preserved payment path so the trigger
+    # actually has a row to guard.
+    await ledger_svc.post_payment_received(
+        order_id=order.id,
+        amount=Decimal("50.00"),
+        description="Immutability probe",
+    )
     entries = await ledger_svc.get_entries_for_reference("order", order.id)
     assert len(entries) == 2
 
@@ -173,7 +188,7 @@ async def test_inventory_deduction_gap_documented(async_session):
     ledger_svc = LedgerService(async_session)
     entries = await ledger_svc.get_entries_for_reference("order", order.id)
 
-    # Only 4 entries (confirm + pay), no fulfillment/inventory entries
-    assert len(entries) == 4, (
-        f"Expected 4 entries (no inventory entries yet), got {len(entries)}"
+    # Only 2 entries (pay settlement), no confirmation or inventory entries
+    assert len(entries) == 2, (
+        f"Expected 2 entries (payment-settlement only), got {len(entries)}"
     )

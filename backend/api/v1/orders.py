@@ -99,6 +99,11 @@ IDEMPOTENCY_KEY_ALLOWED_CHARS = set(
 RESERVED_IDEMPOTENCY_KEY_PREFIX = "decl-confirm-"
 
 
+def _uuid_of(value) -> "UUID":
+    """Coerce asyncpg's pgproto UUID (from populate_existing) to uuid.UUID."""
+    return UUID(str(value))
+
+
 def _payment_error(status_code: int, code: str, message: str) -> HTTPException:
     return HTTPException(
         status_code=status_code,
@@ -945,39 +950,12 @@ async def fulfill_order(
         )
 
     try:
-        from services.order_service import OrderService
-        from core.domain.order_state import OrderState
-
-        order_uuid = order.id
-
-        order_service = OrderService(db)
-        order = await order_service.transition(
-            order_id=order_uuid,
-            target_state=OrderState.FULFILLED,
-            reason="Order fulfilled",
-            updated_by=token.user_id
+        result = await OrderCommandService(db).fulfill_order(
+            _uuid_of(order.id), updated_by=token.user_id
         )
+        order = result.order
         if request is not None:
-            request.state.osd1_notification_intents = (
-                order_service.last_result.notification_intents
-            )
-
-        from services.inventory_service import InventoryService
-
-        await db.refresh(order, ["items"])
-        inventory_service = InventoryService()
-        for item in order.items:
-            await inventory_service.deduct_on_fulfillment(
-                db,
-                sellable_unit_id=item.sellable_unit_id,
-                sku_code=item.sku_code,
-                quantity=Decimal(str(item.quantity)),
-                order_id=order.id,
-                order_item_id=item.id,
-                fulfilled_by=token.user_id,
-            )
-
-        await db.flush()
+            request.state.osd1_notification_intents = result.notification_intents
 
     except (InvalidStateTransitionError, DomainInvalidStateTransitionError, OrderInvariantViolation) as e:
         raise HTTPException(
@@ -1101,37 +1079,10 @@ async def return_order(
         )
 
     try:
-        # Use OrderService for atomic transition + ledger posting, then restore
-        # inventory in the same DB transaction before the request commits.
-        from services.order_service import OrderService
-        from core.domain.order_state import OrderState
-        from services.inventory_service import InventoryService
-
-        order_service = OrderService(db)
-        order = await order_service.transition(
-            order_id=order.id,
-            target_state=OrderState.RETURNED,
-            reason="Full return requested",
-            updated_by=token.user_id
+        result = await OrderCommandService(db).return_order(
+            _uuid_of(order.id), updated_by=token.user_id
         )
-        if request is not None:
-            request.state.osd1_notification_intents = (
-                order_service.last_result.notification_intents
-            )
-
-        await db.refresh(order, ["items"])
-        inventory_service = InventoryService()
-        for item in order.items:
-            await inventory_service.restock_on_return(
-                db,
-                sellable_unit_id=item.sellable_unit_id,
-                sku_code=item.sku_code,
-                quantity=Decimal(str(item.quantity)),
-                order_id=order.id,
-                returned_by=token.user_id,
-            )
-
-        await db.flush()
+        order = result.order
     except (InvalidStateTransitionError, DomainInvalidStateTransitionError, OrderInvariantViolation) as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

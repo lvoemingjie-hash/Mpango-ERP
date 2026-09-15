@@ -66,6 +66,13 @@ logger = get_logger(__name__)
 # disposition is not implemented in this round.
 REFUND_WORKFLOW_NOT_IMPLEMENTED = "REFUND_WORKFLOW_NOT_IMPLEMENTED"
 
+# F1: the generic transition path must NEVER perform a bare-state write for
+# these targets — each has an explicit command (confirm/cancel/fulfill/
+# return) or the canonical payment service (PAID/PARTIALLY_PAID).
+COMMAND_OWNED_TARGETS = frozenset(
+    {OrderState.CONFIRMED, OrderState.CANCELLED, OrderState.PAID,
+     OrderState.FULFILLED, OrderState.RETURNED})
+
 
 @dataclass(frozen=True)
 class OrderNotificationIntent:
@@ -201,6 +208,16 @@ class OrderCommandService:
         nothing (frozen decision — the former receivable/revenue posting
         was removed, and no switch exists to restore it).
         """
+        if target_state in COMMAND_OWNED_TARGETS:
+            raise InvalidStateTransitionError(
+                from_state=target_state,
+                to_state=target_state,
+                reason=(
+                    "Generic transition refuses command-owned targets; use "
+                    "confirm_order/cancel_order/fulfill_order/return_order "
+                    "or the canonical payment service"),
+            )
+
         order = await self._load_locked(order_id)
 
         is_additional_partial_payment = (
@@ -253,6 +270,149 @@ class OrderCommandService:
             },
         )
         return OrderCommandResult(order=order, notification_intents=intents)
+
+    async def fulfill_order(
+        self,
+        order_id: uuid.UUID,
+        *,
+        updated_by: Optional[str] = None,
+    ) -> OrderCommandResult:
+        """Fulfill a PAID order: pre-lock ALL stocks (deduped, sorted
+        sku_id) BEFORE any inventory write, then consume reservations,
+        deduct stock, journal movements, set FULFILLED."""
+        from services.inventory_service import InventoryService
+
+        order = await self._load_locked(order_id)
+        self._locked_order = order
+        self._validate_transition(order, OrderState.FULFILLED)
+        self._check_invariants(OrderState(order.status.value), OrderState.FULFILLED)
+
+        items = sorted(
+            order.items,
+            key=lambda i: str(i.sellable_unit_id),
+        )
+        stocks = await self._prelock_stocks(items)
+
+        inventory = InventoryService()
+        for item in items:
+            await inventory.deduct_on_fulfillment(
+                self.db,
+                sellable_unit_id=item.sellable_unit_id,
+                sku_code=item.sku_code,
+                quantity=Decimal(str(item.quantity)),
+                order_id=order.id,
+                order_item_id=item.id,
+                fulfilled_by=updated_by,
+            )
+
+        self._assign_status(order, OrderState.FULFILLED, updated_by)
+        await self.db.flush()
+        return OrderCommandResult(
+            order=order,
+            notification_intents=[OrderNotificationIntent(
+                event="order_fulfilled",
+                order_id=order.id,
+                retailer_id=order.retailer_id)],
+        )
+
+    async def return_order(
+        self,
+        order_id: uuid.UUID,
+        *,
+        updated_by: Optional[str] = None,
+    ) -> OrderCommandResult:
+        """Return a FULFILLED order: ledger reversal first, pre-lock ALL
+        stocks (deduped, sorted sku_id) BEFORE any inventory write, restock,
+        journal movements, set RETURNED."""
+        from services.inventory_service import InventoryService
+
+        order = await self._load_locked(order_id)
+        self._locked_order = order
+        self._validate_transition(order, OrderState.RETURNED)
+        self._check_invariants(OrderState(order.status.value), OrderState.RETURNED)
+
+        await self._post_transition_ledger(
+            order, OrderState(order.status.value), OrderState.RETURNED, None)
+
+        items = sorted(
+            order.items,
+            key=lambda i: str(i.sellable_unit_id),
+        )
+        stocks = await self._prelock_stocks(items)
+
+        inventory = InventoryService()
+        for item in items:
+            await inventory.restock_on_return(
+                self.db,
+                sellable_unit_id=item.sellable_unit_id,
+                sku_code=item.sku_code,
+                quantity=Decimal(str(item.quantity)),
+                order_id=order.id,
+                returned_by=updated_by,
+            )
+
+        self._assign_status(order, OrderState.RETURNED, updated_by)
+        await self.db.flush()
+        return OrderCommandResult(order=order)
+
+    async def apply_payment_transition(
+        self,
+        order_id: uuid.UUID,
+        target_state: OrderState,
+        *,
+        payment_method: Optional[str] = None,
+        updated_by: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> OrderCommandResult:
+        """EXPLICIT payment transition — the only writer for PAID /
+        PARTIALLY_PAID, called solely by CanonicalPaymentService.
+
+        Allows CONFIRMED/PARTIALLY_PAID -> PAID/PARTIALLY_PAID (plus the
+        same-state partial-payment progress with cash/transfer context).
+        """
+        order = await self._load_locked(order_id)
+        self._locked_order = order
+        current = OrderState(order.status.value)
+
+        is_additional_partial_payment = (
+            current == OrderState.PARTIALLY_PAID
+            and target_state == OrderState.PARTIALLY_PAID
+            and payment_method in {"cash", "transfer"}
+        )
+        allowed = (
+            (current in (OrderState.CONFIRMED, OrderState.PARTIALLY_PAID)
+             and target_state in (OrderState.PAID, OrderState.PARTIALLY_PAID))
+            or is_additional_partial_payment
+        )
+        if not allowed:
+            raise InvalidStateTransitionError(
+                from_state=current,
+                to_state=target_state,
+                reason="Invalid payment transition",
+            )
+
+        ledger_result = await self._post_transition_ledger(
+            order, current, target_state, payment_method)
+        self._assign_status(order, target_state, updated_by)
+        await self.db.flush()
+        await self.db.refresh(order)
+        return OrderCommandResult(order=order)
+
+    async def _prelock_stocks(self, items) -> dict:
+        """Lock EVERY distinct stock row in ONE global order (sorted
+        sku_id) BEFORE any inventory write; returns the locked stocks."""
+        from services.inventory_service import InventoryService
+
+        inventory = InventoryService()
+        stocks = {}
+        for sku_id in sorted({str(i.sellable_unit_id) for i in items}):
+            item = next(i for i in items if str(i.sellable_unit_id) == sku_id)
+            stocks[uuid.UUID(sku_id)] = await inventory._locked_stock_by_sku_id(
+                self.db,
+                sku_id=uuid.UUID(sku_id),
+                sku_code=item.sku_code,
+            )
+        return stocks
 
     # ------------------------------------------------------------------
     # Internals — the single write point and shared discipline

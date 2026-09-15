@@ -49,6 +49,10 @@ from crud.order import (
     get_order_for_retailer,
     get_orders_for_retailer,
 )
+from core.domain.order_state import (
+    InvalidStateTransitionError,
+    OrderInvariantViolation,
+)
 from services.order_command_service import OrderCommandService
 from repositories.payment_declaration_repository import PaymentDeclarationRepository
 from schemas.client import (
@@ -438,6 +442,14 @@ async def cancel_order(
             updated_by=client.user_id
         )
         order = result.order
+    except (InvalidStateTransitionError, OrderInvariantViolation) as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "CANCEL_NOT_ALLOWED",
+                "message": str(e),
+            },
+        )
     except HTTPException:
         await db.rollback()
         raise

@@ -47,13 +47,24 @@ class OrderService:
         """
         command = OrderCommandService(self.db)
         try:
-            result: OrderCommandResult = await command.apply_transition(
-                order_id,
-                target_state,
-                reason=reason,
-                updated_by=str(updated_by) if updated_by else None,
-                payment_method=payment_method,
-            )
+            if target_state in (OrderState.PAID, OrderState.PARTIALLY_PAID):
+                # ONLY the canonical payment service reaches here; the
+                # explicit payment command enforces the payment context.
+                result: OrderCommandResult = await command.apply_payment_transition(
+                    order_id,
+                    target_state,
+                    payment_method=payment_method,
+                    updated_by=str(updated_by) if updated_by else None,
+                    reason=reason,
+                )
+            else:
+                result: OrderCommandResult = await command.apply_transition(
+                    order_id,
+                    target_state,
+                    reason=reason,
+                    updated_by=str(updated_by) if updated_by else None,
+                    payment_method=payment_method,
+                )
         except HTTPException as exc:
             # historical contract: direct service callers see ValueError
             # for a missing order; HTTP routes pre-check with 404.

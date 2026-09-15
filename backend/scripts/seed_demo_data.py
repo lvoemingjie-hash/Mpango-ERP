@@ -349,13 +349,11 @@ async def _seed_orders(db, ts: str) -> None:
         print(f"  . Orders already seeded ({len(existing_count)} found)")
         return
 
-    svc = OrderService(db)
-    state_map = {
-        "confirmed": OrderState.CONFIRMED,
-        "paid": OrderState.PAID,
-        "fulfilled": OrderState.FULFILLED,
-        "cancelled": OrderState.CANCELLED,
-    }
+    from services.order_command_service import OrderCommandService
+    from services.canonical_payment_service import CanonicalPaymentService
+
+    commands = OrderCommandService(db)
+    canonical = CanonicalPaymentService()
 
     for i, spec in enumerate(DEMO_ORDERS, 1):
         order = Order(
@@ -390,11 +388,32 @@ async def _seed_orders(db, ts: str) -> None:
         await db.flush()
 
         for tname in spec["transitions"]:
-            target = state_map[tname]
-            order = await svc.transition(
-                order_id=order.id, target_state=target,
-                reason=f"Demo seed: {tname}",
-            )
+            if tname == "confirmed":
+                result = await commands.confirm_order(
+                    order.id, updated_by=str(order.created_by) if order.created_by else None)
+                order = result.order
+            elif tname == "paid":
+                # payments go ONLY through the canonical service
+                pay = await canonical.confirm_payment(
+                    db=db,
+                    order_id=str(order.id),
+                    amount=order.total_amount,
+                    method="cash",
+                    transaction_id=None,
+                    idempotency_key=f"seed-{order.id}",
+                    created_by=None,
+                )
+                order = pay.order
+            elif tname == "fulfilled":
+                result = await commands.fulfill_order(
+                    order.id, updated_by=None)
+                order = result.order
+            elif tname == "cancelled":
+                result = await commands.cancel_order(
+                    order.id, updated_by=None)
+                order = result.order
+            else:
+                raise ValueError(f"unknown demo transition {tname}")
 
         await db.commit()
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))

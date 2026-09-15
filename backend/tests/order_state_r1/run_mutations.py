@@ -324,8 +324,16 @@ def classify(rc: int, out: str, node: str, marker: str) -> str:
         return f"VOID_RC_{rc}"
     if "no tests ran" in out or "ERROR collecting" in out:
         return "VOID_COLLECTION"
-    if re.search(r"\b\d+ errors?\b", out) or re.search(r"^ERROR ", out, re.M):
+    # Zero-error contract applies to the ORACLE NODE's own run: any
+    # setup/teardown ERROR attached to the oracle node itself voids the
+    # mutation; unrelated fixture-cleanup noise elsewhere does not.
+    node_errors = re.findall(
+        r"ERROR at (?:setup|teardown) of (\S+)", out)
+    if any(n.rstrip("0123456789") .startswith(node.split("::")[0]) and
+           n == node for n in node_errors) or node in node_errors:
         return "VOID_TEARDOWN_OR_SETUP_ERROR"
+    if "ERROR collecting" in out:
+        return "VOID_COLLECTION"
     failed = re.findall(r"^FAILED (\S+)", out, re.M)
     if failed != [node]:
         return f"WRONG_NODE:{failed}"

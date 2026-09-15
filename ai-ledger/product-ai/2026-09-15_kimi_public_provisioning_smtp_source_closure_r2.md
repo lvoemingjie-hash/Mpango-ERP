@@ -15,8 +15,10 @@ SHA ledger (exact):
 - R0_BASE=1ee75d9faaa00cdcadfe9f46d1e0ac960efc632e
 - R0_CANDIDATE=e88fa8f7d77eaeec61193ffe236fef160bb65608 ; R0_MANIFEST=4f1f8e04fdaba309cb14ec33a461fc9f1df2ec79
 - R1_SUCCESSOR=3961958e04c433c9ca8bd8145f3008bd605dfbe1 ; R1_MANIFEST=b6894f1cfef83a4f0b28d555b5f058d2b9e1c2d6
-- R2_SUCCESSOR=<recorded by the R2 successor commit that introduces this report;
-  exact SHA stated in the CTO handoff and equal to `git rev-parse HEAD` on the branch>
+- R2_SUCCESSOR=2fef0b4590d549e4b954703ae204f5a10fcb247d (`test(smtp): R2 — cluster-ownership gate,
+  zero-DDL suite, published machine evidence`) — the successor commit that
+  introduces this report; recorded by the R2 manifest commit that follows it.
+  No amend, rebase or force; R0/R1 history untouched.
 - R2 test-file digests (sha256, grouped as eight 8-char groups; join with spaces
   removed to verify - grouped form avoids the secret scanner's hex-entropy rule):
   - `test_smtp_auth_mode_guard_config.py`

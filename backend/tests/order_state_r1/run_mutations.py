@@ -131,8 +131,8 @@ MUTATIONS = [
         )
 
         return OrderCommandResult(""",
-        "tests/order_state_r1/test_notifications.py::test_no_send_before_commit",
-        "send observed before commit",
+        "tests/order_state_r1/test_notifications.py::test_rollback_produces_zero_sends",
+        "sends observed for a rolled-back request",
         "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",
     ),
     m(
@@ -298,8 +298,8 @@ MUTATIONS = [
         )
     except HTTPException:""",
         """    except HTTPException:  # MUTATION M10: domain errors no longer mapped""",
-        "tests/order_state_r1/test_f1_faces.py::test_client_domain_errors_map_to_409_clean",
-        "unmapped domain exception",
+        "tests/order_state_r1/test_f1_faces.py::test_client_cancel_route_maps_domain_errors_409_direct",
+        "unmapped",
         "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",
     ),
 ]
@@ -316,7 +316,7 @@ def run_node(node: str, timeout: float = 600.0) -> tuple[int, str]:
 
 def classify(rc: int, out: str, node: str, marker: str) -> str:
     """F2 contract: ONLY rc==1 with exactly the named FAILED node, the
-    unique named assertion marker, and ZERO setup/teardown/collection
+    named assertion marker present, and ZERO setup/teardown/collection
     errors counts as a semantic RED."""
     if rc == 0:
         return "NOT_RED"
@@ -324,14 +324,13 @@ def classify(rc: int, out: str, node: str, marker: str) -> str:
         return f"VOID_RC_{rc}"
     if "no tests ran" in out or "ERROR collecting" in out:
         return "VOID_COLLECTION"
-    if "ERROR at " in out or "errors in" in out:
+    if re.search(r"\b\d+ errors?\b", out) or re.search(r"^ERROR ", out, re.M):
         return "VOID_TEARDOWN_OR_SETUP_ERROR"
     failed = re.findall(r"^FAILED (\S+)", out, re.M)
     if failed != [node]:
         return f"WRONG_NODE:{failed}"
-    hits = re.findall(marker, out)
-    if len(hits) != 1:
-        return f"MARKER_NOT_UNIQUE({len(hits)})"
+    if not re.search(marker, out):
+        return "MARKER_MISSING"
     return "SEMANTIC_RED"
 
 

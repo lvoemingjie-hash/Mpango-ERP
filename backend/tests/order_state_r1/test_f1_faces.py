@@ -697,3 +697,47 @@ async def test_client_domain_errors_map_to_409_clean(
         raise AssertionError(
             f"unmapped domain exception propagated to the client: "
             f"{type(exc).__name__}: {exc}") from exc
+
+
+async def test_client_cancel_route_maps_domain_errors_409_direct(
+    r1_client, s2_clean_db, provisioned_pool, cashier_identity, two_tenants
+):
+    """M10 oracle (direct route call — no ASGI propagation, zero teardown
+    pollution): the client cancel ROUTE maps domain transition errors to
+    HTTP 409 CANCEL_NOT_ALLOWED. Under the M10 mutation the domain error
+    escapes unmapped and this fails cleanly with the named marker."""
+    from fastapi import HTTPException as _HttpExc
+    from tests.test_dc12r1_s3_s2b_i2b_payment_declarations import (
+        _resolve_binding_retailer,
+    )
+    from api.v1.client.orders import cancel_order as _client_cancel_route
+    from api.v1.client.dependencies import ClientIdentity
+
+    db, reg = s2_clean_db
+    code_a, _b, _sb, email, password, uid_a, _ub = two_tenants
+    a = provisioned_pool.tenants["a"]
+    schema, ws_id = a["schema"], a["ws_id"]
+    admin = await osd1_cashier_token(r1_client, cashier_identity)
+    ret_id = await _resolve_binding_retailer(db, ws_id, uid_a)
+    sku, _sid = await seed_sku_with_stock(db, schema, ret_id, price="10.00")
+    oid = await http_create_order(r1_client, admin, ret_id,
+                                  [{"sku_code": sku, "quantity": 1}])
+    assert (await http_action(r1_client, admin, oid, "confirm")).status_code == 200
+    # make the order TERMINAL so the route must map a domain error to 409
+    assert (await http_action(r1_client, admin, oid, "cancel")).status_code == 200
+
+    from tests.order_state_r1.support import rebind_search_path
+    await rebind_search_path(db, schema)
+    identity = ClientIdentity(
+        user_id=uid_a, retailer_id=ret_id, tenant_id=ws_id, token=None)
+    try:
+        # terminal-state cancel through the route: must surface HTTP 409
+        await _client_cancel_route(order_id=oid, client=identity, db=db)
+        raise AssertionError("unmapped: route returned without the 409 mapping")
+    except _HttpExc as exc:
+        assert exc.status_code == 409, (
+            f"unmapped domain exception escaped as {exc.status_code}")
+        assert exc.detail["code"] in {
+            "REFUND_WORKFLOW_NOT_IMPLEMENTED", "CANCEL_NOT_ALLOWED"}, exc.detail
+    finally:
+        await db.rollback()

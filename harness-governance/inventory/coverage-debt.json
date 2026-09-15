@@ -59,32 +59,6 @@
    ],
    "date_opened": "2026-08-25",
    "notes": "Pre-VPS releases are not gated on this debt; the first post-VPS release is."
-  },
-  {
-   "debt_id": "DEBT-ORDER-STATE-R1-TEST-PATHS",
-   "capability": "order state authority R1 task test paths (single status writer, locked-fresh transitions, race matrix, rollback vectors, notification pipeline, static guards)",
-   "risk": "P1",
-   "status": "NOT_COVERED",
-   "reason": "CTO-AUTH-MPANGO-ORDER-STATE-AUTHORITY-R1-IMPLEMENTATION-2026-09-15 added a task-private regression suite under backend/tests/order_state_r1/ without an inventory node set; HE2 requires a semantic record for changed governed paths. This debt registers those paths honestly as author-executed but not independently inventoried yet.",
-   "blocker_class": "harness",
-   "owner": "codex-l",
-   "closure_condition": "Independent reviewer (Kilo/OpenCode2) reruns the suite and promotes each path to an inventoried node with evidence SHA and a named mutation, per the R1 handback report.",
-   "target_milestone": "ORDER_STATE_R1_INDEPENDENT_REVIEW",
-   "release_blocked": false,
-   "affected_paths": [
-    "backend/tests/order_state_r1/__init__.py",
-    "backend/tests/order_state_r1/conftest.py",
-    "backend/tests/order_state_r1/support.py",
-    "backend/tests/order_state_r1/test_baseline.py",
-    "backend/tests/order_state_r1/test_concurrency.py",
-    "backend/tests/order_state_r1/test_freshness.py",
-    "backend/tests/order_state_r1/test_rollback_vectors.py",
-    "backend/tests/order_state_r1/test_notifications.py",
-    "backend/tests/order_state_r1/test_static_guards.py",
-    "backend/tests/order_state_r1/test_access_controls.py"
-   ],
-   "node_ids": [],
-   "date_opened": "2026-09-15"
   }
  ]
 }

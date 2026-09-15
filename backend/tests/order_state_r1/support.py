@@ -348,15 +348,17 @@ async def make_tenant_cashier(db, registry, tenant: dict) -> dict:
              "WHERE registration_id = :rid"),
         {"rid": reg_id})
     await db.flush()
+    from tests.test_dc12r1_s3_s2b_i2b_payment_declarations import _CASHIER_PW
+
     issue = await svc.issue_setup_token(reg_id)
     assert issue.action == "issued", f"setup token issue failed: {issue}"
-    consume = await svc.consume_setup_token(issue.raw_token, "CashierTestPass99!")
+    consume = await svc.consume_setup_token(issue.raw_token, _CASHIER_PW)
     result = await svc.create_first_admin_rbac(consume)
     await db.commit()
     registry.register_tenant_user(tenant["schema"], str(result.user_id))
     return {
         "email": result.owner_email,
-        "password": "CashierTestPass99!",
+        "password": _CASHIER_PW,
         "user_id": result.user_id,
         "schema": tenant["schema"],
         "ws_id": tenant["ws_id"],

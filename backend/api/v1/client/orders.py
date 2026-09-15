@@ -434,7 +434,8 @@ async def cancel_order(
         from uuid import UUID as _UUID
 
         result = await OrderCommandService(db).cancel_order(
-            _UUID(order.id), updated_by=client.user_id
+            _UUID(str(order.id)),  # populate_existing yields asyncpg's UUID type
+            updated_by=client.user_id
         )
         order = result.order
     except HTTPException:

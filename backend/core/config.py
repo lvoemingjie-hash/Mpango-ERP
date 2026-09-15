@@ -36,6 +36,33 @@ def is_loopback_smtp_host(host: str | None) -> bool:
         return False
 
 
+def login_would_send_cleartext(
+    *,
+    auth_mode: str | None,
+    host: str | None,
+    use_tls: bool,
+    use_starttls: bool,
+) -> bool:
+    """Return True when SMTP login credentials would travel unencrypted.
+
+    Single shared rule (CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-R3):
+    when ``auth_mode`` is ``login`` and the host is NOT a literal loopback
+    host, at least one of implicit TLS (``use_tls``) or STARTTLS
+    (``use_starttls``) must be enabled. Literal-loopback login is exempt: the
+    task-owned capture sink is plaintext by design and never reaches an
+    external network.
+
+    Called by all three layers (Settings validation, config-completeness, and
+    the final send-layer guard) so the rule cannot drift between them. The
+    function is pure: no I/O, no settings object, no logging.
+    """
+    if (auth_mode or "").strip().lower() != "login":
+        return False
+    if use_tls or use_starttls:
+        return False
+    return not is_loopback_smtp_host(host)
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables.
 
@@ -60,7 +87,10 @@ class Settings(BaseSettings):
 
     # Database - REQUIRED (S2-1)
     DATABASE_URL: str = Field(
-        default="postgresql://postgres:postgres@localhost:5432/mpango_dev",
+        # Local development default only; production refuses it explicitly in
+        # validate_production_secrets. Annotated so the repository secret
+        # scanner does not flag this public placeholder on every commit.
+        default="postgresql://postgres:postgres@localhost:5432/mpango_dev",  # pragma: allowlist secret
         description="PostgreSQL connection string (defaults to local dev instance)",
     )
     DATABASE_ECHO: bool = Field(
@@ -293,6 +323,26 @@ class Settings(BaseSettings):
                 "SMTP_AUTH_MODE=none is permitted only for a task-owned "
                 "loopback capture sink (SMTP_HOST in 127.0.0.0/8, ::1, or "
                 "localhost). External SMTP must use SMTP_AUTH_MODE=login."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_smtp_login_transport(self) -> "Settings":
+        """Refuse cleartext login credentials for non-loopback SMTP.
+
+        Layer 1 of the shared rule in ``login_would_send_cleartext``: external
+        SMTP in login mode must use implicit TLS or STARTTLS. The message is
+        deliberately generic -- it never echoes the host or any credential.
+        """
+        if login_would_send_cleartext(
+            auth_mode=self.SMTP_AUTH_MODE,
+            host=self.SMTP_HOST,
+            use_tls=self.SMTP_USE_TLS,
+            use_starttls=self.SMTP_STARTTLS,
+        ):
+            raise ValueError(
+                "SMTP login to a non-loopback host requires transport "
+                "encryption: enable SMTP_USE_TLS or SMTP_STARTTLS."
             )
         return self
 

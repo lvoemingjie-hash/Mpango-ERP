@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from uuid import UUID
 
-from core.config import Settings, is_loopback_smtp_host
+from core.config import Settings, is_loopback_smtp_host, login_would_send_cleartext
 
 
 @dataclass(frozen=True)
@@ -319,6 +319,15 @@ def _smtp_config_complete(settings: Settings) -> bool:
         )
     if any(value is None or not str(value).strip() for value in required_values):
         return False
+    if login_would_send_cleartext(
+        auth_mode=auth_mode,
+        host=str(host),
+        use_tls=bool(getattr(settings, "SMTP_USE_TLS", False)),
+        use_starttls=bool(getattr(settings, "SMTP_STARTTLS", True)),
+    ):
+        # Layer 2 of the shared rule: external login without TLS or STARTTLS
+        # is not a complete configuration.
+        return False
     try:
         return int(getattr(settings, "SMTP_PORT", 0)) > 0
     except (TypeError, ValueError):
@@ -368,6 +377,15 @@ def _send_smtp_email(
     if auth_mode == "none" and not is_loopback_smtp_host(host):
         # Fail closed even for loosely constructed settings: no-auth
         # delivery must never leave the loopback capture-sink boundary.
+        raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
+    if login_would_send_cleartext(
+        auth_mode=auth_mode,
+        host=host,
+        use_tls=use_tls,
+        use_starttls=use_starttls,
+    ):
+        # Layer 3 (final guard, before SMTP/SMTP_SSL is ever constructed):
+        # never send login credentials to a non-loopback host unencrypted.
         raise EmailDeliveryNotConfiguredError("EMAIL_DELIVERY_NOT_CONFIGURED")
 
     try:

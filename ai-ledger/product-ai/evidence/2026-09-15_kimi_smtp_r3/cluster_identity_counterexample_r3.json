@@ -1,0 +1,106 @@
+{
+  "cases": [
+    {
+      "cluster_id": "0",
+      "deltas": {
+        "databases_added": [],
+        "extensions_added": [],
+        "registration_rows_delta": 0,
+        "roles_added": [],
+        "tuples_deleted": 0,
+        "tuples_inserted": 0,
+        "tuples_updated": 0
+      },
+      "exit_code": 1,
+      "id": "C1_matching_db_name_wrong_cluster",
+      "refused": true,
+      "zero_writes": true
+    },
+    {
+      "cluster_id": null,
+      "deltas": {
+        "databases_added": [],
+        "extensions_added": [],
+        "registration_rows_delta": 0,
+        "roles_added": [],
+        "tuples_deleted": 0,
+        "tuples_inserted": 0,
+        "tuples_updated": 0
+      },
+      "exit_code": 1,
+      "id": "C2_matching_db_name_cluster_undeclared",
+      "refused": true,
+      "zero_writes": true
+    },
+    {
+      "exit_code_after_removal": 0,
+      "id": "X1_cluster_assertion_removed_run_no_longer_refuses",
+      "no_longer_refuses": true,
+      "restored_exact": true,
+      "sha256_after_restore": "e1e366c7 755fa0f3 514b1269 9f9d93af d10abc7e ea2a3be3 0ec540c2 7fa3dd41",
+      "sha256_before": "e1e366c7 755fa0f3 514b1269 9f9d93af d10abc7e ea2a3be3 0ec540c2 7fa3dd41",
+      "tail": "======================= 8 passed, 25 warnings in 12.25s ======================="
+    }
+  ],
+  "snapshot_before": {
+    "database": "kimi_smtp_src_20260915",
+    "databases": [
+      "dc2m2_debug",
+      "dc2m2_regression",
+      "dc2m2_test",
+      "dc2m3_alembic",
+      "dc2m3_alembic_full",
+      "dc2m3_alembic_utf8",
+      "dc2m3_s6",
+      "dc2m3_u1",
+      "dc2m3_validation",
+      "kimi_smtp_src_20260915",
+      "mpango_erp",
+      "mpango_test_s2",
+      "postgres",
+      "template0",
+      "template1"
+    ],
+    "extensions": [
+      "pgcrypto",
+      "plpgsql"
+    ],
+    "registration_rows": 0,
+    "roles": [
+      "dc2m2_debug",
+      "dc2m2_regression",
+      "dc2m2_test",
+      "dc2m3_alembic",
+      "dc2m3_alembic_full",
+      "dc2m3_alembic_utf8",
+      "dc2m3_s6",
+      "dc2m3_u1",
+      "dc2m3_validation",
+      "mpango",
+      "pg_checkpoint",
+      "pg_database_owner",
+      "pg_execute_server_program",
+      "pg_monitor",
+      "pg_read_all_data",
+      "pg_read_all_settings",
+      "pg_read_all_stats",
+      "pg_read_server_files",
+      "pg_signal_backend",
+      "pg_stat_scan_tables",
+      "pg_write_all_data",
+      "pg_write_server_files",
+      "reporting_role",
+      "reporting_user"
+    ],
+    "write_counters": {
+      "tup_deleted": 528099,
+      "tup_inserted": 602673,
+      "tup_updated": 109900
+    }
+  },
+  "verdict": {
+    "c1_refused_and_zero_writes": true,
+    "c2_refused_and_zero_writes": true,
+    "x1_cluster_assertion_load_bearing": true
+  }
+}

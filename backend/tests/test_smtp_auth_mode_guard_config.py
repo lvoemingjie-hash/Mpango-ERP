@@ -1,7 +1,8 @@
 """Pure SMTP auth-mode / loopback-guard tests (no database dependency).
 
 Authorization: CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-R1-2026-09-15
-(successor rounds of CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-V1-2026-09-15).
+successor rounds, incl. R3
+(CTO-AUTH-SKU-PUBLIC-PROVISIONING-SMTP-KIMI-R3-TLS-EVIDENCE-TRUTH-2026-09-15).
 
 This module is deliberately database-free: it imports only
 ``core.config`` and ``services.email_delivery``, requests no database
@@ -10,7 +11,7 @@ even when ``TEST_DATABASE_URL`` points at an unreachable database. The
 database-backed public lifecycle tests live in
 ``test_smtp_loopback_noauth_contract.py``.
 
-Covered required paths (R1 items 1-3 and R2 item 1):
+Covered required paths:
 
 1. ``SMTP_AUTH_MODE`` default is authenticated ``login``; ``none`` is rejected
    for every non-loopback ``SMTP_HOST`` and accepted only for literal loopback
@@ -20,10 +21,16 @@ Covered required paths (R1 items 1-3 and R2 item 1):
 3. zero-connection assertions: neither ``smtplib.SMTP`` nor
    ``smtplib.SMTP_SSL`` is ever constructed on any guard-rejection path
    (including the implicit-TLS variant), proven with tripwire spies;
-4. the database suite's source contains no cluster-level or database-level
-   DDL: it cannot create/alter/drop roles, extensions or databases, and it
-   creates no tables or schemas (its own DDL surface is exactly the targeted
-   ``DROP SCHEMA`` for schemas the suite itself provisioned during a test).
+4. the database suite has NO_DIRECT_BOOTSTRAP_OR_CLUSTER_LEVEL_DDL: it cannot
+   create/alter/drop roles, extensions or databases, and it creates no tables
+   or schemas of its own. Product-lifecycle DDL (the tenant schema created by
+   the public onboarding path under test) and the single exact teardown
+   ``DROP SCHEMA`` for that schema deliberately remain;
+5. the shared R3 transport rule (``login_would_send_cleartext``): external SMTP
+   in login mode requires implicit TLS or STARTTLS at all three layers, while
+   literal-loopback login may stay plaintext. Rejections keep the
+   ``EMAIL_DELIVERY_NOT_CONFIGURED`` category and never echo the host or any
+   credential.
 """
 
 from __future__ import annotations
@@ -37,7 +44,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from core.config import Settings, is_loopback_smtp_host
+from core.config import Settings, is_loopback_smtp_host, login_would_send_cleartext
 from services import email_delivery
 
 DATABASE_SUITE_SOURCE = Path(__file__).with_name("test_smtp_loopback_noauth_contract.py")
@@ -308,17 +315,26 @@ async def test_send_layer_unknown_mode_guard_blocks_before_transport(monkeypatch
 
 
 # ---------------------------------------------------------------------------
-# 4. Zero-DDL invariant of the database suite (static, deterministic)
+# 4. DDL-surface invariant of the database suite (static, deterministic)
+#    NO_DIRECT_BOOTSTRAP_OR_CLUSTER_LEVEL_DDL
 # ---------------------------------------------------------------------------
 
 
-async def test_database_suite_performs_no_cluster_or_database_level_ddl():
-    """The database suite must not create roles/extensions/databases or tables.
+async def test_database_suite_has_no_direct_bootstrap_or_cluster_level_ddl():
+    """NO_DIRECT_BOOTSTRAP_OR_CLUSTER_LEVEL_DDL for the database suite.
 
-    Comments are stripped so the invariant can be documented in prose; the
-    targeted ``DROP SCHEMA`` cleanup for schemas the suite itself provisioned
-    is deliberately not in the forbidden set (it is database-scoped,
-    target-enumerated, and asserted zero in teardown).
+    The suite must not bootstrap roles/extensions/databases or create tables
+    or schemas itself. Two DDL surfaces deliberately remain and are NOT in the
+    forbidden set:
+
+    - product-lifecycle DDL: the tenant schema is created by the product's own
+      public onboarding path under test (verify-email provisioning), not by
+      the test;
+    - the single exact teardown ``DROP SCHEMA`` for the schema that same
+      lifecycle created for this test's registered e-mail, target-enumerated
+      from the exact recorded registration and asserted zero in teardown.
+
+    Comments are stripped so the invariant can be documented in prose.
     """
     source = DATABASE_SUITE_SOURCE.read_text(encoding="utf-8")
     executable_lines = [line.split("#", 1)[0] for line in source.splitlines()]
@@ -326,5 +342,219 @@ async def test_database_suite_performs_no_cluster_or_database_level_ddl():
     offenders = [keyword for keyword in FORBIDDEN_DDL_KEYWORDS if keyword in executable]
     assert offenders == [], (
         f"database suite contains forbidden DDL keywords {offenders}; "
-        "cluster/database-level objects belong to migrations and the environment owner"
+        "bootstrap and cluster-level objects belong to migrations and the environment owner"
     )
+
+
+# ---------------------------------------------------------------------------
+# 5. Shared external-login transport rule (R3)
+#    single pure function: login_would_send_cleartext
+# ---------------------------------------------------------------------------
+
+
+EXTERNAL_HOST = "smtp.example.invalid"
+
+
+def _external_login_settings(**overrides: Any) -> Settings:
+    """Non-loopback login settings that ARE encrypted (STARTTLS by default)."""
+    values: dict[str, Any] = {
+        "SMTP_HOST": EXTERNAL_HOST,
+        "SMTP_AUTH_MODE": "login",
+        "SMTP_USE_TLS": False,
+        "SMTP_STARTTLS": True,
+    }
+    values.update(overrides)
+    return _production_settings(**values)
+
+
+def _insecure_external_login_kwargs() -> dict[str, Any]:
+    return {
+        "SMTP_HOST": EXTERNAL_HOST,
+        "SMTP_AUTH_MODE": "login",
+        "SMTP_USE_TLS": False,
+        "SMTP_STARTTLS": False,
+    }
+
+
+class _TransportRecorder:
+    """Records call order only; implements no SMTP protocol."""
+
+    events: list[str] = []
+
+    def __init__(self, host, port, *args, **kwargs):  # noqa: D107
+        type(self).events.append(f"connect:{host}:{port}")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc_info):
+        return False
+
+    def starttls(self, *, context=None):
+        type(self).events.append("starttls")
+
+    def login(self, username, password):
+        type(self).events.append("login")
+
+    def send_message(self, message):
+        type(self).events.append("send")
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.events = []
+
+
+class _SslTransportRecorder(_TransportRecorder):
+    """Same recorder for the implicit-TLS client (distinct connect event)."""
+
+    def __init__(self, host, port, *args, **kwargs):  # noqa: D107
+        type(self).events.append(f"connect_ssl:{host}:{port}")
+
+
+@pytest.mark.parametrize(
+    ("auth_mode", "host", "use_tls", "use_starttls", "expected"),
+    [
+        ("login", EXTERNAL_HOST, False, False, True),
+        ("login", EXTERNAL_HOST, True, False, False),
+        ("login", EXTERNAL_HOST, False, True, False),
+        ("login", "127.0.0.1", False, False, False),
+        ("login", "localhost", False, False, False),
+        ("login", "::1", False, False, False),
+        ("none", EXTERNAL_HOST, False, False, False),
+        ("none", "127.0.0.1", False, False, False),
+        ("bogus", EXTERNAL_HOST, False, False, False),
+        ("login", None, False, False, True),
+    ],
+)
+async def test_login_would_send_cleartext_truth_table(auth_mode, host, use_tls, use_starttls, expected):
+    assert (
+        login_would_send_cleartext(
+            auth_mode=auth_mode, host=host, use_tls=use_tls, use_starttls=use_starttls
+        )
+        is expected
+    )
+
+
+async def test_external_login_without_transport_encryption_is_rejected_by_settings():
+    with pytest.raises(ValidationError) as excinfo:
+        _production_settings(**_insecure_external_login_kwargs())
+    message = str(excinfo.value)
+    # Rejection class stays generic: no host and no credential material.
+    assert EXTERNAL_HOST not in message
+    assert SMTP_PASSWORD_VALUE not in message
+    assert "SMTP_USE_TLS" in message and "SMTP_STARTTLS" in message
+
+
+async def test_external_login_without_transport_encryption_fails_completeness():
+    settings = _loose_settings(**_insecure_external_login_kwargs())
+    assert email_delivery._smtp_config_complete(settings) is False
+    assert email_delivery.is_verification_email_delivery_configured(settings=settings) is False
+
+
+async def test_external_login_without_transport_encryption_constructs_no_smtp_client(monkeypatch):
+    settings = _loose_settings(**_insecure_external_login_kwargs())
+    _TransportTripwire.reset()
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP", _TransportTripwire)
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP_SSL", _TransportTripwire)
+
+    with pytest.raises(email_delivery.EmailDeliveryNotConfiguredError):
+        email_delivery._send_smtp_email(
+            settings=settings,
+            to_email="owner@example.invalid",
+            subject="subject",
+            body="body",
+        )
+    # Both construction counts must be zero: the guard precedes any transport.
+    assert _TransportTripwire.constructed == []
+    with pytest.raises(email_delivery.EmailDeliveryNotConfiguredError):
+        email_delivery.record_verification_email(
+            settings=settings,
+            registration_id=uuid.uuid4(),
+            to_email="owner@example.invalid",
+            token="opaque-token",
+            verification_link=f"{NOAUTH_PUBLIC_ORIGIN}/verify-email#token=opaque-token",
+        )
+    assert _TransportTripwire.constructed == []
+
+
+async def test_external_starttls_upgrades_before_login(monkeypatch):
+    settings = _external_login_settings()
+    _TransportRecorder.reset()
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP", _TransportRecorder)
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP_SSL", _SslTransportRecorder)
+
+    email_delivery._send_smtp_email(
+        settings=settings, to_email="owner@example.invalid", subject="subject", body="body"
+    )
+
+    assert _TransportRecorder.events == [
+        f"connect:{EXTERNAL_HOST}:{settings.SMTP_PORT}",
+        "starttls",
+        "login",
+        "send",
+    ]
+
+
+async def test_external_implicit_tls_logs_in_after_ssl_connect(monkeypatch):
+    settings = _external_login_settings(SMTP_USE_TLS=True, SMTP_STARTTLS=False)
+    _TransportRecorder.reset()
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP", _TransportRecorder)
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP_SSL", _SslTransportRecorder)
+
+    email_delivery._send_smtp_email(
+        settings=settings, to_email="owner@example.invalid", subject="subject", body="body"
+    )
+
+    assert _TransportRecorder.events == [
+        f"connect_ssl:{EXTERNAL_HOST}:{settings.SMTP_PORT}",
+        "login",
+        "send",
+    ]
+    assert "starttls" not in _TransportRecorder.events
+
+
+async def test_loopback_login_plaintext_remains_usable(monkeypatch):
+    """Literal-loopback login keeps working without TLS (task-owned sink)."""
+    settings = _production_settings(
+        SMTP_HOST="127.0.0.1",
+        SMTP_AUTH_MODE="login",
+        SMTP_USE_TLS=False,
+        SMTP_STARTTLS=False,
+    )
+    assert email_delivery.is_verification_email_delivery_configured(settings=settings) is True
+
+    _TransportRecorder.reset()
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP", _TransportRecorder)
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP_SSL", _SslTransportRecorder)
+    email_delivery._send_smtp_email(
+        settings=settings, to_email="owner@example.invalid", subject="subject", body="body"
+    )
+    assert _TransportRecorder.events == [
+        "connect:127.0.0.1:2525",
+        "login",
+        "send",
+    ]
+
+
+async def test_external_noauth_and_unknown_mode_rejections_do_not_regress(monkeypatch):
+    # External no-auth stays rejected at every layer.
+    with pytest.raises(ValidationError):
+        _production_settings(SMTP_HOST=EXTERNAL_HOST, SMTP_AUTH_MODE="none")
+    external_none = _loose_settings(SMTP_HOST=EXTERNAL_HOST, SMTP_AUTH_MODE="none")
+    assert email_delivery._smtp_config_complete(external_none) is False
+
+    unknown_mode = _loose_settings(SMTP_HOST="127.0.0.1", SMTP_AUTH_MODE="bogus")
+    assert email_delivery._smtp_config_complete(unknown_mode) is False
+
+    _TransportTripwire.reset()
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP", _TransportTripwire)
+    monkeypatch.setattr(email_delivery.smtplib, "SMTP_SSL", _TransportTripwire)
+    for settings in (external_none, unknown_mode):
+        with pytest.raises(email_delivery.EmailDeliveryNotConfiguredError):
+            email_delivery._send_smtp_email(
+                settings=settings,
+                to_email="owner@example.invalid",
+                subject="subject",
+                body="body",
+            )
+    assert _TransportTripwire.constructed == []

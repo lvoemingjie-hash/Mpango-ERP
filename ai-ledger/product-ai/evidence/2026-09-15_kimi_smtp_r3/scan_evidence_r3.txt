@@ -1,0 +1,45 @@
+# R3 scan evidence (generated 2026-09-15)
+
+## git diff --check
+$ git diff --check
+  warning: in the working copy of 'backend/tests/test_smtp_auth_mode_guard_config.py', LF will be replaced by CRLF the next time Git touches it
+  warning: in the working copy of 'backend/tests/test_smtp_loopback_noauth_contract.py', LF will be replaced by CRLF the next time Git touches it
+  exit=0 — clean
+
+## UTF-8 validity and line endings (crlf counted as subset of lf)
+$ python - <utf8 audit>
+  backend/core/config.py: utf8=ok crlf=446 lf=446 final_newline=True
+  backend/services/email_delivery.py: utf8=ok crlf=405 lf=405 final_newline=True
+  backend/tests/test_smtp_auth_mode_guard_config.py: utf8=ok crlf=0 lf=560 final_newline=True
+  backend/tests/test_smtp_loopback_noauth_contract.py: utf8=ok crlf=0 lf=998 final_newline=True
+  exit=0
+
+## detect-secrets pre-commit hook (baseline unchanged; one pre-existing DATABASE_URL dev default annotated with pragma: allowlist secret)
+$ python -m detect_secrets.pre_commit_hook --baseline .secrets.baseline <R3 files + generators>
+  warning: in the working copy of 'backend/tests/test_smtp_auth_mode_guard_config.py', LF will be replaced by CRLF the next time Git touches it
+  warning: in the working copy of 'backend/tests/test_smtp_loopback_noauth_contract.py', LF will be replaced by CRLF the next time Git touches it
+  exit=0
+
+## mypy (3 errors pre-existing and byte-identical at the base candidate; net-new 0)
+$ python -m mypy core/config.py services/email_delivery.py
+  services\email_delivery.py:396: error: Incompatible types in assignment (expression has type "type[SMTP]", variable has type "type[SMTP_SSL]")  [assignment]
+  services\email_delivery.py:398: error: Argument 4 has incompatible type "**dict[str, SSLContext]"; expected "str | None"  [arg-type]
+  services\email_delivery.py:398: error: Argument 4 has incompatible type "**dict[str, SSLContext]"; expected "tuple[Any, ...] | str | Buffer | None"  [arg-type]
+  Found 3 errors in 1 file (checked 2 source files)
+  exit=1
+
+## terminology gate: 'ownership'
+$ grep -rn ownership <R3 scope>
+  (none: terminology is cluster identity binding)
+  exit=1
+
+## terminology gate: 'zero DDL'
+$ grep -rni 'zero ddl' <R3 scope>
+  (none: terminology is NO_DIRECT_BOOTSTRAP_OR_CLUSTER_LEVEL_DDL)
+  exit=1
+
+## pure guard suite with an unreachable database
+$ TEST_DATABASE_URL=postgresql://127.0.0.1:1/unreachable python -m pytest tests/test_smtp_auth_mode_guard_config.py -q
+  ...................................................                      [100%]
+  51 passed in 0.49s
+  exit=0 — database-free

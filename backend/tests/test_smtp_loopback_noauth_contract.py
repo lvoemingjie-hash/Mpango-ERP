@@ -18,11 +18,20 @@ touches a database, and it enforces, before its first write:
   ``SELECT current_database()``, the live server address/port and a URL
   comparison against the task URL before any row write.
 
-R2: this suite performs **zero DDL**. It never creates or alters roles,
-extensions, databases, tables or schemas; the task database is prepared by
-the environment owner (migrated to head ``038_catalog_identity_vertical_slice``,
+R2/R3: this suite has NO_DIRECT_BOOTSTRAP_OR_CLUSTER_LEVEL_DDL. It performs
+no direct bootstrap: it never creates or alters roles, extensions, databases,
+tables or schemas of its own. The task database is prepared by the
+environment owner (migrated to head ``038_catalog_identity_vertical_slice``,
 which is what creates ``reporting_role``). A read-only preparation check
 refuses to run against an unprepared database instead of creating objects.
+
+Two DDL surfaces deliberately remain and are NOT direct bootstrap:
+
+- product-lifecycle DDL: the tenant schema is created by the product's public
+  onboarding path under test (verify-email provisioning), not by the test;
+- the single exact teardown ``DROP SCHEMA`` for the schema that same lifecycle
+  created for this test's registered e-mail, target-enumerated from the exact
+  recorded registration and asserted zero in teardown.
 
 Cleanup is targeted: only rows belonging to the exact emails created by this
 module's tests are removed (exact-match ``= ANY(:emails)``, never a prefix
@@ -98,15 +107,16 @@ LOOPBACK_NOAUTH_PUBLIC_ORIGIN = "https://kimi-smtp-links.invalid"
 
 
 # ---------------------------------------------------------------------------
-# Cluster + task-database identity guard (must run before ANY write)
+# Cluster identity binding + task-database identity guard (before ANY write)
 #
-# A matching database *name* does not authorize a cluster: this suite performs
-# ZERO cluster-level or database-level DDL (no CREATE/ALTER/DROP ROLE, no
-# CREATE/DROP EXTENSION, no CREATE/DROP DATABASE, no CREATE TABLE). It only
-# reads the cluster identity and refuses to touch anything unless the live
-# server's immutable cluster identifier (pg_control_system().system_identifier)
-# matches the task-declared value, on top of loopback host, exact database
-# name, and engine/session identity agreement.
+# A matching database *name* does not authorize a cluster: this suite has
+# NO_DIRECT_BOOTSTRAP_OR_CLUSTER_LEVEL_DDL (no CREATE/ALTER/DROP ROLE, no
+# CREATE/DROP EXTENSION, no CREATE/DROP DATABASE, no CREATE TABLE, no CREATE
+# SCHEMA). It only reads the cluster identity and refuses to touch anything
+# unless the live server's immutable cluster identifier
+# (pg_control_system().system_identifier) matches the task-declared value, on
+# top of loopback host, exact database name, and engine/session identity
+# agreement.
 # ---------------------------------------------------------------------------
 
 
@@ -121,7 +131,7 @@ def _task_cluster_id() -> str:
         raise RuntimeError(
             f"{TASK_CLUSTER_ENV} must be set explicitly to the task-owned "
             "cluster's system_identifier; this suite refuses to infer cluster "
-            "ownership from a database name and will not run without it."
+            "identity binding from a database name and will not run without it."
         )
     return raw
 
@@ -184,7 +194,7 @@ async def _assert_engine_is_task_database() -> dict[str, Any]:
         f"server reports {connected_database!r}, engine claims {engine_database!r}"
     )
     assert session_database == engine_database
-    # Cluster ownership: a matching database NAME never authorizes a cluster.
+    # Cluster identity binding: a matching database NAME never authorizes a cluster.
     assert cluster_identifier == declared_cluster, (
         f"cluster mismatch: live system_identifier {cluster_identifier!r} != "
         f"declared {TASK_CLUSTER_ENV} {declared_cluster!r}; refusing before any write"
@@ -207,7 +217,7 @@ async def _assert_engine_is_task_database() -> dict[str, Any]:
 
 
 async def _assert_task_database_prepared() -> dict[str, Any]:
-    """Read-only preparation check: the suite performs ZERO DDL itself.
+    """Read-only preparation check: the suite itself performs no direct DDL.
 
     The task database must already be migrated to the expected head, with the
     tables and the ``reporting_role`` that migration 011 creates. If anything

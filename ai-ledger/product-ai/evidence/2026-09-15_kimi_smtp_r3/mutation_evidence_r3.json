@@ -1,0 +1,125 @@
+{
+  "mutations": [
+    {
+      "file": "backend/core/config.py",
+      "id": "M1_settings_loopback_validator_removed",
+      "restored_exact": true,
+      "results": [
+        {
+          "exit_code": 1,
+          "failing": "FAILED tests/test_smtp_auth_mode_guard_config.py::test_noauth_mode_is_rejected_for_non_loopback_host[smtp.example.invalid]; FAILED tests/test_smtp_auth_mode_guard_config.py::test_noauth_mode_is_rejected_for_non_loopback_host[127.0.0.1.evil.invalid]; FAILED tests/test_smtp_auth_mode_guard_config.py::test_noauth_mode_is_rejected_for_non_loopback_host[127.0.0.1.nip.io]",
+          "node": "tests/test_smtp_auth_mode_guard_config.py::test_noauth_mode_is_rejected_for_non_loopback_host",
+          "verdict": "DETECTED"
+        }
+      ],
+      "sha256_after_restore": "0ea37d75 ebdb4610 c17b0215 892f5f7f cad62af2 a6d1f77b 2dd02511 c65409d1",
+      "sha256_before": "0ea37d75 ebdb4610 c17b0215 892f5f7f cad62af2 a6d1f77b 2dd02511 c65409d1"
+    },
+    {
+      "file": "backend/core/config.py",
+      "id": "M2_default_auth_mode_flipped_to_none",
+      "restored_exact": true,
+      "results": [
+        {
+          "exit_code": 4,
+          "failing": "no FAILED line; stderr/status: ImportError while loading conftest 'C:\\Users\\Jeff0\\MPANGO ERP\\_kimi_public_provisioning_smtp_2026-09-15\\backend\\tests\\conftest.py'.\ntests\\conftest.py:92: in <module>\n    from database.session import A",
+          "node": "tests/test_smtp_auth_mode_guard_config.py::test_login_remains_the_default_auth_mode",
+          "verdict": "DETECTED"
+        }
+      ],
+      "sha256_after_restore": "0ea37d75 ebdb4610 c17b0215 892f5f7f cad62af2 a6d1f77b 2dd02511 c65409d1",
+      "sha256_before": "0ea37d75 ebdb4610 c17b0215 892f5f7f cad62af2 a6d1f77b 2dd02511 c65409d1"
+    },
+    {
+      "file": "backend/services/email_delivery.py",
+      "id": "M3_config_completeness_loopback_guard_removed",
+      "restored_exact": true,
+      "results": [
+        {
+          "exit_code": 1,
+          "failing": "FAILED tests/test_smtp_auth_mode_guard_config.py::test_config_completeness_rejects_offloopback_noauth",
+          "node": "tests/test_smtp_auth_mode_guard_config.py::test_config_completeness_rejects_offloopback_noauth",
+          "verdict": "DETECTED"
+        }
+      ],
+      "sha256_after_restore": "c4c7bad3 c9817de8 39823a46 4319ca03 850a055f abd53909 50c1089c f0a58604",
+      "sha256_before": "c4c7bad3 c9817de8 39823a46 4319ca03 850a055f abd53909 50c1089c f0a58604"
+    },
+    {
+      "file": "backend/services/email_delivery.py",
+      "id": "M4_send_layer_loopback_guard_removed",
+      "restored_exact": true,
+      "results": [
+        {
+          "exit_code": 1,
+          "failing": "FAILED tests/test_smtp_auth_mode_guard_config.py::test_delivery_layer_guard_blocks_offloopback_noauth_before_transport",
+          "node": "tests/test_smtp_auth_mode_guard_config.py::test_delivery_layer_guard_blocks_offloopback_noauth_before_transport",
+          "verdict": "DETECTED"
+        }
+      ],
+      "sha256_after_restore": "c4c7bad3 c9817de8 39823a46 4319ca03 850a055f abd53909 50c1089c f0a58604",
+      "sha256_before": "c4c7bad3 c9817de8 39823a46 4319ca03 850a055f abd53909 50c1089c f0a58604"
+    },
+    {
+      "file": "backend/services/email_delivery.py",
+      "id": "M5_send_layer_unknown_mode_guard_removed",
+      "restored_exact": true,
+      "results": [
+        {
+          "exit_code": 1,
+          "failing": "FAILED tests/test_smtp_auth_mode_guard_config.py::test_send_layer_unknown_mode_guard_blocks_before_transport",
+          "node": "tests/test_smtp_auth_mode_guard_config.py::test_send_layer_unknown_mode_guard_blocks_before_transport",
+          "verdict": "DETECTED"
+        }
+      ],
+      "sha256_after_restore": "c4c7bad3 c9817de8 39823a46 4319ca03 850a055f abd53909 50c1089c f0a58604",
+      "sha256_before": "c4c7bad3 c9817de8 39823a46 4319ca03 850a055f abd53909 50c1089c f0a58604"
+    },
+    {
+      "file": "backend/core/config.py",
+      "id": "M6_settings_login_transport_guard_removed",
+      "restored_exact": true,
+      "results": [
+        {
+          "exit_code": 1,
+          "failing": "FAILED tests/test_smtp_auth_mode_guard_config.py::test_external_login_without_transport_encryption_is_rejected_by_settings",
+          "node": "tests/test_smtp_auth_mode_guard_config.py::test_external_login_without_transport_encryption_is_rejected_by_settings",
+          "verdict": "DETECTED"
+        }
+      ],
+      "sha256_after_restore": "0ea37d75 ebdb4610 c17b0215 892f5f7f cad62af2 a6d1f77b 2dd02511 c65409d1",
+      "sha256_before": "0ea37d75 ebdb4610 c17b0215 892f5f7f cad62af2 a6d1f77b 2dd02511 c65409d1"
+    },
+    {
+      "file": "backend/services/email_delivery.py",
+      "id": "M7_completeness_login_transport_guard_removed",
+      "restored_exact": true,
+      "results": [
+        {
+          "exit_code": 1,
+          "failing": "FAILED tests/test_smtp_auth_mode_guard_config.py::test_external_login_without_transport_encryption_fails_completeness",
+          "node": "tests/test_smtp_auth_mode_guard_config.py::test_external_login_without_transport_encryption_fails_completeness",
+          "verdict": "DETECTED"
+        }
+      ],
+      "sha256_after_restore": "c4c7bad3 c9817de8 39823a46 4319ca03 850a055f abd53909 50c1089c f0a58604",
+      "sha256_before": "c4c7bad3 c9817de8 39823a46 4319ca03 850a055f abd53909 50c1089c f0a58604"
+    },
+    {
+      "file": "backend/services/email_delivery.py",
+      "id": "M8_send_layer_login_transport_guard_removed",
+      "restored_exact": true,
+      "results": [
+        {
+          "exit_code": 1,
+          "failing": "FAILED tests/test_smtp_auth_mode_guard_config.py::test_external_login_without_transport_encryption_constructs_no_smtp_client",
+          "node": "tests/test_smtp_auth_mode_guard_config.py::test_external_login_without_transport_encryption_constructs_no_smtp_client",
+          "verdict": "DETECTED"
+        }
+      ],
+      "sha256_after_restore": "c4c7bad3 c9817de8 39823a46 4319ca03 850a055f abd53909 50c1089c f0a58604",
+      "sha256_before": "c4c7bad3 c9817de8 39823a46 4319ca03 850a055f abd53909 50c1089c f0a58604"
+    }
+  ],
+  "survivors": []
+}

@@ -1,0 +1,12 @@
+backend/api/context/tenant.py
+backend/api/v1/auth.py
+backend/services/inventory_service.py
+backend/tests/test_mpango_invariants_r0_r1_guards.py
+backend/tests/test_mpango_mvp_invariants_r0_concurrency.py
+backend/tests/test_mpango_mvp_invariants_r0_revocation.py
+backend/tests/test_pw1r3_rate_limit_context.py
+docs/ai-reports/review/2026-09-07_MPANGO_MVP_INVARIANTS_R0_RUN_LOG.md
+docs/ai-reports/review/2026-09-07_MPANGO_MVP_INVARIANTS_R0_TASK_REPORT.md
+docs/ai-reports/review/2026-09-08_MPANGO_MVP_INVARIANTS_R1_AUTH_STOCK_RUN_LOG.md
+docs/ai-reports/review/2026-09-08_MPANGO_MVP_INVARIANTS_R1_AUTH_STOCK_TASK_RECORD.md
+docs/ai-reports/review/2026-09-08_MPANGO_MVP_INVARIANTS_R1_AUTH_STOCK_TASK_REPORT.md

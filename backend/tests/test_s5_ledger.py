@@ -325,11 +325,11 @@ async def test_payment_received_updates_ledger(async_session, sample_order_for_l
     assert cash_after_confirm == Decimal('0')
 
     # Mark as paid
-    order = await order_service.transition(
-        order_id=order.id,
-        target_state=OrderState.PAID,
-        reason="Payment received"
-    )
+    order = (await OrderCommandService(async_session).apply_payment_transition(
+        order.id,
+        OrderState.PAID,
+        payment_method="cash",
+    )).order
 
     # Check balances after payment
     receivable_after_paid = await ledger_service.get_balance(AccountType.RECEIVABLE)
@@ -363,11 +363,12 @@ async def test_full_order_lifecycle_accounting(async_session, sample_order_for_l
     order = (await OrderCommandService(async_session).confirm_order(order.id)).order
 
 
-    # Step 2: Mark as paid
-    order = await order_service.transition(
-        order_id=order.id,
-        target_state=OrderState.PAID
-    )
+    # Step 2: Mark as paid (explicit payment command; frozen decision)
+    order = (await OrderCommandService(async_session).apply_payment_transition(
+        order.id,
+        OrderState.PAID,
+        payment_method="cash",
+    )).order
 
     # Final balances
     receivable = await ledger_service.get_balance(AccountType.RECEIVABLE)
@@ -557,11 +558,11 @@ async def test_credit_paid_skips_cash_settlement_ledger(async_session, sample_or
     assert cash_after_confirm == Decimal("0")
 
     # Transition to PAID with payment_method="credit"
-    order = await order_service.transition(
-        order_id=order.id,
-        target_state=OrderState.PAID,
+    order = (await OrderCommandService(async_session).apply_payment_transition(
+        order.id,
+        OrderState.PAID,
         payment_method="credit",
-    )
+    )).order
 
     # Receivable must remain +100 (NOT settled to 0)
     receivable_after_paid = await ledger_service.get_balance(AccountType.RECEIVABLE)
@@ -593,10 +594,11 @@ async def test_default_paid_posts_cash_settlement_ledger(async_session, sample_o
 
 
     # Transition to PAID without payment_method (legacy/default)
-    order = await order_service.transition(
-        order_id=order.id,
-        target_state=OrderState.PAID,
-    )
+    order = (await OrderCommandService(async_session).apply_payment_transition(
+        order.id,
+        OrderState.PAID,
+        payment_method="cash",
+    )).order
 
     # Receivable settled to 0
     receivable = await ledger_service.get_balance(AccountType.RECEIVABLE)
@@ -625,11 +627,11 @@ async def test_explicit_cash_paid_posts_cash_settlement(async_session, sample_or
     order = (await OrderCommandService(async_session).confirm_order(order.id)).order
 
 
-    order = await order_service.transition(
-        order_id=order.id,
-        target_state=OrderState.PAID,
+    order = (await OrderCommandService(async_session).apply_payment_transition(
+        order.id,
+        OrderState.PAID,
         payment_method="cash",
-    )
+    )).order
 
     receivable = await ledger_service.get_balance(AccountType.RECEIVABLE)
     # aggregate receivable: settlement credit legs only

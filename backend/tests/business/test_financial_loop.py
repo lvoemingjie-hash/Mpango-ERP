@@ -114,7 +114,7 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
     )
 
     # ── Step 2: CONFIRMED → PAID ──────────────────────────────────
-    order = await order_svc.transition(order.id, OrderState.PAID)
+    order = (await OrderCommandService(async_session).apply_payment_transition(order.id, OrderState.PAID)).order
     await async_session.commit()
 
     assert order.status == OrderStatus.PAID
@@ -253,7 +253,7 @@ async def test_inventory_deduction_gap_documented(async_session):
     await OrderCommandService(async_session).confirm_order(order.id)
 
     await async_session.commit()
-    await order_svc.transition(order.id, OrderState.PAID)
+    (await OrderCommandService(async_session).apply_payment_transition(order.id, OrderState.PAID)).order
     await async_session.commit()
     order = (await OrderCommandService(async_session).fulfill_order(order.id)).order
 

@@ -226,7 +226,7 @@ async def test_api_full_cash_settles_payment_to_completed():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
@@ -237,9 +237,9 @@ async def test_api_full_cash_settles_payment_to_completed():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
+        svc_instance.apply_payment_transition = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
-        ))
+        )))
         MockOS.return_value = svc_instance
 
         resp = await pay_order(
@@ -270,7 +270,7 @@ async def test_api_proposed_paid_but_returned_non_paid_does_not_settle():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
@@ -281,11 +281,11 @@ async def test_api_proposed_paid_but_returned_non_paid_does_not_settle():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
+        svc_instance.apply_payment_transition = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id,
             status=OrderState.PARTIALLY_PAID,
             total_amount=mock_order.total_amount,
-        ))
+        )))
         MockOS.return_value = svc_instance
 
         resp = await pay_order(
@@ -317,7 +317,7 @@ async def test_api_partial_cash_does_not_settle():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
@@ -328,9 +328,9 @@ async def test_api_partial_cash_does_not_settle():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
+        svc_instance.apply_payment_transition = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PARTIALLY_PAID, total_amount=mock_order.total_amount
-        ))
+        )))
         MockOS.return_value = svc_instance
 
         resp = await pay_order(
@@ -363,7 +363,7 @@ async def test_api_second_partial_completes_and_settles():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
@@ -375,9 +375,9 @@ async def test_api_second_partial_completes_and_settles():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
+        svc_instance.apply_payment_transition = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
-        ))
+        )))
         MockOS.return_value = svc_instance
 
         resp = await pay_order(
@@ -410,7 +410,7 @@ async def test_api_transfer_full_payment_settle_called():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
@@ -421,9 +421,9 @@ async def test_api_transfer_full_payment_settle_called():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
+        svc_instance.apply_payment_transition = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
-        ))
+        )))
         MockOS.return_value = svc_instance
 
         resp = await pay_order(
@@ -456,7 +456,7 @@ async def test_api_credit_paid_settle_targets_cash_transfer_only():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
@@ -469,9 +469,9 @@ async def test_api_credit_paid_settle_targets_cash_transfer_only():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
+        svc_instance.apply_payment_transition = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
-        ))
+        )))
         MockOS.return_value = svc_instance
 
         resp = await pay_order(
@@ -508,7 +508,7 @@ async def test_api_failed_transition_no_settle():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
@@ -519,7 +519,7 @@ async def test_api_failed_transition_no_settle():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(
+        svc_instance.apply_payment_transition = AsyncMock(
             side_effect=InvalidStateTransitionError(OrderState.CONFIRMED, OrderState.PAID, "forced")
         )
         MockOS.return_value = svc_instance
@@ -554,7 +554,7 @@ async def test_api_legacy_pay_no_settle():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock) as get_order_mock, \
          patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock) as lock_mock, \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock) as balance_mock:
         with pytest.raises(HTTPException) as exc_info:
             await pay_order(

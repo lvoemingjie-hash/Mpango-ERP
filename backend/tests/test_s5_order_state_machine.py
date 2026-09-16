@@ -181,11 +181,10 @@ async def test_happy_path_draft_to_fulfilled(async_session, sample_order):
     assert order.status == OrderStatus.CONFIRMED
 
     # CONFIRMED → PAID
-    order = await service.transition(
-        order_id=order.id,
-        target_state=OrderState.PAID,
-        reason="Payment received"
-    )
+    order = (await OrderCommandService(async_session).apply_payment_transition(
+        order.id,
+        OrderState.PAID,
+    )).order
     # Note: Currently maps to CONFIRMED due to temporary mapping
     # Will be PAID once OrderStatus enum is updated
 
@@ -234,22 +233,20 @@ async def test_partially_paid_self_transition_allowed_only_for_payment_context(a
 
     order = (await OrderCommandService(async_session).confirm_order(order.id)).order
 
-    order = await service.transition(order.id, OrderState.PARTIALLY_PAID)
+    order = (await OrderCommandService(async_session).apply_payment_transition(order.id, OrderState.PARTIALLY_PAID)).order
     assert order.status == OrderStatus.PARTIALLY_PAID
 
     with pytest.raises(InvalidStateTransitionError):
-        await service.transition(
-            order_id=order.id,
-            target_state=OrderState.PARTIALLY_PAID,
-            reason="Non-payment no-op transition",
+        await OrderCommandService(async_session).apply_payment_transition(
+            order.id,
+            OrderState.PARTIALLY_PAID,
         )
 
-    order = await service.transition(
-        order_id=order.id,
-        target_state=OrderState.PARTIALLY_PAID,
-        reason="Payment recorded: cash 20.00",
+    order = (await OrderCommandService(async_session).apply_payment_transition(
+        order.id,
+        OrderState.PARTIALLY_PAID,
         payment_method="cash",
-    )
+    )).order
     assert order.status == OrderStatus.PARTIALLY_PAID
 
 
@@ -305,7 +302,7 @@ async def test_terminal_state_no_transitions(async_session, sample_order):
     # Transition to FULFILLED (via CONFIRMED → PAID → FULFILLED)
     await OrderCommandService(async_session).confirm_order(order.id)
 
-    await service.transition(order.id, OrderState.PAID)
+    (await OrderCommandService(async_session).apply_payment_transition(order.id, OrderState.PAID)).order
     await OrderCommandService(async_session).fulfill_order(order.id)
 
 
@@ -354,7 +351,7 @@ async def test_void_vs_cancel_rules(async_session, sample_order):
     order2 = sample_order
     await OrderCommandService(async_session).confirm_order(order2.id)
 
-    await service.transition(order2.id, OrderState.PAID)
+    (await OrderCommandService(async_session).apply_payment_transition(order2.id, OrderState.PAID)).order
 
     with pytest.raises(InvalidStateTransitionError) as exc_info:
         await service.transition(
@@ -393,18 +390,16 @@ async def test_partial_payment_flow(async_session, sample_order):
 
 
     # CONFIRMED → PARTIALLY_PAID
-    order = await service.transition(
-        order_id=order.id,
-        target_state=OrderState.PARTIALLY_PAID,
-        reason="Received partial payment"
-    )
+    order = (await OrderCommandService(async_session).apply_payment_transition(
+        order.id,
+        OrderState.PARTIALLY_PAID,
+    )).order
 
     # PARTIALLY_PAID → PAID
-    order = await service.transition(
-        order_id=order.id,
-        target_state=OrderState.PAID,
-        reason="Received remaining payment"
-    )
+    order = (await OrderCommandService(async_session).apply_payment_transition(
+        order.id,
+        OrderState.PAID,
+    )).order
 
     # Verify final state
     await async_session.refresh(order)

@@ -17,7 +17,7 @@ from services.canonical_payment_service import (
     CanonicalPaymentResult,
     CanonicalPaymentService,
 )
-from services.order_service import OrderService
+from services.order_command_service import OrderCommandService
 from services.payment_service import PaymentService
 from tests.test_dc11d_payment_replay_concurrency_integrity import (
     _Token,
@@ -184,7 +184,7 @@ async def test_service_does_not_commit_or_rollback_calls():
     )
     service._repo.update_cash_transfer_to_completed = AsyncMock(return_value=0)
 
-    with patch.object(OrderService, "transition", new=AsyncMock(return_value=_result_order(order_id, "partially_paid"))):
+    with patch.object(OrderCommandService, "apply_payment_transition", new=AsyncMock(return_value=SimpleNamespace(order=_result_order(order_id, "partially_paid")))):
         result = await service.confirm_payment(
             db=_DB(),
             order_id=str(order_id),
@@ -760,13 +760,13 @@ async def test_service_failures_after_mutation_stages_rollback_all_effects(
 
     monkeypatch.setattr(PaymentService, "_apply_outstanding_balance_delta", original_delta)
     service_transition = CanonicalPaymentService()
-    original_transition = OrderService.transition
+    original_transition = OrderCommandService.apply_payment_transition
 
     async def _failing_transition(self, *args, **kwargs):
         await original_transition(self, *args, **kwargs)
         raise RuntimeError("after-transition")
 
-    monkeypatch.setattr(OrderService, "transition", _failing_transition)
+    monkeypatch.setattr(OrderCommandService, "apply_payment_transition", _failing_transition)
     await _assert_stage_rollback(
         order_transition,
         retailer_transition,
@@ -781,7 +781,7 @@ async def test_service_failures_after_mutation_stages_rollback_all_effects(
         ),
     )
 
-    monkeypatch.setattr(OrderService, "transition", original_transition)
+    monkeypatch.setattr(OrderCommandService, "apply_payment_transition", original_transition)
     service_complete = CanonicalPaymentService()
     original_complete = service_complete._repo.update_cash_transfer_to_completed
 

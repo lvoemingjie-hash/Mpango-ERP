@@ -348,3 +348,59 @@ REDS, rc=1 as expected (`evidence/2026-09-15T2000Z-f1-focused-final.txt`).
   suite is therefore the 3 credit faces only, by CTO STOP clause.
 - Structural gate: PASS with the real ORDER-STATE-R1-001 node and no
   waiver/debt workaround.
+
+---
+
+# F2 ADDENDUM (append-only) — MPANGO_ORDER_STATE_AUTHORITY_R1_IMPLEMENTATION_F2
+
+Parent: 5dfdb3a6 (REQUIRED_PARENT honored); linear commits on the same
+branch; no amend/rebase, not pushed, independent review NOT started.
+Exact changed paths vs BASE 1ee75d9f (machine-generated, 29 entries):
+`scratch/.../evidence/2026-09-16T0245Z-f2-exact-paths-vs-base.txt`.
+
+## Directive-by-directive
+
+1. PARTIALLY_PAID joined COMMAND_OWNED_TARGETS — the generic transition
+   refuses all six concrete targets; verified by the face-4 loop and the
+   NEW dedicated CONFIRMED→PARTIALLY_PAID refusal oracle (matrix-legal
+   edge still refused generically).
+2. `OrderService.transition` now REFUSES PAID/PARTIALLY_PAID outright
+   (structured InvalidStateTransitionError naming the required canonical
+   path); AST guard `test_adapter_refuses_payment_states` proves no
+   payment-command call survives in the adapter.
+3. `CanonicalPaymentService` calls
+   `OrderCommandService.apply_payment_transition` DIRECTLY (result
+   unwrapped); production caller AST guard
+   `test_payment_command_single_caller_guard` — any other caller goes RED.
+4. ONE shared `_prelock_stocks` strategy (deduplicated, global sorted
+   sku_id, optional require_active) serves confirm/cancel/fulfill/return;
+   reserve/release consume the prelocked rows; the guard forbids any
+   `_locked_stock_by_sku_id` call outside `_prelock_stocks`.
+5. New races: confirm‖fulfill and cancel‖fulfill — two orders, two SKUs,
+   reverse item order, arrival barriers, exact per-SKU aggregates
+   (96/3 + 95/2 and 96/0 + 95/0 respectively), terminal states exact,
+   zero orphan reservations.
+6. Runner strictness: ONLY rc==1 + exactly the named FAILED node + named
+   marker present + zero setup/teardown/collection errors attached to the
+   oracle node itself (unrelated fixture-cleanup noise does not void);
+   pristine GREEN gate over every oracle+control first; anchor==1;
+   mutated source ast.parse+compile; byte+mode restore with worktree-clean
+   proof. **13/13 PROVEN** (`evidence/2026-09-16T0230Z-f2-mutations-run6-final.txt`)
+   including the three NEW mutations M11 (PARTIALLY_PAID bypass via
+   frozenset shrink), M12 (non-canonical payment caller injected into the
+   pay route), M13 (inverse global order inside `_prelock_stocks`).
+7. Credit RED oracles corrected: face-1 unchanged precise 60/60; face-2
+   gained a cash/transfer CONTROL (binding unmoved by a transfer
+   settlement) before the 160/80 double-count assertion; face-3 rewritten
+   with two ISOLATED retailers — the confirm-only control face asserts the
+   current aggregation semantics (binding-hold 50 + unpaid 50 = 100) and
+   the credit face asserts 200/100 (the same exposure counted twice);
+   `or True` removed (explicit retailer match).
+8. Credit product code: UNCHANGED — awaiting the CTO choice; no
+   migration, no aggregate-ownership inference; the three named REDs
+   remain the evidence (CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED).
+9. Verification chain held: focused (38 passed + 3 named credit REDs,
+   rc=1 — `evidence/2026-09-16T0240Z-f2-focused-final.txt`) → mutations
+   13/13 → structural gate PASS → the FINAL single backend full run with
+   the task stack and PW1R3_TEST_REDIS_URL (result appended below once
+   complete; retained verbatim).

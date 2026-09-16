@@ -557,3 +557,58 @@ commit with baseline REQUIRED_PARENT; result appended below.
   from the pre-799d F2 run.
 - INDEPENDENT_REVIEW=NOT_STARTED.
 CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED stands.
+
+## F3 mutation matrix (post-checkpoint) — complete run PROVEN
+
+Runner: `python3 tests/order_state_r1/run_mutations.py` (all 16) executed
+against commit f4109f8e (11 pristine-gate node runs, 16 mutated oracle
+runs, 16 control runs). Result: **ALL 16 PROVEN (strict semantic RED)**,
+rc=0, zero FAILs
+(`evidence/F3/2026-09-16T0954Z-f3-mutations-run2-final.txt`).
+Every mutation: pristine oracle GREEN, anchor count exactly one, mutated
+source ast.parse+compile, rc=1, exact named node, unique OSR1 marker, no
+pytest ERROR, byte+mode-identical restore, worktree clean, control GREEN.
+
+| Mutation | Oracle RED | Marker |
+|---|---|---|
+| M1_RESTORE_CRUD_STATUS_WRITER | static_guards::test_single_direct_status_writer | second direct order-status writer |
+| M2_REMOVE_LOCKED_FRESH_REFRESH | freshness::test_confirm_after_external_cancel_uses_locked_fresh_state | OSR1-M2-ORACLE |
+| M3_STALE_CANCEL_RELEASE_DECISION | concurrency::test_race_confirm_then_cancel_releases_reservations | OSR1-M3-ORACLE |
+| M4_RESTORE_PRE_COMMIT_NOTIFICATION | notifications::test_rollback_produces_zero_sends | sends observed for a rolled-back request |
+| M5_RESTORE_CONFIRMATION_ACCOUNTING | baseline::test_confirm_reserves_stock_and_credit_and_posts_no_ledger | confirmation posted ledger entries |
+| M6_OPEN_PAID_CANCELLATION | baseline::test_paid_cancel_fail_closed_with_workflow_code | OSR1-M6-ORACLE |
+| M7_BREAK_PARTIAL_ITEM_ROLLBACK | rollback_vectors::test_fulfill_fault_during_second_item_write_rolls_back_all | second per-item inventory write |
+| M8_GENERIC_BYPASS | f1_faces::test_generic_transition_refuses_command_owned_targets | OSR1-M8-ORACLE |
+| M9_FULFILL_NO_PRELOCK | prelock::test_fulfill_prelocks_all_stocks_before_first_write | OSR1-M9-ORACLE |
+| M10_CLIENT_409_MAPPING_REMOVED | f1_faces::test_client_cancel_route_maps_domain_errors_409_direct | unmapped |
+| M11_PARTIALLY_PAID_BYPASS | f1_faces::test_generic_refuses_partially_paid_on_confirmed | OSR1-M11-ORACLE |
+| M12_NON_CANONICAL_PAYMENT_CALLER | static_guards::test_payment_command_single_caller_guard | non-canonical caller |
+| M13_CROSS_COMMAND_LOCK_ORDER | prelock::test_cancel_prelocks_all_stocks_in_global_order | OSR1-M13-ORACLE |
+| M14_CANCEL_STOCKS_FROM_ORDER_ITEMS | f3_legacy_faces::test_legacy_with_reservations_cancel_releases_by_reservation_sku_id | OSR1-F3-LEGACY-RESV-CANCEL-OK |
+| M15_FULFILL_NULL_IDENTITY_GUARD_BYPASSED | f3_legacy_faces::test_fulfill_null_identity_controlled_409 | OSR1-F3-FULFILL-NULL-409 |
+| M16_RETURN_NULL_IDENTITY_GUARD_BYPASSED | f3_legacy_faces::test_return_null_identity_controlled_409 | OSR1-F3-RETURN-NULL-409 |
+
+Provenance note (retained verbatim in evidence): run1
+(`2026-09-16T0932Z-f3-mutations-run1.txt`) at checkpoint 265cf6a7 proved
+M1–M13 but M14/M15/M16 returned MARKER_MISSING — the mutated command's
+ValueError (uuid.UUID on the NULL identity) re-raises through
+ASGITransport(raise_app_exceptions=True) into the test, so the labeled
+post-response asserts never executed. The repair commit f4109f8e wraps
+the three action calls: a transport exception is converted to a labeled
+AssertionError carrying the same unique marker (pristine flow unchanged,
+4/4 F3 faces GREEN). A scoped pre-commit probe
+(`2026-09-16T0953Z-f3-mutations-probe-m14-16.txt`) confirmed 3/3, and the
+complete run above was then executed at f4109f8e.
+
+## F3 final state
+
+- Structural governance gate: PASS
+  (`2026-09-16T0932Z-f3-structural-gate.txt`, baseline 998a549f,
+  structural=PASS release=BLOCKED-in-structural-mode, rc=0).
+- Exact changed paths vs REQUIRED_PARENT 998a549f: 13 files
+  (`2026-09-16T1011Z-f3-exact-paths-vs-parent.txt`).
+- Linear commits this round: 265cf6a7 -> f4109f8e -> (this matrix
+  commit); no amend/rebase; not pushed.
+- BACKEND_FULL_SUITE=NOT_RUN this round. The three credit
+  CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED REDs remain excluded from
+  every authorized run, NOT waived. INDEPENDENT_REVIEW=NOT_STARTED.

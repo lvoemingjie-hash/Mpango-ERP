@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
-"""V3 harness: MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R3.
+"""V3 harness: MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R4.
 
-Successor to the R1-R2 harness; orchestrates the full
+Successor to the R1-R3 harness; orchestrates the full
 merge-critical data-integrity/security verification on FRESH PostgreSQL 16
 clusters:
 
+  phase validator  the exact named-RED set validator is itself exercised with
+                   synthetic results BEFORE any container starts: missing
+                   declared REDs (including the 2-expected/1-hit case),
+                   extra/undeclared REDs and an empty declaration must all
+                   fail closed, or the gate goes RED
   phase identity   FAIL-CLOSED preflight BEFORE any container is created:
                    the declared --candidate-commit must equal the checked-out
-                   HEAD with a clean worktree, the R1-R2 predecessor commit
-                   must be an ancestor, the candidate commit message must
-                   carry the R1-R3 authorization id, and every source file's
-                   working-tree digest must match its committed blob (both
-                   digest forms, working-tree CRLF vs blob LF, are recorded)
+                   HEAD with a clean worktree, the immediate R1-R3 predecessor
+                   (and the frozen R1-R2 link behind it) must be ancestors,
+                   the candidate commit message must carry the R1-R4
+                   authorization id, and every source file's working-tree
+                   digest must match its committed blob (both digest forms,
+                   working-tree CRLF vs blob LF, are recorded)
   phase provision  two throwaway postgres:16 containers (main + a second
                    cluster for the cross-cluster counterexample); roles and
                    six scenario databases per the frozen authority contract
@@ -27,17 +33,21 @@ clusters:
                    scenario; every run must be GREEN
   phase mutation   MM1 commit-type verify restored, MM2 owner fallback
                    restored, MM3 identifier validation bypassed, MM4 cluster
-                   binding bypassed, MM5 binding refusal matrix deleted,
-                   MM6 netloc leak restored, MM7 public-CREATE check
-                   deleted, MM8 zero-connection early refusal bypassed -
-                   each must go RED on its named semantic assertions, then
-                   BOTH scripts are restored and proven byte-identical
-                   (sha256); a post-restore run is re-proven green
+                   binding bypassed, MM5a existing-database refusal deleted,
+                   MM5b partial-role-set refusal deleted, MM6 netloc leak
+                   restored, MM7 public-CREATE check deleted, MM8
+                   zero-connection early refusal bypassed - each must go RED
+                   on its declared named REDs, the observed RED set must
+                   match the declaration EXACTLY (missing, extra/undeclared
+                   or undeclared-because-empty all fail closed), then BOTH
+                   scripts are restored and proven byte-identical (sha256);
+                   a post-restore run is re-proven green
   phase regression the R1 7-file bootstrap-heavy suite run on the
                    historical regression comparison base and on the
                    candidate in an identical two-role topology; per-node
                    outcomes must be identical
-  phase teardown   remove both containers and the BASE worktree
+  phase teardown   remove both containers, the BASE worktree and the
+                   synthetic-credential work dir (retained only under --keep)
 
 Usage (from backend/):
     python scripts/v3_tenant_bootstrap_db_authority_harness.py \
@@ -73,12 +83,16 @@ IMAGE_SECOND = "postgres:16.15-alpine"
 MIGRATE_ROLE = "mpango_migrate"
 APP_ROLE = "mpango_app"
 
-# R1-R3 formal evidence identity.  Recorded SEPARATELY in the machine
+# R1-R4 formal evidence identity.  Recorded SEPARATELY in the machine
 # report: the task authorization id, the exact implementation candidate
 # commit (declared per invocation via --candidate-commit), the immediate
-# R1-R2 predecessor, and the historical regression comparison base.
-TASK_ID = "MPANGO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R3"
-AUTHORIZATION_ID = "CTO-AUTH-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R3-2026-09-16"
+# R1-R3 predecessor, and the historical regression comparison base.
+TASK_ID = "MPANGO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R4"
+AUTHORIZATION_ID = "CTO-AUTH-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R4-2026-09-16"
+R1_R3_PREDECESSOR_COMMIT = (
+    "a21878c169d97e4c6fa837cd19dd9cced7de71e2"  # pragma: allowlist secret
+)
+# Immediate R1-R2 predecessor, kept for the frozen chain of custody.
 R1_R2_PREDECESSOR_COMMIT = (
     "8951112bf126d70643dc64882c8bbee911321928"  # pragma: allowlist secret
 )
@@ -103,8 +117,12 @@ SUITE = "tests/test_tenant_bootstrap_db_authority.py::"
 
 # --------------------------------------------------------------------------
 # Mutations (framework from R1-R1 fix 7; MM5-MM7 added in R1-R2, MM8 in
-# R1-R3).  Each entry: file, anchor (LF form), replacement, scenario in
-# which the named REDs live, and the named RED nodeids.
+# R1-R3, MM5 split into MM5a/MM5b and exact-set declarations in R1-R4).
+# Each entry: file, anchor (LF form), replacement, scenario in which the REDs
+# live, the REQUIRED named RED nodeids (`named_red`), and the additional nodes
+# that may legitimately go RED (`tolerated_red`).  The validator compares the
+# declaration against the observed RED set exactly: a missing required node,
+# any RED outside required ∪ tolerated, or an empty declaration fails closed.
 # --------------------------------------------------------------------------
 MM1_PROBE = (
     "            cannot_replace = True\n"
@@ -141,6 +159,7 @@ MUTATIONS = [
         "named_red": [
             SUITE + "test_static_verify_is_pure_catalog_read_only",
         ],
+        "tolerated_red": [],
         "rationale": (
             "restoring a committing DDL probe inside --verify must be caught "
             "by the pure-catalog static semantic assertion. The behavioral "
@@ -192,6 +211,17 @@ MUTATIONS = [
             SUITE + "test_static_owner_fallback_removed_and_"
             "authority_derived_from_db_owner",
         ],
+        "tolerated_red": [
+            # MM2 removes the ownership precondition in the bootstrap script,
+            # which several other fail-closed statics/counterexamples also
+            # assert; they may go RED and are declared here.
+            SUITE + "test_bootstrap_script_never_replaces_or_reowns_public_"
+            "guard",
+            SUITE + "test_bootstrap_script_keeps_fail_closed_precondition_"
+            "semantics",
+            SUITE + "test_static_identifier_validation_wired_in_all_modes",
+            SUITE + "test_runtime_with_public_create_refused_zero_tenant",
+        ],
         "rationale": (
             "restoring the connected-role owner fallback lets the "
             "single-role topology bootstrap silently — the single-role "
@@ -213,6 +243,7 @@ MUTATIONS = [
             SUITE + "test_injection_identifiers_rejected_zero_writes",
             SUITE + "test_static_identifier_validation_wired_in_all_modes",
         ],
+        "tolerated_red": [],
         "rationale": (
             "bypassing identifier validation lets the quote/semicolon/"
             "comment payload reach CREATE ROLE rendering and execute — the "
@@ -238,6 +269,11 @@ MUTATIONS = [
             SUITE + "test_cluster_binding_mismatch_zero_writes",
             SUITE + "test_static_cluster_binding_precedes_writes",
         ],
+        "tolerated_red": [
+            # bypassing the whole preflight also lets the partial-state
+            # counterexample proceed, so that node may go RED too
+            SUITE + "test_partial_exists_first_deploy_refused_zero_writes",
+        ],
         "rationale": (
             "bypassing the binding preflight lets a cross-cluster admin URL "
             "receive role/database writes — the cross-cluster counterexample "
@@ -245,27 +281,71 @@ MUTATIONS = [
         ),
     },
     {
-        "name": "MM5",
-        "title": "fresh_state_binding_guard_deleted",
+        "name": "MM5a",
+        "title": "existing_database_refusal_deleted",
         "file": "grants",
         "anchor": (
             "            deferral_allowed = False\n"
             "            if database_exists:\n"
         ),
         "replacement": (
-            "            deferral_allowed = True  # MUTATION MM5: binding "
-            "guards deleted\n"
-            "            if False:  # MUTATION MM5\n"
+            "            deferral_allowed = True  # MUTATION MM5a\n"
+            "            if False:  # MUTATION MM5a: existing-database "
+            "refusal deleted\n"
+        ),
+        "scenario": "v3_ok",
+        "named_red": [
+            SUITE + "test_wrong_password_provision_refused_zero_writes",
+        ],
+        "tolerated_red": [],
+        "rationale": (
+            "deleting the existing-target-database refusal lets --provision "
+            "tolerate wrong credentials against an established deployment "
+            "(the state falls through to the credential probe, which is a "
+            "DIFFERENT guard, so the refusal message changes) — the "
+            "wrong-password counterexample's 'is not fresh' semantic "
+            "assertion must catch it"
+        ),
+    },
+    {
+        "name": "MM5b",
+        "title": "partial_role_set_refusal_deleted",
+        "file": "grants",
+        "anchor": (
+            "            elif migrate_role_exists != app_role_exists:\n"
+            "                existing, absent = (\n"
+            "                    (self.migrate_role, self.app_role)\n"
+            "                    if migrate_role_exists\n"
+            "                    else (self.app_role, self.migrate_role)\n"
+            "                )\n"
+            "                problems.append(\n"
+            '                    "deferred provisioning refused: the '
+            'deployment state is "\n'
+            '                    f"not fresh (partial role set: role '
+            '{existing!r} already "\n'
+            '                    f"exists while role {absent!r} does not) - '
+            'partial role "\n'
+            '                    "states are never provisioned over (zero '
+            'writes "\n'
+            '                    "performed)"\n'
+            "                )\n"
+        ),
+        "replacement": (
+            "            elif False:  # MUTATION MM5b: partial-role-set "
+            "refusal deleted\n"
+            "                pass\n"
         ),
         "scenario": "v3_ok",
         "named_red": [
             SUITE + "test_partial_exists_first_deploy_refused_zero_writes",
-            SUITE + "test_wrong_password_provision_refused_zero_writes",
         ],
+        "tolerated_red": [],
         "rationale": (
-            "deleting the binding refusal matrix lets --provision write "
-            "over partial role states and tolerate wrong credentials — the "
-            "partial-exists and wrong-password counterexamples must catch it"
+            "deleting the partial-role-set refusal lets a half-created "
+            "deployment fall through to the credential probe instead of "
+            "refusing as 'not fresh (partial role set ...)' — the "
+            "partial-exists counterexample's 'is not fresh' and 'already "
+            "exists' semantic assertions must catch it"
         ),
     },
     {
@@ -288,6 +368,16 @@ MUTATIONS = [
         "named_red": [
             SUITE + "test_cluster_binding_mismatch_zero_writes",
             SUITE + "test_first_deploy_cross_cluster_refused_zero_writes",
+        ],
+        "tolerated_red": [
+            # restoring netloc rendering breaks the credential-hygiene
+            # assertions of the zero-connection endpoint-mismatch tests too
+            SUITE + "test_layer1_admin_endpoint_mismatch_refused_zero_"
+            "connections",
+            SUITE + "test_layer1_migrate_endpoint_mismatch_refused_zero_"
+            "connections",
+            SUITE + "test_layer1_app_endpoint_mismatch_refused_zero_"
+            "connections",
         ],
         "rationale": (
             "restoring netloc rendering puts username:password@host into the "
@@ -317,6 +407,7 @@ MUTATIONS = [
             SUITE + "test_bootstrap_script_keeps_fail_closed_precondition_"
             "semantics",
         ],
+        "tolerated_red": [],
         "rationale": (
             "deleting the runtime no-CREATE-on-public precondition lets a "
             "runtime that can write into public proceed to bootstrap — the "
@@ -362,6 +453,7 @@ MUTATIONS = [
             SUITE + "test_static_layer1_early_refusal_is_unconditional_"
             "and_precedes_connection",
         ],
+        "tolerated_red": [],
         "rationale": (
             "bypassing the early Layer-1 refusal lets a mis-wired URL set "
             "reach asyncpg.connect (the admin URL included) before the "
@@ -440,6 +532,138 @@ _HEX_DIGEST_RE = re.compile(r"^[0-9a-f]{32,64}$")
 _HEX_IN_TEXT_RE = re.compile(r"\b[0-9a-f]{32,64}\b")
 
 
+def mutation_red_set_verdict(result: dict) -> dict:
+    """R1-R4: EXACT named-RED set comparison for one mutation run.
+
+    A mutation declares a required ``named_red`` set (the semantic targets
+    that MUST turn RED) and a ``tolerated_red`` set (additional nodes that MAY
+    turn RED because the same defect also trips them).  The declared universe
+    is required ∪ tolerated; anything RED outside it is undeclared.  The
+    verdict fails closed unless:
+
+      * at least one required node is declared (a mutation may not declare
+        "nothing must fail"), and
+      * EVERY required node actually turned RED (a missing hit means the
+        mutation's semantic target did not detect it), and
+      * NO RED node falls outside the declared universe (an extra/undeclared
+        RED is a detection path nobody declared), and
+      * at least one node actually turned RED (the mutation must be detected).
+    """
+    named = set(result.get("named_red_expected") or [])
+    tolerated = set(result.get("tolerated_red") or [])
+    observed = set(result.get("red_nodes") or [])
+    missing = sorted(named - observed)
+    undeclared = sorted(observed - named - tolerated)
+    declared_but_not_red = sorted(tolerated - observed)
+    failures = []
+    if not named:
+        failures.append("no required named-RED node declared")
+    if missing:
+        failures.append("missing named RED(s): " + ", ".join(missing))
+    if undeclared:
+        failures.append("extra/undeclared RED(s): " + ", ".join(undeclared))
+    if not observed:
+        failures.append("mutation produced NO RED at all")
+    return {
+        "named_red_required": sorted(named),
+        "tolerated_red": sorted(tolerated),
+        "observed_red": sorted(observed),
+        "missing_named_red": missing,
+        "undeclared_red": undeclared,
+        "declared_but_not_red": declared_but_not_red,
+        "exact_set_ok": not failures,
+        "error": "; ".join(failures) or None,
+    }
+
+
+def assert_mutation_red_set_exact(result: dict) -> dict:
+    """Fail closed when a mutation's RED set does not match its declaration."""
+    verdict = mutation_red_set_verdict(result)
+    if not verdict["exact_set_ok"]:
+        raise RuntimeError(
+            f"{result.get('mutation')!r}: named-RED set mismatch — "
+            f"{verdict['error']}"
+        )
+    return verdict
+
+
+# R1-R4: negative cases for the validator itself.  `must_raise` is what the
+# validator MUST do; the harness asserts every case behaves as declared, so a
+# validator that stopped failing closed (e.g. accepting 2 expected / 1 hit)
+# turns the formal gate RED.
+VALIDATOR_NEGATIVE_CASES: tuple[dict, ...] = (
+    {
+        "name": "two_expected_one_hit",
+        "named": ["n1", "n2"], "tolerated": [], "observed": ["n1"],
+        "must_raise": True,
+    },
+    {
+        "name": "single_expected_zero_hits",
+        "named": ["n1"], "tolerated": [], "observed": [],
+        "must_raise": True,
+    },
+    {
+        "name": "undeclared_extra_red",
+        "named": ["n1", "n2"], "tolerated": [], "observed": ["n1", "n2", "x"],
+        "must_raise": True,
+    },
+    {
+        "name": "no_declaration_at_all",
+        "named": [], "tolerated": [], "observed": ["n1"],
+        "must_raise": True,
+    },
+    {
+        "name": "exact_hits",
+        "named": ["n1", "n2"], "tolerated": [], "observed": ["n1", "n2"],
+        "must_raise": False,
+    },
+    {
+        "name": "tolerated_red_may_fire",
+        "named": ["n1", "n2"], "tolerated": ["t1"], "observed": ["n1", "n2", "t1"],
+        "must_raise": False,
+    },
+    {
+        "name": "tolerated_red_may_stay_green",
+        "named": ["n1", "n2"], "tolerated": ["t1"], "observed": ["n1", "n2"],
+        "must_raise": False,
+    },
+)
+
+
+def run_validator_negative_cases() -> list[dict]:
+    """Exercise the exact-set validator with synthetic results.
+
+    Proves the validator fails closed on missing, extra/undeclared and
+    absent declarations, and passes only on exact or explicitly declared
+    sets.  The harness asserts ``ok`` for every case, so these become a
+    formal gate rather than a comment.
+    """
+    results = []
+    for case in VALIDATOR_NEGATIVE_CASES:
+        synthetic = {
+            "mutation": f"SYNTHETIC-{case['name']}",
+            "named_red_expected": list(case["named"]),
+            "tolerated_red": list(case["tolerated"]),
+            "red_nodes": list(case["observed"]),
+        }
+        raised, message = False, ""
+        try:
+            assert_mutation_red_set_exact(synthetic)
+        except RuntimeError as exc:
+            raised, message = True, str(exc)
+        results.append({
+            "case": case["name"],
+            "named_red_required": list(case["named"]),
+            "tolerated_red": list(case["tolerated"]),
+            "observed_red": list(case["observed"]),
+            "must_raise": case["must_raise"],
+            "raised": raised,
+            "ok": raised == case["must_raise"],
+            "message": message[:300],
+        })
+    return results
+
+
 def _group_hex_in_text(text: str) -> str:
     """Group raw hex digests inside plain text (grouped 8-char form)."""
     return _HEX_IN_TEXT_RE.sub(
@@ -495,13 +719,14 @@ class Harness:
         # OUTSIDE the repository tree and is never committed.
         import tempfile
 
-        self.work_dir = Path(tempfile.mkdtemp(prefix="mpango_v3_r1r3_"))
+        self.work_dir = Path(tempfile.mkdtemp(prefix="mpango_v3_r1r4_"))
         self.snapshots: dict[str, dict] = {}
         self.base_worktree: Path | None = None
         self.report = {
             "task": TASK_ID,
             "authorization": AUTHORIZATION_ID,
             "implementation_candidate_commit": self.candidate_commit,
+            "r1_r3_predecessor_commit": R1_R3_PREDECESSOR_COMMIT,
             "r1_r2_predecessor_commit": R1_R2_PREDECESSOR_COMMIT,
             "historical_regression_base_commit": BASE_COMMIT,
             "started_at": _utc(),
@@ -516,14 +741,15 @@ class Harness:
 
     # ----------------------------------------------------- identity preflight
     def preflight_identity(self) -> dict:
-        """R1-R3 fix 2: fail-closed evidence identity gate.
+        """R1-R4: fail-closed evidence identity gate.
 
         Runs BEFORE any container is created.  Refuses (fail closed) unless
         the declared candidate commit IS the checked-out HEAD with a clean
-        worktree, the immediate R1-R2 predecessor is an ancestor of HEAD, the
-        candidate commit message carries the declared R1-R3 authorization id,
-        and every source file's working-tree bytes match the committed blob
-        (LF-normalized comparison; both raw digest forms are recorded).
+        worktree, the immediate R1-R3 predecessor (and the frozen R1-R2 link
+        behind it) are ancestors of HEAD, the candidate commit message carries
+        the declared R1-R4 authorization id, and every source file's
+        working-tree bytes match the committed blob (LF-normalized
+        comparison; both raw digest forms are recorded).
         """
         repo_root = _run(["git", "rev-parse", "--show-toplevel"],
                          verify=True).stdout.strip()
@@ -540,13 +766,17 @@ class Harness:
                 "candidate commit must carry every source byte):\n"
                 + status.strip()[:2000]
             )
-        ancestry = _run(["git", "merge-base", "--is-ancestor",
-                         R1_R2_PREDECESSOR_COMMIT, "HEAD"])
-        if ancestry.returncode != 0:
-            raise RuntimeError(
-                "identity preflight failed: the R1-R2 predecessor "
-                f"{R1_R2_PREDECESSOR_COMMIT} is not an ancestor of HEAD"
-            )
+        for label, ancestor in (
+            ("R1-R3 predecessor", R1_R3_PREDECESSOR_COMMIT),
+            ("frozen R1-R2 predecessor", R1_R2_PREDECESSOR_COMMIT),
+        ):
+            result = _run(["git", "merge-base", "--is-ancestor",
+                           ancestor, "HEAD"])
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"identity preflight failed: the {label} {ancestor} is "
+                    "not an ancestor of HEAD"
+                )
         message = _run(["git", "log", "-1", "--format=%B", "HEAD"],
                        verify=True).stdout
         if AUTHORIZATION_ID not in message:
@@ -582,12 +812,14 @@ class Harness:
             "declared_candidate_commit": self.candidate_commit,
             "head_commit": head,
             "worktree_clean": True,
+            "r1_r3_predecessor_ancestor": True,
             "r1_r2_predecessor_ancestor": True,
             "authorization_id_in_commit_message": True,
             "source_digests": digests,
         }
         print(f"[identity] candidate {head[:12]} == HEAD, worktree clean, "
-              f"predecessor {R1_R2_PREDECESSOR_COMMIT[:12]} is an ancestor, "
+              f"predecessors {R1_R3_PREDECESSOR_COMMIT[:12]} / "
+              f"{R1_R2_PREDECESSOR_COMMIT[:12]} are ancestors, "
               "authorization id present, 4 source digests match committed "
               "blobs")
         return result
@@ -952,9 +1184,11 @@ class Harness:
                     "scenario": mutation["scenario"],
                     "rationale": mutation["rationale"],
                     "named_red_expected": mutation["named_red"],
+                    "tolerated_red": list(mutation.get("tolerated_red", [])),
                     "mutated_file": mutation["file"],
                     "mutated_sha256": mutated_sha,
                     "run": run,
+                    "red_nodes": sorted(red_nodes),
                     "went_red": run["rc"] != 0 and bool(red_nodes),
                     "named_red_hits": named_hits,
                 })
@@ -1069,6 +1303,19 @@ class Harness:
     # ------------------------------------------------------------------ main
     def run(self):
         try:
+            # R1-R4: the exact-set validator must itself fail closed.  Proven
+            # on EVERY invocation, before any container starts, so a
+            # validator that stopped rejecting a 2-expected/1-hit declaration
+            # turns the formal gate RED instead of silently passing.
+            validator_cases = run_validator_negative_cases()
+            failed_cases = [c for c in validator_cases if not c["ok"]]
+            assert not failed_cases, (
+                "named-RED set validator did not fail closed on: "
+                + ", ".join(c["case"] for c in failed_cases)
+            )
+            self.report["validator_negative_cases"] = validator_cases
+            print(f"[validator] {len(validator_cases)} negative/positive cases "
+                  "behaved as declared")
             # R1-R3 fix 2: identity preflight strictly BEFORE any container.
             self.report["identity_preflight"] = self.preflight_identity()
             self.start_containers()
@@ -1098,18 +1345,25 @@ class Harness:
                 )
 
             mutation_results = self.run_mutations()
+            # R1-R4: EXACT named-RED set verification.  Missing declared
+            # REDs, extra/undeclared REDs and mutations that declare nothing
+            # all fail closed here (previously only "at least one hit").
+            red_set_verdicts = []
             for result in mutation_results:
                 if result.get("mutation"):
                     assert result["went_red"], (
                         f"{result['mutation']} did NOT go RED"
                     )
-                    assert result["named_red_hits"], (
-                        f"{result['mutation']} missed its named RED set"
+                    red_set_verdicts.append(
+                        assert_mutation_red_set_exact(result)
                     )
                 else:
                     assert result["post_restore_green"], (
                         "post-restore run is not green"
                     )
+            self.report["phases"]["mutation_red_set_verdicts"] = (
+                red_set_verdicts
+            )
 
             regression = self.run_regression()
             if not regression.get("skipped"):
@@ -1145,12 +1399,41 @@ class Harness:
             self.report["error"] = f"{type(exc).__name__}: {exc}"
             raise
         finally:
-            self._write_report()
-            if self.base_worktree and self.base_worktree.exists():
-                _run(["git", "worktree", "remove", "--force",
-                      str(self.base_worktree)])
-            if not self.keep:
-                self.stop_containers()
+            try:
+                if self.base_worktree and self.base_worktree.exists():
+                    _run(["git", "worktree", "remove", "--force",
+                          str(self.base_worktree)])
+                if not self.keep:
+                    self.stop_containers()
+                # R1-R4: never leave the synthetic-credential work dir behind.
+                self._cleanup_work_dir()
+            except Exception as exc:  # noqa: BLE001 - cleanup must not mask
+                print(f"[cleanup] warning: {type(exc).__name__}: {exc}")
+            finally:
+                self._write_report()
+
+    def _cleanup_work_dir(self) -> None:
+        """Remove the run work dir, which holds secret-bearing manifests.
+
+        Every password embeds the per-run synthetic token, so the default is
+        removal; ``--keep`` deliberately RETAINS the directory for debugging
+        and reports its path (isolated and declared, never silently left).
+        """
+        import shutil
+
+        if not self.work_dir.exists():
+            self.report["work_dir_disposition"] = "already-absent"
+            return
+        if self.keep:
+            self.report["work_dir_disposition"] = (
+                f"retained (--keep): {self.work_dir}"
+            )
+            print(f"[cleanup] --keep: work dir retained at {self.work_dir}")
+            return
+        shutil.rmtree(self.work_dir, ignore_errors=True)
+        disposition = "removed" if not self.work_dir.exists() else "remove-failed"
+        self.report["work_dir_disposition"] = disposition
+        print(f"[cleanup] work dir {disposition}")
 
     def _scan_evidence_for_secrets(self) -> dict:
         """Scan every evidence file for the synthetic secret token."""

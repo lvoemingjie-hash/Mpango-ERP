@@ -1,9 +1,9 @@
 """MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY — V3 data-integrity suite.
 
 Originating authorization: CTO-AUTH-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-2026-09-16.
-Current round: MPANGO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R3, authorization
-CTO-AUTH-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R3-2026-09-16 (R1-R2 predecessor:
-8951112bf126d70643dc64882c8bbee911321928).
+Current round: MPANGO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R4, authorization
+CTO-AUTH-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R4-2026-09-16 (R1-R3 predecessor:
+a21878c169d97e4c6fa837cd19dd9cced7de71e2).
 
 Frozen architectural decision under test:
 1. The migration authority owns the public schema and the shared security
@@ -70,6 +70,9 @@ BOOTSTRAP_SCRIPT = os.path.join(
 )
 GRANTS_SCRIPT = os.path.join(
     BACKEND_DIR, "scripts", "provision_runtime_db_roles.py"
+)
+HARNESS_SCRIPT = os.path.join(
+    BACKEND_DIR, "scripts", "v3_tenant_bootstrap_db_authority_harness.py"
 )
 
 SIGNUP_URL = "/api/v1/auth/signup"
@@ -2005,6 +2008,143 @@ def test_static_layer1_early_refusal_is_unconditional_and_precedes_connection():
     assert min(early_guard_lines) < first_connection_line, (
         "the Layer-1 early refusal must precede every connection attempt"
     )
+
+
+# ---------------------------------------------------------------------------
+# R1-R4: exact named-RED set validator — negative cases for the control plane
+# (the R1-R3 gate accepted MM5 declaring two REDs while only one fired)
+# ---------------------------------------------------------------------------
+
+
+def _load_harness_module(alias: str):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(alias, HARNESS_SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _synthetic_red_result(named, observed, tolerated=()) -> dict:
+    return {
+        "mutation": "SYNTHETIC",
+        "named_red_expected": list(named),
+        "tolerated_red": list(tolerated),
+        "red_nodes": list(observed),
+    }
+
+
+def test_mutation_validator_rejects_two_expected_one_hit():
+    """R1-R4: two named REDs declared, one observed, must fail closed.  This
+    is exactly the R1-R3 MM5 case (declared 2, hit 1) that the previous
+    non-empty check let through."""
+    module = _load_harness_module("v3r4_validator_two_expected_one_hit")
+    result = _synthetic_red_result(["n1", "n2"], ["n1"])
+
+    with pytest.raises(RuntimeError) as excinfo:
+        module.assert_mutation_red_set_exact(result)
+    assert "missing named RED" in str(excinfo.value), excinfo.value
+
+    verdict = module.mutation_red_set_verdict(result)
+    assert verdict["exact_set_ok"] is False
+    assert verdict["missing_named_red"] == ["n2"]
+    assert verdict["observed_red"] == ["n1"]
+    assert verdict["undeclared_red"] == []
+
+
+def test_mutation_validator_rejects_extra_and_undeclared_reds():
+    """R1-R4: a RED node outside required ∪ tolerated is undeclared and must
+    fail closed, even when every declared node did turn RED."""
+    module = _load_harness_module("v3r4_validator_extra_red")
+    result = _synthetic_red_result(["n1", "n2"], ["n1", "n2", "surprise"])
+
+    with pytest.raises(RuntimeError) as excinfo:
+        module.assert_mutation_red_set_exact(result)
+    assert "extra/undeclared RED" in str(excinfo.value), excinfo.value
+    verdict = module.mutation_red_set_verdict(result)
+    assert verdict["missing_named_red"] == []
+    assert verdict["undeclared_red"] == ["surprise"]
+    assert verdict["exact_set_ok"] is False
+
+
+def test_mutation_validator_rejects_empty_declaration():
+    """R1-R4: a mutation that declares no required node may not pass, even
+    when something did go RED (no declaration = no semantic contract)."""
+    module = _load_harness_module("v3r4_validator_empty_declaration")
+    with pytest.raises(RuntimeError) as excinfo:
+        module.assert_mutation_red_set_exact(
+            _synthetic_red_result([], ["n1"])
+        )
+    assert "no required named-RED node declared" in str(excinfo.value)
+
+
+def test_mutation_validator_rejects_named_red_that_never_fired():
+    """R1-R4: a declared node that stayed GREEN fails closed - the mutation
+    did not prove what it claims to prove."""
+    module = _load_harness_module("v3r4_validator_missing_only")
+    with pytest.raises(RuntimeError) as excinfo:
+        module.assert_mutation_red_set_exact(_synthetic_red_result(["n1"], []))
+    assert "missing named RED" in str(excinfo.value)
+
+
+def test_mutation_validator_accepts_exact_and_tolerated_sets():
+    """R1-R4: exact hits pass, and a tolerated node may either fire or stay
+    green - tolerance is explicit, never implicit."""
+    module = _load_harness_module("v3r4_validator_accepts")
+    exact = module.assert_mutation_red_set_exact(
+        _synthetic_red_result(["n1", "n2"], ["n1", "n2"])
+    )
+    assert exact["exact_set_ok"] is True and exact["undeclared_red"] == []
+
+    tolerated_fired = module.assert_mutation_red_set_exact(
+        _synthetic_red_result(["n1", "n2"], ["n1", "n2", "t1"], ["t1"])
+    )
+    assert tolerated_fired["exact_set_ok"] is True
+
+    tolerated_green = module.assert_mutation_red_set_exact(
+        _synthetic_red_result(["n1", "n2"], ["n1", "n2"], ["t1"])
+    )
+    assert tolerated_green["exact_set_ok"] is True
+    assert tolerated_green["declared_but_not_red"] == ["t1"]
+
+
+def test_formal_gate_declares_its_own_negative_cases_and_they_fail_closed():
+    """R1-R4: the harness's own negative-case table must behave as declared
+    (including 2-expected/1-hit), so the FORMAL gate goes RED whenever the
+    validator stops failing closed."""
+    module = _load_harness_module("v3r4_validator_selfcheck")
+    cases = module.run_validator_negative_cases()
+    assert cases, "the harness declares no validator cases"
+
+    not_ok = [c for c in cases if not c["ok"]]
+    assert not not_ok, f"validator cases did not behave as declared: {not_ok}"
+
+    hit_case = next(
+        c for c in cases if c["case"] == "two_expected_one_hit"
+    )
+    assert hit_case["must_raise"] is True
+    assert hit_case["raised"] is True
+    assert hit_case["named_red_required"] == ["n1", "n2"]
+    assert hit_case["observed_red"] == ["n1"]
+
+
+def test_static_formal_gate_uses_the_exact_set_validator():
+    """R1-R4: the formal gate must verify every mutation result with the
+    exact-set validator; the loose 'at least one named RED' check must be
+    gone from the source."""
+    with open(HARNESS_SCRIPT, encoding="utf-8") as handle:
+        source = handle.read()
+    assert "assert_mutation_red_set_exact(result)" in source, (
+        "the formal gate must call the exact-set validator per mutation"
+    )
+    assert "mutation_red_set_verdicts" in source, (
+        "per-mutation verdicts must be recorded in the report"
+    )
+    assert 'assert result["named_red_hits"], (' not in source, (
+        "the loose non-empty named-RED check must be removed"
+    )
+    assert "def mutation_red_set_verdict(" in source
+    assert "def run_validator_negative_cases(" in source
 
 
 # ---------------------------------------------------------------------------

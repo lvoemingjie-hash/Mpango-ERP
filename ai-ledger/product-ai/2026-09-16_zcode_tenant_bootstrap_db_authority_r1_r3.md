@@ -23,7 +23,14 @@
   - v3_suite blob=41c3b3bb 16cf22fb d90a5b70 5fab6d71 0477bcaa 23cdebd8 9ffc7cb8 b7c955cc
   - harness wt=3d28ac81 ee64dacf fc6b4e05 fa6f770c a4e8b43d 585e90c5 f3ff17d5 25d7de30
   - harness blob=3d28ac81 ee64dacf fc6b4e05 fa6f770c a4e8b43d 585e90c5 f3ff17d5 25d7de30
-- EVIDENCE_DIGESTS (committed bytes, grouped): harness_report.json=c6be35f2 938f14dd 7a6e9222 078644bd 374b2d08 06c58a0b 31ef1c4d d4615fb1; EVIDENCE_NORMALIZATION_AUDIT.txt=8f554044 f07217d6 f7ee08d5 61eaeb21 f77cd765 e60773b7 91288c95 890a7233; README.md=7d48dbf6 54f56149 5882e336 84cd074e 27ed816a f3f11238 1f05cef5 cd983ae0
+- EVIDENCE_DIGESTS (both forms; wt = Windows-checkout CRLF, blob = `git show HEAD:<path>`):
+  - harness_report.json wt=c6be35f2 938f14dd 7a6e9222 078644bd 374b2d08 06c58a0b 31ef1c4d d4615fb1
+  - harness_report.json blob=4fd59613 dad6793d 8497b1fe 514159f6 4b566368 07c84621 e6f0b775 6fe9028d
+  - EVIDENCE_NORMALIZATION_AUDIT.txt wt=e9810ba3 421dd780 5e2908b1 d469e5fa 4c4cc872 ac8095e1 499e01b4 64033c7f
+  - EVIDENCE_NORMALIZATION_AUDIT.txt blob=07e7fbc4 97861980 2c113208 f1d1b37f 63e2bf8d 298755ab ea6cb875 c29ec88c
+  - README.md wt=blob=7d48dbf6 54f56149 5882e336 84cd074e 27ed816a f3f11238 1f05cef5 cd983ae0
+  - the other 19 harness-generated files (suite/mutation/verify/regression logs): full wt+blob table in EVIDENCE_NORMALIZATION_AUDIT.txt
+- REPORT_AS_GENERATED_DIGEST=2a6a7344 e5e202a8 068c88c5 c1e105a0 a484753e fef7aa7b 47b1e69b 3371d78d (recorded before any git command; the committed working-tree file minus its single final newline byte reproduces it exactly — see the audit)
 - FORMAL_INVOCATIONS=1 (full gate set, no --skip flags); PRE_FORMAL_REHEARSAL=1 (partial, scratch dir outside the repository, non-evidence)
 - HOOK_NORMALIZATION=no bypass; the normal `trailing-whitespace`/`end-of-file-fixer` hooks normalized the generated text evidence (report: exactly one added end-of-file newline). See EVIDENCE_NORMALIZATION_AUDIT.txt; the report's own bytes are re-validated in the committed form.
 - NEXT_GATE=`KILO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R3_SOURCE_AND_REAL_PG16_REVIEW`

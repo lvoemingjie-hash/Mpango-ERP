@@ -4,84 +4,133 @@ EVIDENCE NORMALIZATION AUDIT — MPANGO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R3
 WHY THIS FILE EXISTS
 --------------------
 The harness writes its evidence as plain text/JSON. The repository's NORMAL
-pre-commit hooks (`trailing-whitespace`, `end-of-file-fixer`) normalized
-trailing whitespace / the end-of-file newline of that text evidence at commit
-time. No hook was bypassed (no --no-verify), no evidence file was hand-edited,
-and no evidence content was rewritten by hand. This audit records, with facts
-that are recomputable from this repository, that the normalization is
-semantic-free.
+pre-commit hooks (`trailing-whitespace`, `end-of-file-fixer`) rewrote those
+generated files at commit time. No hook was bypassed (no --no-verify), no
+evidence file was hand-edited, and no evidence content was rewritten by hand.
+This audit records, with facts recomputable from this repository, that the
+change is semantic-free.
 
-VERIFIABLE FACTS
-----------------
-1. COMMITTED DIGESTS. The committed evidence files and their sha256 values are
-   listed below; `sha256sum <file>` in this directory reproduces each value.
+WHAT CHANGED, EXACTLY
+---------------------
+1. The generated files already used CRLF line endings (Python text-mode writes on
+   Windows). Git stores them as LF blobs — its own text normalization when
+   staging. This is the ordinary working-tree-vs-blob pair the R-series manifests
+   record for source files as well.
+2. `end-of-file-fixer` appended ONE end-of-file newline. For the machine report
+   this is provable: its as-generated digest was recorded at first validation,
+   before any git command ran —
+       harness_report.json as-generated = 2a6a7344e5e202a8068c88c5c1e105a0a484753efef7aa7b47b1e69b3371d78d
+   — and removing the committed working-tree file's single final newline byte
+   reproduces that digest exactly (verified here: True). Proof that the
+   added byte is a bare LF and nothing else: the stored blob equals the
+   working-tree bytes with every CRLF replaced by LF (verified for every file in
+   the table below: True); and CRLF-converting the blob back reproduces the
+   working-tree bytes except for that one final byte.
+3. Trailing whitespace inside the captured logs was stripped (see SCOPE below).
 
-2. REPORT: EXACTLY ONE ADDED END-OF-FILE NEWLINE. The as-generated (pre-hook,
-   on-disk) digest of the machine report was recorded at first validation,
-   before any git operation was run:
-       harness_report.json as-generated
-         = 2a6a7344e5e202a8068c88c5c1e105a0a484753efef7aa7b47b1e69b3371d78d
-   Taking the committed bytes and removing the single final newline reproduces
-   that digest exactly; every other candidate transformation (CRLF conversion,
-   an extra blank line, preserved trailing spaces) produces a different digest.
-   So the report's committed form differs from the generated form by exactly
-   the end-of-file-fixer's one trailing newline.
+REPORT SEMANTICS UNCHANGED
+--------------------------
+The committed report is identical to the generated report after JSON parsing, and
+the post-normalization report was re-validated against the R1-R3 identity gate:
+task and authorization are R1-R3, verdict PASS, eight mutations all RED, MM8 7/7
+named REDs, synthetic-secret scan 0 of 19.
 
-3. REPORT SEMANTICS UNCHANGED. The committed report is identical to the
-   generated report after JSON parsing, and the post-normalization report was
-   re-validated against the R1-R3 identity gate: task and authorization are
-   R1-R3, verdict PASS, eight mutations all RED, MM8 7/7 named REDs,
-   synthetic-secret scan 0 of 19.
+CROSS-CONSISTENCY OF THE COMMITTED EVIDENCE — 28/28 PASS
+--------------------------------------------------------
+- every suite run's reported rc equals the `rc=` header of its committed log
+  (6/6 suites, all rc=0);
+- every mutation's reported FAILED nodeids, and every declared named-RED nodeid,
+  appear as `FAILED <nodeid>` in that mutation's committed log (MM1-MM8, including
+  MM8's 7/7);
+- the committed verify logs carry rc=0 (intact database) and rc=2
+  (runtime-owned-guard counterexample);
+- the report's pre-run and restored script digests equal the current working-tree
+  bytes of both scripts, and those bytes are LF-normalized identical to the
+  committed blobs of implementation candidate a21878c1 — i.e. every mutation
+  restore returned the scripts to exactly the candidate bytes.
 
-4. CROSS-CONSISTENCY OF THE COMMITTED EVIDENCE — 28/28 checks PASS, run against
-   the COMMITTED bytes:
-   - every suite run's reported rc equals the `rc=` header of its committed log
-     (6/6 suites, all rc=0);
-   - every mutation's reported FAILED nodeids, and every declared named-RED
-     nodeid, appear as `FAILED <nodeid>` in that mutation's committed log
-     (MM1-MM8, including MM8's 7/7);
-   - the committed verify logs carry rc=0 (intact database) and rc=2
-     (runtime-owned-guard counterexample);
-   - the report's pre-run and restored script digests equal the current
-     working-tree bytes of both scripts, and those bytes are LF-normalized
-     identical to the committed blobs of implementation candidate
-     a21878c1 — i.e. every mutation restore returned the scripts to exactly
-     the candidate bytes.
+SCOPE OF THE NORMALIZATION
+--------------------------
+Removals are limited to trailing whitespace on a line, including whitespace-only
+lines (pytest `--tb=short` padding: "E     " -> "E", "  " -> ""), plus the single
+end-of-file newline described above. No line was added, removed or reordered
+otherwise, and no assertion, count, digest, identity field, verdict or secret-scan
+result changed.
 
-5. SCOPE OF THE NORMALIZATION. Observed at commit time through the failure of
-   the first commit attempt plus `git diff` between the staged bytes and the
-   hook-normalized bytes: removals are limited to trailing whitespace on a
-   line, including whitespace-only lines (e.g. pytest `--tb=short` padding
-   "E     " -> "E", "  " -> ""), collapsed to a single end-of-file newline. No
-   line was added, removed or reordered apart from that trailing blank-line
-   collapse; no assertion, count, digest, identity field, verdict or
-   secret-scan result changed.
+EVIDENCE DIGESTS — WORKING TREE (CRLF) AND STORED BLOB (LF)
+-----------------------------------------------------------
+`sha256sum <file>` reproduces the wt value in a Windows checkout; the blob value
+is sha256 of `git show HEAD:<path>`. Both forms are listed so either can be
+verified against the commit. This audit file itself is excluded from its own table
+(self-reference is impossible); its digest is recorded in the round's journal
+manifest block.
 
-COMMITTED EVIDENCE DIGESTS (sha256)
------------------------------------
-harness_report.json              c6be35f2938f14dd7a6e9222078644bd374b2d0806c58a0b31ef1c4dd4615fb1
-pytest_v3_ok.txt                 36390131a0aff4267550a9b7f1b91337133af65162ad81b8358118b0de871b3f
-pytest_v3_nofunc.txt             4d5ed8ea3857f53e658fa87fd8794dd24726b6bb382bd97d76fe62c256b8d1f5
-pytest_v3_badsig.txt             73b758179d123c7e8f82b0087c31d2ea55fa4b21fcab42501e94d414aa73f4c3
-pytest_v3_wrongown.txt           3aeafec776dad0281b17cfea46137ba3a0781536adccbe61cd0ab6810c17aab3
-pytest_v3_nopriv.txt             1aca3c4f83db9e0f43b295fdccdf99fdf58ede644d7c895ea89d4bc6451911fe
-pytest_v3_verify_wrongown.txt    69246ef2fc66f0f31d341c51fb5b0eba16ce40877e2f84c4912e1dca96c4dc98
-pytest_mutation_MM1.txt          3e1da756b0a15be52c07357fadf02086f30fd65fc56e71c8f515c47927dc86f6
-pytest_mutation_MM2.txt          cfcf5702d60992da7166d12b07f4f51f00b748965515f57f31305d70384271e6
-pytest_mutation_MM3.txt          8bb26fdf8ee4780f014c5c477463e70cc4327046d2e5737319f724801aa8a7a6
-pytest_mutation_MM4.txt          a9839939edeb5f6bb89d70861d7a9f1b83f66f93f9b6cbd630aab83c97291a0f
-pytest_mutation_MM5.txt          957fe1455e4ffc688f108fad737dd8f1a2df2e226d92308865cf3d75428b41cc
-pytest_mutation_MM6.txt          31eb9a1f5f7b1f1e846eee671e3758488e9aa9e1ffa51bc2f78a17a6c7c4f5bd
-pytest_mutation_MM7.txt          b1540bff998cd0c029b375fad8296e93cea4b403ad44d59c70af53b1db295305
-pytest_mutation_MM8.txt          ac929eb25b865ebb583837a48c8499763219faa9f6bef7d0ecafa85e39b9e0ee
-pytest_post_restore.txt          6501cda82818f2cb4cbf92b584cb6e712e197956555e9de1b5e1f378fc9cbed4
-verify_v3_ok.txt                 6cefc57388fa6ee3bb2c1c57b0e7e968ab605f803bd9587125a1fb5298ba16e4
-verify_v3_verify_wrongown.txt    56b7471525b986b9cfbf687f87ba61f2a40009e1edcff5b1c23fe7b6bd6757db
-regression_base.txt              8097b4c4fdc31e8c0c0c55c75008cfd94773bf04178b513e76c50aee1edd2fea
-regression_candidate.txt         932c5ebc5f52e6e3f9456574f26b112bc311f99e358498dbe240a2c4435f0223
+harness_report.json
+    wt   = c6be35f2938f14dd7a6e9222078644bd374b2d0806c58a0b31ef1c4dd4615fb1
+    blob = 4fd59613dad6793d8497b1fe514159f64b56636807c84621e6f0b7756fe9028d
+pytest_mutation_MM1.txt
+    wt   = 3e1da756b0a15be52c07357fadf02086f30fd65fc56e71c8f515c47927dc86f6
+    blob = 24a0f669aa97a1799e1bd27c4616987c270f34ec974f40c66370f26b9ea20fec
+pytest_mutation_MM2.txt
+    wt   = cfcf5702d60992da7166d12b07f4f51f00b748965515f57f31305d70384271e6
+    blob = fd5c1aae4f1a303e896eaaab98648c7baf5f2e2b46fafa394b050dd917893c34
+pytest_mutation_MM3.txt
+    wt   = 8bb26fdf8ee4780f014c5c477463e70cc4327046d2e5737319f724801aa8a7a6
+    blob = 66cd3ef83cdfce3610f12a0a3d4fab1ecb2ad1b2be8d93c4760d3452f110563b
+pytest_mutation_MM4.txt
+    wt   = a9839939edeb5f6bb89d70861d7a9f1b83f66f93f9b6cbd630aab83c97291a0f
+    blob = 7faeee111c4ba479baedce2bca894474eaa0958d0503ccf2e348db5065f4ec15
+pytest_mutation_MM5.txt
+    wt   = 957fe1455e4ffc688f108fad737dd8f1a2df2e226d92308865cf3d75428b41cc
+    blob = 6806e579036d449827d3c4a6f877b5c022e51966d2a1cf8281335ab00c481b0c
+pytest_mutation_MM6.txt
+    wt   = 31eb9a1f5f7b1f1e846eee671e3758488e9aa9e1ffa51bc2f78a17a6c7c4f5bd
+    blob = 37bca72b7bb5275bab665be592aefb2f8e562cf8b5a7977011f1cd4903b5bfd9
+pytest_mutation_MM7.txt
+    wt   = b1540bff998cd0c029b375fad8296e93cea4b403ad44d59c70af53b1db295305
+    blob = a5d9e11d983f26395967c1c5331d2a49e4d71eed3334be7e677589168bdd83e8
+pytest_mutation_MM8.txt
+    wt   = ac929eb25b865ebb583837a48c8499763219faa9f6bef7d0ecafa85e39b9e0ee
+    blob = 3783e1fd24c558e321633676e76048cc664cd75ce2e783d5db3fef97e5f764a3
+pytest_post_restore.txt
+    wt   = 6501cda82818f2cb4cbf92b584cb6e712e197956555e9de1b5e1f378fc9cbed4
+    blob = 3b0067cd1c5cbecd5e1f0b26d0e34625a52ecd402565865a65118ff737c150e1
+pytest_v3_badsig.txt
+    wt   = 73b758179d123c7e8f82b0087c31d2ea55fa4b21fcab42501e94d414aa73f4c3
+    blob = ba888bec363c1dcd13a048c1f17b4ca94139b53e2d6dbb59e0ab65249cac7b06
+pytest_v3_nofunc.txt
+    wt   = 4d5ed8ea3857f53e658fa87fd8794dd24726b6bb382bd97d76fe62c256b8d1f5
+    blob = d86d997085e1a81feeb435977c18699ef299ebdba9873c06e28ecc2e0d93b7f9
+pytest_v3_nopriv.txt
+    wt   = 1aca3c4f83db9e0f43b295fdccdf99fdf58ede644d7c895ea89d4bc6451911fe
+    blob = 2a34309b2ecab2a11debfd02c3691e65f5a4256a2f1340a510c5ed870777aac8
+pytest_v3_ok.txt
+    wt   = 36390131a0aff4267550a9b7f1b91337133af65162ad81b8358118b0de871b3f
+    blob = 64fb01c3ae5d909c80e22dc81cb28e71786ee85a9b0c3e15a852a3ee57266d9b
+pytest_v3_verify_wrongown.txt
+    wt   = 69246ef2fc66f0f31d341c51fb5b0eba16ce40877e2f84c4912e1dca96c4dc98
+    blob = 62593e72f615a825902caedb204a68f3fd35d3c3d9a542d0bff5947a1bfd354c
+pytest_v3_wrongown.txt
+    wt   = 3aeafec776dad0281b17cfea46137ba3a0781536adccbe61cd0ab6810c17aab3
+    blob = 0c9c60bef6994d121549f95906839dc169c95e8655e93826122a608eef21378b
+README.md
+    wt   = 7d48dbf654f561495882e33684cd074e27ed816af3f112381f05cef5cd983ae0
+    blob = 7d48dbf654f561495882e33684cd074e27ed816af3f112381f05cef5cd983ae0
+regression_base.txt
+    wt   = 8097b4c4fdc31e8c0c0c55c75008cfd94773bf04178b513e76c50aee1edd2fea
+    blob = c5fae381882cbfe7b0b49b1cd13f9e058d46661c4b1483dbeff633139a9553e6
+regression_candidate.txt
+    wt   = 932c5ebc5f52e6e3f9456574f26b112bc311f99e358498dbe240a2c4435f0223
+    blob = 83bee7ff98f95a7bdedbdc904f646d9f621b53e0f1c1ab04b2ebeb7643dad4af
+verify_v3_ok.txt
+    wt   = 6cefc57388fa6ee3bb2c1c57b0e7e968ab605f803bd9587125a1fb5298ba16e4
+    blob = c49d5febb95224cfa2f5e4dc948cb784b1a1a1b90124be802e4fd1228b8a879f
+verify_v3_verify_wrongown.txt
+    wt   = 56b7471525b986b9cfbf687f87ba61f2a40009e1edcff5b1c23fe7b6bd6757db
+    blob = 4c9b2d0e90ca67f32e35cee117ca221944613716481ce6612524ab334e9bf45d
 
 PROVENANCE
 ----------
-The machine evidence files were committed in commit ff1e7962 and are NOT
-modified by this audit file or by the journal manifest commit that follows it.
-This audit and the journal are the only files added/updated there.
+The machine evidence files were committed in commit ff1e7962 and are NOT modified
+by this audit file or by the journal manifest commit. Only this audit, the README
+and the journal are added/updated there.

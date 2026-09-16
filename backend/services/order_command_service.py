@@ -29,14 +29,18 @@ Frozen business decisions implemented here:
 Transaction ownership: the caller (HTTP tenant middleware or test harness)
 owns the transaction; every command here runs inside it and never commits.
 
-Lock order (see tests/order_state_r1/test_lock_order_matrix.py): the order
-row is always locked FIRST; inventory rows follow in one deterministic
-per-command order; stock rows are always locked ordered by
-(sku_code, sku_id); reservations owned by the command's order are locked
-ordered by (sku_code, id). Cross-command inverse table order (confirm:
-stocks->reservations vs cancel: reservations->stocks) is safe under the
-orders-lock-first invariant — a full cross-order proof and its limits are
-documented in the implementation report.
+Lock order (see order-state-r1/LOCK-ORDER.md): the order row is always
+locked FIRST; every distinct stock row is then locked in ONE global order
+— sorted by sku_id (UUID), deduplicated — BEFORE any inventory write
+(``_prelock_stocks`` for item-derived references in confirm/fulfill/
+return). Cancel derives its stock set from the order's ACTIVE
+RESERVATIONS (``_prelock_reservation_stocks``), locked by
+reservation.sku_id in the same global sorted order, and only then locks
+the owned reservation rows FOR UPDATE ordered by (sku_code, id) — the
+historical cancel inverse order (reservations before stocks) is closed.
+A legacy DRAFT order (no active reservations) cancels as a pure status
+transition. A full cross-order proof and its limits are documented in
+the implementation report.
 """
 from __future__ import annotations
 
@@ -189,11 +193,12 @@ class OrderCommandService:
                 "is not implemented",
             )
 
-        items = sorted(
-            order.items,
-            key=lambda i: str(i.sellable_unit_id),
-        )
-        stocks = await self._prelock_stocks(items)
+        # F3: the cancel stock set derives from the order's ACTIVE
+        # RESERVATIONS, never from order.items — legacy DRAFT orders (no
+        # reservations) cancel cleanly, and legacy orders WITH reservations
+        # release exactly what was reserved, pre-locked by
+        # reservation.sku_id in the global sorted order.
+        stocks = await self._prelock_reservation_stocks(order)
 
         released = await self._release_reservations(order, stocks)
 
@@ -306,8 +311,15 @@ class OrderCommandService:
 
         items = sorted(
             order.items,
-            key=lambda i: str(i.sellable_unit_id),
+            key=lambda i: str(i.sellable_unit_id or i.id),
         )
+        missing = [i for i in items if i.sellable_unit_id is None]
+        if missing:
+            raise _conflict(
+                "ORDER_ITEM_SELLABLE_ID_REQUIRED",
+                f"Order item '{missing[0].id}' requires explicit legacy "
+                "mapping before fulfillment",
+            )
         stocks = await self._prelock_stocks(items)
 
         inventory = InventoryService()
@@ -348,13 +360,21 @@ class OrderCommandService:
         self._validate_transition(order, OrderState.RETURNED)
         self._check_invariants(OrderState(order.status.value), OrderState.RETURNED)
 
+        items = sorted(
+            order.items,
+            key=lambda i: str(i.sellable_unit_id or i.id),
+        )
+        missing = [i for i in items if i.sellable_unit_id is None]
+        if missing:
+            raise _conflict(
+                "ORDER_ITEM_SELLABLE_ID_REQUIRED",
+                f"Order item '{missing[0].id}' requires explicit legacy "
+                "mapping before return restock",
+            )
+
         await self._post_transition_ledger(
             order, OrderState(order.status.value), OrderState.RETURNED, None)
 
-        items = sorted(
-            order.items,
-            key=lambda i: str(i.sellable_unit_id),
-        )
         stocks = await self._prelock_stocks(items)
 
         inventory = InventoryService()
@@ -416,6 +436,31 @@ class OrderCommandService:
         await self.db.flush()
         await self.db.refresh(order)
         return OrderCommandResult(order=order)
+
+    async def _prelock_reservation_stocks(self, order: Order) -> dict:
+        """F3 cancel discipline: lock stocks keyed by the order's ACTIVE
+        reservations (sorted by reservation.sku_id — the same global
+        sorted-sku_id order). A legacy order with no reservations yields an
+        empty dict (pure status cancel)."""
+        from services.inventory_service import InventoryService
+
+        inventory = InventoryService()
+        codes = (await self.db.execute(
+            select(InventoryReservation.sku_id, InventoryReservation.sku_code)
+            .where(InventoryReservation.order_id == order.id)
+            .where(InventoryReservation.status == "reserved")
+            .where(InventoryReservation.is_deleted.is_(False))
+        )).all()
+        codes_by_id = {row[0]: row[1] for row in codes}
+
+        stocks: dict = {}
+        for sku_id in sorted(codes_by_id):
+            stocks[sku_id] = await inventory._locked_stock_by_sku_id(
+                self.db,
+                sku_id=sku_id,
+                sku_code=codes_by_id[sku_id],
+            )
+        return stocks
 
     async def _prelock_stocks(self, items, *, require_active: bool = False) -> dict:
         """Lock EVERY distinct stock row in ONE global order (sorted

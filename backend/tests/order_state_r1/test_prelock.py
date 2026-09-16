@@ -69,9 +69,11 @@ async def test_fulfill_prelocks_all_stocks_before_first_write(
 
     expected_sorted = sorted({sid_a, sid_z})
     assert sorted(locks_before_first_write) == expected_sorted, (
-        f"prelock incomplete before first inventory write: events={events}")
+        f"OSR1-M9-ORACLE prelock set incomplete before first inventory "
+        f"write: events={events}")
     assert locks_before_first_write == expected_sorted, (
-        f"prelock order not global-sorted: {locks_before_first_write}")
+        f"OSR1-M9-ORACLE prelock order not global-sorted: "
+        f"{locks_before_first_write}")
 
 
 async def test_cancel_prelocks_all_stocks_in_global_order(
@@ -119,5 +121,5 @@ async def test_cancel_prelocks_all_stocks_in_global_order(
     locks_before = [v for kind, v in events[:first_write] if kind == "lock"]
     expected = sorted({sid_a, sid_z})
     assert locks_before == expected, (
-        f"cancel prelock wrong/incomplete: {locks_before} != {expected}; "
-        f"events={events}")
+        f"OSR1-M13-ORACLE cancel prelock wrong/incomplete: "
+        f"{locks_before} != {expected}; events={events}")

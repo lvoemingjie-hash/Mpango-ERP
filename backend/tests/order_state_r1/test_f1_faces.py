@@ -224,9 +224,15 @@ async def test_generic_transition_refuses_command_owned_targets(
         for target in (OrderState.CONFIRMED, OrderState.CANCELLED,
                        OrderState.PAID, OrderState.PARTIALLY_PAID,
                        OrderState.FULFILLED, OrderState.RETURNED):
-            with pytest.raises(InvalidStateTransitionError):
+            try:
                 await OrderCommandService(session).apply_transition(
                     uuid.UUID(oid), target)
+            except InvalidStateTransitionError:
+                pass
+            else:
+                raise AssertionError(
+                    f"OSR1-M8-ORACLE generic transition accepted "
+                    f"command-owned target {target.value}")
             await session.rollback()
             from tests.order_state_r1.support import rebind_search_path
             await rebind_search_path(session, schema)
@@ -645,9 +651,15 @@ async def test_generic_refuses_partially_paid_on_confirmed(
 
     session = await _second_session(schema, ws_id)
     try:
-        with pytest.raises(InvalidStateTransitionError):
+        rejected = False
+        try:
             await OrderCommandService(session).apply_transition(
                 uuid.UUID(oid), OrderState.PARTIALLY_PAID)
+        except InvalidStateTransitionError:
+            rejected = True
+        assert rejected, (
+            "OSR1-M11-ORACLE generic transition accepted command-owned "
+            "PARTIALLY_PAID on a CONFIRMED order")
     finally:
         await session.rollback()
         await session.close()

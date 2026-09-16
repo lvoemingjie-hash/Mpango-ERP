@@ -121,9 +121,12 @@ async def test_paid_cancel_fail_closed_with_workflow_code(
     assert pay.status_code == 200, pay.text
 
     resp = await http_action(r1_client, token, oid, "cancel")
-    assert resp.status_code == HTTPStatus.CONFLICT, resp.text
+    assert resp.status_code == HTTPStatus.CONFLICT, (
+        f"OSR1-M6-ORACLE paid cancel was not a controlled 409: "
+        f"{resp.status_code} {resp.text}")
     code = errcode(resp)
-    assert code == "REFUND_WORKFLOW_NOT_IMPLEMENTED", code
+    assert code == "REFUND_WORKFLOW_NOT_IMPLEMENTED", (
+        f"OSR1-M6-ORACLE paid cancel returned wrong code: {code}")
     assert "refund" in resp.text.lower() and "not implemented" in resp.text.lower()
     assert (await order_vector(db, schema, oid))["status"] == "paid"
 
@@ -135,8 +138,12 @@ async def test_paid_cancel_fail_closed_with_workflow_code(
                              {"amount": 30.00, "method": "cash"})
     assert part.status_code == 200, part.text
     resp2 = await http_action(r1_client, token, oid2, "cancel")
-    assert resp2.status_code == HTTPStatus.CONFLICT
-    assert errcode(resp2) == "REFUND_WORKFLOW_NOT_IMPLEMENTED"
+    assert resp2.status_code == HTTPStatus.CONFLICT, (
+        f"OSR1-M6-ORACLE partially-paid cancel was not a controlled 409: "
+        f"{resp2.status_code} {resp2.text}")
+    assert errcode(resp2) == "REFUND_WORKFLOW_NOT_IMPLEMENTED", (
+        f"OSR1-M6-ORACLE partially-paid cancel returned wrong code: "
+        f"{errcode(resp2)}")
     assert (await order_vector(db, schema, oid2))["status"] == "partially_paid"
 
 

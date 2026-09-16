@@ -171,8 +171,14 @@ async def test_confirm_after_external_cancel_uses_locked_fresh_state(
             await other.close()
 
         # no rollback: the stale DRAFT stays in the identity map
-        with pytest.raises((_Iste, _Oiv)):
+        rejected = False
+        try:
             await _Ocs(session).confirm_order(uuid.UUID(oid))
+        except (_Iste, _Oiv):
+            rejected = True
+        assert rejected, (
+            "OSR1-M2-ORACLE: confirm on a stale DRAFT identity-map object "
+            "was not rejected — the locked-fresh refresh is missing")
     finally:
         await session.rollback()
         await session.close()

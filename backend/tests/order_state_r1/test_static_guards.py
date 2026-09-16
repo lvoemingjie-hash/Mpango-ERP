@@ -141,29 +141,39 @@ def test_adapter_refuses_payment_states():
 
 
 def test_all_commands_share_prelock_strategy():
-    """F2 source shape: confirm/cancel/fulfill/return all route inventory
-    writes through the shared _prelock_stocks; no command locks stocks
-    inline in its item loop."""
+    """F2/F3 source shape: confirm/fulfill/return route item-derived stock
+    locks through the shared _prelock_stocks; cancel routes
+    reservation-derived locks through _prelock_reservation_stocks (F3:
+    the cancel stock set comes from ACTIVE reservations, never from
+    order.items). Both helpers lock in the ONE global sorted-sku_id
+    order; no command locks stocks inline in its item loop."""
     src = (BACKEND / "services" / "order_command_service.py").read_text()
     tree = ast.parse(src)
     prelock_calls = []
+    reservation_prelock_calls = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
-                and node.func.attr == "_prelock_stocks":
-            prelock_calls.append(node.lineno)
-    assert len(prelock_calls) >= 4, (
-        f"expected >=4 _prelock_stocks call sites (confirm/cancel/fulfill/"
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if node.func.attr == "_prelock_stocks":
+                prelock_calls.append(node.lineno)
+            elif node.func.attr == "_prelock_reservation_stocks":
+                reservation_prelock_calls.append(node.lineno)
+    assert len(prelock_calls) >= 3, (
+        f"expected >=3 _prelock_stocks call sites (confirm/fulfill/"
         f"return), found {prelock_calls}")
-    # _locked_stock_by_sku_id may appear ONLY inside _prelock_stocks
-    prelock_ranges = []
+    assert len(reservation_prelock_calls) == 1, (
+        f"expected exactly 1 _prelock_reservation_stocks call site "
+        f"(cancel), found {reservation_prelock_calls}")
+    # _locked_stock_by_sku_id may appear ONLY inside the two shared helpers
+    helper_ranges = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
-                and node.name == "_prelock_stocks":
-            prelock_ranges.append((node.lineno, node.end_lineno))
+                and node.name in ("_prelock_stocks",
+                                  "_prelock_reservation_stocks"):
+            helper_ranges.append((node.lineno, node.end_lineno))
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
                 and node.func.attr == "_locked_stock_by_sku_id":
-            if not any(a <= node.lineno <= b for a, b in prelock_ranges):
+            if not any(a <= node.lineno <= b for a, b in helper_ranges):
                 raise AssertionError(
-                    f"command module locks stocks outside _prelock_stocks at "
-                    f"line {node.lineno}")
+                    f"command module locks stocks outside the shared "
+                    f"prelock helpers at line {node.lineno}")

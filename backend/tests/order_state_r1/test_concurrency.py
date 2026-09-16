@@ -256,8 +256,12 @@ async def test_race_confirm_then_cancel_releases_reservations(
     # CONTRACT: whatever the final status, no reserved rows survive a
     # completed cancel, and aggregate reserved matches.
     if facts["status"] == "cancelled":
-        assert all(r["status"] == "released" for r in facts["reservations"]), facts
-        assert facts["inventory"][sid] == "100/0", facts
+        assert all(r["status"] == "released" for r in facts["reservations"]), (
+            f"OSR1-M3-ORACLE reservations not released after completed "
+            f"cancel: {facts}")
+        assert facts["inventory"][sid] == "100/0", (
+            f"OSR1-M3-ORACLE inventory aggregate not restored after "
+            f"cancel: {facts}")
     else:
         assert facts["status"] == "confirmed", facts
         assert facts["inventory"][sid] == "100/5", facts

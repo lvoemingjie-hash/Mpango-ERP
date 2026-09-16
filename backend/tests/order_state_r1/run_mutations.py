@@ -1,13 +1,18 @@
-"""R1-F1 mutation runner — strict semantic RED only.
+"""R1 mutation runner — strict semantic RED only (F3 contract).
 
-Contract (F1 directive #5):
+Contract (F1 directive #5, tightened by the F3 directive):
 - pristine pass: every oracle AND control must be GREEN on the untouched
   tree BEFORE any mutation runs;
 - anchor uniqueness: the anchor text must occur EXACTLY once;
 - mutated source must remain valid (ast.parse) and importable (compile);
-- a mutation counts ONLY when the run selects exactly the named node,
-  fails with the expected assertion marker and rc==1;
-- rc=4 / collection / setup / environment errors / timeouts are VOID (FAIL);
+- a mutation counts ONLY when the single-node run selects exactly the
+  named node, fails with the expected assertion marker and rc==1;
+- F3: a single-node invocation containing ANY collection, setup or
+  teardown ERROR is VOID (FAIL) — even when the same node also shows a
+  valid assertion failure. Structural pytest error forms rejected:
+  ``ERROR collecting``, ``ERROR at setup/teardown of`` section headers,
+  and short-summary lines beginning ``ERROR ``;
+- rc=4 / environment errors / timeouts are VOID (FAIL);
 - finally: byte+mode restore and a git-clean proof for the touched path.
 """
 from __future__ import annotations
@@ -18,7 +23,7 @@ import os
 import re
 import subprocess
 import sys
-from dataclasses import dataclass
+from typing import NamedTuple
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[2]
@@ -30,8 +35,10 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-@dataclass
-class Mutation:
+class Mutation(NamedTuple):
+    # NamedTuple (not @dataclass): dataclasses resolve string annotations
+    # via sys.modules[cls.__module__], which breaks importlib loaders that
+    # exec this module without registering it (test_classifier.py).
     mid: str
     rel_path: str
     old: str
@@ -91,27 +98,25 @@ MUTATIONS = [
         )  # MUTATION M2: locked-fresh refresh removed
         order = result.scalar_one_or_none()""",
         "tests/order_state_r1/test_freshness.py::test_confirm_after_external_cancel_uses_locked_fresh_state",
-        "DID NOT RAISE",
+        "OSR1-M2-ORACLE",
         "tests/order_state_r1/test_baseline.py::test_confirm_reserves_stock_and_credit_and_posts_no_ledger",
     ),
     m(
         "M3_STALE_CANCEL_RELEASE_DECISION",
         "services/order_command_service.py",
-        """        items = sorted(
-            order.items,
-            key=lambda i: str(i.sellable_unit_id),
-        )
-        stocks = await self._prelock_stocks(items)
+        """        stocks = await self._prelock_reservation_stocks(order)
 
         released = await self._release_reservations(order, stocks)
 
         self._assign_status(order, OrderState.CANCELLED, updated_by)""",
-        """        # MUTATION M3: release decision no longer owned by the command
+        """        stocks = await self._prelock_reservation_stocks(order)
+
+        # MUTATION M3: release decision no longer owned by the command
         released = []
 
         self._assign_status(order, OrderState.CANCELLED, updated_by)""",
         "tests/order_state_r1/test_concurrency.py::test_race_confirm_then_cancel_releases_reservations",
-        "reserved|orphan",
+        "OSR1-M3-ORACLE",
         "tests/order_state_r1/test_baseline.py::test_cancel_from_confirmed_releases_and_keeps_no_ledger",
     ),
     m(
@@ -159,7 +164,7 @@ MUTATIONS = [
             )""",
         """        # MUTATION M6: paid-cancellation fail-closed gate removed""",
         "tests/order_state_r1/test_baseline.py::test_paid_cancel_fail_closed_with_workflow_code",
-        "REFUND_WORKFLOW_NOT_IMPLEMENTED|HTTPStatus.CONFLICT|assert 409",
+        "OSR1-M6-ORACLE",
         "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",
     ),
     m(
@@ -202,32 +207,24 @@ MUTATIONS = [
         """        if False and target_state in COMMAND_OWNED_TARGETS:
             raise InvalidStateTransitionError(""",
         "tests/order_state_r1/test_f1_faces.py::test_generic_transition_refuses_command_owned_targets",
-        "DID NOT RAISE",
+        "OSR1-M8-ORACLE",
         "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",
     ),
     m(
         "M9_FULFILL_NO_PRELOCK",
         "services/order_command_service.py",
-        """        items = sorted(
-            order.items,
-            key=lambda i: str(i.sellable_unit_id),
-        )
-        stocks = await self._prelock_stocks(items)
+        """        stocks = await self._prelock_stocks(items)
 
         inventory = InventoryService()
         for item in items:
             await inventory.deduct_on_fulfillment(""",
-        """        items = sorted(
-            order.items,
-            key=lambda i: str(i.sellable_unit_id),
-        )
-        stocks = {}  # MUTATION M9: no pre-lock before inventory writes
+        """        stocks = {}  # MUTATION M9: no pre-lock before inventory writes
 
         inventory = InventoryService()
         for item in items:
             await inventory.deduct_on_fulfillment(""",
         "tests/order_state_r1/test_prelock.py::test_fulfill_prelocks_all_stocks_before_first_write",
-        "prelock",
+        "OSR1-M9-ORACLE",
         "tests/order_state_r1/test_baseline.py::test_cancel_from_confirmed_releases_and_keeps_no_ledger",
     ),
     m(
@@ -240,7 +237,7 @@ MUTATIONS = [
     {OrderState.CONFIRMED, OrderState.CANCELLED, OrderState.PAID,
      OrderState.FULFILLED, OrderState.RETURNED})  # MUTATION M11""",
         "tests/order_state_r1/test_f1_faces.py::test_generic_refuses_partially_paid_on_confirmed",
-        "DID NOT RAISE",
+        "OSR1-M11-ORACLE",
         "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",
     ),
     m(
@@ -276,10 +273,10 @@ MUTATIONS = [
     m(
         "M13_CROSS_COMMAND_LOCK_ORDER",
         "services/order_command_service.py",
-        """        for sku_id in sorted({str(i.sellable_unit_id) for i in items}):""",
-        """        for sku_id in sorted({str(i.sellable_unit_id) for i in items}, reverse=True):  # MUTATION M13""",
+        """        for sku_id in sorted(codes_by_id):""",
+        """        for sku_id in sorted(codes_by_id, reverse=True):  # MUTATION M13""",
         "tests/order_state_r1/test_prelock.py::test_cancel_prelocks_all_stocks_in_global_order",
-        "cancel prelock wrong/incomplete",
+        "OSR1-M13-ORACLE",
         "tests/order_state_r1/test_baseline.py::test_cancel_from_confirmed_releases_and_keeps_no_ledger",
     ),
     m(
@@ -299,6 +296,70 @@ MUTATIONS = [
         "unmapped",
         "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",
     ),
+    # ------------------------------------------------------------------
+    # F3 mutations: legacy cancel stock derivation + NULL-identity guards
+    # ------------------------------------------------------------------
+    m(
+        "M14_CANCEL_STOCKS_FROM_ORDER_ITEMS",
+        "services/order_command_service.py",
+        """        # F3: the cancel stock set derives from the order's ACTIVE
+        # RESERVATIONS, never from order.items — legacy DRAFT orders (no
+        # reservations) cancel cleanly, and legacy orders WITH reservations
+        # release exactly what was reserved, pre-locked by
+        # reservation.sku_id in the global sorted order.
+        stocks = await self._prelock_reservation_stocks(order)""",
+        """        # MUTATION M14: cancel stock derivation restored from order.items
+        items = sorted(
+            order.items,
+            key=lambda i: str(i.sellable_unit_id),
+        )
+        stocks = await self._prelock_stocks(items)""",
+        "tests/order_state_r1/test_f3_legacy_faces.py::test_legacy_with_reservations_cancel_releases_by_reservation_sku_id",
+        "OSR1-F3-LEGACY-RESV-CANCEL-OK",
+        "tests/order_state_r1/test_f3_legacy_faces.py::test_legacy_draft_cancel_pure_status_write",
+    ),
+    m(
+        "M15_FULFILL_NULL_IDENTITY_GUARD_BYPASSED",
+        "services/order_command_service.py",
+        """        missing = [i for i in items if i.sellable_unit_id is None]
+        if missing:
+            raise _conflict(
+                "ORDER_ITEM_SELLABLE_ID_REQUIRED",
+                f"Order item '{missing[0].id}' requires explicit legacy "
+                "mapping before fulfillment",
+            )""",
+        """        missing = [i for i in items if i.sellable_unit_id is None]
+        if False and missing:  # MUTATION M15: fulfill NULL-identity guard bypassed
+            raise _conflict(
+                "ORDER_ITEM_SELLABLE_ID_REQUIRED",
+                f"Order item '{missing[0].id}' requires explicit legacy "
+                "mapping before fulfillment",
+            )""",
+        "tests/order_state_r1/test_f3_legacy_faces.py::test_fulfill_null_identity_controlled_409",
+        "OSR1-F3-FULFILL-NULL-409",
+        "tests/order_state_r1/test_f3_legacy_faces.py::test_return_null_identity_controlled_409",
+    ),
+    m(
+        "M16_RETURN_NULL_IDENTITY_GUARD_BYPASSED",
+        "services/order_command_service.py",
+        """        missing = [i for i in items if i.sellable_unit_id is None]
+        if missing:
+            raise _conflict(
+                "ORDER_ITEM_SELLABLE_ID_REQUIRED",
+                f"Order item '{missing[0].id}' requires explicit legacy "
+                "mapping before return restock",
+            )""",
+        """        missing = [i for i in items if i.sellable_unit_id is None]
+        if False and missing:  # MUTATION M16: return NULL-identity guard bypassed
+            raise _conflict(
+                "ORDER_ITEM_SELLABLE_ID_REQUIRED",
+                f"Order item '{missing[0].id}' requires explicit legacy "
+                "mapping before return restock",
+            )""",
+        "tests/order_state_r1/test_f3_legacy_faces.py::test_return_null_identity_controlled_409",
+        "OSR1-F3-RETURN-NULL-409",
+        "tests/order_state_r1/test_f3_legacy_faces.py::test_fulfill_null_identity_controlled_409",
+    ),
 ]
 
 
@@ -312,25 +373,24 @@ def run_node(node: str, timeout: float = 600.0) -> tuple[int, str]:
 
 
 def classify(rc: int, out: str, node: str, marker: str) -> str:
-    """F2 contract: ONLY rc==1 with exactly the named FAILED node, the
-    named assertion marker present, and ZERO setup/teardown/collection
-    errors counts as a semantic RED."""
+    """F3 contract: ONLY rc==1 with exactly the named FAILED node, the
+    named assertion marker present, and ZERO collection/setup/teardown
+    ERRORs anywhere in the single-node invocation counts as a semantic
+    RED. Any pytest ERROR form voids the run — even when the named node
+    also shows a valid assertion failure."""
     if rc == 0:
         return "NOT_RED"
     if rc != 1:
         return f"VOID_RC_{rc}"
     if "no tests ran" in out or "ERROR collecting" in out:
         return "VOID_COLLECTION"
-    # Zero-error contract applies to the ORACLE NODE's own run: any
-    # setup/teardown ERROR attached to the oracle node itself voids the
-    # mutation; unrelated fixture-cleanup noise elsewhere does not.
-    node_errors = re.findall(
-        r"ERROR at (?:setup|teardown) of (\S+)", out)
-    if any(n.rstrip("0123456789") .startswith(node.split("::")[0]) and
-           n == node for n in node_errors) or node in node_errors:
-        return "VOID_TEARDOWN_OR_SETUP_ERROR"
-    if "ERROR collecting" in out:
-        return "VOID_COLLECTION"
+    # F3 zero-error contract: the whole single-node invocation must be
+    # error-free. Structural pytest error forms: setup/teardown ERROR
+    # section headers and short-summary lines beginning "ERROR ".
+    if re.search(r"ERROR at (?:setup|teardown) of \S+", out):
+        return "VOID_SETUP_OR_TEARDOWN_ERROR"
+    if re.search(r"^ERROR \S", out, re.M):
+        return "VOID_ERROR_SUMMARY"
     failed = re.findall(r"^FAILED (\S+)", out, re.M)
     if failed != [node]:
         return f"WRONG_NODE:{failed}"

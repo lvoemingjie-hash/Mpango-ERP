@@ -419,3 +419,141 @@ final HEAD/tree are recorded in the handback.
 
 Final HEAD: 799d261bf3636e073a8b3cfd4439a956b67d6f22
 Final tree: 89d07b7c31c885a3a7ce64988b84b7d1ef1b3e18
+
+# F3 ADDENDUM (append-only) — MPANGO_ORDER_STATE_AUTHORITY_R1_IMPLEMENTATION_F3
+
+Parent: 998a549f (REQUIRED_PARENT honored); linear commits on the same
+branch; no amend/rebase, not pushed, independent review NOT started.
+Claim ceiling: F3_CANDIDATE_READY_FOR_CODEXL_REVIEW_ONLY.
+
+## Codex-L source disposition (accepted for bounded completion)
+
+- cancel derives its stock set from the order's ACTIVE reservations
+  (`_prelock_reservation_stocks`), locked by reservation.sku_id in the
+  same global sorted-sku_id order, before `_release_reservations`;
+- a legacy DRAFT order (no active reservations) cancels as a PURE status
+  transition — zero reservation/stock side effects;
+- a legacy order WITH reservations still releases exactly what was
+  reserved, via reservation.sku_id (order.items identities are never
+  consulted for the cancel stock set);
+- fulfill/return reject NULL sellable identity with a controlled 409
+  ORDER_ITEM_SELLABLE_ID_REQUIRED BEFORE any inventory write (fulfill)
+  and BEFORE the return-ledger reversal (return).
+Credit accounting, receivables, payments, migrations, pricing, SKU
+packaging and notification behavior are UNCHANGED.
+
+## F3 test faces (backend/tests/order_state_r1/test_f3_legacy_faces.py)
+
+Four real-PG faces, all GREEN on the F3 product bytes:
+
+1. `test_legacy_draft_cancel_pure_status_write` — legacy DRAFT (NULL
+   sellable_unit_id) cancels 200 -> CANCELLED; no reservations; stock
+   untouched 100/0; the ENTIRE legacy order-item snapshot captured
+   immediately before cancel is byte-equal afterwards
+   (OSR1-F3-DRAFT-SNAPSHOT).
+2. `test_legacy_with_reservations_cancel_releases_by_reservation_sku_id`
+   — confirm reserves with the REAL sku_id, then the item degrades to
+   legacy; cancel releases the reservation and restores 100/0; the
+   entire legacy order-item snapshot before cancel equals the snapshot
+   after (OSR1-F3-RESV-SNAPSHOT).
+3. `test_fulfill_null_identity_controlled_409` — paid order degraded to
+   NULL identity: fulfill returns the CONTROLLED 409
+   ORDER_ITEM_SELLABLE_ID_REQUIRED, never ValueError/500
+   (OSR1-F3-FULFILL-NULL-409).
+4. `test_return_null_identity_controlled_409` — fulfilled order degraded
+   to NULL identity: return returns the CONTROLLED 409, never
+   ValueError/500 (OSR1-F3-RETURN-NULL-409).
+
+## Mutation classifier completed (run_mutations.py)
+
+F3 contract: ONLY rc==1 + exactly the named FAILED node + named marker +
+ZERO collection/setup/teardown ERRORs anywhere in the single-node
+invocation counts as SEMANTIC_RED. ANY ERROR form voids the run —
+`ERROR collecting`, `ERROR at setup/teardown of` section headers, and
+short-summary lines beginning `ERROR ` — even when the same run also
+shows a valid assertion failure (the F2 rule voided only oracle-node
+errors). `test_classifier.py`: 10/10 GREEN (pure, no DB), including the
+failure-plus-unrelated-teardown-error vector and a realistic pytest
+FAILURES+ERRORS+short-summary vector. The runner's Mutation record is a
+NamedTuple (dataclass string-annotation resolution breaks unregistered
+importlib loads).
+
+Broad markers replaced with unique oracle labels on the affected
+assertions (assertion strength preserved or strengthened): M2
+OSR1-M2-ORACLE, M3 OSR1-M3-ORACLE, M6 OSR1-M6-ORACLE, M8 OSR1-M8-ORACLE,
+M9 OSR1-M9-ORACLE, M11 OSR1-M11-ORACLE, M13 OSR1-M13-ORACLE. `DID NOT
+RAISE`, `reserved|orphan`, `prelock` and the generic 409 alternations no
+longer gate any mutation.
+
+Anchors re-based on the F3 product shape (anchor count == 1 verified for
+all 16): M3 now targets the cancel reservation-derived block; M9 targets
+the F3 fulfill prelock site; M13 now reverses the reservation-derived
+cancel lock order (the old `_prelock_stocks` cancel site no longer
+exists — mutating it could no longer reach the M13 oracle).
+
+## F3 named mutations (added, no renumber reuse)
+
+- M14_CANCEL_STOCKS_FROM_ORDER_ITEMS — restores cancel stock derivation
+  from order.items; oracle
+  `test_f3_legacy_faces.py::test_legacy_with_reservations_cancel_releases_by_reservation_sku_id`
+  must go RED on OSR1-F3-LEGACY-RESV-CANCEL-OK.
+- M15_FULFILL_NULL_IDENTITY_GUARD_BYPASSED — oracle
+  `test_fulfill_null_identity_controlled_409` must go RED on
+  OSR1-F3-FULFILL-NULL-409.
+- M16_RETURN_NULL_IDENTITY_GUARD_BYPASSED — oracle
+  `test_return_null_identity_controlled_409` must go RED on
+  OSR1-F3-RETURN-NULL-409.
+Every mutation requires: pristine oracle GREEN, anchor count exactly one,
+mutated source parses+compiles, rc=1, exact node, unique marker, no
+pytest ERROR, byte+mode-identical restoration, control GREEN. The
+complete 16-mutation run executes ONLY against the linear checkpoint
+commit (never against uncommitted product bytes); its result matrix is
+appended to this section after execution.
+
+## Lock-order documentation synced to the actual implementation
+
+`services/order_command_service.py` module docstring and
+`order-state-r1/LOCK-ORDER.md` now state the real discipline: globally
+sorted UUID (sku_id) stock locks, deduplicated, before any inventory
+write; cancel derives refs from active reservations; the historical
+cancel inverse order (reservations before stocks) is closed; the
+nonexistent `test_lock_order_matrix.py` reference and the old
+sku-code/per-item claims are removed. The static guard
+`test_all_commands_share_prelock_strategy` now enforces the F2/F3
+two-helper funnel: `_prelock_stocks` (confirm/fulfill/return) plus
+`_prelock_reservation_stocks` (cancel, exactly one call site), with
+every `_locked_stock_by_sku_id` call confined to the two helpers.
+
+## Focused verification (author-executed, task-local PG16/Redis)
+
+Environment: throwaway containers osr1-pg16 (127.0.0.1:17771) and
+osr1-redis (127.0.0.1:17773); stack pytest 9.1.1 / pytest-asyncio 1.4.0
+/ anyio 4.12.1 / hypothesis 6.168.0 / SQLAlchemy 2.0.45 / Python 3.12.3.
+Evidence: `scratch/MPANGO_ORDER_STATE_AUTHORITY_R1_IMPLEMENTATION/evidence/F3/`.
+
+1. `test_classifier.py` (pure): 10 passed.
+2. `test_static_guards.py` + `test_classifier.py`: 17 passed.
+3. `test_f3_legacy_faces.py` (real PG): 4 passed.
+4. Full `tests/order_state_r1/` MINUS the three named
+   CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED tests: 52 passed,
+   3 deselected, rc=0
+   (`2026-09-16T0816Z-f3-r1-suite-focused.txt`).
+
+## Governance
+
+`harness-governance/inventory/inventory.json` node ORDER-STATE-R1-001:
+anchors re-pointed at the F3 lines (command sites, guards, cancel
+reservation-stocks helper), the two new test files added, mutation
+mapping extended to MUT-ORDER-STATE-R1-M1-M16, notes record the F3
+legacy-face extension. Structural gate: re-run against the checkpoint
+commit with baseline REQUIRED_PARENT; result appended below.
+
+## STOP conditions honored
+
+- Credit product code UNCHANGED; no migration; no aggregate-ownership
+  inference; the three credit REDs are NOT waived and were NOT re-run
+  (excluded from every authorized run).
+- BACKEND_FULL_SUITE=NOT_RUN this round; no full-suite claim derives
+  from the pre-799d F2 run.
+- INDEPENDENT_REVIEW=NOT_STARTED.
+CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED stands.

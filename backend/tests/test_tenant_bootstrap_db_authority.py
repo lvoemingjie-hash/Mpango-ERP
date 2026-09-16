@@ -2167,10 +2167,38 @@ def test_mutation_apply_gate_refuses_unparseable_mutation(tmp_path):
     module.assert_mutation_is_semantic(good, {"name": "SYNTHETIC"})
 
 
+def _candidate_source(rel_path: str) -> str:
+    """Pristine candidate source text for mutation-declaration checks.
+
+    A mutation run has already patched the working tree, so declarations must
+    be checked against the COMMITTED candidate (git HEAD) — the exact bytes
+    the declarations were written against, and the bytes the harness restores
+    afterwards.  Falls back to the working tree when git is unavailable (for
+    example in an exported sandbox), where no mutation is active anyway.
+    """
+    import subprocess
+
+    try:
+        return subprocess.run(
+            ["git", "show", f"HEAD:{rel_path}"],
+            cwd=BACKEND_DIR, capture_output=True, text=True, check=True,
+        ).stdout
+    except Exception:  # noqa: BLE001 - non-git environments keep working
+        with open(
+            os.path.join(os.path.dirname(BACKEND_DIR), rel_path),
+            encoding="utf-8",
+        ) as handle:
+            return handle.read()
+
+
 def test_static_every_mutation_is_parseable_and_fully_declared():
     """R1-R4: every declared mutation must (a) anchor exactly once in the
-    current candidate source, (b) leave that source PARSEABLE, and (c) declare
-    a non-empty required named-RED set plus an explicit tolerated set."""
+    committed candidate source, (b) leave that source PARSEABLE, and (c)
+    declare a non-empty required named-RED set plus an explicit tolerated set.
+
+    Read against HEAD (not the working tree) so the check is invariant while a
+    mutation run has the candidate source patched.
+    """
     import ast as _ast
 
     module = _load_harness_module("v3r4_mutation_declarations")
@@ -2186,14 +2214,12 @@ def test_static_every_mutation_is_parseable_and_fully_declared():
             mutation["tolerated_red"]
         ), f"{name} lists a node as both required and tolerated"
 
-        target = os.path.join(
-            BACKEND_DIR, "scripts",
+        rel_path = "backend/scripts/" + (
             "bootstrap_tenant_schema.py"
             if mutation["file"] == "bootstrap"
-            else "provision_runtime_db_roles.py",
+            else "provision_runtime_db_roles.py"
         )
-        with open(target, encoding="utf-8") as handle:
-            text = handle.read()
+        text = _candidate_source(rel_path)
         eol = "\r\n" if "\r\n" in text else "\n"
 
         def _to_eol(sample: str, eol: str = eol) -> str:
@@ -2201,7 +2227,7 @@ def test_static_every_mutation_is_parseable_and_fully_declared():
 
         anchor = _to_eol(mutation["anchor"])
         assert text.count(anchor) == 1, (
-            f"{name} anchor does not match exactly once in {target}"
+            f"{name} anchor does not match exactly once in {rel_path}"
         )
         mutated = text.replace(anchor, _to_eol(mutation["replacement"]), 1)
         assert mutated != text, f"{name} is a no-op"
@@ -2209,7 +2235,7 @@ def test_static_every_mutation_is_parseable_and_fully_declared():
             _ast.parse(mutated)
         except SyntaxError as exc:  # pragma: no cover - regression guard
             pytest.fail(
-                f"{name} leaves {target} unparseable "
+                f"{name} leaves {rel_path} unparseable "
                 f"(line {exc.lineno}: {exc.msg}) — broken tree, not a "
                 "semantic mutation"
             )

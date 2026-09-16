@@ -211,21 +211,16 @@ MUTATIONS = [
             SUITE + "test_static_owner_fallback_removed_and_"
             "authority_derived_from_db_owner",
         ],
-        "tolerated_red": [
-            # MM2 removes the ownership precondition in the bootstrap script,
-            # which several other fail-closed statics/counterexamples also
-            # assert; they may go RED and are declared here.
-            SUITE + "test_bootstrap_script_never_replaces_or_reowns_public_"
-            "guard",
-            SUITE + "test_bootstrap_script_keeps_fail_closed_precondition_"
-            "semantics",
-            SUITE + "test_static_identifier_validation_wired_in_all_modes",
-            SUITE + "test_runtime_with_public_create_refused_zero_tenant",
-        ],
+        "tolerated_red": [],
         "rationale": (
             "restoring the connected-role owner fallback lets the "
             "single-role topology bootstrap silently — the single-role "
-            "refusal and the no-fallback static must catch it"
+            "refusal and the no-fallback static must catch it.  R1-R4: the "
+            "replacement is now valid Python (it previously carried a stray "
+            "third double-quote, so the mutated module failed to import and "
+            "six import-error nodes leaked into MM2's undeclared RED set); "
+            "with the repaired mutation the observed RED set is exactly the "
+            "two required nodes"
         ),
     },
     {

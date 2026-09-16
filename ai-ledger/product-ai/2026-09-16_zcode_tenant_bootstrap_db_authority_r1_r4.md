@@ -13,6 +13,28 @@
 - VERIFICATION_TIER=V3_MERGE_CRITICAL_DATA_INTEGRITY_SECURITY
 - CLAIM_CEILING=AUTHOR_IMPLEMENTATION_AND_TASK_OWNED_V3_EVIDENCE_ONLY
 - EVIDENCE_DIR=ai-ledger/product-ai/evidence/2026-09-16_zcode_tenant_bootstrap_db_authority_r1_r4/
+- SUCCESSOR_COMMIT=efe70792246bca48ee5277b33c4476313e6c14e8 (`fix(harness): MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R4 …`, normal hooks, no --no-verify, no amend/rebase/force; reached through a6b22f83 → d6747819 → b89c3276 → efe70792, all normal successors)
+- EVIDENCE_COMMIT=d3cc4570bcf5364db121404b6ce9a779fabb91e1 (append-only R1-R4 evidence pack; R1, R1-R1, R1-R2 and R1-R3 evidence untouched)
+- SUCCESSOR_DIGESTS (bootstrap / grants / v3 suite / harness; working-tree CRLF vs committed-blob LF, grouped):
+  - bootstrap wt=fc0db066 66b44f69 c96463cb 0fea076a 69f90f88 dc4c1885 c1d2abd3 524a4818
+  - bootstrap blob=3301a55b a995359c 23da826c 566d821d 17307471 5fbb5c8c d3278e12 74aeff6d
+  - grants wt=b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764
+  - grants blob=25330f40 794f08a2 4213c82f d9fbd3a4 eafa4719 7ed866a4 5761613d 193f4861
+  - v3_suite wt=cfee4f95 a14f5f14 91f47235 cd5bc1c1 34b43709 624cd6df 6d14d0cf d6012854
+  - v3_suite blob=847d99a2 e736dbf2 1c583cac 3d272c3f 6fec4c83 c2f356b3 b96efd20 3b457e90
+  - harness wt=b3580402 a19b9e9e 190e686d 0e1b69dc 062008a5 d161e3c8 5a8de9d7 9d351fce
+  - harness blob=b3580402 a19b9e9e 190e686d 0e1b69dc 062008a5 d161e3c8 5a8de9d7 9d351fce
+  - NOTE: the bootstrap and grants digests are byte-identical to R1-R3 — the product logic under test did not change in this round.
+- EVIDENCE_DIGESTS (both forms):
+  - harness_report.json wt=f18864e2 233100fb 4b314c97 3484d3b0 3a19ab18 9ac8df7b 30fc6311 625af845
+  - harness_report.json blob=19be1839 9ec08c3f a46f1c64 2bf51cee 5d860e6a 68be0003 4024b021 f1e8de05
+  - EVIDENCE_NORMALIZATION_AUDIT.txt wt=ea102579 937b20fb 524edb5d 4dcab16b 4196a7aa 402aec62 ca6add8a 88d392df
+  - EVIDENCE_NORMALIZATION_AUDIT.txt blob=a6d86b8c 70cec83a 4b3a6a29 37fe3bae b30528e6 66b71ab2 e6f01ccc aed792ad
+  - README.md wt=blob=176bde7b b4bf6f3d 62396bed 18b031f7 17ab6307 10f9c8ff f3b25e85 a7b3f26a
+  - the other 20 harness-generated files: full as-generated + wt + blob table in EVIDENCE_NORMALIZATION_AUDIT.txt
+- REPORT_AS_GENERATED_DIGEST=8baa38d4 3004dfc3 39b595e0 ddc4e23c 01258834 1d56bd4a b6cf975c 22d6bf64 (captured before any git command; the committed working-tree file equals it plus exactly one trailing newline — verified per file in the audit)
+- FORMAL_INVOCATIONS=1 (full gate set, no --skip flags); PRE_FORMAL_REHEARSALS=3 (partial, scratch dirs outside the repository, non-evidence)
+- HOOK_NORMALIZATION=no bypass; the normal `trailing-whitespace`/`end-of-file-fixer` hooks normalized the generated text evidence; the audit proves per file that the change is semantic-free
 - NEXT_GATE=`KILO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R4_SOURCE_AND_REAL_PG16_REVIEW`
 
 ## Trigger: Kimi R1-R3 review — NEED CHANGES (P1 control plane, no product RED)

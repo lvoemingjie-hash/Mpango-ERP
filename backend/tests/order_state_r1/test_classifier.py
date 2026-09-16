@@ -7,6 +7,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 
 def _load_classify():
     path = Path(__file__).parent / "run_mutations.py"
@@ -112,3 +114,56 @@ def test_marker_must_be_present():
     classify = _load_classify()
     out = f"FAILED {NODE} - AssertionError: unrelated"
     assert classify(1, out, NODE, "CREDIT HOLD") == "MARKER_MISSING"
+
+
+# ---------------------------------------------------------------------------
+# F3-R1 pure regressions: the F3 oracle attribution helper must convert
+# ONLY the exact NULL-identity UUID failure; everything else propagates
+# untouched and never gains an OSR1 marker.
+# ---------------------------------------------------------------------------
+
+_UUID_NONE_TEXT = "badly formed hexadecimal UUID string"
+
+
+def _load_oracle_helper():
+    from tests.order_state_r1.test_f3_legacy_faces import (
+        null_identity_failure_or_raise,
+    )
+    return null_identity_failure_or_raise
+
+
+def test_helper_converts_exact_null_identity_valueerror_with_marker():
+    helper = _load_oracle_helper()
+    err = helper("cancel", "OSR1-F3-LEGACY-RESV-CANCEL-OK",
+                 ValueError(_UUID_NONE_TEXT))
+    assert isinstance(err, AssertionError)
+    assert "OSR1-F3-LEGACY-RESV-CANCEL-OK" in str(err)
+    assert "cancel" in str(err)
+
+
+def test_helper_reraises_valueerror_with_other_text_untouched():
+    helper = _load_oracle_helper()
+    original = ValueError("invalid literal for int() with base 10: 'x'")
+    with pytest.raises(ValueError) as caught:
+        helper("fulfill", "OSR1-F3-FULFILL-NULL-409", original)
+    assert caught.value is original
+    assert "OSR1" not in str(caught.value)
+
+
+def test_helper_reraises_non_valueerror_untouched():
+    helper = _load_oracle_helper()
+    boom = RuntimeError("connection reset by peer")
+    with pytest.raises(RuntimeError) as caught:
+        helper("return", "OSR1-F3-RETURN-NULL-409", boom)
+    assert caught.value is boom
+    assert "OSR1" not in str(caught.value)
+
+
+def test_f3_oracle_file_has_no_broad_exception_capture():
+    """The P1 fix must hold structurally: no broad handler may reappear
+    in the F3 oracle file (a broad catch would let ANY runtime fault
+    gain an OSR1 marker and be miscounted as a semantic RED)."""
+    src = (Path(__file__).parent / "test_f3_legacy_faces.py").read_text(
+        encoding="utf-8")
+    assert "except Exception" not in src
+    assert "except BaseException" not in src

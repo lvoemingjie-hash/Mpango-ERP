@@ -25,6 +25,32 @@ from tests.order_state_r1.support import (
 
 pytestmark = pytest.mark.asyncio
 
+# The EXACT failure text of CPython's uuid.UUID("None") — the one
+# deterministic ValueError that mutations M14/M15/M16 produce when a NULL
+# sellable identity reaches the stock-lock helper.
+_UUID_NONE_VALUEERROR_TEXT = "badly formed hexadecimal UUID string"
+
+
+def null_identity_failure_or_raise(
+    action: str, marker: str, exc: BaseException,
+) -> AssertionError:
+    """Pure attribution contract for the F3 HTTP oracles (F3-R1).
+
+    ONLY the exact NULL-identity conversion failure — an exception whose
+    type is precisely ``ValueError`` (no subclass) and whose text equals
+    ``str(uuid.UUID("None"))``'s message — may be relabeled as the oracle
+    marker. Any other ValueError (different text) or any non-ValueError
+    propagates UNCHANGED and never gains a marker. The relabeled message
+    carries only the fixed marker, the action name and a fixed
+    classification — never the raw exception text, paths, SQL,
+    connection info or environment values.
+    """
+    if type(exc) is ValueError and str(exc) == _UUID_NONE_VALUEERROR_TEXT:
+        return AssertionError(
+            f"{marker}: {action} hit a NULL sellable identity and failed "
+            "as an uncontrolled conversion instead of the controlled 409")
+    raise exc
+
 
 async def _make_legacy(r1_client, token, db, pool, reg, *, confirm_first: bool):
     """Create a real order then degrade its item to legacy shape
@@ -99,10 +125,9 @@ async def test_legacy_with_reservations_cancel_releases_by_reservation_sku_id(
 
     try:
         resp = await http_action(r1_client, token, oid, "cancel")
-    except Exception as exc:  # uncontrolled failure escaped the ASGI app
-        raise AssertionError(
-            f"OSR1-F3-LEGACY-RESV-CANCEL-OK cancel raised an uncontrolled "
-            f"transport exception {type(exc).__name__}: {exc}") from exc
+    except ValueError as exc:  # ONLY the exact NULL-identity failure maps
+        raise null_identity_failure_or_raise(
+            "cancel", "OSR1-F3-LEGACY-RESV-CANCEL-OK", exc) from exc
     assert resp.status_code == HTTPStatus.OK, (
         f"OSR1-F3-LEGACY-RESV-CANCEL-OK expected 200, got "
         f"{resp.status_code}: {resp.text}")
@@ -158,10 +183,9 @@ async def test_fulfill_null_identity_controlled_409(
 
     try:
         resp = await http_action(r1_client, token, oid, "fulfill")
-    except Exception as exc:  # uncontrolled failure escaped the ASGI app
-        raise AssertionError(
-            f"OSR1-F3-FULFILL-NULL-409 fulfill raised an uncontrolled "
-            f"transport exception {type(exc).__name__}: {exc}") from exc
+    except ValueError as exc:  # ONLY the exact NULL-identity failure maps
+        raise null_identity_failure_or_raise(
+            "fulfill", "OSR1-F3-FULFILL-NULL-409", exc) from exc
     assert resp.status_code == HTTPStatus.CONFLICT, (
         f"OSR1-F3-FULFILL-NULL-409 expected controlled 409, got "
         f"{resp.status_code}: {resp.text}")
@@ -201,10 +225,9 @@ async def test_return_null_identity_controlled_409(
 
     try:
         resp = await http_action(r1_client, token, oid, "return")
-    except Exception as exc:  # uncontrolled failure escaped the ASGI app
-        raise AssertionError(
-            f"OSR1-F3-RETURN-NULL-409 return raised an uncontrolled "
-            f"transport exception {type(exc).__name__}: {exc}") from exc
+    except ValueError as exc:  # ONLY the exact NULL-identity failure maps
+        raise null_identity_failure_or_raise(
+            "return", "OSR1-F3-RETURN-NULL-409", exc) from exc
     assert resp.status_code == HTTPStatus.CONFLICT, (
         f"OSR1-F3-RETURN-NULL-409 expected controlled 409, got "
         f"{resp.status_code}: {resp.text}")

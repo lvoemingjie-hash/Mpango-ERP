@@ -1,0 +1,805 @@
+{
+  "task": "MPANGO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R4",
+  "authorization": "CTO-AUTH-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R4-2026-09-16",
+  "implementation_candidate_commit": "efe70792 246bca48 ee5277b3 3c447631 3e6c14e8",
+  "r1_r3_predecessor_commit": "a21878c1 69d97e4c 6fa837cd 19dd9cce d7de71e2",
+  "r1_r2_predecessor_commit": "8951112b f126d706 43dc6488 2c8bbee9 11321928",
+  "historical_regression_base_commit": "0a16ed70 7ad898e9 924c26b2 80971487 08677af9",
+  "started_at": "2026-09-16T09:41:56.591967+00:00",
+  "image": "postgres:16.15",
+  "second_image": "postgres:16.15-alpine",
+  "container": "mpango-v3auth3-8a69618621",
+  "second_container": "mpango-v3auth3b-17c4f22253",
+  "port": 61145,
+  "second_port": 61146,
+  "phases": {
+    "alembic_heads": {
+      "v3_ok": "038_catalog_identity_vertical_slice",
+      "v3_nofunc": "038_catalog_identity_vertical_slice",
+      "v3_badsig": "038_catalog_identity_vertical_slice",
+      "v3_wrongown": "038_catalog_identity_vertical_slice",
+      "v3_nopriv": "038_catalog_identity_vertical_slice",
+      "v3_verify_wrongown": "038_catalog_identity_vertical_slice"
+    },
+    "suite_runs": [
+      {
+        "scenario": "v3_ok",
+        "label": "v3_ok",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_ok.txt"
+      },
+      {
+        "scenario": "v3_nofunc",
+        "label": "v3_nofunc",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_nofunc.txt"
+      },
+      {
+        "scenario": "v3_badsig",
+        "label": "v3_badsig",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_badsig.txt"
+      },
+      {
+        "scenario": "v3_wrongown",
+        "label": "v3_wrongown",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_wrongown.txt"
+      },
+      {
+        "scenario": "v3_nopriv",
+        "label": "v3_nopriv",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_nopriv.txt"
+      },
+      {
+        "scenario": "v3_verify_wrongown",
+        "label": "v3_verify_wrongown",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_verify_wrongown.txt"
+      }
+    ],
+    "mutations": [
+      {
+        "mutation": "MM1",
+        "title": "commit_type_verify_restored",
+        "scenario": "v3_verify_wrongown",
+        "rationale": "restoring a committing DDL probe inside --verify must be caught by the pure-catalog static semantic assertion. The behavioral identity proof additionally shows the probe CANNOT mutate the guard under the minimum-grant topology: PostgreSQL refuses CREATE OR REPLACE even for the function's OWNER without CREATE on schema public, which the minimum grants never confer \u2014 a second, independent structural defense",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only"
+        ],
+        "tolerated_red": [],
+        "mutated_file": "grants",
+        "mutated_sha256": "cb8ccd9e 2fc6f7be c39f409b 23560e5a c7db1385 e693b558 5e084810 a0c6547b",
+        "mutated_parses": true,
+        "run": {
+          "scenario": "v3_verify_wrongown",
+          "label": "mutation_MM1",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM1.txt"
+        },
+        "red_nodes": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only"
+        ],
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only"
+        ],
+        "restored_sha256": "b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM2",
+        "title": "owner_fallback_restored",
+        "scenario": "v3_ok",
+        "rationale": "restoring the connected-role owner fallback lets the single-role topology bootstrap silently \u2014 the single-role refusal and the no-fallback static must catch it.  R1-R4: the replacement is now valid Python (it previously carried a stray third double-quote, so the mutated module failed to import and six import-error nodes leaked into MM2's undeclared RED set); with the repaired mutation the observed RED set is exactly the two required nodes",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner"
+        ],
+        "tolerated_red": [],
+        "mutated_file": "bootstrap",
+        "mutated_sha256": "0994b1fc 686a6ff4 e91e23c6 70084bf3 791ab3da 29103742 ab38642d 6bef45f0",
+        "mutated_parses": true,
+        "run": {
+          "scenario": "v3_ok",
+          "label": "mutation_MM2",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant",
+            "tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM2.txt"
+        },
+        "red_nodes": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner"
+        ],
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner"
+        ],
+        "restored_sha256": "fc0db066 66b44f69 c96463cb 0fea076a 69f90f88 dc4c1885 c1d2abd3 524a4818",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM3",
+        "title": "identifier_validation_bypassed",
+        "scenario": "v3_verify_wrongown",
+        "rationale": "bypassing identifier validation lets the quote/semicolon/comment payload reach CREATE ROLE rendering and execute \u2014 the injection counterexample and the wiring static must catch it",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_injection_identifiers_rejected_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes"
+        ],
+        "tolerated_red": [],
+        "mutated_file": "grants",
+        "mutated_sha256": "b8616405 59c42bb2 e1df4138 3ddef57d 60c9e632 ca7733f9 aa47b9b6 857eb54e",
+        "mutated_parses": true,
+        "run": {
+          "scenario": "v3_verify_wrongown",
+          "label": "mutation_MM3",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_injection_identifiers_rejected_zero_writes",
+            "tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM3.txt"
+        },
+        "red_nodes": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_injection_identifiers_rejected_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes"
+        ],
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_injection_identifiers_rejected_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes"
+        ],
+        "restored_sha256": "b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM4",
+        "title": "cluster_binding_bypassed",
+        "scenario": "v3_ok",
+        "rationale": "bypassing the binding preflight lets a cross-cluster admin URL receive role/database writes \u2014 the cross-cluster counterexample and the binding-order static must catch it",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes"
+        ],
+        "tolerated_red": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes"
+        ],
+        "mutated_file": "grants",
+        "mutated_sha256": "6192921d 8c785c06 0f2e9107 38378a38 47ac6038 3ff0f572 7b745035 9fe128c2",
+        "mutated_parses": true,
+        "run": {
+          "scenario": "v3_ok",
+          "label": "mutation_MM4",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+            "tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes",
+            "tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM4.txt"
+        },
+        "red_nodes": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes"
+        ],
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes"
+        ],
+        "restored_sha256": "b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM5a",
+        "title": "existing_database_refusal_deleted",
+        "scenario": "v3_ok",
+        "rationale": "deleting the existing-target-database refusal lets --provision tolerate wrong credentials against an established deployment (the state falls through to the credential probe, which is a DIFFERENT guard, so the refusal message changes) \u2014 the wrong-password counterexample's 'is not fresh' semantic assertion must catch it",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_wrong_password_provision_refused_zero_writes"
+        ],
+        "tolerated_red": [],
+        "mutated_file": "grants",
+        "mutated_sha256": "da1eb51d 4f95e05d 950d50df ca439fab bb8bf4d5 2dfb4aa7 7cf0ff6a 5884fd1e",
+        "mutated_parses": true,
+        "run": {
+          "scenario": "v3_ok",
+          "label": "mutation_MM5a",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_wrong_password_provision_refused_zero_writes"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM5a.txt"
+        },
+        "red_nodes": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_wrong_password_provision_refused_zero_writes"
+        ],
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_wrong_password_provision_refused_zero_writes"
+        ],
+        "restored_sha256": "b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM5b",
+        "title": "partial_role_set_refusal_deleted",
+        "scenario": "v3_ok",
+        "rationale": "deleting the partial-role-set refusal lets a half-created deployment fall through to the credential probe instead of refusing as 'not fresh (partial role set ...)' \u2014 the partial-exists counterexample's 'is not fresh' and 'already exists' semantic assertions must catch it",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes"
+        ],
+        "tolerated_red": [],
+        "mutated_file": "grants",
+        "mutated_sha256": "f1f64351 9d8fecc6 fb0f66c0 a0ca35ca 909f7bdf df7aa490 493de81f bfa25c53",
+        "mutated_parses": true,
+        "run": {
+          "scenario": "v3_ok",
+          "label": "mutation_MM5b",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM5b.txt"
+        },
+        "red_nodes": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes"
+        ],
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes"
+        ],
+        "restored_sha256": "b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM6",
+        "title": "netloc_leak_restored",
+        "scenario": "v3_ok",
+        "rationale": "restoring netloc rendering puts username:password@host into the refusal diagnostic \u2014 the credential-hygiene assertions of the cross-cluster counterexamples must catch it",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_first_deploy_cross_cluster_refused_zero_writes"
+        ],
+        "tolerated_red": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_admin_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_endpoint_mismatch_refused_zero_connections"
+        ],
+        "mutated_file": "grants",
+        "mutated_sha256": "246556cf c4d1cc67 250e26c9 122e8f85 c11d1cd6 2601d07e 034313b1 c694dd3f",
+        "mutated_parses": true,
+        "run": {
+          "scenario": "v3_ok",
+          "label": "mutation_MM6",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+            "tests/test_tenant_bootstrap_db_authority.py::test_first_deploy_cross_cluster_refused_zero_writes",
+            "tests/test_tenant_bootstrap_db_authority.py::test_layer1_admin_endpoint_mismatch_refused_zero_connections",
+            "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_endpoint_mismatch_refused_zero_connections",
+            "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_endpoint_mismatch_refused_zero_connections"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM6.txt"
+        },
+        "red_nodes": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_first_deploy_cross_cluster_refused_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_admin_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_endpoint_mismatch_refused_zero_connections"
+        ],
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_first_deploy_cross_cluster_refused_zero_writes"
+        ],
+        "restored_sha256": "b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM7",
+        "title": "public_create_check_deleted",
+        "scenario": "v3_ok",
+        "rationale": "deleting the runtime no-CREATE-on-public precondition lets a runtime that can write into public proceed to bootstrap \u2014 the zero-tenant counterexample and the fail-closed static must catch it",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_runtime_with_public_create_refused_zero_tenant",
+          "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics"
+        ],
+        "tolerated_red": [],
+        "mutated_file": "bootstrap",
+        "mutated_sha256": "e29d5b28 dd2b1e6e 85b2f6a8 fed5f6a9 c9b16d90 01a249b2 55440bf2 34450cac",
+        "mutated_parses": true,
+        "run": {
+          "scenario": "v3_ok",
+          "label": "mutation_MM7",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics",
+            "tests/test_tenant_bootstrap_db_authority.py::test_runtime_with_public_create_refused_zero_tenant"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM7.txt"
+        },
+        "red_nodes": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics",
+          "tests/test_tenant_bootstrap_db_authority.py::test_runtime_with_public_create_refused_zero_tenant"
+        ],
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics",
+          "tests/test_tenant_bootstrap_db_authority.py::test_runtime_with_public_create_refused_zero_tenant"
+        ],
+        "restored_sha256": "fc0db066 66b44f69 c96463cb 0fea076a 69f90f88 dc4c1885 c1d2abd3 524a4818",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM8",
+        "title": "layer1_zero_connection_refusal_bypassed",
+        "scenario": "v3_ok",
+        "rationale": "bypassing the early Layer-1 refusal lets a mis-wired URL set reach asyncpg.connect (the admin URL included) before the refusal \u2014 the intercepting-spy zero-connection tests and the unconditional-guard static sentinel must catch it",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_admin_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_database_path_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_username_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_username_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_layer1_early_refusal_is_unconditional_and_precedes_connection"
+        ],
+        "tolerated_red": [],
+        "mutated_file": "grants",
+        "mutated_sha256": "694fc88a b4a7d149 5e84e4cd 336bc0e5 c7ab7770 89aacf7d 3f1087ac c34488e0",
+        "mutated_parses": true,
+        "run": {
+          "scenario": "v3_ok",
+          "label": "mutation_MM8",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_layer1_admin_endpoint_mismatch_refused_zero_connections",
+            "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_endpoint_mismatch_refused_zero_connections",
+            "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_username_mismatch_refused_zero_connections",
+            "tests/test_tenant_bootstrap_db_authority.py::test_layer1_database_path_mismatch_refused_zero_connections",
+            "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_endpoint_mismatch_refused_zero_connections",
+            "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_username_mismatch_refused_zero_connections",
+            "tests/test_tenant_bootstrap_db_authority.py::test_static_layer1_early_refusal_is_unconditional_and_precedes_connection"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM8.txt"
+        },
+        "red_nodes": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_admin_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_username_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_database_path_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_username_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_layer1_early_refusal_is_unconditional_and_precedes_connection"
+        ],
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_admin_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_username_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_database_path_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_username_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_layer1_early_refusal_is_unconditional_and_precedes_connection"
+        ],
+        "restored_sha256": "b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": null,
+        "title": "post_restore_reproducibility",
+        "run": {
+          "scenario": "v3_ok",
+          "label": "post_restore",
+          "rc": 0,
+          "failed": [],
+          "errors": [],
+          "log": "pytest_post_restore.txt"
+        },
+        "post_restore_green": true
+      }
+    ],
+    "mutation_red_set_verdicts": [
+      {
+        "named_red_required": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only"
+        ],
+        "tolerated_red": [],
+        "observed_red": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only"
+        ],
+        "missing_named_red": [],
+        "undeclared_red": [],
+        "declared_but_not_red": [],
+        "exact_set_ok": true,
+        "error": null
+      },
+      {
+        "named_red_required": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner"
+        ],
+        "tolerated_red": [],
+        "observed_red": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner"
+        ],
+        "missing_named_red": [],
+        "undeclared_red": [],
+        "declared_but_not_red": [],
+        "exact_set_ok": true,
+        "error": null
+      },
+      {
+        "named_red_required": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_injection_identifiers_rejected_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes"
+        ],
+        "tolerated_red": [],
+        "observed_red": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_injection_identifiers_rejected_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes"
+        ],
+        "missing_named_red": [],
+        "undeclared_red": [],
+        "declared_but_not_red": [],
+        "exact_set_ok": true,
+        "error": null
+      },
+      {
+        "named_red_required": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes"
+        ],
+        "tolerated_red": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes"
+        ],
+        "observed_red": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes"
+        ],
+        "missing_named_red": [],
+        "undeclared_red": [],
+        "declared_but_not_red": [],
+        "exact_set_ok": true,
+        "error": null
+      },
+      {
+        "named_red_required": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_wrong_password_provision_refused_zero_writes"
+        ],
+        "tolerated_red": [],
+        "observed_red": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_wrong_password_provision_refused_zero_writes"
+        ],
+        "missing_named_red": [],
+        "undeclared_red": [],
+        "declared_but_not_red": [],
+        "exact_set_ok": true,
+        "error": null
+      },
+      {
+        "named_red_required": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes"
+        ],
+        "tolerated_red": [],
+        "observed_red": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes"
+        ],
+        "missing_named_red": [],
+        "undeclared_red": [],
+        "declared_but_not_red": [],
+        "exact_set_ok": true,
+        "error": null
+      },
+      {
+        "named_red_required": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_first_deploy_cross_cluster_refused_zero_writes"
+        ],
+        "tolerated_red": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_admin_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_endpoint_mismatch_refused_zero_connections"
+        ],
+        "observed_red": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_first_deploy_cross_cluster_refused_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_admin_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_endpoint_mismatch_refused_zero_connections"
+        ],
+        "missing_named_red": [],
+        "undeclared_red": [],
+        "declared_but_not_red": [],
+        "exact_set_ok": true,
+        "error": null
+      },
+      {
+        "named_red_required": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics",
+          "tests/test_tenant_bootstrap_db_authority.py::test_runtime_with_public_create_refused_zero_tenant"
+        ],
+        "tolerated_red": [],
+        "observed_red": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics",
+          "tests/test_tenant_bootstrap_db_authority.py::test_runtime_with_public_create_refused_zero_tenant"
+        ],
+        "missing_named_red": [],
+        "undeclared_red": [],
+        "declared_but_not_red": [],
+        "exact_set_ok": true,
+        "error": null
+      },
+      {
+        "named_red_required": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_admin_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_username_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_database_path_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_username_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_layer1_early_refusal_is_unconditional_and_precedes_connection"
+        ],
+        "tolerated_red": [],
+        "observed_red": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_admin_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_username_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_database_path_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_endpoint_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_username_mismatch_refused_zero_connections",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_layer1_early_refusal_is_unconditional_and_precedes_connection"
+        ],
+        "missing_named_red": [],
+        "undeclared_red": [],
+        "declared_but_not_red": [],
+        "exact_set_ok": true,
+        "error": null
+      }
+    ],
+    "regression": {
+      "base_rc": 1,
+      "candidate_rc": 1,
+      "base_nodes": 104,
+      "candidate_nodes": 104,
+      "deltas": [],
+      "identical": true
+    },
+    "guard_snapshots": {
+      "v3_ok": {
+        "function_exists": true,
+        "owner": "mpango_migrate",
+        "return_type": "trigger",
+        "args": "",
+        "definition_md5": "39640330 8c83ee4c 01d0d6bc d63135b2",
+        "function_oid": 16495
+      },
+      "v3_nofunc": {
+        "function_exists": false
+      },
+      "v3_badsig": {
+        "function_exists": true,
+        "owner": "postgres",
+        "return_type": "void",
+        "args": "",
+        "definition_md5": "77260891 3aace7af 9dea4f6a 56bfe894",
+        "function_oid": 21048
+      },
+      "v3_wrongown": {
+        "function_exists": true,
+        "owner": "mpango_app",
+        "return_type": "trigger",
+        "args": "",
+        "definition_md5": "39640330 8c83ee4c 01d0d6bc d63135b2",
+        "function_oid": 18821
+      },
+      "v3_nopriv": {
+        "function_exists": true,
+        "owner": "mpango_migrate",
+        "return_type": "trigger",
+        "args": "",
+        "definition_md5": "39640330 8c83ee4c 01d0d6bc d63135b2",
+        "function_oid": 19595
+      },
+      "v3_verify_wrongown": {
+        "function_exists": true,
+        "owner": "mpango_app",
+        "return_type": "trigger",
+        "args": "",
+        "definition_md5": "39640330 8c83ee4c 01d0d6bc d63135b2",
+        "function_oid": 20369
+      }
+    },
+    "bootstrap_script_sha256_restored": "fc0db066 66b44f69 c96463cb 0fea076a 69f90f88 dc4c1885 c1d2abd3 524a4818",
+    "grants_script_sha256_restored": "b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764",
+    "finished_at": "2026-09-16T09:51:44.724893+00:00"
+  },
+  "validator_negative_cases": [
+    {
+      "case": "two_expected_one_hit",
+      "named_red_required": [
+        "n1",
+        "n2"
+      ],
+      "tolerated_red": [],
+      "observed_red": [
+        "n1"
+      ],
+      "must_raise": true,
+      "raised": true,
+      "ok": true,
+      "message": "'SYNTHETIC-two_expected_one_hit': named-RED set mismatch \u2014 missing named RED(s): n2"
+    },
+    {
+      "case": "single_expected_zero_hits",
+      "named_red_required": [
+        "n1"
+      ],
+      "tolerated_red": [],
+      "observed_red": [],
+      "must_raise": true,
+      "raised": true,
+      "ok": true,
+      "message": "'SYNTHETIC-single_expected_zero_hits': named-RED set mismatch \u2014 missing named RED(s): n1; mutation produced NO RED at all"
+    },
+    {
+      "case": "undeclared_extra_red",
+      "named_red_required": [
+        "n1",
+        "n2"
+      ],
+      "tolerated_red": [],
+      "observed_red": [
+        "n1",
+        "n2",
+        "x"
+      ],
+      "must_raise": true,
+      "raised": true,
+      "ok": true,
+      "message": "'SYNTHETIC-undeclared_extra_red': named-RED set mismatch \u2014 extra/undeclared RED(s): x"
+    },
+    {
+      "case": "no_declaration_at_all",
+      "named_red_required": [],
+      "tolerated_red": [],
+      "observed_red": [
+        "n1"
+      ],
+      "must_raise": true,
+      "raised": true,
+      "ok": true,
+      "message": "'SYNTHETIC-no_declaration_at_all': named-RED set mismatch \u2014 no required named-RED node declared; extra/undeclared RED(s): n1"
+    },
+    {
+      "case": "exact_hits",
+      "named_red_required": [
+        "n1",
+        "n2"
+      ],
+      "tolerated_red": [],
+      "observed_red": [
+        "n1",
+        "n2"
+      ],
+      "must_raise": false,
+      "raised": false,
+      "ok": true,
+      "message": ""
+    },
+    {
+      "case": "tolerated_red_may_fire",
+      "named_red_required": [
+        "n1",
+        "n2"
+      ],
+      "tolerated_red": [
+        "t1"
+      ],
+      "observed_red": [
+        "n1",
+        "n2",
+        "t1"
+      ],
+      "must_raise": false,
+      "raised": false,
+      "ok": true,
+      "message": ""
+    },
+    {
+      "case": "tolerated_red_may_stay_green",
+      "named_red_required": [
+        "n1",
+        "n2"
+      ],
+      "tolerated_red": [
+        "t1"
+      ],
+      "observed_red": [
+        "n1",
+        "n2"
+      ],
+      "must_raise": false,
+      "raised": false,
+      "ok": true,
+      "message": ""
+    }
+  ],
+  "identity_preflight": {
+    "declared_candidate_commit": "efe70792 246bca48 ee5277b3 3c447631 3e6c14e8",
+    "head_commit": "efe70792 246bca48 ee5277b3 3c447631 3e6c14e8",
+    "worktree_clean": true,
+    "r1_r3_predecessor_ancestor": true,
+    "r1_r2_predecessor_ancestor": true,
+    "authorization_id_in_commit_message": true,
+    "source_digests": {
+      "bootstrap_script": {
+        "path": "backend/scripts/bootstrap_tenant_schema.py",
+        "worktree_sha256": "fc0db066 66b44f69 c96463cb 0fea076a 69f90f88 dc4c1885 c1d2abd3 524a4818",
+        "blob_sha256": "3301a55b a995359c 23da826c 566d821d 17307471 5fbb5c8c d3278e12 74aeff6d"
+      },
+      "grants_script": {
+        "path": "backend/scripts/provision_runtime_db_roles.py",
+        "worktree_sha256": "b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764",
+        "blob_sha256": "25330f40 794f08a2 4213c82f d9fbd3a4 eafa4719 7ed866a4 5761613d 193f4861"
+      },
+      "v3_suite": {
+        "path": "backend/tests/test_tenant_bootstrap_db_authority.py",
+        "worktree_sha256": "cfee4f95 a14f5f14 91f47235 cd5bc1c1 34b43709 624cd6df 6d14d0cf d6012854",
+        "blob_sha256": "847d99a2 e736dbf2 1c583cac 3d272c3f 6fec4c83 c2f356b3 b96efd20 3b457e90"
+      },
+      "harness": {
+        "path": "backend/scripts/v3_tenant_bootstrap_db_authority_harness.py",
+        "worktree_sha256": "b3580402 a19b9e9e 190e686d 0e1b69dc 062008a5 d161e3c8 5a8de9d7 9d351fce",
+        "blob_sha256": "b3580402 a19b9e9e 190e686d 0e1b69dc 062008a5 d161e3c8 5a8de9d7 9d351fce"
+      }
+    }
+  },
+  "server_version_num": "160015",
+  "cluster_system_identifier": "7686066100049936429",
+  "second_cluster_system_identifier": "7686066113991970856",
+  "bootstrap_script_sha256": "fc0db066 66b44f69 c96463cb 0fea076a 69f90f88 dc4c1885 c1d2abd3 524a4818",
+  "grants_script_sha256": "b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764",
+  "synthetic_secret_scan": {
+    "files_scanned": 20,
+    "files_containing_secret": 0,
+    "leaking_files": []
+  },
+  "verdict": "PASS",
+  "work_dir_disposition": "removed"
+}

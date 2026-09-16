@@ -31,6 +31,7 @@
   - README.md wt=blob=7d48dbf6 54f56149 5882e336 84cd074e 27ed816a f3f11238 1f05cef5 cd983ae0
   - the other 19 harness-generated files (suite/mutation/verify/regression logs): full wt+blob table in EVIDENCE_NORMALIZATION_AUDIT.txt
 - REPORT_AS_GENERATED_DIGEST=2a6a7344 e5e202a8 068c88c5 c1e105a0 a484753e fef7aa7b 47b1e69b 3371d78d (recorded before any git command; the committed working-tree file minus its single final newline byte reproduces it exactly — see the audit)
+- CORRECTION=commit dea46f00's own commit-MESSAGE field truncated the implementation candidate SHA to 39 characters (`a21878c169d97e4c6fa837cd19ced7de71e2`) through a shell edit slip while its diff, this journal, the evidence README, the normalization audit and `harness_report.json` all carry the correct 40-character candidate `a21878c169d97e4c6fa837cd19dd9cced7de71e2`. No source byte, no evidence byte and no machine-result field is affected; the typo existed only in that commit's message text, and history was not rewritten (no amend) — it is recorded here instead.
 - FORMAL_INVOCATIONS=1 (full gate set, no --skip flags); PRE_FORMAL_REHEARSAL=1 (partial, scratch dir outside the repository, non-evidence)
 - HOOK_NORMALIZATION=no bypass; the normal `trailing-whitespace`/`end-of-file-fixer` hooks normalized the generated text evidence (report: exactly one added end-of-file newline). See EVIDENCE_NORMALIZATION_AUDIT.txt; the report's own bytes are re-validated in the committed form.
 - NEXT_GATE=`KILO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R3_SOURCE_AND_REAL_PG16_REVIEW`

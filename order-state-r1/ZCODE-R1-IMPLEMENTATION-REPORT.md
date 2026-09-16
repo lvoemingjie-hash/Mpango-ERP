@@ -404,3 +404,18 @@ Exact changed paths vs BASE 1ee75d9f (machine-generated, 29 entries):
    13/13 → structural gate PASS → the FINAL single backend full run with
    the task stack and PW1R3_TEST_REDIS_URL (result appended below once
    complete; retained verbatim).
+
+## F2 final stabilization (post full-run) — verified focused
+
+The single permitted full run surfaced 33 contract-ripple failures (legacy
+suites still writing PAID/PARTIALLY_PAID directly or stubbing the removed
+adapter seam). All 33 migrated to the explicit contract and re-verified in
+FOCUS: 232 passed across order_state_r1 + s5_order_state_machine +
+s5_ledger + business + s5d4b + i2a canonical + dc11d replay + phase5 +
+orders/payments — with ONLY the 3 named credit KNOWN REDs RED
+(CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED). Per the one-full-run rule, no
+second full run was started; the stabilization commit is 799d261b and the
+final HEAD/tree are recorded in the handback.
+
+Final HEAD: 799d261bf3636e073a8b3cfd4439a956b67d6f22
+Final tree: 89d07b7c31c885a3a7ce64988b84b7d1ef1b3e18

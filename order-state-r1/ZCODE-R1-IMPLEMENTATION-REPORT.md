@@ -597,7 +597,7 @@ post-response asserts never executed. The repair commit f4109f8e wraps
 the three action calls: a transport exception is converted to a labeled
 AssertionError carrying the same unique marker (pristine flow unchanged,
 4/4 F3 faces GREEN). A scoped pre-commit probe
-(`2026-09-16T0953Z-f3-mutations-probe-m14-16.txt`) confirmed 3/3, and the
+(`2026-09-16T0950Z-f3-mutations-probe-m14-16.txt`) confirmed 3/3, and the
 complete run above was then executed at f4109f8e.
 
 ## F3 final state
@@ -606,7 +606,7 @@ complete run above was then executed at f4109f8e.
   (`2026-09-16T0932Z-f3-structural-gate.txt`, baseline 998a549f,
   structural=PASS release=BLOCKED-in-structural-mode, rc=0).
 - Exact changed paths vs REQUIRED_PARENT 998a549f: 13 files
-  (`2026-09-16T1011Z-f3-exact-paths-vs-parent.txt`).
+  (`2026-09-16T1010Z-f3-exact-paths-vs-parent.txt`).
 - Linear commits this round: 265cf6a7 -> f4109f8e -> (this matrix
   commit); no amend/rebase; not pushed.
 - BACKEND_FULL_SUITE=NOT_RUN this round. The three credit

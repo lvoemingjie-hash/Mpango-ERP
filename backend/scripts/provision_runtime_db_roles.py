@@ -30,6 +30,17 @@ R1-R1 hardening:
   (admin user superuser, migration authority, runtime role).  Any mismatch
   refuses with ZERO writes.
 
+R1-R2 hardening (see ``_assert_cluster_binding``): the frozen endpoint
+binding covers ALL THREE URLs; deferred provisioning is allowed only for a
+catalog-proven fresh first deployment or credential-proven established
+principals; diagnostics are credential-free (host:port only, never netloc).
+
+R1-R3 hardening:
+- ANY Layer 1 binding violation raises ``ClusterBindingError`` BEFORE ANY
+  connection — the admin URL included (zero-connection endpoint refusal).
+  The refusal is proven by intercepting-spy tests: admin/migrate/app
+  endpoint mismatches each produce ZERO asyncpg.connect calls.
+
 Topology (fresh PG15+/PG16 cluster):
     step 1 (admin, superuser): create roles + application database
                                owned by the migration authority
@@ -169,6 +180,19 @@ class ClusterBindingError(RuntimeError):
     """Zero-write refusal: the three URLs do not describe one deployment."""
 
 
+def _binding_refusal_message(problems: list[str]) -> str:
+    """Render the binding refusal diagnostic.
+
+    Credential-free by construction: callers only ever append host:port
+    pairs, role names and the configured database name to ``problems`` —
+    never a DSN, netloc or password.
+    """
+    message = "cluster binding preflight failed (zero writes performed):"
+    for problem in problems:
+        message = message + "\n  - " + problem
+    return message
+
+
 class Provisioner:
     def __init__(self, admin_url: str, migrate_url: str, app_url: str,
                  migrate_role: str, app_role: str, database: str) -> None:
@@ -190,11 +214,15 @@ class Provisioner:
         """Prove the three URLs describe ONE deployment; refuse with zero
         writes on any mismatch.
 
-        Layer 1 (always, before any connection): FROZEN ENDPOINT BINDING -
-        ALL THREE URLs (admin, migrate, app) must share ONE host:port, the
-        migrate/app URLs must both name the configured database, and their
-        usernames must equal the migration-authority and runtime roles.
-        Diagnostics render host:port only - NEVER netloc, DSN or passwords.
+        Layer 1 (always, BEFORE ANY CONNECTION - zero-connection refusal):
+        FROZEN ENDPOINT BINDING - ALL THREE URLs (admin, migrate, app) must
+        share ONE host:port, the migrate/app URLs must both name the
+        configured database, and their usernames must equal the
+        migration-authority and runtime roles.  ANY Layer 1 violation raises
+        ClusterBindingError IMMEDIATELY: not even the admin URL is connected,
+        so a mis-wired deployment never sees a single connection attempt
+        (R1-R3 fix 1).  Diagnostics render host:port only - NEVER netloc,
+        DSN or passwords.
 
         Layer 2 (always): the admin URL is connected live; its current_user
         must equal the URL user and that user must be a superuser, and the
@@ -219,8 +247,6 @@ class Provisioner:
         ``require_live=False`` is used only for the FIRST --provision call;
         the full live proof is re-asserted immediately after creation.
         """
-        import asyncpg
-
         problems: list[str] = []
         admin_parsed = urlsplit(self.admin_url)
         migrate_parsed = urlsplit(self.migrate_url)
@@ -259,6 +285,19 @@ class Provisioner:
                 f"app URL username does not equal the runtime role "
                 f"{self.app_role!r}"
             )
+
+        # R1-R3 fix 1 (zero-connection endpoint refusal): ANY Layer 1
+        # violation raises IMMEDIATELY - before asyncpg is even imported and
+        # before ANY connection attempt, the admin URL included.  A mis-wired
+        # URL set must never cause a single connection: reaching out to an
+        # unverified cluster is itself an action on the wrong target, and the
+        # refusal must be observable with zero network side effects.
+        if problems:
+            raise ClusterBindingError(
+                _binding_refusal_message(problems)
+            )
+
+        import asyncpg
 
         async def _probe(url: str) -> dict:
             conn = await asyncpg.connect(url)
@@ -433,10 +472,7 @@ class Provisioner:
                 )
 
         if problems:
-            message = "cluster binding preflight failed (zero writes performed):"
-            for problem in problems:
-                message = message + "\n  - " + problem
-            raise ClusterBindingError(message)
+            raise ClusterBindingError(_binding_refusal_message(problems))
         result = {
             "system_identifier": str(admin["system_identifier"]),
             "endpoint": f"{endpoints['admin'][0]}:{endpoints['admin'][1]}",

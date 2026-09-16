@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""V3 harness: MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R1.
+"""V3 harness: MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R3.
 
-Successor to the R1 harness; orchestrates the full
+Successor to the R1-R2 harness; orchestrates the full
 merge-critical data-integrity/security verification on FRESH PostgreSQL 16
 clusters:
 
+  phase identity   FAIL-CLOSED preflight BEFORE any container is created:
+                   the declared --candidate-commit must equal the checked-out
+                   HEAD with a clean worktree, the R1-R2 predecessor commit
+                   must be an ancestor, the candidate commit message must
+                   carry the R1-R3 authorization id, and every source file's
+                   working-tree digest must match its committed blob (both
+                   digest forms, working-tree CRLF vs blob LF, are recorded)
   phase provision  two throwaway postgres:16 containers (main + a second
                    cluster for the cross-cluster counterexample); roles and
                    six scenario databases per the frozen authority contract
@@ -20,18 +27,22 @@ clusters:
                    scenario; every run must be GREEN
   phase mutation   MM1 commit-type verify restored, MM2 owner fallback
                    restored, MM3 identifier validation bypassed, MM4 cluster
-                   binding bypassed - each must go RED on its named
-                   semantic assertion, then BOTH scripts are restored and
-                   proven byte-identical (sha256); a post-restore run is
-                   re-proven green
-  phase regression the R1 7-file bootstrap-heavy suite (99 nodeids) run on
-                   BASE and on the candidate in an identical two-role
-                   topology; per-node outcomes must be identical
+                   binding bypassed, MM5 binding refusal matrix deleted,
+                   MM6 netloc leak restored, MM7 public-CREATE check
+                   deleted, MM8 zero-connection early refusal bypassed -
+                   each must go RED on its named semantic assertions, then
+                   BOTH scripts are restored and proven byte-identical
+                   (sha256); a post-restore run is re-proven green
+  phase regression the R1 7-file bootstrap-heavy suite run on the
+                   historical regression comparison base and on the
+                   candidate in an identical two-role topology; per-node
+                   outcomes must be identical
   phase teardown   remove both containers and the BASE worktree
 
 Usage (from backend/):
     python scripts/v3_tenant_bootstrap_db_authority_harness.py \
-        --evidence-dir ../ai-ledger/product-ai/evidence/<dir>
+        --evidence-dir ../ai-ledger/product-ai/evidence/<dir> \
+        --candidate-commit <40-hex implementation candidate commit>
 """
 from __future__ import annotations
 
@@ -61,6 +72,18 @@ IMAGE_MAIN = "postgres:16.15"
 IMAGE_SECOND = "postgres:16.15-alpine"
 MIGRATE_ROLE = "mpango_migrate"
 APP_ROLE = "mpango_app"
+
+# R1-R3 formal evidence identity.  Recorded SEPARATELY in the machine
+# report: the task authorization id, the exact implementation candidate
+# commit (declared per invocation via --candidate-commit), the immediate
+# R1-R2 predecessor, and the historical regression comparison base.
+TASK_ID = "MPANGO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R3"
+AUTHORIZATION_ID = "CTO-AUTH-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R3-2026-09-16"
+R1_R2_PREDECESSOR_COMMIT = (
+    "8951112bf126d70643dc64882c8bbee911321928"  # pragma: allowlist secret
+)
+# Historical regression comparison base (R1 manifest commit), retained so
+# the bootstrap-heavy regression chain stays comparable across rounds.
 BASE_COMMIT = "0a16ed707ad898e9924c26b28097148708677af9"  # pragma: allowlist secret
 SCENARIOS = (
     "v3_ok", "v3_nofunc", "v3_badsig", "v3_wrongown", "v3_nopriv",
@@ -79,8 +102,9 @@ REGRESSION_FILES = (
 SUITE = "tests/test_tenant_bootstrap_db_authority.py::"
 
 # --------------------------------------------------------------------------
-# Mutations (R1-R1 fix 7).  Each entry: file, anchor (LF form), replacement,
-# scenario in which the named REDs live, and the named RED nodeids.
+# Mutations (framework from R1-R1 fix 7; MM5-MM7 added in R1-R2, MM8 in
+# R1-R3).  Each entry: file, anchor (LF form), replacement, scenario in
+# which the named REDs live, and the named RED nodeids.
 # --------------------------------------------------------------------------
 MM1_PROBE = (
     "            cannot_replace = True\n"
@@ -300,6 +324,51 @@ MUTATIONS = [
             "catch it"
         ),
     },
+    {
+        "name": "MM8",
+        "title": "layer1_zero_connection_refusal_bypassed",
+        "file": "grants",
+        "anchor": (
+            "        if problems:\n"
+            "            raise ClusterBindingError(\n"
+            "                _binding_refusal_message(problems)\n"
+            "            )\n"
+            "\n"
+            "        import asyncpg\n"
+        ),
+        "replacement": (
+            "        if False:  # MUTATION MM8: zero-connection early "
+            "refusal bypassed\n"
+            "            raise ClusterBindingError(\n"
+            "                _binding_refusal_message(problems)\n"
+            "            )\n"
+            "\n"
+            "        import asyncpg\n"
+        ),
+        "scenario": "v3_ok",
+        "named_red": [
+            SUITE + "test_layer1_admin_endpoint_mismatch_refused_zero_"
+            "connections",
+            SUITE + "test_layer1_migrate_endpoint_mismatch_refused_zero_"
+            "connections",
+            SUITE + "test_layer1_app_endpoint_mismatch_refused_zero_"
+            "connections",
+            SUITE + "test_layer1_database_path_mismatch_refused_zero_"
+            "connections",
+            SUITE + "test_layer1_migrate_username_mismatch_refused_zero_"
+            "connections",
+            SUITE + "test_layer1_app_username_mismatch_refused_zero_"
+            "connections",
+            SUITE + "test_static_layer1_early_refusal_is_unconditional_"
+            "and_precedes_connection",
+        ],
+        "rationale": (
+            "bypassing the early Layer-1 refusal lets a mis-wired URL set "
+            "reach asyncpg.connect (the admin URL included) before the "
+            "refusal — the intercepting-spy zero-connection tests and the "
+            "unconditional-guard static sentinel must catch it"
+        ),
+    },
 ]
 
 
@@ -393,7 +462,7 @@ def _group_hex_strings(obj):
 
 class Harness:
     def __init__(self, evidence_dir, image, second_image, keep, python_exe,
-                 skip_mutations, skip_regression):
+                 skip_mutations, skip_regression, candidate_commit):
         self.evidence_dir = evidence_dir
         self.image = image
         self.second_image = second_image
@@ -401,8 +470,9 @@ class Harness:
         self.python_exe = python_exe
         self.skip_mutations = skip_mutations
         self.skip_regression = skip_regression
-        self.container = f"mpango-v3auth2-{uuid.uuid4().hex[:10]}"
-        self.second_container = f"mpango-v3auth2b-{uuid.uuid4().hex[:10]}"
+        self.candidate_commit = candidate_commit.strip().lower()
+        self.container = f"mpango-v3auth3-{uuid.uuid4().hex[:10]}"
+        self.second_container = f"mpango-v3auth3b-{uuid.uuid4().hex[:10]}"
         self.port = _free_port()
         self.second_port = _free_port()
         self.synthetic_token = secrets.token_hex(16)
@@ -425,13 +495,15 @@ class Harness:
         # OUTSIDE the repository tree and is never committed.
         import tempfile
 
-        self.work_dir = Path(tempfile.mkdtemp(prefix="mpango_v3_r1r1_"))
+        self.work_dir = Path(tempfile.mkdtemp(prefix="mpango_v3_r1r3_"))
         self.snapshots: dict[str, dict] = {}
         self.base_worktree: Path | None = None
         self.report = {
-            "task": "MPANGO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R1",
-            "authorization":
-                "CTO-AUTH-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R1-2026-09-16",
+            "task": TASK_ID,
+            "authorization": AUTHORIZATION_ID,
+            "implementation_candidate_commit": self.candidate_commit,
+            "r1_r2_predecessor_commit": R1_R2_PREDECESSOR_COMMIT,
+            "historical_regression_base_commit": BASE_COMMIT,
             "started_at": _utc(),
             "image": image,
             "second_image": second_image,
@@ -439,9 +511,99 @@ class Harness:
             "second_container": self.second_container,
             "port": self.port,
             "second_port": self.second_port,
-            "base_commit": BASE_COMMIT,
             "phases": {},
         }
+
+    # ----------------------------------------------------- identity preflight
+    def preflight_identity(self) -> dict:
+        """R1-R3 fix 2: fail-closed evidence identity gate.
+
+        Runs BEFORE any container is created.  Refuses (fail closed) unless
+        the declared candidate commit IS the checked-out HEAD with a clean
+        worktree, the immediate R1-R2 predecessor is an ancestor of HEAD, the
+        candidate commit message carries the declared R1-R3 authorization id,
+        and every source file's working-tree bytes match the committed blob
+        (LF-normalized comparison; both raw digest forms are recorded).
+        """
+        repo_root = _run(["git", "rev-parse", "--show-toplevel"],
+                         verify=True).stdout.strip()
+        head = _run(["git", "rev-parse", "HEAD"], verify=True).stdout.strip()
+        if head.lower() != self.candidate_commit:
+            raise RuntimeError(
+                "identity preflight failed: declared candidate commit "
+                f"{self.candidate_commit!r} != checked-out HEAD {head!r}"
+            )
+        status = _run(["git", "status", "--porcelain"], verify=True).stdout
+        if status.strip():
+            raise RuntimeError(
+                "identity preflight failed: worktree is not clean (the "
+                "candidate commit must carry every source byte):\n"
+                + status.strip()[:2000]
+            )
+        ancestry = _run(["git", "merge-base", "--is-ancestor",
+                         R1_R2_PREDECESSOR_COMMIT, "HEAD"])
+        if ancestry.returncode != 0:
+            raise RuntimeError(
+                "identity preflight failed: the R1-R2 predecessor "
+                f"{R1_R2_PREDECESSOR_COMMIT} is not an ancestor of HEAD"
+            )
+        message = _run(["git", "log", "-1", "--format=%B", "HEAD"],
+                       verify=True).stdout
+        if AUTHORIZATION_ID not in message:
+            raise RuntimeError(
+                "identity preflight failed: the candidate commit message "
+                f"does not carry the authorization id {AUTHORIZATION_ID}"
+            )
+
+        root = Path(repo_root).resolve()
+        digests: dict[str, dict] = {}
+        for label, path in (
+            ("bootstrap_script", BOOTSTRAP_SCRIPT),
+            ("grants_script", GRANTS_SCRIPT),
+            ("v3_suite", BACKEND_DIR / TEST_FILE),
+            ("harness", Path(__file__).resolve()),
+        ):
+            rel_posix = path.resolve().relative_to(root).as_posix()
+            blob = self._git_blob_bytes(repo_root, rel_posix)
+            working_tree = path.read_bytes()
+            if working_tree.replace(b"\r\n", b"\n") != blob.replace(
+                b"\r\n", b"\n"
+            ):
+                raise RuntimeError(
+                    "identity preflight failed: source digest drift on "
+                    f"{rel_posix} (working tree != committed candidate)"
+                )
+            digests[label] = {
+                "path": rel_posix,
+                "worktree_sha256": hashlib.sha256(working_tree).hexdigest(),
+                "blob_sha256": hashlib.sha256(blob).hexdigest(),
+            }
+        result = {
+            "declared_candidate_commit": self.candidate_commit,
+            "head_commit": head,
+            "worktree_clean": True,
+            "r1_r2_predecessor_ancestor": True,
+            "authorization_id_in_commit_message": True,
+            "source_digests": digests,
+        }
+        print(f"[identity] candidate {head[:12]} == HEAD, worktree clean, "
+              f"predecessor {R1_R2_PREDECESSOR_COMMIT[:12]} is an ancestor, "
+              "authorization id present, 4 source digests match committed "
+              "blobs")
+        return result
+
+    @staticmethod
+    def _git_blob_bytes(repo_root: str, rel_posix: str) -> bytes:
+        outcome = subprocess.run(
+            ["git", "show", f"HEAD:{rel_posix}"], cwd=repo_root,
+            capture_output=True, timeout=120,
+        )
+        if outcome.returncode != 0:
+            raise RuntimeError(
+                f"identity preflight failed: cannot read HEAD:{rel_posix}: "
+                f"{outcome.stderr.decode(errors='replace')[-500:]}"
+            )
+        return outcome.stdout
 
     # ------------------------------------------------------------- containers
     def _start_container(self, name, image, port, password):
@@ -907,6 +1069,8 @@ class Harness:
     # ------------------------------------------------------------------ main
     def run(self):
         try:
+            # R1-R3 fix 2: identity preflight strictly BEFORE any container.
+            self.report["identity_preflight"] = self.preflight_identity()
             self.start_containers()
             heads = {}
             for scenario in SCENARIOS:
@@ -1006,6 +1170,22 @@ class Harness:
         }
 
     def _write_report(self):
+        # R1-R3 fix 2: refuse to publish a machine-generated report whose
+        # identity does not match this round before it is written.
+        mismatches = [
+            f"{field}: report={self.report.get(field)!r} expected={expected!r}"
+            for field, expected in (
+                ("task", TASK_ID),
+                ("authorization", AUTHORIZATION_ID),
+                ("implementation_candidate_commit", self.candidate_commit),
+            )
+            if self.report.get(field) != expected
+        ]
+        if mismatches:
+            raise RuntimeError(
+                "report identity validation failed (refusing to publish a "
+                "mis-identified harness report): " + "; ".join(mismatches)
+            )
         payload = json.loads(json.dumps(self.report, default=str))
         blob = json.dumps(_group_hex_strings(payload), indent=2)
         for secret in (self.admin_password, self.migrate_password,
@@ -1021,6 +1201,12 @@ class Harness:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence-dir", type=Path, required=True)
+    parser.add_argument(
+        "--candidate-commit", required=True,
+        help="exact implementation candidate commit the run must be "
+             "executed against (must equal HEAD with a clean worktree; "
+             "enforced by the fail-closed identity preflight)",
+    )
     parser.add_argument("--image", default=IMAGE_MAIN)
     parser.add_argument("--second-image", default=IMAGE_SECOND)
     parser.add_argument("--python", default=sys.executable)
@@ -1034,6 +1220,7 @@ def main():
         second_image=args.second_image, keep=args.keep,
         python_exe=args.python, skip_mutations=args.skip_mutations,
         skip_regression=args.skip_regression,
+        candidate_commit=args.candidate_commit,
     )
     report = harness.run()
     print(f"HARNESS {report['verdict']}")

@@ -1,6 +1,9 @@
-"""MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1 — V3 data-integrity suite.
+"""MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY — V3 data-integrity suite.
 
-Authorization: CTO-AUTH-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-2026-09-16.
+Originating authorization: CTO-AUTH-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-2026-09-16.
+Current round: MPANGO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R3, authorization
+CTO-AUTH-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R3-2026-09-16 (R1-R2 predecessor:
+8951112bf126d70643dc64882c8bbee911321928).
 
 Frozen architectural decision under test:
 1. The migration authority owns the public schema and the shared security
@@ -23,9 +26,14 @@ PRODUCT's public onboarding path (verify-email provisioning) under test.
 Scenario selection (process environment, one scenario per pytest process):
     MPANGO_DB_AUTHORITY_MANIFEST  path to the harness manifest JSON
     MPANGO_DB_AUTHORITY_SCENARIO  one of v3_ok / v3_nofunc / v3_badsig /
-                                  v3_wrongown / v3_nopriv
+                                  v3_wrongown / v3_nopriv /
+                                  v3_verify_wrongown
 Without a manifest the database-backed tests SKIP and only the static source
 invariants run, so ordinary suite runs are unaffected.
+
+R1-R3 zero-connection refusal tests: the Layer-1 endpoint-binding refusal is
+proven with an intercepting asyncpg.connect spy (no manifest and no live
+cluster needed), so those tests run in EVERY invocation of this suite.
 """
 
 from __future__ import annotations
@@ -1746,6 +1754,257 @@ async def test_runtime_with_public_create_refused_zero_tenant():
     finally:
         await app_engine.dispose()
     assert not rows, "public-CREATE refusal left partial tenant objects"
+
+
+# ---------------------------------------------------------------------------
+# R1-R3: zero-connection endpoint refusal — Layer 1 raises BEFORE ANY
+# asyncpg.connect (intercepting-spy executable proofs; no live cluster)
+# ---------------------------------------------------------------------------
+
+
+def _load_grants_module(alias: str):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(alias, GRANTS_SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class _ConnectSpy:
+    """Intercepting asyncpg.connect dependency seam.
+
+    Records every connection attempt and REFUSES to connect: under a Layer-1
+    binding violation any connection attempt is itself the defect, so the
+    spy raises a sentinel error that fails the calling test on the spot.
+    """
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.attempts: list[str] = []
+
+        async def _spy(url, *args, **kwargs):
+            self.attempts.append(str(url))
+            raise RuntimeError(
+                "connect spy intercepted asyncpg.connect under a Layer-1 "
+                "binding violation: the zero-connection refusal is broken"
+            )
+
+        monkeypatch.setattr(asyncpg, "connect", _spy)
+
+
+_SPY_ENDPOINT = "127.0.0.1:55432"
+# Synthetic fixture credentials for the spy tests — assembled from parts so
+# no source line carries a real basic-auth shape.  They must never exist on a
+# cluster: every connection attempt is intercepted and refused.
+_SPY_PASSWORDS = ("adm-secret", "mig-secret", "app-secret")
+
+
+def _spy_dsn(user: str, password: str, *, endpoint: str = _SPY_ENDPOINT,
+             database: str = "mpango") -> str:
+    return f"postgresql://{user}:{password}@{endpoint}/{database}"
+
+
+def _spy_urls(*, admin: str | None = None, migrate: str | None = None,
+              app: str | None = None) -> dict[str, str]:
+    return {
+        "admin_url": admin or _spy_dsn(
+            "postgres", "adm-secret", database="postgres"
+        ),
+        "migrate_url": migrate or _spy_dsn("mpango_migrate", "mig-secret"),
+        "app_url": app or _spy_dsn("mpango_app", "app-secret"),
+    }
+
+
+async def _assert_layer1_refusal_zero_connections(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    expected_fragment: str,
+    **urls: str,
+) -> None:
+    """Drive _assert_cluster_binding over a mis-wired URL set and prove:
+    the method was invoked exactly once, it refused with ClusterBindingError
+    carrying the Layer-1 fragment, ZERO connections were attempted, and the
+    diagnostics carry no password, DSN, netloc or '@'."""
+    module = _load_grants_module("v3r3_grants_zero_connection")
+    spy = _ConnectSpy(monkeypatch)
+
+    invocations: list[dict] = []
+    bound_method = module.Provisioner._assert_cluster_binding
+
+    async def _invocation_proof(self, **kwargs):
+        invocations.append(kwargs)
+        return await bound_method(self, **kwargs)
+
+    monkeypatch.setattr(
+        module.Provisioner, "_assert_cluster_binding", _invocation_proof
+    )
+
+    provisioner = module.Provisioner(
+        urls["admin_url"], urls["migrate_url"], urls["app_url"],
+        "mpango_migrate", "mpango_app", "mpango",
+    )
+    with pytest.raises(module.ClusterBindingError) as excinfo:
+        await provisioner._assert_cluster_binding()
+    message = str(excinfo.value)
+
+    assert invocations == [{}], (
+        "_assert_cluster_binding was not invoked exactly once "
+        f"(invocations={invocations!r})"
+    )
+    assert spy.attempts == [], (
+        "Layer-1 refusal attempted connection(s) before raising: "
+        f"{spy.attempts}"
+    )
+    assert expected_fragment in message, message
+    for password in _SPY_PASSWORDS:
+        assert password not in message, "password leaked into diagnostics"
+    assert "postgresql://" not in message, "DSN leaked into diagnostics"
+    assert "@" not in message, "netloc/userinfo leaked into diagnostics"
+
+
+@pytest.mark.asyncio
+async def test_layer1_admin_endpoint_mismatch_refused_zero_connections(
+    monkeypatch,
+):
+    """R1-R3 fix 1: the ADMIN URL on a different host:port than migrate/app
+    must refuse with ZERO asyncpg.connect calls — before the admin URL is
+    ever connected.  (Bypassing the early refusal = mutation MM8 = this test
+    goes RED.)"""
+    await _assert_layer1_refusal_zero_connections(
+        monkeypatch,
+        expected_fragment="frozen endpoint",
+        **_spy_urls(
+            admin=_spy_dsn(
+                "postgres", "adm-secret",
+                endpoint="127.0.0.1:55999", database="postgres",
+            )
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_layer1_migrate_endpoint_mismatch_refused_zero_connections(
+    monkeypatch,
+):
+    """R1-R3 fix 1: the MIGRATE URL on a different host:port must refuse with
+    ZERO asyncpg.connect calls.  (Mutation MM8 = this test goes RED.)"""
+    await _assert_layer1_refusal_zero_connections(
+        monkeypatch,
+        expected_fragment="frozen endpoint",
+        **_spy_urls(
+            migrate=_spy_dsn(
+                "mpango_migrate", "mig-secret", endpoint="127.0.0.1:55998"
+            )
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_layer1_app_endpoint_mismatch_refused_zero_connections(
+    monkeypatch,
+):
+    """R1-R3 fix 1: the APP URL on a different host:port must refuse with
+    ZERO asyncpg.connect calls.  (Mutation MM8 = this test goes RED.)"""
+    await _assert_layer1_refusal_zero_connections(
+        monkeypatch,
+        expected_fragment="frozen endpoint",
+        **_spy_urls(
+            app=_spy_dsn(
+                "mpango_app", "app-secret", endpoint="127.0.0.1:55997"
+            )
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_layer1_database_path_mismatch_refused_zero_connections(
+    monkeypatch,
+):
+    """R1-R3 fix 1: migrate/app URLs that do not both name the configured
+    database must refuse with ZERO asyncpg.connect calls.  (Mutation MM8 =
+    this test goes RED.)"""
+    await _assert_layer1_refusal_zero_connections(
+        monkeypatch,
+        expected_fragment="do not both target the configured database",
+        **_spy_urls(
+            migrate=_spy_dsn(
+                "mpango_migrate", "mig-secret", database="otherdb"
+            )
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_layer1_migrate_username_mismatch_refused_zero_connections(
+    monkeypatch,
+):
+    """R1-R3 fix 1: a migrate URL whose username is not the migration
+    authority role must refuse with ZERO asyncpg.connect calls.  (Mutation
+    MM8 = this test goes RED.)"""
+    await _assert_layer1_refusal_zero_connections(
+        monkeypatch,
+        expected_fragment="migrate URL username does not equal",
+        **_spy_urls(migrate=_spy_dsn("postgres", "mig-secret")),
+    )
+
+
+@pytest.mark.asyncio
+async def test_layer1_app_username_mismatch_refused_zero_connections(
+    monkeypatch,
+):
+    """R1-R3 fix 1: an app URL whose username is not the runtime role must
+    refuse with ZERO asyncpg.connect calls.  (Mutation MM8 = this test goes
+    RED.)"""
+    await _assert_layer1_refusal_zero_connections(
+        monkeypatch,
+        expected_fragment="app URL username does not equal",
+        **_spy_urls(app=_spy_dsn("postgres", "app-secret")),
+    )
+
+
+def test_static_layer1_early_refusal_is_unconditional_and_precedes_connection():
+    """R1-R3 fix 1 (structural sentinel): inside _assert_cluster_binding an
+    UNCONDITIONAL ``if problems:`` guard raising ClusterBindingError must sit
+    BEFORE the first probe/connection await; a weakened guard (e.g. a
+    constant-false condition) or a connection attempt above it is a defect.
+    (Mutation MM8 = this test goes RED.)"""
+    with open(GRANTS_SCRIPT, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+
+    methods = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef)
+        and node.name == "_assert_cluster_binding"
+    ]
+    assert len(methods) == 1, "_assert_cluster_binding not found"
+    method = methods[0]
+
+    early_guard_lines: list[int] = []
+    first_connection_line: int | None = None
+    for node in ast.walk(method):
+        if isinstance(node, ast.If):
+            is_problems_guard = (
+                isinstance(node.test, ast.Name) and node.test.id == "problems"
+            )
+            raises_binding = any(
+                isinstance(inner, ast.Raise)
+                and "ClusterBindingError" in ast.dump(inner)
+                for inner in ast.walk(node)
+            )
+            if is_problems_guard and raises_binding:
+                early_guard_lines.append(node.lineno)
+        if first_connection_line is None and isinstance(node, ast.Await):
+            dump = ast.dump(node)
+            if "_probe" in dump or "connect" in dump:
+                first_connection_line = node.lineno
+    assert early_guard_lines, (
+        "no unconditional `if problems:` ClusterBindingError guard inside "
+        "_assert_cluster_binding (the early refusal was weakened or removed)"
+    )
+    assert first_connection_line is not None, "no connection await found"
+    assert min(early_guard_lines) < first_connection_line, (
+        "the Layer-1 early refusal must precede every connection attempt"
+    )
 
 
 # ---------------------------------------------------------------------------

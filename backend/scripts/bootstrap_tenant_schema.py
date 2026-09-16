@@ -59,11 +59,14 @@ CANONICAL_ORDER_STATUSES = (
 # tenant-owned objects (tables, triggers) and may only REFERENCE the existing
 # migration-owned function.
 #
-# MPANGO_MIGRATION_AUTHORITY_ROLE (optional) declares the role that owns the
-# shared function.  When set, the precondition requires the function owner to
-# equal that role exactly.  When unset, the single-role deployment topology
-# applies (docker-entrypoint runs migrations and bootstrap with one role), so
-# the precondition requires the owner to equal the connected role itself.
+# MPANGO_MIGRATION_AUTHORITY_ROLE (optional) declares the role EXPECTED to
+# own the shared function.  The authoritative owner is always DERIVED from
+# the live catalog - the owner of the current database (pg_database.datdba;
+# on PG15+ that role also owns schema public) - never from the connected
+# role.  When the env is declared it is a consistency assertion only: it must
+# EQUAL the derived database owner or bootstrap refuses.  A single-role
+# topology (connected role == authority) is always refused: there is
+# deliberately NO connected-role fallback.
 # ---------------------------------------------------------------------------
 LEDGER_GUARD_SCHEMA = "public"
 LEDGER_GUARD_FUNCTION = "prevent_ledger_modification"

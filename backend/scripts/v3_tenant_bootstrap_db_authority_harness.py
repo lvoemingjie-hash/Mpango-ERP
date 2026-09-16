@@ -196,7 +196,7 @@ MUTATIONS = [
         "replacement": (
             "        required_owner = (\n"
             "            os.environ.get(MIGRATION_AUTHORITY_ROLE_ENV, "
-            '""").strip()\n'
+            '"").strip()\n'
             "            or connected_role\n"
             "        )\n"
             "        if owner_name != required_owner:\n"
@@ -530,6 +530,29 @@ def _outcome_map(pytest_output: str) -> dict[str, str]:
 
 _HEX_DIGEST_RE = re.compile(r"^[0-9a-f]{32,64}$")
 _HEX_IN_TEXT_RE = re.compile(r"\b[0-9a-f]{32,64}\b")
+
+
+def assert_mutation_is_semantic(path: Path, mutation: dict) -> None:
+    """R1-R4: refuse a mutation that leaves the target script unparseable.
+
+    An unimportable script is a BROKEN TREE, not a semantic mutation: its
+    "RED" would come from an import failure cascade (the app answering 500)
+    rather than from the defect the mutation claims to introduce.  The
+    R1-R2/R1-R3 MM2 replacement carried exactly this defect (a stray third
+    double-quote inside the required-owner fallback's empty-string default
+    argument), which is why MM2's RED set silently included six import-error
+    nodes nobody had declared.
+    """
+    import ast as _ast
+
+    try:
+        _ast.parse(path.read_bytes().decode("utf-8"))
+    except SyntaxError as exc:
+        raise RuntimeError(
+            f"mutation {mutation['name']} left {path.name} unparseable "
+            f"(line {exc.lineno}: {exc.msg}) — that is a broken tree, not a "
+            "semantic mutation"
+        ) from exc
 
 
 def mutation_red_set_verdict(result: dict) -> dict:
@@ -1173,6 +1196,11 @@ class Harness:
                     mutation["anchor"], mutation["replacement"],
                 )
                 mutated_sha = _sha256(paths[mutation["file"]])
+                # R1-R4: a mutation must leave the target script PARSEABLE —
+                # an import-failure cascade is not a semantic detection.
+                assert_mutation_is_semantic(
+                    paths[mutation["file"]], mutation
+                )
                 run = self.run_suite(
                     mutation["scenario"], label=f"mutation_{mutation['name']}"
                 )
@@ -1187,6 +1215,7 @@ class Harness:
                     "tolerated_red": list(mutation.get("tolerated_red", [])),
                     "mutated_file": mutation["file"],
                     "mutated_sha256": mutated_sha,
+                    "mutated_parses": True,
                     "run": run,
                     "red_nodes": sorted(red_nodes),
                     "went_red": run["rc"] != 0 and bool(red_nodes),
@@ -1345,10 +1374,15 @@ class Harness:
                 )
 
             mutation_results = self.run_mutations()
+            # R1-R4: record the raw results BEFORE validating, so a failed
+            # exact-set gate still leaves complete evidence in the report.
+            phases = self.report.setdefault("phases", {})
+            phases["mutations"] = mutation_results
             # R1-R4: EXACT named-RED set verification.  Missing declared
             # REDs, extra/undeclared REDs and mutations that declare nothing
             # all fail closed here (previously only "at least one hit").
             red_set_verdicts = []
+            phases["mutation_red_set_verdicts"] = red_set_verdicts
             for result in mutation_results:
                 if result.get("mutation"):
                     assert result["went_red"], (
@@ -1361,9 +1395,6 @@ class Harness:
                     assert result["post_restore_green"], (
                         "post-restore run is not green"
                     )
-            self.report["phases"]["mutation_red_set_verdicts"] = (
-                red_set_verdicts
-            )
 
             regression = self.run_regression()
             if not regression.get("skipped"):

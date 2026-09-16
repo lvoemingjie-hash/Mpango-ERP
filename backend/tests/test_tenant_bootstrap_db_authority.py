@@ -2147,6 +2147,74 @@ def test_static_formal_gate_uses_the_exact_set_validator():
     assert "def run_validator_negative_cases(" in source
 
 
+def test_mutation_apply_gate_refuses_unparseable_mutation(tmp_path):
+    """R1-R4: a mutation that leaves the target script unparseable must be
+    refused before its suite runs.  An import-failure cascade (the app
+    answering 500) is not a semantic detection — the R1-R2/R1-R3 MM2
+    replacement had exactly this defect (a stray quote)."""
+    module = _load_harness_module("v3r4_mutation_parse_gate")
+
+    broken = tmp_path / "broken.py"
+    broken.write_text('x = os.environ.get("A", """)\n', encoding="utf-8")
+    with pytest.raises(RuntimeError) as excinfo:
+        module.assert_mutation_is_semantic(broken, {"name": "SYNTHETIC"})
+    message = str(excinfo.value)
+    assert "unparseable" in message, message
+    assert "not a semantic mutation" in message, message
+
+    good = tmp_path / "good.py"
+    good.write_text('x = os.environ.get("A", "").strip()\n', encoding="utf-8")
+    module.assert_mutation_is_semantic(good, {"name": "SYNTHETIC"})
+
+
+def test_static_every_mutation_is_parseable_and_fully_declared():
+    """R1-R4: every declared mutation must (a) anchor exactly once in the
+    current candidate source, (b) leave that source PARSEABLE, and (c) declare
+    a non-empty required named-RED set plus an explicit tolerated set."""
+    import ast as _ast
+
+    module = _load_harness_module("v3r4_mutation_declarations")
+    assert len(module.MUTATIONS) >= 9, "expected MM1..MM8 plus the MM5 split"
+
+    for mutation in module.MUTATIONS:
+        name = mutation["name"]
+        assert mutation["named_red"], f"{name} declares no required named RED"
+        assert isinstance(mutation.get("tolerated_red"), list), (
+            f"{name} must declare tolerated_red explicitly (may be empty)"
+        )
+        assert set(mutation["named_red"]).isdisjoint(
+            mutation["tolerated_red"]
+        ), f"{name} lists a node as both required and tolerated"
+
+        target = os.path.join(
+            BACKEND_DIR, "scripts",
+            "bootstrap_tenant_schema.py"
+            if mutation["file"] == "bootstrap"
+            else "provision_runtime_db_roles.py",
+        )
+        with open(target, encoding="utf-8") as handle:
+            text = handle.read()
+        eol = "\r\n" if "\r\n" in text else "\n"
+
+        def _to_eol(sample: str, eol: str = eol) -> str:
+            return sample.replace("\n", eol) if eol != "\n" else sample
+
+        anchor = _to_eol(mutation["anchor"])
+        assert text.count(anchor) == 1, (
+            f"{name} anchor does not match exactly once in {target}"
+        )
+        mutated = text.replace(anchor, _to_eol(mutation["replacement"]), 1)
+        assert mutated != text, f"{name} is a no-op"
+        try:
+            _ast.parse(mutated)
+        except SyntaxError as exc:  # pragma: no cover - regression guard
+            pytest.fail(
+                f"{name} leaves {target} unparseable "
+                f"(line {exc.lineno}: {exc.msg}) — broken tree, not a "
+                "semantic mutation"
+            )
+
+
 # ---------------------------------------------------------------------------
 # semantic mutation sentinels (harness re-runs these after patching source)
 # ---------------------------------------------------------------------------

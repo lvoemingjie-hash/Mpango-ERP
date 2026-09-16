@@ -6,6 +6,12 @@
 - EXECUTOR=ZCode-W
 - VERIFICATION_TIER=V3_MERGE_CRITICAL_DATA_INTEGRITY_SECURITY
 - CLAIM_CEILING=CORRECTED_SOURCE_CANDIDATE_ONLY
+- SUCCESSOR_COMMIT=8951112bf126d70643dc64882c8bbee911321928 (`fix(bootstrap): MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R2 ...`, normal hooks, no --no-verify, no amend/rebase/force)
+- SUCCESSOR_DIGESTS (bootstrap / grants; working-tree CRLF vs committed-blob LF, grouped):
+  - bootstrap wt=7d0ac13e be0306fd 85a85de6 eff9cf9e 067b8da2 56a3be08 7cb4a9a4 d732104b
+  - bootstrap blob=0c7b1c08 76c5c6e1 dc440ad7 957c00a9 db1cd717 47d0c014 eb17b3d2 a142f970
+  - grants wt=82eef0fb 441d252e 2e70d883 c88efb21 1b1c94b4 a4604cf6 845d765d bf5305e8
+  - grants blob=7555a7d8 b92fd375 15c58465 397566aa 1f3f4288 c3fee178 bf0610ab b1aaa7cf
 - NEXT_GATE=`KILO_TENANT_BOOTSTRAP_DB_AUTHORITY_SOURCE_AND_REAL_PG16_REVIEW`
 
 ## Review blockers → fixes

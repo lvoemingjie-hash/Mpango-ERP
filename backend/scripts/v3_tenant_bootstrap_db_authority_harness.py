@@ -1412,6 +1412,7 @@ class Harness:
                 "alembic_heads": heads,
                 "suite_runs": suite_runs,
                 "mutations": mutation_results,
+                "mutation_red_set_verdicts": red_set_verdicts,
                 "regression": regression,
                 "guard_snapshots": self.snapshots,
                 "bootstrap_script_sha256_restored": _sha256(BOOTSTRAP_SCRIPT),

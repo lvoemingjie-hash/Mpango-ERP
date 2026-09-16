@@ -12,6 +12,20 @@
 - VERIFICATION_TIER=V3_MERGE_CRITICAL_DATA_INTEGRITY_SECURITY
 - CLAIM_CEILING=AUTHOR_IMPLEMENTATION_AND_TASK_OWNED_V3_EVIDENCE_ONLY
 - EVIDENCE_DIR=ai-ledger/product-ai/evidence/2026-09-16_zcode_tenant_bootstrap_db_authority_r1_r3/
+- SUCCESSOR_COMMIT=a21878c169d97e4c6fa837cd19dd9cced7de71e2 (`fix(bootstrap): MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R3 …`, normal hooks, no --no-verify, no amend/rebase/force)
+- EVIDENCE_COMMIT=ff1e79625070716cfea332b0f44646cc891e53c2 (append-only R1-R3 evidence pack; R1, R1-R1 and R1-R2 evidence untouched)
+- SUCCESSOR_DIGESTS (bootstrap / grants / v3 suite / harness; working-tree CRLF vs committed-blob LF, grouped):
+  - bootstrap wt=fc0db066 66b44f69 c96463cb 0fea076a 69f90f88 dc4c1885 c1d2abd3 524a4818
+  - bootstrap blob=3301a55b a995359c 23da826c 566d821d 17307471 5fbb5c8c d3278e12 74aeff6d
+  - grants wt=b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764
+  - grants blob=25330f40 794f08a2 4213c82f d9fbd3a4 eafa4719 7ed866a4 5761613d 193f4861
+  - v3_suite wt=41e8f12b 3c72dfde 1a8c351c e4eb37d9 7fe53b43 713054ea ff648fa5 b569097c
+  - v3_suite blob=41c3b3bb 16cf22fb d90a5b70 5fab6d71 0477bcaa 23cdebd8 9ffc7cb8 b7c955cc
+  - harness wt=3d28ac81 ee64dacf fc6b4e05 fa6f770c a4e8b43d 585e90c5 f3ff17d5 25d7de30
+  - harness blob=3d28ac81 ee64dacf fc6b4e05 fa6f770c a4e8b43d 585e90c5 f3ff17d5 25d7de30
+- EVIDENCE_DIGESTS (committed bytes, grouped): harness_report.json=c6be35f2 938f14dd 7a6e9222 078644bd 374b2d08 06c58a0b 31ef1c4d d4615fb1; EVIDENCE_NORMALIZATION_AUDIT.txt=8f554044 f07217d6 f7ee08d5 61eaeb21 f77cd765 e60773b7 91288c95 890a7233; README.md=7d48dbf6 54f56149 5882e336 84cd074e 27ed816a f3f11238 1f05cef5 cd983ae0
+- FORMAL_INVOCATIONS=1 (full gate set, no --skip flags); PRE_FORMAL_REHEARSAL=1 (partial, scratch dir outside the repository, non-evidence)
+- HOOK_NORMALIZATION=no bypass; the normal `trailing-whitespace`/`end-of-file-fixer` hooks normalized the generated text evidence (report: exactly one added end-of-file newline). See EVIDENCE_NORMALIZATION_AUDIT.txt; the report's own bytes are re-validated in the committed form.
 - NEXT_GATE=`KILO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R3_SOURCE_AND_REAL_PG16_REVIEW`
 
 ## Scope

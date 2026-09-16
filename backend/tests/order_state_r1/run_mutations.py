@@ -117,10 +117,12 @@ MUTATIONS = [
     m(
         "M4_RESTORE_PRE_COMMIT_NOTIFICATION",
         "services/order_command_service.py",
-        """        credit_reserved = await self._reserve_credit(order)
+        """        self._assign_status(order, OrderState.CONFIRMED, updated_by)
+        await self.db.flush()
 
-        return OrderCommandResult(""",
-        """        credit_reserved = await self._reserve_credit(order)
+        credit_reserved = await self._reserve_credit(order)""",
+        """        self._assign_status(order, OrderState.CONFIRMED, updated_by)
+        await self.db.flush()
 
         # MUTATION M4: pre-commit send with a placeholder recipient
         from services.notification_service import notification_service as _ns
@@ -130,7 +132,7 @@ MUTATIONS = [
             body="sent before commit by mutation M4",
         )
 
-        return OrderCommandResult(""",
+        credit_reserved = await self._reserve_credit(order)""",
         "tests/order_state_r1/test_notifications.py::test_rollback_produces_zero_sends",
         "sends observed for a rolled-back request",
         "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",

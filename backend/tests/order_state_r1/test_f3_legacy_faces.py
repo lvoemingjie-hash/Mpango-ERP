@@ -97,7 +97,12 @@ async def test_legacy_with_reservations_cancel_releases_by_reservation_sku_id(
         i["identity_status"] == "legacy" and i["sellable_unit_id"] is None
         for i in items_before), items_before
 
-    resp = await http_action(r1_client, token, oid, "cancel")
+    try:
+        resp = await http_action(r1_client, token, oid, "cancel")
+    except Exception as exc:  # uncontrolled failure escaped the ASGI app
+        raise AssertionError(
+            f"OSR1-F3-LEGACY-RESV-CANCEL-OK cancel raised an uncontrolled "
+            f"transport exception {type(exc).__name__}: {exc}") from exc
     assert resp.status_code == HTTPStatus.OK, (
         f"OSR1-F3-LEGACY-RESV-CANCEL-OK expected 200, got "
         f"{resp.status_code}: {resp.text}")
@@ -151,7 +156,12 @@ async def test_fulfill_null_identity_controlled_409(
     assert all(r.isnull and r.identity_status == "legacy" for r in probe), (
         f"degrade did not persist: {probe}")
 
-    resp = await http_action(r1_client, token, oid, "fulfill")
+    try:
+        resp = await http_action(r1_client, token, oid, "fulfill")
+    except Exception as exc:  # uncontrolled failure escaped the ASGI app
+        raise AssertionError(
+            f"OSR1-F3-FULFILL-NULL-409 fulfill raised an uncontrolled "
+            f"transport exception {type(exc).__name__}: {exc}") from exc
     assert resp.status_code == HTTPStatus.CONFLICT, (
         f"OSR1-F3-FULFILL-NULL-409 expected controlled 409, got "
         f"{resp.status_code}: {resp.text}")
@@ -189,7 +199,12 @@ async def test_return_null_identity_controlled_409(
         await session.close()
     await db.rollback()
 
-    resp = await http_action(r1_client, token, oid, "return")
+    try:
+        resp = await http_action(r1_client, token, oid, "return")
+    except Exception as exc:  # uncontrolled failure escaped the ASGI app
+        raise AssertionError(
+            f"OSR1-F3-RETURN-NULL-409 return raised an uncontrolled "
+            f"transport exception {type(exc).__name__}: {exc}") from exc
     assert resp.status_code == HTTPStatus.CONFLICT, (
         f"OSR1-F3-RETURN-NULL-409 expected controlled 409, got "
         f"{resp.status_code}: {resp.text}")

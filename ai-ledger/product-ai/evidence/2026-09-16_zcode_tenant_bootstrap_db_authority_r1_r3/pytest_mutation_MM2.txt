@@ -1,0 +1,707 @@
+$ pytest tests/test_tenant_bootstrap_db_authority.py (scenario=v3_ok, label=mutation_MM2, backend=C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend)
+rc=1
+
+============================= test session starts =============================
+collecting ... collected 36 items
+
+tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_never_replaces_or_reowns_public_guard FAILED [  2%]
+tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics FAILED [  5%]
+tests/test_tenant_bootstrap_db_authority.py::test_grants_script_declares_only_minimum_runtime_grants PASSED [  8%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner FAILED [ 11%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only PASSED [ 13%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes FAILED [ 16%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes PASSED [ 19%]
+tests/test_tenant_bootstrap_db_authority.py::test_v3_preparation_gate_authority_topology_is_wired PASSED [ 22%]
+tests/test_tenant_bootstrap_db_authority.py::test_v3_ok_preparation_gate_guard_function_is_intact PASSED [ 25%]
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role ERROR [ 27%]
+tests/test_tenant_bootstrap_db_authority.py::test_r2_tenant_contains_required_tables_two_views_mv_and_unique_index ERROR [ 30%]
+tests/test_tenant_bootstrap_db_authority.py::test_r3_guard_owner_and_definition_preserved_across_tenant_creation ERROR [ 33%]
+tests/test_tenant_bootstrap_db_authority.py::test_r4_ledger_update_and_delete_blocked_by_migration_owned_guard ERROR [ 36%]
+tests/test_tenant_bootstrap_db_authority.py::test_r5_runtime_role_cannot_replace_reown_or_escalate ERROR [ 38%]
+tests/test_tenant_bootstrap_db_authority.py::test_n1_missing_guard_function_fails_closed_zero_partial_tenant SKIPPED [ 41%]
+tests/test_tenant_bootstrap_db_authority.py::test_n2_incompatible_guard_signature_fails_closed_zero_partial_tenant SKIPPED [ 44%]
+tests/test_tenant_bootstrap_db_authority.py::test_n3_runtime_owned_guard_function_fails_closed_zero_partial_tenant SKIPPED [ 47%]
+tests/test_tenant_bootstrap_db_authority.py::test_n4_missing_execute_privilege_fails_closed_zero_partial_tenant SKIPPED [ 50%]
+tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant FAILED [ 52%]
+tests/test_tenant_bootstrap_db_authority.py::test_r0_owner_fallback_removed_env_undeclared SKIPPED [ 55%]
+tests/test_tenant_bootstrap_db_authority.py::test_verify_cli_wrongowner_nonzero_and_read_only SKIPPED [ 58%]
+tests/test_tenant_bootstrap_db_authority.py::test_injection_identifiers_rejected_zero_writes SKIPPED [ 61%]
+tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes PASSED [ 63%]
+tests/test_tenant_bootstrap_db_authority.py::test_first_deploy_cross_cluster_refused_zero_writes PASSED [ 66%]
+tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes PASSED [ 69%]
+tests/test_tenant_bootstrap_db_authority.py::test_wrong_password_provision_refused_zero_writes PASSED [ 72%]
+tests/test_tenant_bootstrap_db_authority.py::test_runtime_with_public_create_refused_zero_tenant FAILED [ 75%]
+tests/test_tenant_bootstrap_db_authority.py::test_layer1_admin_endpoint_mismatch_refused_zero_connections PASSED [ 77%]
+tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_endpoint_mismatch_refused_zero_connections PASSED [ 80%]
+tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_endpoint_mismatch_refused_zero_connections PASSED [ 83%]
+tests/test_tenant_bootstrap_db_authority.py::test_layer1_database_path_mismatch_refused_zero_connections PASSED [ 86%]
+tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_username_mismatch_refused_zero_connections PASSED [ 88%]
+tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_username_mismatch_refused_zero_connections PASSED [ 91%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_layer1_early_refusal_is_unconditional_and_precedes_connection PASSED [ 94%]
+tests/test_tenant_bootstrap_db_authority.py::test_mutation_m1_sentinel_reintroducing_runtime_replace_is_refused ERROR [ 97%]
+tests/test_tenant_bootstrap_db_authority.py::test_mutation_m2_sentinel_ownership_precondition_is_load_bearing SKIPPED [100%]
+
+=================================== ERRORS ====================================
+_ ERROR at setup of test_r1_public_lifecycle_activates_tenant_as_runtime_role _
+tests\test_tenant_bootstrap_db_authority.py:771: in _provisioned
+    state["lifecycle"] = await _official_lifecycle(app_url)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:697: in _official_lifecycle
+    assert response.status_code == 200, response.text
+E   AssertionError: Internal Server Error
+E   assert 500 == 200
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+----------------------------- Captured log setup ------------------------------
+ERROR    core.rate_limiter:rate_limiter.py:130 Rate limiter error: ConnectionError
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 290, in connect
+    await self.retry.call_with_retry(
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 723, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\core\rate_limiter.py", line 84, in check_rate_limit
+    count = await redis.incr(redis_key)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\client.py", line 641, in execute_command
+    conn = self.connection or await pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1100, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1133, in ensure_connection
+    await connection.connect()
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 298, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 11001 connecting to redis:6379. getaddrinfo failed.
+ERROR    core.rate_limiter:rate_limiter.py:130 Rate limiter error: ConnectionError
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 290, in connect
+    await self.retry.call_with_retry(
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 723, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\core\rate_limiter.py", line 84, in check_rate_limit
+    count = await redis.incr(redis_key)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\client.py", line 641, in execute_command
+    conn = self.connection or await pool.get_connection()
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1100, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 1133, in ensure_connection
+    await connection.connect()
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\redis\asyncio\connection.py", line 298, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error 11001 connecting to redis:6379. getaddrinfo failed.
+ERROR    api.middleware.request_logging:request_logging.py:97 Request failed: SyntaxError
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\middleware\request_logging.py", line 72, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\routing.py", line 115, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\routing.py", line 101, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\routing.py", line 355, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\routing.py", line 243, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\v1\auth.py", line 169, in verify_email
+    await verify_email_token(db=db, token=verify_request.token)
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\onboarding_service.py", line 182, in verify_email_token
+    await complete_email_verified_onboarding(
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\onboarding_service.py", line 205, in complete_email_verified_onboarding
+    provisioning = TenantProvisioningService(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\tenant_provisioning_service.py", line 78, in __init__
+    self._bootstrap_func = bootstrap_func or _load_bootstrap()
+                                             ^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\tenant_provisioning_service.py", line 355, in _load_bootstrap
+    return import_module(_BOOTSTRAP_MODULE).bootstrap
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 1133, in get_code
+  File "<frozen importlib._bootstrap_external>", line 1063, in source_to_code
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\scripts\bootstrap_tenant_schema.py", line 834
+    """Idempotent reconciliation of payments table to match 021 contract.
+                                                            ^
+SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+ERROR    api.middleware.auth:auth.py:132 Authentication middleware error: SyntaxError
+  + Exception Group Traceback (most recent call last):
+  |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_utils.py", line 79, in collapse_excgroups
+  |     yield
+  |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 192, in __call__
+  |     async with anyio.create_task_group() as task_group:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 783, in __aexit__
+  |     raise BaseExceptionGroup(
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\middleware\auth.py", line 93, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |                                    ^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\middleware\rate_limiting.py", line 118, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\cors.py", line 85, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |                                    ^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\core\prometheus_metrics.py", line 89, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |                                    ^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\middleware\sql_profiling.py", line 47, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |                                    ^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    |     self.gen.throw(value)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_utils.py", line 85, in collapse_excgroups
+    |     raise exc
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\middleware\request_logging.py", line 72, in dispatch
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    |     raise exc
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\routing.py", line 716, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\routing.py", line 736, in app
+    |     await route.handle(scope, receive, send)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\routing.py", line 290, in handle
+    |     await self.app(scope, receive, send)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\routing.py", line 115, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    |     raise exc
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\routing.py", line 101, in app
+    |     response = await f(request)
+    |                ^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\routing.py", line 355, in app
+    |     raw_response = await run_endpoint_function(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\routing.py", line 243, in run_endpoint_function
+    |     return await dependant.call(**values)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\v1\auth.py", line 169, in verify_email
+    |     await verify_email_token(db=db, token=verify_request.token)
+    |   File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\onboarding_service.py", line 182, in verify_email_token
+    |     await complete_email_verified_onboarding(
+    |   File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\onboarding_service.py", line 205, in complete_email_verified_onboarding
+    |     provisioning = TenantProvisioningService(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\tenant_provisioning_service.py", line 78, in __init__
+    |     self._bootstrap_func = bootstrap_func or _load_bootstrap()
+    |                                              ^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\tenant_provisioning_service.py", line 355, in _load_bootstrap
+    |     return import_module(_BOOTSTRAP_MODULE).bootstrap
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py", line 90, in import_module
+    |     return _bootstrap._gcd_import(name[level:], package, level)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+    |   File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+    |   File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+    |   File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+    |   File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+    |   File "<frozen importlib._bootstrap_external>", line 1133, in get_code
+    |   File "<frozen importlib._bootstrap_external>", line 1063, in source_to_code
+    |   File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+    |   File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\scripts\bootstrap_tenant_schema.py", line 834
+    |     """Idempotent reconciliation of payments table to match 021 contract.
+    |                                                             ^
+    | SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+    +------------------------------------
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\middleware\auth.py", line 93, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\middleware\rate_limiting.py", line 118, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\core\prometheus_metrics.py", line 89, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\middleware\sql_profiling.py", line 47, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\middleware\request_logging.py", line 72, in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\routing.py", line 115, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\routing.py", line 101, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\routing.py", line 355, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\fastapi\routing.py", line 243, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\v1\auth.py", line 169, in verify_email
+    await verify_email_token(db=db, token=verify_request.token)
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\onboarding_service.py", line 182, in verify_email_token
+    await complete_email_verified_onboarding(
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\onboarding_service.py", line 205, in complete_email_verified_onboarding
+    provisioning = TenantProvisioningService(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\tenant_provisioning_service.py", line 78, in __init__
+    self._bootstrap_func = bootstrap_func or _load_bootstrap()
+                                             ^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\tenant_provisioning_service.py", line 355, in _load_bootstrap
+    return import_module(_BOOTSTRAP_MODULE).bootstrap
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\importlib\__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 1133, in get_code
+  File "<frozen importlib._bootstrap_external>", line 1063, in source_to_code
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\scripts\bootstrap_tenant_schema.py", line 834
+    """Idempotent reconciliation of payments table to match 021 contract.
+                                                            ^
+SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+_ ERROR at setup of test_r2_tenant_contains_required_tables_two_views_mv_and_unique_index _
+tests\test_tenant_bootstrap_db_authority.py:771: in _provisioned
+    state["lifecycle"] = await _official_lifecycle(app_url)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:697: in _official_lifecycle
+    assert response.status_code == 200, response.text
+E   AssertionError: Internal Server Error
+E   assert 500 == 200
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+_ ERROR at setup of test_r3_guard_owner_and_definition_preserved_across_tenant_creation _
+tests\test_tenant_bootstrap_db_authority.py:771: in _provisioned
+    state["lifecycle"] = await _official_lifecycle(app_url)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:697: in _official_lifecycle
+    assert response.status_code == 200, response.text
+E   AssertionError: Internal Server Error
+E   assert 500 == 200
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+_ ERROR at setup of test_r4_ledger_update_and_delete_blocked_by_migration_owned_guard _
+tests\test_tenant_bootstrap_db_authority.py:771: in _provisioned
+    state["lifecycle"] = await _official_lifecycle(app_url)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:697: in _official_lifecycle
+    assert response.status_code == 200, response.text
+E   AssertionError: Internal Server Error
+E   assert 500 == 200
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+___ ERROR at setup of test_r5_runtime_role_cannot_replace_reown_or_escalate ___
+tests\test_tenant_bootstrap_db_authority.py:771: in _provisioned
+    state["lifecycle"] = await _official_lifecycle(app_url)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:697: in _official_lifecycle
+    assert response.status_code == 200, response.text
+E   AssertionError: Internal Server Error
+E   assert 500 == 200
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+_ ERROR at setup of test_mutation_m1_sentinel_reintroducing_runtime_replace_is_refused _
+tests\test_tenant_bootstrap_db_authority.py:771: in _provisioned
+    state["lifecycle"] = await _official_lifecycle(app_url)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:697: in _official_lifecycle
+    assert response.status_code == 200, response.text
+E   AssertionError: Internal Server Error
+E   assert 500 == 200
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+================================== FAILURES ===================================
+_________ test_bootstrap_script_never_replaces_or_reowns_public_guard _________
+tests\test_tenant_bootstrap_db_authority.py:237: in test_bootstrap_script_never_replaces_or_reowns_public_guard
+    source = _normalized(BOOTSTRAP_SCRIPT)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:175: in _normalized
+    return " ".join(_executable_source_text(path).lower().split())
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:143: in _executable_source_text
+    tree = ast.parse(source)
+           ^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python312\Lib\ast.py:52: in parse
+    return compile(source, filename, mode, flags,
+E     File "<unknown>", line 834
+E       """Idempotent reconciliation of payments table to match 021 contract.
+E                                                               ^
+E   SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+_______ test_bootstrap_script_keeps_fail_closed_precondition_semantics ________
+tests\test_tenant_bootstrap_db_authority.py:261: in test_bootstrap_script_keeps_fail_closed_precondition_semantics
+    source = _normalized(BOOTSTRAP_SCRIPT)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:175: in _normalized
+    return " ".join(_executable_source_text(path).lower().split())
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:143: in _executable_source_text
+    tree = ast.parse(source)
+           ^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python312\Lib\ast.py:52: in parse
+    return compile(source, filename, mode, flags,
+E     File "<unknown>", line 834
+E       """Idempotent reconciliation of payments table to match 021 contract.
+E                                                               ^
+E   SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+___ test_static_owner_fallback_removed_and_authority_derived_from_db_owner ____
+tests\test_tenant_bootstrap_db_authority.py:352: in test_static_owner_fallback_removed_and_authority_derived_from_db_owner
+    source = _normalized(BOOTSTRAP_SCRIPT)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:175: in _normalized
+    return " ".join(_executable_source_text(path).lower().split())
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:143: in _executable_source_text
+    tree = ast.parse(source)
+           ^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python312\Lib\ast.py:52: in parse
+    return compile(source, filename, mode, flags,
+E     File "<unknown>", line 834
+E       """Idempotent reconciliation of payments table to match 021 contract.
+E                                                               ^
+E   SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+____________ test_static_identifier_validation_wired_in_all_modes _____________
+tests\test_tenant_bootstrap_db_authority.py:437: in test_static_identifier_validation_wired_in_all_modes
+    bootstrap_source = _normalized(BOOTSTRAP_SCRIPT)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:175: in _normalized
+    return " ".join(_executable_source_text(path).lower().split())
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_tenant_bootstrap_db_authority.py:143: in _executable_source_text
+    tree = ast.parse(source)
+           ^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Programs\Python\Python312\Lib\ast.py:52: in parse
+    return compile(source, filename, mode, flags,
+E     File "<unknown>", line 834
+E       """Idempotent reconciliation of payments table to match 021 contract.
+E                                                               ^
+E   SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+__________ test_r0_single_role_topology_refused_zero_partial_tenant ___________
+tests\test_tenant_bootstrap_db_authority.py:1300: in test_r0_single_role_topology_refused_zero_partial_tenant
+    from scripts.bootstrap_tenant_schema import (
+E     File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\scripts\bootstrap_tenant_schema.py", line 834
+E       """Idempotent reconciliation of payments table to match 021 contract.
+E                                                               ^
+E   SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+_____________ test_runtime_with_public_create_refused_zero_tenant _____________
+tests\test_tenant_bootstrap_db_authority.py:1719: in test_runtime_with_public_create_refused_zero_tenant
+    from scripts.bootstrap_tenant_schema import (
+E     File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\scripts\bootstrap_tenant_schema.py", line 834
+E       """Idempotent reconciliation of payments table to match 021 contract.
+E                                                               ^
+E   SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+============================== warnings summary ===============================
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+  C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\database\base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+  C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\services\onboarding_service.py:299: DeprecationWarning: deprecated
+    if request.password is not None:
+
+tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role
+  C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\api\v1\auth.py:154: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=================================== PASSES ====================================
+__________________ test_cluster_binding_mismatch_zero_writes __________________
+------------------------------ Captured log call ------------------------------
+WARNING  core.sql_profiling:sql_profiling.py:191 Slow SQL query detected (237.90ms)
+=========================== short test summary info ===========================
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_grants_script_declares_only_minimum_runtime_grants
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_v3_preparation_gate_authority_topology_is_wired
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_v3_ok_preparation_gate_guard_function_is_intact
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_first_deploy_cross_cluster_refused_zero_writes
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_wrong_password_provision_refused_zero_writes
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_layer1_admin_endpoint_mismatch_refused_zero_connections
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_endpoint_mismatch_refused_zero_connections
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_endpoint_mismatch_refused_zero_connections
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_layer1_database_path_mismatch_refused_zero_connections
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_layer1_migrate_username_mismatch_refused_zero_connections
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_layer1_app_username_mismatch_refused_zero_connections
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_static_layer1_early_refusal_is_unconditional_and_precedes_connection
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1216: test targets scenario v3_nofunc (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1226: test targets scenario v3_badsig (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1238: test targets scenario v3_wrongown (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1250: test targets scenario v3_nopriv (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1328: test targets scenario v3_wrongown (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1362: test targets scenario v3_verify_wrongown (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:1411: test targets scenario v3_verify_wrongown (active: v3_ok)
+SKIPPED [1] tests\test_tenant_bootstrap_db_authority.py:2031: test targets scenario v3_wrongown (active: v3_ok)
+ERROR tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role - AssertionError: Internal Server Error
+assert 500 == 200
+ +  where 500 = <Response [500 Internal Server Error]>.status_code
+ERROR tests/test_tenant_bootstrap_db_authority.py::test_r2_tenant_contains_required_tables_two_views_mv_and_unique_index - AssertionError: Internal Server Error
+assert 500 == 200
+ +  where 500 = <Response [500 Internal Server Error]>.status_code
+ERROR tests/test_tenant_bootstrap_db_authority.py::test_r3_guard_owner_and_definition_preserved_across_tenant_creation - AssertionError: Internal Server Error
+assert 500 == 200
+ +  where 500 = <Response [500 Internal Server Error]>.status_code
+ERROR tests/test_tenant_bootstrap_db_authority.py::test_r4_ledger_update_and_delete_blocked_by_migration_owned_guard - AssertionError: Internal Server Error
+assert 500 == 200
+ +  where 500 = <Response [500 Internal Server Error]>.status_code
+ERROR tests/test_tenant_bootstrap_db_authority.py::test_r5_runtime_role_cannot_replace_reown_or_escalate - AssertionError: Internal Server Error
+assert 500 == 200
+ +  where 500 = <Response [500 Internal Server Error]>.status_code
+ERROR tests/test_tenant_bootstrap_db_authority.py::test_mutation_m1_sentinel_reintroducing_runtime_replace_is_refused - AssertionError: Internal Server Error
+assert 500 == 200
+ +  where 500 = <Response [500 Internal Server Error]>.status_code
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_never_replaces_or_reowns_public_guard -   File "<unknown>", line 834
+    """Idempotent reconciliation of payments table to match 021 contract.
+                                                            ^
+SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics -   File "<unknown>", line 834
+    """Idempotent reconciliation of payments table to match 021 contract.
+                                                            ^
+SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner -   File "<unknown>", line 834
+    """Idempotent reconciliation of payments table to match 021 contract.
+                                                            ^
+SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes -   File "<unknown>", line 834
+    """Idempotent reconciliation of payments table to match 021 contract.
+                                                            ^
+SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant -   File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\scripts\bootstrap_tenant_schema.py", line 834
+    """Idempotent reconciliation of payments table to match 021 contract.
+                                                            ^
+SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_runtime_with_public_create_refused_zero_tenant -   File "C:\Users\Jeff0\MPANGO ERP\worktrees\zcode_tenant_bootstrap_db_authority_r1_2026-09-16\backend\scripts\bootstrap_tenant_schema.py", line 834
+    """Idempotent reconciliation of payments table to match 021 contract.
+                                                            ^
+SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+======= 6 failed, 16 passed, 8 skipped, 3 warnings, 6 errors in 11.28s ========

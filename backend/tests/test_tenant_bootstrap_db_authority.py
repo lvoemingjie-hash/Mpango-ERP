@@ -257,6 +257,8 @@ def test_bootstrap_script_keeps_fail_closed_precondition_semantics():
         "has_function_privilege",
         "ledgerguardauthorityerror",
         "mpango_migration_authority_role",
+        "can_create_in_public",
+        "holds create on schema",
     ):
         assert fragment in source, f"missing fail-closed element: {fragment}"
 
@@ -1160,8 +1162,7 @@ async def _direct_bootstrap_refusal(
             rows = await _fetch_rows(
                 conn,
                 "SELECT 1 FROM information_schema.schemata "
-                "WHERE schema_name = :s OR schema_name LIKE 't\\_v3direct%' "
-                "ESCAPE '\\'",
+                "WHERE schema_name = :s",
                 {"s": tenant_schema},
             )
     finally:
@@ -1308,8 +1309,8 @@ async def test_r0_single_role_topology_refused_zero_partial_tenant():
             rows = await _fetch_rows(
                 conn,
                 "SELECT 1 FROM information_schema.schemata "
-                "WHERE schema_name LIKE :prefix",
-                {"prefix": "t\\_v3single%"},
+                "WHERE schema_name = :s",
+                {"s": tenant_schema},
             )
     finally:
         await app_engine.dispose()
@@ -1342,8 +1343,8 @@ async def test_r0_owner_fallback_removed_env_undeclared(monkeypatch):
             rows = await _fetch_rows(
                 conn,
                 "SELECT 1 FROM information_schema.schemata "
-                "WHERE schema_name LIKE :prefix",
-                {"prefix": "t\\_v3noenv%"},
+                "WHERE schema_name = :s",
+                {"s": tenant_schema},
             )
     finally:
         await app_engine.dispose()
@@ -1490,7 +1491,18 @@ async def test_cluster_binding_mismatch_zero_writes():
     )
     combined = result.stdout + result.stderr
     assert result.returncode != 0, "cross-cluster provision must be refused"
-    assert "cluster binding preflight failed" in combined, combined[-600:]
+    assert "frozen endpoint" in combined, combined[-600:]
+    # R1-R2 fix 5: no credentials, DSN or netloc may leak into diagnostics
+    # (restoring netloc rendering = mutation MM6 = this assertion goes RED).
+    from urllib.parse import urlsplit as _urlsplit
+
+    for _url in (migrate_url, app_url):
+        _password = _urlsplit(_url).password
+        assert _password and _password not in combined, (
+            "password leaked into binding-refusal diagnostics"
+        )
+    assert "postgresql://" not in combined
+    assert "@" not in combined
 
     after_roles, after_databases = await _second_cluster_state()
     assert after_roles == before_roles, (
@@ -1499,6 +1511,241 @@ async def test_cluster_binding_mismatch_zero_writes():
     assert after_databases == before_databases, (
         "databases were written to the second cluster despite binding refusal"
     )
+
+
+# ---------------------------------------------------------------------------
+# R1-R2: first-deployment binding, credential hygiene, public-CREATE
+# ---------------------------------------------------------------------------
+
+
+async def _deployment_inventory(url: str):
+    """(roles, databases) restricted to the deployment namespace."""
+    conn = await _connect(url)
+    try:
+        roles = tuple(r["rolname"] for r in await conn.fetch(
+            "SELECT rolname FROM pg_roles "
+            "WHERE rolname IN ($1, $2) ORDER BY rolname",
+            MIGRATION_AUTHORITY_ROLE, RUNTIME_ROLE,
+        ))
+        databases = tuple(r["datname"] for r in await conn.fetch(
+            "SELECT datname FROM pg_database "
+            "WHERE datname NOT IN ('postgres', 'template0', 'template1') "
+            "ORDER BY datname"
+        ))
+    finally:
+        await conn.close()
+    return roles, databases
+
+
+def _assert_no_credentials_leaked(combined: str, *urls: str) -> None:
+    from urllib.parse import urlsplit as _urlsplit
+
+    for _url in urls:
+        _password = _urlsplit(_url).password
+        assert _password and _password not in combined, (
+            "password leaked into diagnostics"
+        )
+    assert "postgresql://" not in combined, "DSN leaked into diagnostics"
+    assert "@" not in combined, "netloc/userinfo leaked into diagnostics"
+
+
+@_only_scenario("v3_ok")
+@pytest.mark.asyncio
+async def test_first_deploy_cross_cluster_refused_zero_writes():
+    """R1-R2 fixes 1+3: a TRUE first deployment — admin URL on cluster A,
+    migrate/app URLs on cluster B, target roles/database absent on both —
+    must be refused at the frozen-endpoint layer with ZERO additions on
+    BOTH clusters.  (Deleting the endpoint binding = mutation MM5/leak
+    MM6 territory: this test also asserts no credentials leak.)"""
+    manifest = _manifest()
+    second = manifest.get("second_cluster") or {}
+    second_admin_url = second.get("admin_url")
+    if not second_admin_url:
+        pytest.skip("manifest has no second cluster wired")
+    migrate_url, app_url, _ = _scenario_urls(_scenario(manifest, "v3_ok"))
+
+    second_before = await _deployment_inventory(second_admin_url)
+    main_before = await _deployment_inventory(manifest["admin_url"])
+
+    result = _run_cli(
+        ["--provision", "--admin-url", second_admin_url,
+         "--migrate-url", migrate_url, "--app-url", app_url],
+        extra_env={},
+    )
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0, (
+        "first-deploy cross-cluster provision must be refused"
+    )
+    assert "frozen endpoint" in combined, combined[-600:]
+    _assert_no_credentials_leaked(combined, migrate_url, app_url)
+
+    assert await _deployment_inventory(second_admin_url) == second_before, (
+        "cluster B received writes despite endpoint refusal"
+    )
+    assert await _deployment_inventory(manifest["admin_url"]) == main_before, (
+        "cluster A changed despite endpoint refusal"
+    )
+
+
+@_only_scenario("v3_ok")
+@pytest.mark.asyncio
+async def test_partial_exists_first_deploy_refused_zero_writes():
+    """R1-R2 fix 4 (partial state): with ONLY the migration role existing on
+    a fresh cluster, --provision must refuse — a deferred deployment over a
+    partial state would leave half-finished roles/databases.  (Deleting
+    the fresh-state guard = mutation MM5 = this test goes RED.)"""
+    manifest = _manifest()
+    second = manifest.get("second_cluster") or {}
+    second_admin_url = second.get("admin_url")
+    if not second_admin_url:
+        pytest.skip("manifest has no second cluster wired")
+
+    # Run-unique role names: the second cluster persists across mutation
+    # runs within one harness process (earlier mutated provisions may have
+    # left default-named roles that own databases and cannot be dropped),
+    # so the partial state is staged with fresh names every run.
+    suffix = uuid.uuid4().hex[:8]
+    partial_migrate_role = f"mpango_migrate_{suffix}"
+    partial_app_role = f"mpango_app_{suffix}"
+    fresh_database = f"v3r2fresh{uuid.uuid4().hex[:12]}"
+    parsed = urlsplit(second_admin_url)
+    endpoint = f"{parsed.hostname}:{parsed.port}"
+    second_migrate_url = (
+        f"postgresql://{partial_migrate_role}:precreatedpw"
+        f"@{endpoint}/{fresh_database}"
+    )
+    second_app_url = (
+        f"postgresql://{partial_app_role}:neverconnectedpw"
+        f"@{endpoint}/{fresh_database}"
+    )
+
+    conn = await _connect(second_admin_url)
+    try:
+        await conn.execute(
+            f"CREATE ROLE {partial_migrate_role} LOGIN PASSWORD "
+            "'precreatedpw' NOSUPERUSER NOCREATEDB CREATEROLE"
+        )
+    finally:
+        await conn.close()
+
+    async def _partial_inventory():
+        conn = await _connect(second_admin_url)
+        try:
+            roles = tuple(r["rolname"] for r in await conn.fetch(
+                "SELECT rolname FROM pg_roles "
+                "WHERE rolname IN ($1, $2) ORDER BY rolname",
+                partial_migrate_role, partial_app_role,
+            ))
+            databases = tuple(r["datname"] for r in await conn.fetch(
+                "SELECT datname FROM pg_database WHERE datname = $1",
+                fresh_database,
+            ))
+        finally:
+            await conn.close()
+        return roles, databases
+
+    before = await _partial_inventory()
+    assert before[0] == (partial_migrate_role,), before
+    assert before[1] == (), before
+
+    result = _run_cli(
+        ["--provision", "--admin-url", second_admin_url,
+         "--migrate-url", second_migrate_url, "--app-url", second_app_url],
+        extra_env={
+            "MPANGO_DB_MIGRATE_ROLE": partial_migrate_role,
+            "MPANGO_DB_APP_ROLE": partial_app_role,
+        },
+    )
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0, "partial state must be refused"
+    assert "is not fresh" in combined, combined[-600:]
+    assert "already exists" in combined, combined[-600:]
+    _assert_no_credentials_leaked(combined, second_migrate_url, second_app_url)
+
+    after = await _partial_inventory()
+    assert after == before, (
+        f"partial first-deploy wrote to the cluster: {before} -> {after}"
+    )
+
+
+@_only_scenario("v3_ok")
+@pytest.mark.asyncio
+async def test_wrong_password_provision_refused_zero_writes():
+    """R1-R2 fix 4 (wrong credential over existing roles): --provision must
+    refuse with zero writes — never tolerate, never half-provision."""
+    manifest = _manifest()
+    migrate_url, app_url, database = _scenario_urls(_scenario(manifest, "v3_ok"))
+    parsed = urlsplit(migrate_url)
+    wrong_migrate_url = urlunsplit(parsed._replace(
+        netloc=(
+            f"{parsed.username}:wrong{uuid.uuid4().hex[:8]}"
+            f"@{parsed.netloc.split('@')[1]}"
+        )
+    ))
+    main_admin_url = manifest["admin_url"]
+
+    before = await _deployment_inventory(main_admin_url)
+
+    result = _run_cli(
+        ["--provision", "--admin-url", main_admin_url,
+         "--migrate-url", wrong_migrate_url, "--app-url", app_url],
+        extra_env={},
+    )
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0, "wrong password must be refused"
+    assert "is not fresh" in combined, combined[-600:]
+    _assert_no_credentials_leaked(combined, wrong_migrate_url, app_url,
+                                  migrate_url)
+
+    after = await _deployment_inventory(main_admin_url)
+    assert after == before, "wrong-password provisioning wrote to the cluster"
+
+
+@_only_scenario("v3_ok")
+@pytest.mark.asyncio
+async def test_runtime_with_public_create_refused_zero_tenant():
+    """R1-R2 fix 6: a runtime role that holds CREATE on schema public can
+    substitute the migration-owned guard — bootstrap must refuse BEFORE
+    CREATE SCHEMA and leave zero tenant objects.  (Deleting the check =
+    mutation MM7 = this test goes RED.)"""
+    from scripts.bootstrap_tenant_schema import (
+        LedgerGuardAuthorityError,
+        bootstrap,
+    )
+
+    manifest = _manifest()
+    migrate_url, app_url, _ = _scenario_urls(_scenario(manifest, "v3_ok"))
+    migrate_conn = await _connect(migrate_url)
+    try:
+        await migrate_conn.execute(
+            f"GRANT CREATE ON SCHEMA public TO {RUNTIME_ROLE}"
+        )
+        try:
+            tenant_schema = f"t_v3r2pub_{uuid.uuid4().hex[:12]}"
+            with pytest.raises(LedgerGuardAuthorityError) as excinfo:
+                await bootstrap(tenant_schema, app_url)
+            assert "holds CREATE on schema public" in str(excinfo.value), (
+                excinfo.value
+            )
+        finally:
+            await migrate_conn.execute(
+                f"REVOKE CREATE ON SCHEMA public FROM {RUNTIME_ROLE}"
+            )
+    finally:
+        await migrate_conn.close()
+
+    app_engine = _app_engine(app_url)
+    try:
+        async with app_engine.connect() as conn:
+            rows = await _fetch_rows(
+                conn,
+                "SELECT 1 FROM information_schema.schemata "
+                "WHERE schema_name = :s",
+                {"s": tenant_schema},
+            )
+    finally:
+        await app_engine.dispose()
+    assert not rows, "public-CREATE refusal left partial tenant objects"
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,125 @@
+rc=1
+
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-8.4.2, pluggy-1.6.0
+rootdir: C:\Users\Jeff0\AppData\Local\Temp\mpango_v3_r1r1_mdrj2pd6\base_worktree\backend
+configfile: pytest.ini
+plugins: anyio-4.12.1, hypothesis-6.150.2, asyncio-0.26.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collected 104 items
+
+tests\business\test_s4e_reservation_schema_contract.py .E.               [  2%]
+tests\business\test_s4f_business_invariant_closeout.py EEEEEEEE          [ 10%]
+tests\test_u6h3_tenant_provisioning_reconcile_cleanup.py ........        [ 18%]
+tests\test_sku_bc06_reprice_guard.py ................................... [ 51%]
+..                                                                       [ 53%]
+tests\test_sku_b2_catalog_serialization.py .........                     [ 62%]
+tests\test_dc12r1_s3_s2b_i1_r3_migration_preflight.py ..............     [ 75%]
+tests\test_u1r1_bootstrap_completeness.py ...............EExxxxx...      [100%]
+
+=========================== short test summary info ===========================
+PASSED tests/business/test_s4e_reservation_schema_contract.py::test_inventory_reservation_model_is_exported
+PASSED tests/business/test_s4e_reservation_schema_contract.py::test_fresh_tenant_bootstrap_creates_inventory_reservations_contract
+PASSED tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_first_attempt_partial_schema_failure_persists_retry_anchor_and_reconciles
+PASSED tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_partial_schema_after_failure_reconciles_to_active_without_duplicate_wholesaler
+PASSED tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_complete_schema_for_provisioning_registration_completes_without_bootstrap_rerun
+PASSED tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_partial_schema_bootstrap_rerun_failure_stays_not_active_and_sanitized
+PASSED tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_active_existing_remains_idempotent_after_reconcile
+PASSED tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_reconcile_seeds_current_retailer_rbac_without_admin_grant_all
+PASSED tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_public_auth_routes_delegate_tenant_provisioning_to_onboarding_service
+PASSED tests/test_u6h3_tenant_provisioning_reconcile_cleanup.py::test_forbidden_wholesaler_api_crud_repository_and_bootstrap_files_are_untouched
+PASSED tests/test_sku_bc06_reprice_guard.py::test_bc06_fixture_preserves_unrelated_connections[same_role]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_bc06_fixture_preserves_unrelated_connections[reporting_role]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_bc06_overlapping_fixture_schemas_are_independent
+PASSED tests/test_sku_bc06_reprice_guard.py::test_bc06_body_failure_closes_owned_transaction_before_drop
+PASSED tests/test_sku_bc06_reprice_guard.py::test_bc06_partial_bootstrap_failure_cleans_only_owned_schema
+PASSED tests/test_sku_bc06_reprice_guard.py::test_bc06_cleanup_lock_timeout_is_not_swallowed
+PASSED tests/test_sku_bc06_reprice_guard.py::test_bc06_schema_collision_never_drops_existing_schema
+PASSED tests/test_sku_bc06_reprice_guard.py::test_all_sku_creation_entries_create_zero_retailer_price_rows
+PASSED tests/test_sku_bc06_reprice_guard.py::test_zero_value_stock_placeholder_is_not_use_and_does_not_block
+PASSED tests/test_sku_bc06_reprice_guard.py::test_repackage_without_history_or_price_succeeds_via_both_entries
+PASSED tests/test_sku_bc06_reprice_guard.py::test_same_value_repackage_is_never_blocked_even_with_live_price
+PASSED tests/test_sku_bc06_reprice_guard.py::test_live_price_blocks_both_entries_with_zero_data_change
+PASSED tests/test_sku_bc06_reprice_guard.py::test_only_soft_deleted_price_rows_do_not_gate_and_stay_byte_identical
+PASSED tests/test_sku_bc06_reprice_guard.py::test_any_live_price_among_multiple_retailers_blocks
+PASSED tests/test_sku_bc06_reprice_guard.py::test_corrupt_nonpositive_live_price_fails_closed_red
+PASSED tests/test_sku_bc06_reprice_guard.py::test_concurrent_price_first_then_repackage_returns_reprice_required
+PASSED tests/test_sku_bc06_reprice_guard.py::test_concurrent_repackage_first_then_set_price_targets_new_definition
+PASSED tests/test_sku_bc06_reprice_guard.py::test_transaction_history_locks_repackage_immutable_after_use[stable]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_transaction_history_locks_repackage_immutable_after_use[linked_legacy]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_transaction_history_locks_repackage_immutable_after_use[legacy]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_history_lock_dominates_the_price_gate
+PASSED tests/test_sku_bc06_reprice_guard.py::test_soft_deleted_order_items_still_lock_repackage
+PASSED tests/test_sku_bc06_reprice_guard.py::test_any_inventory_movement_locks_repackage
+PASSED tests/test_sku_bc06_reprice_guard.py::test_nonzero_on_hand_stock_locks_repackage
+PASSED tests/test_sku_bc06_reprice_guard.py::test_nonzero_reserved_stock_locks_repackage
+PASSED tests/test_sku_bc06_reprice_guard.py::test_reservation_status_locks_repackage[reserved]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_reservation_status_locks_repackage[consumed]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_reservation_status_locks_repackage[released]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_locked_fresh_read_after_concurrent_commit[sku]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_locked_fresh_read_after_concurrent_commit[unit]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_update_sku_syncs_sibling_fields_and_preserves_package_quantity
+PASSED tests/test_sku_bc06_reprice_guard.py::test_concurrent_soft_delete_wins_updater_returns_structured_404[sku]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_concurrent_soft_delete_wins_updater_returns_structured_404[unit]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_concurrent_soft_delete_wins_updater_returns_structured_404[set_price]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_reverse_linearization_update_wins_then_soft_delete[sku]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_reverse_linearization_update_wins_then_soft_delete[unit]
+PASSED tests/test_sku_bc06_reprice_guard.py::test_set_price_fail_closed_on_missing_or_soft_deleted_sku
+PASSED tests/test_sku_b2_catalog_serialization.py::test_t1_old_code_mutate_flush_then_serialize_raises_missing_greenlet
+PASSED tests/test_sku_b2_catalog_serialization.py::test_t2_product_update_returns_fully_materialized_graph
+PASSED tests/test_sku_b2_catalog_serialization.py::test_t3_serialization_executes_zero_sql
+PASSED tests/test_sku_b2_catalog_serialization.py::test_t4_sellable_unit_update_serializes_whole_graph
+PASSED tests/test_sku_b2_catalog_serialization.py::test_t5_add_sellable_unit_returns_complete_graph
+PASSED tests/test_sku_b2_catalog_serialization.py::test_t6_create_product_returns_complete_graph
+PASSED tests/test_sku_b2_catalog_serialization.py::test_t7_rename_and_deactivate_leave_order_snapshots_unchanged
+PASSED tests/test_sku_b2_catalog_serialization.py::test_t8_wrong_tenant_product_is_404
+PASSED tests/test_sku_b2_catalog_serialization.py::test_t8_missing_permission_denied
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestPgCatalogValidators::test_pg_catalog_columns_on_bootstrapped_schema
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestPgCatalogValidators::test_pg_catalog_constraints_on_bootstrapped_schema
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestPgCatalogValidators::test_pg_catalog_indexes_on_bootstrapped_schema
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestPermissionCollisionFailClosed::test_both_permissions_exist_fails_preflight
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestPermissionCollisionFailClosed::test_neither_permission_exist_after_bootstrap_has_declare
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestOrmMetadataAllIndexes::test_payment_declarations_indexes_in_metadata
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestOrmMetadataAllIndexes::test_all_three_check_constraints_present
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestOrmMetadataAllIndexes::test_receipt_sequence_char8_pk
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestMalformedObjects::test_wrong_check_constraint_rejected
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestMalformedObjects::test_wrong_fk_delete_action_rejected
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestMalformedObjects::test_missing_column_rejected
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestMalformedObjects::test_wrong_column_type_rejected
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestMalformedObjects::test_extra_column_is_deleted_rejected
+PASSED tests/test_dc12r1_s3_s2b_i1_r3_migration_preflight.py::TestMalformedObjects::test_partial_receipt_sequences_rejected
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestTableCompleteness::test_all_mvp_tables_exist
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestTableCompleteness::test_retailers_in_public_not_tenant
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestBootstrapImportRuns::test_import_runs_table_exists
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestBootstrapImportRuns::test_import_runs_all_columns_present
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestBootstrapImportRuns::test_import_runs_all_indexes_present
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestBootstrapImportRuns::test_import_runs_import_id_unique_index
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestBootstrapImportRuns::test_double_bootstrap_import_runs_idempotent
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestBootstrapImportPreviewValidate::test_preview_creates_row_in_bootstrapped_import_runs
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestBootstrapImportPreviewValidate::test_validate_updates_bootstrapped_import_runs
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestAdminPermissionCompleteness::test_admin_has_all_desired_permissions
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestAdminPermissionCompleteness::test_retailer_operator_has_exact_client_permissions
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestAdminPermissionCompleteness::test_admin_user_has_admin_role
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestAdminPermissionCompleteness::test_seed_admin_rbac_grants_only_requested_codes
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestBootstrapIdempotency::test_double_bootstrap_does_not_error
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestBootstrapIdempotency::test_table_count_unchanged_after_double_bootstrap
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokeNonSuperAdmin::test_no_perm_user_gets_403
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokeNonSuperAdmin::test_admin_with_perms_passes_requirement
+PASSED tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokeNonSuperAdmin::test_no_perm_user_raises_on_requirement
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/orders-Orders] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/skus-Products/SKUs] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/inventory/stocks-Stock] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/payments-Payments] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+XFAIL tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmokePlatformDiagnostic::test_sidebar_endpoint_platform_diagnostic[GET-/api/v1/pricing/prices-Pricing] - Platform limitation: get_tenant_db_session override / reporting_user / event-loop — not a U1 bootstrap issue
+ERROR tests/business/test_s4e_reservation_schema_contract.py::test_inventory_reservations_table_contract_exists_in_test_schema
+ERROR tests/business/test_s4f_business_invariant_closeout.py::test_confirm_creates_reservation_and_insufficient_confirm_rolls_back
+ERROR tests/business/test_s4f_business_invariant_closeout.py::test_pay_preserves_inventory_reservation_and_existing_phase5_ledger_semantics
+ERROR tests/business/test_s4f_business_invariant_closeout.py::test_unpaid_order_cannot_fulfill_and_inventory_is_unchanged
+ERROR tests/business/test_s4f_business_invariant_closeout.py::test_fulfill_consumes_owned_reservation_writes_movement_and_duplicate_is_stable
+ERROR tests/business/test_s4f_business_invariant_closeout.py::test_return_restores_on_hand_without_re_reserving_and_duplicate_is_stable
+ERROR tests/business/test_s4f_business_invariant_closeout.py::test_cancel_confirmed_releases_reservation_and_paid_or_fulfilled_cancel_is_rejected
+ERROR tests/business/test_s4f_business_invariant_closeout.py::test_multi_item_confirm_and_fulfill_failures_roll_back_all_side_effects
+ERROR tests/business/test_s4f_business_invariant_closeout.py::test_same_sku_code_isolated_across_two_tenant_schemas
+ERROR tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmoke::test_sidebar_endpoint_returns_200[GET-/api/v1/retailers-Customers]
+ERROR tests/test_u1r1_bootstrap_completeness.py::TestSidebarApiSmoke::test_sidebar_endpoint_returns_200[GET-/api/v1/dashboards/kpi/summary-Dashboard]
+============ 88 passed, 5 xfailed, 11 errors in 117.12s (0:01:57) =============

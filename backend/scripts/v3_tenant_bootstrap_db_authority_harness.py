@@ -220,6 +220,86 @@ MUTATIONS = [
             "and the binding-order static must catch it"
         ),
     },
+    {
+        "name": "MM5",
+        "title": "fresh_state_binding_guard_deleted",
+        "file": "grants",
+        "anchor": (
+            "            deferral_allowed = False\n"
+            "            if database_exists:\n"
+        ),
+        "replacement": (
+            "            deferral_allowed = True  # MUTATION MM5: binding "
+            "guards deleted\n"
+            "            if False:  # MUTATION MM5\n"
+        ),
+        "scenario": "v3_ok",
+        "named_red": [
+            SUITE + "test_partial_exists_first_deploy_refused_zero_writes",
+            SUITE + "test_wrong_password_provision_refused_zero_writes",
+        ],
+        "rationale": (
+            "deleting the binding refusal matrix lets --provision write "
+            "over partial role states and tolerate wrong credentials — the "
+            "partial-exists and wrong-password counterexamples must catch it"
+        ),
+    },
+    {
+        "name": "MM6",
+        "title": "netloc_leak_restored",
+        "file": "grants",
+        "anchor": (
+            '            rendered = " vs ".join(\n'
+            '                f"{host}:{port}" for host, port in '
+            "endpoints.values()\n"
+            "            )\n"
+        ),
+        "replacement": (
+            '            rendered = " vs ".join([\n'
+            "                admin_parsed.netloc, migrate_parsed.netloc, "
+            "app_parsed.netloc,\n"
+            "            ])\n"
+        ),
+        "scenario": "v3_ok",
+        "named_red": [
+            SUITE + "test_cluster_binding_mismatch_zero_writes",
+            SUITE + "test_first_deploy_cross_cluster_refused_zero_writes",
+        ],
+        "rationale": (
+            "restoring netloc rendering puts username:password@host into the "
+            "refusal diagnostic — the credential-hygiene assertions of the "
+            "cross-cluster counterexamples must catch it"
+        ),
+    },
+    {
+        "name": "MM7",
+        "title": "public_create_check_deleted",
+        "file": "bootstrap",
+        "anchor": (
+            '    if row["can_create_in_public"]:\n'
+            "        violations.append(\n"
+            '            f"connected role {connected_role!r} holds CREATE on '
+            'schema "\n'
+            '            "public; the runtime role must never be able to '
+            'create or "\n'
+            '            "substitute objects in the migration-owned public '
+            'schema"\n'
+            "        )\n"
+        ),
+        "replacement": "",
+        "scenario": "v3_ok",
+        "named_red": [
+            SUITE + "test_runtime_with_public_create_refused_zero_tenant",
+            SUITE + "test_bootstrap_script_keeps_fail_closed_precondition_"
+            "semantics",
+        ],
+        "rationale": (
+            "deleting the runtime no-CREATE-on-public precondition lets a "
+            "runtime that can write into public proceed to bootstrap — the "
+            "zero-tenant counterexample and the fail-closed static must "
+            "catch it"
+        ),
+    },
 ]
 
 
@@ -325,11 +405,12 @@ class Harness:
         self.second_container = f"mpango-v3auth2b-{uuid.uuid4().hex[:10]}"
         self.port = _free_port()
         self.second_port = _free_port()
-        self.admin_password = secrets.token_hex(16)
-        self.migrate_password = secrets.token_hex(16)
-        self.app_password = secrets.token_hex(16)
-        self.reporting_password = secrets.token_hex(16)
-        self.second_admin_password = secrets.token_hex(16)
+        self.synthetic_token = secrets.token_hex(16)
+        self.admin_password = f"adm{self.synthetic_token}"
+        self.migrate_password = f"mig{self.synthetic_token}"
+        self.app_password = f"app{self.synthetic_token}"
+        self.reporting_password = f"rep{self.synthetic_token}"
+        self.second_admin_password = f"sec{self.synthetic_token}"
         self.host = "127.0.0.1"
         self.admin_url = (
             f"postgresql://postgres:{self.admin_password}"
@@ -628,10 +709,21 @@ class Harness:
             encoding="utf-8", errors="replace",
         )
         output_path = self.evidence_dir / f"pytest_{label}.txt"
+        # Mutation-run logs may legitimately contain a leaked diagnostic
+        # (that is what the leak detectors caught); the synthetic secret
+        # material is masked in place so evidence shows the leak location
+        # without carrying the secret.
+        masked = (
+            f"{outcome.stdout}\n{outcome.stderr}"
+        ).replace(
+            self.synthetic_token, "***SYNTHETIC-SECRET-REDACTED***"
+        ).replace(
+            _group_hex_in_text(self.synthetic_token),
+            "***SYNTHETIC-SECRET-REDACTED***",
+        )
         output_path.write_text(
             f"$ pytest {TEST_FILE} (scenario={scenario}, label={label}, "
-            f"backend={backend})\nrc={outcome.returncode}\n\n"
-            f"{outcome.stdout}\n{outcome.stderr}",
+            f"backend={backend})\nrc={outcome.returncode}\n\n{masked}",
             encoding="utf-8",
         )
         failed, errored = _failed_nodeids(outcome.stdout)
@@ -677,6 +769,11 @@ class Harness:
             return results
         try:
             for mutation in MUTATIONS:
+                # Restore whatever the previous mutation left before applying
+                # the next one: every mutation run must be ISOLATED (only its
+                # own semantic mutation active).
+                BOOTSTRAP_SCRIPT.write_bytes(originals["bootstrap"])
+                GRANTS_SCRIPT.write_bytes(originals["grants"])
                 self._patch(
                     paths[mutation["file"]],
                     mutation["anchor"], mutation["replacement"],
@@ -857,6 +954,16 @@ class Harness:
                     f"candidate: {regression['deltas'][:10]}"
                 )
 
+            # R1-R2 fix 5: synthetic-secret leak scan over EVERY evidence
+            # file — every password embeds the token, so any occurrence
+            # means a credential leaked into a diagnostic.
+            scan = self._scan_evidence_for_secrets()
+            assert scan["files_containing_secret"] == 0, (
+                "SYNTHETIC SECRET LEAKED into "
+                f"{scan['files_containing_secret']} evidence file(s)"
+            )
+            self.report["synthetic_secret_scan"] = scan
+
             self.report["phases"] = {
                 "alembic_heads": heads,
                 "suite_runs": suite_runs,
@@ -880,6 +987,23 @@ class Harness:
                       str(self.base_worktree)])
             if not self.keep:
                 self.stop_containers()
+
+    def _scan_evidence_for_secrets(self) -> dict:
+        """Scan every evidence file for the synthetic secret token."""
+        files = 0
+        leaking = []
+        for path in sorted(self.evidence_dir.rglob("*")):
+            if path.is_file():
+                files += 1
+                if self.synthetic_token in path.read_text(
+                    encoding="utf-8", errors="replace"
+                ):
+                    leaking.append(path.name)
+        return {
+            "files_scanned": files,
+            "files_containing_secret": len(leaking),
+            "leaking_files": leaking,
+        }
 
     def _write_report(self):
         payload = json.loads(json.dumps(self.report, default=str))

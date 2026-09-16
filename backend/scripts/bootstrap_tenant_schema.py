@@ -103,7 +103,9 @@ async def _assert_ledger_guard_function_authority(db) -> None:
        (direct or indirect, usable or not) in the authority role — no SET
        ROLE escalation path may exist.
     5. Privilege: the connected role holds EXECUTE on the function, so the
-       tenant trigger can fire at runtime.
+       tenant trigger can fire at runtime, and holds NO CREATE on schema
+       public (R1-R2: a runtime that could create objects in public could
+       substitute the shared guard).
 
     MPANGO_MIGRATION_AUTHORITY_ROLE, when declared, is treated as a
     consistency assertion only: it must EQUAL the derived database owner or
@@ -130,6 +132,9 @@ async def _assert_ledger_guard_function_authority(db) -> None:
             "COALESCE(pg_has_role("
             "    current_user, pg_get_userbyid(p.proowner), 'USAGE'), "
             "    false) AS connected_usage_of_owner, "
+            "COALESCE(has_schema_privilege("
+            "    current_user, 'public', 'CREATE'), false) "
+            "    AS can_create_in_public, "
             "has_function_privilege("
             "    current_user, probe.func_oid, 'EXECUTE') AS can_execute "
             "FROM (SELECT to_regprocedure(:signature) AS func_oid) probe "
@@ -216,6 +221,17 @@ async def _assert_ledger_guard_function_authority(db) -> None:
         violations.append(
             f"connected role {connected_role!r} lacks EXECUTE on "
             f"{LEDGER_GUARD_SIGNATURE}"
+        )
+
+    # R1-R2 fix 6: the runtime must hold NO CREATE on the migration-owned
+    # public schema — otherwise it could drop/recreate (substitute) the
+    # shared guard function or plant shadow objects there.  Checked BEFORE
+    # any tenant DDL so a wrong grant refuses with zero tenant objects.
+    if row["can_create_in_public"]:
+        violations.append(
+            f"connected role {connected_role!r} holds CREATE on schema "
+            "public; the runtime role must never be able to create or "
+            "substitute objects in the migration-owned public schema"
         )
 
     if violations:

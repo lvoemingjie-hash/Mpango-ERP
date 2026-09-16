@@ -52,7 +52,7 @@ import json
 import os
 import re
 import sys
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 ADMIN_URL_ENV = "MPANGO_DB_ADMIN_URL"
 MIGRATE_URL_ENV = "MPANGO_DB_MIGRATE_URL"
@@ -190,52 +190,74 @@ class Provisioner:
         """Prove the three URLs describe ONE deployment; refuse with zero
         writes on any mismatch.
 
-        Layer 1 (always, before any connection): URL consistency — the
-        migrate and app URLs must share one host:port and one database name
-        (equal to the configured database), and their usernames must equal
-        the migration-authority and runtime roles respectively.
+        Layer 1 (always, before any connection): FROZEN ENDPOINT BINDING -
+        ALL THREE URLs (admin, migrate, app) must share ONE host:port, the
+        migrate/app URLs must both name the configured database, and their
+        usernames must equal the migration-authority and runtime roles.
+        Diagnostics render host:port only - NEVER netloc, DSN or passwords.
 
         Layer 2 (always): the admin URL is connected live; its current_user
         must equal the URL user and that user must be a superuser, and the
         cluster system identifier is captured.
 
-        Layer 3 (when the roles/database already exist — always the case for
-        --apply-grants and --verify, and re-asserted right after --provision
-        creates them): migrate and app URLs are connected live; all three
-        connections must report the SAME pg_control_system().system_identifier,
-        both must resolve current_database() to the configured database, and
-        each current_user must equal its expected role.
+        Layer 3 (whenever the migrate/app roles and database are connectable):
+        all three connections must report the SAME
+        pg_control_system().system_identifier, both must resolve
+        current_database() to the configured database, and each current_user
+        must equal its expected role.
 
-        ``require_live=False`` is used only for the FIRST --provision call,
-        where the migrate/app roles and database do not exist yet and cannot
-        connect; the deferred result is recorded and the full live proof is
-        re-asserted immediately after creation.
+        R1-R2 fix 1/2: when the migrate/app endpoints are NOT connectable,
+        deferral is allowed ONLY in two catalog-proven shapes - (a) a fully
+        fresh first deployment (target database and both roles all absent)
+        or (b) an established deployment adding a database (both roles
+        exist, target database absent, AND both roles pass a live
+        credential probe against the maintenance database BEFORE any
+        write).  Any partial state (exactly one role, or the database
+        already existing) or a failed credential probe refuses with ZERO
+        writes; provisioning never happens blind.
+
+        ``require_live=False`` is used only for the FIRST --provision call;
+        the full live proof is re-asserted immediately after creation.
         """
         import asyncpg
 
         problems: list[str] = []
+        admin_parsed = urlsplit(self.admin_url)
         migrate_parsed = urlsplit(self.migrate_url)
         app_parsed = urlsplit(self.app_url)
-        if (migrate_parsed.hostname or "").lower() != (app_parsed.hostname or "").lower()                 or (migrate_parsed.port or 5432) != (app_parsed.port or 5432):
+
+        def _endpoint(parsed) -> tuple[str, int]:
+            return (parsed.hostname or "").lower(), parsed.port or 5432
+
+        # Layer 1: frozen endpoint binding across ALL THREE URLs.  Only
+        # host:port is rendered in diagnostics; userinfo is never printed.
+        endpoints = {
+            "admin": _endpoint(admin_parsed),
+            "migrate": _endpoint(migrate_parsed),
+            "app": _endpoint(app_parsed),
+        }
+        if len(set(endpoints.values())) != 1:
+            rendered = " vs ".join(
+                f"{host}:{port}" for host, port in endpoints.values()
+            )
             problems.append(
-                "migrate and app URLs target different hosts/ports "
-                f"({migrate_parsed.netloc} vs {app_parsed.netloc})"
+                "URLs do not share one frozen endpoint (admin/migrate/app "
+                f"host:port must be identical): {rendered}"
             )
         if (migrate_parsed.path or "/") != (app_parsed.path or "/")                 or (migrate_parsed.path or "/").lstrip("/") != self.database:
             problems.append(
                 "migrate and app URLs do not both target the configured "
-                f"database {self.database!r} "
-                f"(got {migrate_parsed.path!r} / {app_parsed.path!r})"
+                f"database {self.database!r}"
             )
         if (migrate_parsed.username or "") != self.migrate_role:
             problems.append(
-                f"migrate URL username {migrate_parsed.username!r} does not "
-                f"equal the migration authority role {self.migrate_role!r}"
+                f"migrate URL username does not equal the migration "
+                f"authority role {self.migrate_role!r}"
             )
         if (app_parsed.username or "") != self.app_role:
             problems.append(
-                f"app URL username {app_parsed.username!r} does not equal "
-                f"the runtime role {self.app_role!r}"
+                f"app URL username does not equal the runtime role "
+                f"{self.app_role!r}"
             )
 
         async def _probe(url: str) -> dict:
@@ -264,73 +286,167 @@ class Provisioner:
             )
 
         live: dict = {}
-        if not problems:
-            deferred = False
+        try:
+            live["migrate"] = await _probe(self.migrate_url)
+            live["app"] = await _probe(self.app_url)
+        except (asyncpg.InvalidPasswordError,
+                asyncpg.InvalidAuthorizationSpecificationError,
+                asyncpg.InvalidCatalogNameError,
+                asyncpg.UndefinedObjectError,
+                ConnectionError, OSError):
+            live = {}
+
+        if live:
+            identifiers = {
+                "admin": admin["system_identifier"],
+                "migrate": live["migrate"]["system_identifier"],
+                "app": live["app"]["system_identifier"],
+            }
+            if len(set(identifiers.values())) != 1:
+                problems.append(
+                    "URLs target different clusters (system identifiers differ)"
+                )
+            if not (
+                live["migrate"]["bound_database"] == self.database
+                and live["app"]["bound_database"] == self.database
+            ):
+                problems.append(
+                    "migrate/app connections do not both resolve the "
+                    f"configured database {self.database!r}"
+                )
+            if live["migrate"]["bound_user"] != self.migrate_role:
+                problems.append(
+                    f"migrate URL binds current_user "
+                    f"{live['migrate']['bound_user']!r}, expected "
+                    f"migration authority {self.migrate_role!r}"
+                )
+            if live["app"]["bound_user"] != self.app_role:
+                problems.append(
+                    f"app URL binds current_user "
+                    f"{live['app']['bound_user']!r}, expected runtime "
+                    f"role {self.app_role!r}"
+                )
+        else:
+            # R1-R2 fixes 1+2: a non-connectable migrate/app pair is
+            # deferrable in EXACTLY two catalog-proven shapes; every other
+            # state refuses with zero writes:
+            #   (a) proven-fresh first deployment: target database AND both
+            #       roles absent — nothing can be half-created;
+            #   (b) established principals, absent database: BOTH roles
+            #       exist (cluster-wide principals shared by multiple
+            #       application databases) and only the database is absent.
+            #       The unconnectable reason is then provably the missing
+            #       database, but the CREDENTIALS are still verified live
+            #       first — both roles must authenticate against the admin
+            #       endpoint's existing maintenance database with their
+            #       expected current_user — so a wrong password over an
+            #       established deployment still refuses with zero writes.
+            # Refused shapes: exactly one role exists (partial role set),
+            # the target database already exists (live idempotent mode
+            # requires connectable URLs), or the credential probe fails.
+            admin_conn = await asyncpg.connect(self.admin_url)
             try:
-                live["migrate"] = await _probe(self.migrate_url)
-                live["app"] = await _probe(self.app_url)
-            except (asyncpg.InvalidPasswordError,
-                    asyncpg.InvalidAuthorizationSpecificationError,
-                    asyncpg.InvalidCatalogNameError,
-                    asyncpg.UndefinedObjectError,
-                    ConnectionError, OSError):
-                deferred = True
-            if not deferred:
-                identifiers = {
-                    "admin": admin["system_identifier"],
-                    "migrate": live["migrate"]["system_identifier"],
-                    "app": live["app"]["system_identifier"],
-                }
-                if len(set(identifiers.values())) != 1:
+                migrate_role_exists = bool(await admin_conn.fetchval(
+                    "SELECT 1 FROM pg_roles WHERE rolname = $1",
+                    self.migrate_role,
+                ))
+                app_role_exists = bool(await admin_conn.fetchval(
+                    "SELECT 1 FROM pg_roles WHERE rolname = $1",
+                    self.app_role,
+                ))
+                database_exists = bool(await admin_conn.fetchval(
+                    "SELECT 1 FROM pg_database WHERE datname = $1",
+                    self.database,
+                ))
+            finally:
+                await admin_conn.close()
+
+            deferral_allowed = False
+            if database_exists:
+                problems.append(
+                    "deferred provisioning refused: the deployment state is "
+                    f"not fresh (target database {self.database!r} already "
+                    "exists) while the migrate/app URLs are not connectable "
+                    "- re-provisioning an existing database requires "
+                    "connectable URLs (zero writes performed)"
+                )
+            elif migrate_role_exists != app_role_exists:
+                existing, absent = (
+                    (self.migrate_role, self.app_role)
+                    if migrate_role_exists
+                    else (self.app_role, self.migrate_role)
+                )
+                problems.append(
+                    "deferred provisioning refused: the deployment state is "
+                    f"not fresh (partial role set: role {existing!r} already "
+                    f"exists while role {absent!r} does not) - partial role "
+                    "states are never provisioned over (zero writes "
+                    "performed)"
+                )
+            elif not migrate_role_exists and not app_role_exists:
+                deferral_allowed = True  # proven-fresh first deployment
+            else:
+                # Both roles exist, database absent: verify credentials by
+                # authenticating each role against the maintenance database
+                # BEFORE any write.
+                try:
+                    for url, expected_role in (
+                        (self.migrate_url, self.migrate_role),
+                        (self.app_url, self.app_role),
+                    ):
+                        parsed = urlsplit(url)
+                        maintenance = urlsplit(self.admin_url)
+                        probe_url = urlunsplit(parsed._replace(
+                            path=maintenance.path or "/postgres"
+                        ))
+                        conn = await asyncpg.connect(probe_url)
+                        try:
+                            bound = await conn.fetchval("SELECT current_user")
+                        finally:
+                            await conn.close()
+                        if bound != expected_role:
+                            problems.append(
+                                "deferred provisioning refused: credential "
+                                f"probe for {expected_role!r} bound "
+                                f"current_user {bound!r} (zero writes "
+                                "performed)"
+                            )
+                            break
+                    else:
+                        deferral_allowed = True
+                except (asyncpg.InvalidPasswordError,
+                        asyncpg.InvalidAuthorizationSpecificationError,
+                        ConnectionError, OSError):
                     problems.append(
-                        f"URLs target different clusters (system identifiers: "
-                        f"{identifiers})"
+                        "deferred provisioning refused: credential probe "
+                        "failed for the established roles while the target "
+                        "database is absent - wrong credentials are never "
+                        "tolerated (zero writes performed)"
                     )
-                if not (
-                    live["migrate"]["bound_database"] == self.database
-                    and live["app"]["bound_database"] == self.database
-                ):
-                    problems.append(
-                        "migrate/app connections do not both resolve the "
-                        f"configured database {self.database!r} (got "
-                        f"{live['migrate']['bound_database']!r} / "
-                        f"{live['app']['bound_database']!r})"
-                    )
-                if live["migrate"]["bound_user"] != self.migrate_role:
-                    problems.append(
-                        f"migrate URL binds current_user "
-                        f"{live['migrate']['bound_user']!r}, expected "
-                        f"migration authority {self.migrate_role!r}"
-                    )
-                if live["app"]["bound_user"] != self.app_role:
-                    problems.append(
-                        f"app URL binds current_user "
-                        f"{live['app']['bound_user']!r}, expected runtime "
-                        f"role {self.app_role!r}"
-                    )
+            if not deferral_allowed:
+                pass  # problems already appended above
             elif require_live:
                 problems.append(
-                    "live binding impossible: the migrate/app URLs cannot be "
-                    "connected although require_live=True (roles/database "
-                    "missing or credentials wrong)"
+                    "live binding required but the migrate/app URLs are not "
+                    "connectable although the deployment state allows "
+                    "deferred provisioning"
                 )
 
         if problems:
-            raise ClusterBindingError(
-                "cluster binding preflight failed (zero writes performed):\n"
-                "  - " + "\n  - ".join(problems)
-            )
+            message = "cluster binding preflight failed (zero writes performed):"
+            for problem in problems:
+                message = message + "\n  - " + problem
+            raise ClusterBindingError(message)
         result = {
             "system_identifier": str(admin["system_identifier"]),
+            "endpoint": f"{endpoints['admin'][0]}:{endpoints['admin'][1]}",
             "database": self.database,
             "admin_user": admin["bound_user"],
+            "mode": "live" if live else "deferred-first-provision-fresh",
         }
         if live:
             result["migrate_user"] = live["migrate"]["bound_user"]
             result["app_user"] = live["app"]["bound_user"]
-            result["mode"] = "live"
-        else:
-            result["mode"] = "deferred-first-provision"
         return result
 
     # ------------------------------------------------------------------ admin

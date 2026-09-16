@@ -1,0 +1,371 @@
+{
+  "task": "MPANGO_TENANT_BOOTSTRAP_DB_AUTHORITY_R1_R1",
+  "authorization": "CTO-AUTH-TENANT-BOOTSTRAP-DB-AUTHORITY-R1-R1-2026-09-16",
+  "started_at": "2026-09-16T05:34:37.230811+00:00",
+  "image": "postgres:16.15",
+  "second_image": "postgres:16.15-alpine",
+  "container": "mpango-v3auth2-9e4abf0148",
+  "second_container": "mpango-v3auth2b-5616715dbd",
+  "port": 63455,
+  "second_port": 63456,
+  "base_commit": "0a16ed70 7ad898e9 924c26b2 80971487 08677af9",
+  "phases": {
+    "alembic_heads": {
+      "v3_ok": "038_catalog_identity_vertical_slice",
+      "v3_nofunc": "038_catalog_identity_vertical_slice",
+      "v3_badsig": "038_catalog_identity_vertical_slice",
+      "v3_wrongown": "038_catalog_identity_vertical_slice",
+      "v3_nopriv": "038_catalog_identity_vertical_slice",
+      "v3_verify_wrongown": "038_catalog_identity_vertical_slice"
+    },
+    "suite_runs": [
+      {
+        "scenario": "v3_ok",
+        "label": "v3_ok",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_ok.txt"
+      },
+      {
+        "scenario": "v3_nofunc",
+        "label": "v3_nofunc",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_nofunc.txt"
+      },
+      {
+        "scenario": "v3_badsig",
+        "label": "v3_badsig",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_badsig.txt"
+      },
+      {
+        "scenario": "v3_wrongown",
+        "label": "v3_wrongown",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_wrongown.txt"
+      },
+      {
+        "scenario": "v3_nopriv",
+        "label": "v3_nopriv",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_nopriv.txt"
+      },
+      {
+        "scenario": "v3_verify_wrongown",
+        "label": "v3_verify_wrongown",
+        "rc": 0,
+        "failed": [],
+        "errors": [],
+        "log": "pytest_v3_verify_wrongown.txt"
+      }
+    ],
+    "mutations": [
+      {
+        "mutation": "MM1",
+        "title": "commit_type_verify_restored",
+        "scenario": "v3_verify_wrongown",
+        "rationale": "restoring a committing DDL probe inside --verify must be caught by the pure-catalog static semantic assertion. The behavioral identity proof additionally shows the probe CANNOT mutate the guard under the minimum-grant topology: PostgreSQL refuses CREATE OR REPLACE even for the function's OWNER without CREATE on schema public, which the minimum grants never confer \u2014 a second, independent structural defense",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only"
+        ],
+        "mutated_file": "grants",
+        "mutated_sha256": "52532605 73e394d6 3eb2bc11 3c034e06 ccad32c7 87836440 bc444ae8 1b05f2d9",
+        "run": {
+          "scenario": "v3_verify_wrongown",
+          "label": "mutation_MM1",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM1.txt"
+        },
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_verify_is_pure_catalog_read_only"
+        ],
+        "restored_sha256": "82eef0fb 441d252e 2e70d883 c88efb21 1b1c94b4 a4604cf6 845d765d bf5305e8",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM2",
+        "title": "owner_fallback_restored",
+        "scenario": "v3_ok",
+        "rationale": "restoring the connected-role owner fallback lets the single-role topology bootstrap silently \u2014 the single-role refusal and the no-fallback static must catch it",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner"
+        ],
+        "mutated_file": "bootstrap",
+        "mutated_sha256": "793066d2 79c65c56 134fd250 a7c8a241 760967ba f9297fe6 2c2a0577 7707ab4c",
+        "run": {
+          "scenario": "v3_ok",
+          "label": "mutation_MM2",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics",
+            "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_never_replaces_or_reowns_public_guard",
+            "tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant",
+            "tests/test_tenant_bootstrap_db_authority.py::test_runtime_with_public_create_refused_zero_tenant",
+            "tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes",
+            "tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner"
+          ],
+          "errors": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_mutation_m1_sentinel_reintroducing_runtime_replace_is_refused",
+            "tests/test_tenant_bootstrap_db_authority.py::test_r1_public_lifecycle_activates_tenant_as_runtime_role",
+            "tests/test_tenant_bootstrap_db_authority.py::test_r2_tenant_contains_required_tables_two_views_mv_and_unique_index",
+            "tests/test_tenant_bootstrap_db_authority.py::test_r3_guard_owner_and_definition_preserved_across_tenant_creation",
+            "tests/test_tenant_bootstrap_db_authority.py::test_r4_ledger_update_and_delete_blocked_by_migration_owned_guard",
+            "tests/test_tenant_bootstrap_db_authority.py::test_r5_runtime_role_cannot_replace_reown_or_escalate"
+          ],
+          "log": "pytest_mutation_MM2.txt"
+        },
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_r0_single_role_topology_refused_zero_partial_tenant",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_owner_fallback_removed_and_authority_derived_from_db_owner"
+        ],
+        "restored_sha256": "7d0ac13e be0306fd 85a85de6 eff9cf9e 067b8da2 56a3be08 7cb4a9a4 d732104b",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM3",
+        "title": "identifier_validation_bypassed",
+        "scenario": "v3_verify_wrongown",
+        "rationale": "bypassing identifier validation lets the quote/semicolon/comment payload reach CREATE ROLE rendering and execute \u2014 the injection counterexample and the wiring static must catch it",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_injection_identifiers_rejected_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes"
+        ],
+        "mutated_file": "grants",
+        "mutated_sha256": "64042760 dbc6a572 9181bccb 4039c0ba b60296f0 d0f00ca1 00d07302 39698cb9",
+        "run": {
+          "scenario": "v3_verify_wrongown",
+          "label": "mutation_MM3",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_injection_identifiers_rejected_zero_writes",
+            "tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM3.txt"
+        },
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_injection_identifiers_rejected_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_identifier_validation_wired_in_all_modes"
+        ],
+        "restored_sha256": "82eef0fb 441d252e 2e70d883 c88efb21 1b1c94b4 a4604cf6 845d765d bf5305e8",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM4",
+        "title": "cluster_binding_bypassed",
+        "scenario": "v3_ok",
+        "rationale": "bypassing the binding preflight lets a cross-cluster admin URL receive role/database writes \u2014 the cross-cluster counterexample and the binding-order static must catch it",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes"
+        ],
+        "mutated_file": "grants",
+        "mutated_sha256": "be58b822 3ea8ebf6 716d67ce 3da62f5d d84b7d41 fedeb8bf a810fe34 c77805ce",
+        "run": {
+          "scenario": "v3_ok",
+          "label": "mutation_MM4",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+            "tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes",
+            "tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM4.txt"
+        },
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_static_cluster_binding_precedes_writes"
+        ],
+        "restored_sha256": "82eef0fb 441d252e 2e70d883 c88efb21 1b1c94b4 a4604cf6 845d765d bf5305e8",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM5",
+        "title": "fresh_state_binding_guard_deleted",
+        "scenario": "v3_ok",
+        "rationale": "deleting the binding refusal matrix lets --provision write over partial role states and tolerate wrong credentials \u2014 the partial-exists and wrong-password counterexamples must catch it",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_partial_exists_first_deploy_refused_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_wrong_password_provision_refused_zero_writes"
+        ],
+        "mutated_file": "grants",
+        "mutated_sha256": "adb2dfcc 2607cf56 07892605 586fc8db cf9def22 7561d08d cd527767 5d622f74",
+        "run": {
+          "scenario": "v3_ok",
+          "label": "mutation_MM5",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_wrong_password_provision_refused_zero_writes"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM5.txt"
+        },
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_wrong_password_provision_refused_zero_writes"
+        ],
+        "restored_sha256": "82eef0fb 441d252e 2e70d883 c88efb21 1b1c94b4 a4604cf6 845d765d bf5305e8",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM6",
+        "title": "netloc_leak_restored",
+        "scenario": "v3_ok",
+        "rationale": "restoring netloc rendering puts username:password@host into the refusal diagnostic \u2014 the credential-hygiene assertions of the cross-cluster counterexamples must catch it",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_first_deploy_cross_cluster_refused_zero_writes"
+        ],
+        "mutated_file": "grants",
+        "mutated_sha256": "cc00a0b0 c293ffdb f3ea093f 5ad97a6c f97f405a 4feedee2 5da39024 38a203a1",
+        "run": {
+          "scenario": "v3_ok",
+          "label": "mutation_MM6",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+            "tests/test_tenant_bootstrap_db_authority.py::test_first_deploy_cross_cluster_refused_zero_writes"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM6.txt"
+        },
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_cluster_binding_mismatch_zero_writes",
+          "tests/test_tenant_bootstrap_db_authority.py::test_first_deploy_cross_cluster_refused_zero_writes"
+        ],
+        "restored_sha256": "82eef0fb 441d252e 2e70d883 c88efb21 1b1c94b4 a4604cf6 845d765d bf5305e8",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": "MM7",
+        "title": "public_create_check_deleted",
+        "scenario": "v3_ok",
+        "rationale": "deleting the runtime no-CREATE-on-public precondition lets a runtime that can write into public proceed to bootstrap \u2014 the zero-tenant counterexample and the fail-closed static must catch it",
+        "named_red_expected": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_runtime_with_public_create_refused_zero_tenant",
+          "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics"
+        ],
+        "mutated_file": "bootstrap",
+        "mutated_sha256": "11b4d8b0 ebfae63c 0ab6bff6 a07e8b94 624a8888 ff224279 2e05ccef cd84fb31",
+        "run": {
+          "scenario": "v3_ok",
+          "label": "mutation_MM7",
+          "rc": 1,
+          "failed": [
+            "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics",
+            "tests/test_tenant_bootstrap_db_authority.py::test_runtime_with_public_create_refused_zero_tenant"
+          ],
+          "errors": [],
+          "log": "pytest_mutation_MM7.txt"
+        },
+        "went_red": true,
+        "named_red_hits": [
+          "tests/test_tenant_bootstrap_db_authority.py::test_bootstrap_script_keeps_fail_closed_precondition_semantics",
+          "tests/test_tenant_bootstrap_db_authority.py::test_runtime_with_public_create_refused_zero_tenant"
+        ],
+        "restored_sha256": "7d0ac13e be0306fd 85a85de6 eff9cf9e 067b8da2 56a3be08 7cb4a9a4 d732104b",
+        "byte_identical_restore": true
+      },
+      {
+        "mutation": null,
+        "title": "post_restore_reproducibility",
+        "run": {
+          "scenario": "v3_ok",
+          "label": "post_restore",
+          "rc": 0,
+          "failed": [],
+          "errors": [],
+          "log": "pytest_post_restore.txt"
+        },
+        "post_restore_green": true
+      }
+    ],
+    "regression": {
+      "base_rc": 1,
+      "candidate_rc": 1,
+      "base_nodes": 104,
+      "candidate_nodes": 104,
+      "deltas": [],
+      "identical": true
+    },
+    "guard_snapshots": {
+      "v3_ok": {
+        "function_exists": true,
+        "owner": "mpango_migrate",
+        "return_type": "trigger",
+        "args": "",
+        "definition_md5": "39640330 8c83ee4c 01d0d6bc d63135b2",
+        "function_oid": 16495
+      },
+      "v3_nofunc": {
+        "function_exists": false
+      },
+      "v3_badsig": {
+        "function_exists": true,
+        "owner": "postgres",
+        "return_type": "void",
+        "args": "",
+        "definition_md5": "77260891 3aace7af 9dea4f6a 56bfe894",
+        "function_oid": 21050
+      },
+      "v3_wrongown": {
+        "function_exists": true,
+        "owner": "mpango_app",
+        "return_type": "trigger",
+        "args": "",
+        "definition_md5": "39640330 8c83ee4c 01d0d6bc d63135b2",
+        "function_oid": 18821
+      },
+      "v3_nopriv": {
+        "function_exists": true,
+        "owner": "mpango_migrate",
+        "return_type": "trigger",
+        "args": "",
+        "definition_md5": "39640330 8c83ee4c 01d0d6bc d63135b2",
+        "function_oid": 19595
+      },
+      "v3_verify_wrongown": {
+        "function_exists": true,
+        "owner": "mpango_app",
+        "return_type": "trigger",
+        "args": "",
+        "definition_md5": "39640330 8c83ee4c 01d0d6bc d63135b2",
+        "function_oid": 20373
+      }
+    },
+    "bootstrap_script_sha256_restored": "7d0ac13e be0306fd 85a85de6 eff9cf9e 067b8da2 56a3be08 7cb4a9a4 d732104b",
+    "grants_script_sha256_restored": "82eef0fb 441d252e 2e70d883 c88efb21 1b1c94b4 a4604cf6 845d765d bf5305e8",
+    "finished_at": "2026-09-16T05:44:14.244324+00:00"
+  },
+  "server_version_num": "160015",
+  "cluster_system_identifier": "7686002363049861164",
+  "second_cluster_system_identifier": "7686002379247329321",
+  "bootstrap_script_sha256": "7d0ac13e be0306fd 85a85de6 eff9cf9e 067b8da2 56a3be08 7cb4a9a4 d732104b",
+  "grants_script_sha256": "82eef0fb 441d252e 2e70d883 c88efb21 1b1c94b4 a4604cf6 845d765d bf5305e8",
+  "synthetic_secret_scan": {
+    "files_scanned": 18,
+    "files_containing_secret": 0,
+    "leaking_files": []
+  },
+  "verdict": "PASS"
+}

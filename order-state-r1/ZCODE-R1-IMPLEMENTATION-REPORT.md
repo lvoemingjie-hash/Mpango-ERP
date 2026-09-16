@@ -607,8 +607,11 @@ complete run above was then executed at f4109f8e.
   structural=PASS release=BLOCKED-in-structural-mode, rc=0).
 - Exact changed paths vs REQUIRED_PARENT 998a549f: 13 files
   (`2026-09-16T1010Z-f3-exact-paths-vs-parent.txt`).
-- Linear commits this round: 265cf6a7 -> f4109f8e -> (this matrix
-  commit); no amend/rebase; not pushed.
+- Linear commits this round: 265cf6a7 (checkpoint) -> f4109f8e
+  (label reachability) -> 9c2c83c0 (mutation matrix) -> 8eabfb17
+  (evidence filenames) -> this final-state commit; no amend/rebase; not
+  pushed; the FINAL HEAD is recorded in the handback event and
+  HANDOFF/current.json (candidate_sha), not in this line.
 - BACKEND_FULL_SUITE=NOT_RUN this round. The three credit
   CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED REDs remain excluded from
   every authorized run, NOT waived. INDEPENDENT_REVIEW=NOT_STARTED.

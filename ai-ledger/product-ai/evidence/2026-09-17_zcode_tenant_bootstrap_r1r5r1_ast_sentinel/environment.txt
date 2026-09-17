@@ -1,0 +1,15 @@
+ENCODING ENVIRONMENT — R1-R5-R1 AST SENTINEL CLOSURE
+executed 2026-09-18 | authorization dated 2026-09-17 | Windows 10.0.26200.9457 x64 | python 3.12.10
+
+=== system ANSI codepage (cmd /c chcp, bytes decoded as GBK) ===
+活动代码页: 936
+
+=== TEST-RUN environment (frozen acceptance + counterexamples ran here) ===
+  utf8_mode            = 0
+  preferredencoding    = cp936
+  sys.stdout.encoding  = gbk
+  env PYTHONUTF8       = 0
+  env PYTHONIOENCODING = <unset>
+
+  True Windows default codec (PYTHONUTF8=0 => cp936/GBK).  The inherited shell
+  carries PYTHONUTF8=1; nothing in this round relies on it.

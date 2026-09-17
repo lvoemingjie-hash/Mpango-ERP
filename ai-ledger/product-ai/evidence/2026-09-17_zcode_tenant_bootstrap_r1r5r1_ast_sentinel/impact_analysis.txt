@@ -1,0 +1,110 @@
+GITNEXUS IMPACT/CONTEXT — R1-R5-R1 (run BEFORE committing the edit; index at BASE 4057808d)
+tool: gitnexus 1.6.11 | repo indexed fresh: 40,617 nodes / 71,494 edges
+repo disambiguator: --repo only accepts the short project name (Mpango-ERP);
+path-qualified and directory-name forms were rejected by the CLI (recorded).
+
+=== gitnexus impact _candidate_source --repo Mpango-ERP ===
+
+  GitNexus Impact (1.6.11)
+{
+  "target": {
+    "id": "Function:backend/tests/test_tenant_bootstrap_db_authority.py:_candidate_source",
+    "name": "_candidate_source",
+    "type": "Function",
+    "filePath": "backend/tests/test_tenant_bootstrap_db_authority.py"
+  },
+  "direction": "upstream",
+  "impactedCount": 0,
+  "risk": "UNKNOWN",
+  "riskSharedAxes": "UNKNOWN",
+  "riskScale": {
+    "comparableAcrossKinds": true,
+    "unusedAxes": []
+  },
+  "riskNote": "No callers resolved. Absence of edges is not evidence the symbol is unused: a caller reaching it through a reference class this index does not record — plain-object property access, a bare-identifier read of a module-scope const — produces no edge to find. Confirm with a text search before treating the change as safe.",
+  "epistemic": "exact",
+  "summary": {
+    "direct": 0,
+    "processes_affected": 0,
+    "modules_affected": 0
+  },
+  "byDepthCounts": {},
+  "affected_processes": [],
+  "affected_modules": [],
+  "byDepth": {},
+  "staleness": {
+    "commitsBehind": 1,
+    "hint": "⚠️ Index is 1 commit behind HEAD. Run analyze tool to update."
+  }
+}
+
+=== gitnexus impact test_static_candidate_source_has_no_working_tree_fallback ===
+
+  GitNexus Impact (1.6.11)
+{
+  "target": {
+    "id": "Function:backend/tests/test_tenant_bootstrap_db_authority.py:test_static_candidate_source_has_no_working_tree_fallback",
+    "name": "test_static_candidate_source_has_no_working_tree_fallback",
+    "type": "Function",
+    "filePath": "backend/tests/test_tenant_bootstrap_db_authority.py"
+  },
+  "direction": "upstream",
+  "impactedCount": 0,
+  "risk": "UNKNOWN",
+  "riskSharedAxes": "UNKNOWN",
+  "riskScale": {
+    "comparableAcrossKinds": true,
+    "unusedAxes": []
+  },
+  "riskNote": "No callers resolved. Absence of edges is not evidence the symbol is unused: a caller reaching it through a reference class this index does not record — plain-object property access, a bare-identifier read of a module-scope const — produces no edge to find. Confirm with a text search before treating the change as safe.",
+  "epistemic": "exact",
+  "summary": {
+    "direct": 0,
+    "processes_affected": 0,
+    "modules_affected": 0
+  },
+  "byDepthCounts": {},
+  "affected_processes": [],
+  "affected_modules": [],
+  "byDepth": {},
+  "staleness": {
+    "commitsBehind": 1,
+    "hint": "⚠️ Index is 1 commit behind HEAD. Run analyze tool to update."
+  }
+}
+
+=== gitnexus context _assert_helper_reads_only_committed_candidate (NEW symbol) ===
+
+  GitNexus Context (1.6.11)
+{
+  "error": "Symbol '_assert_helper_reads_only_committed_candidate' not found"
+}
+
+LIMITATION (explicit, no no-caller inference): the index predates this
+edit, so the NEW checker cannot resolve in it. Its callers are established
+by direct grep on the post-edit working tree:
+2402:def _assert_helper_reads_only_committed_candidate(source: str) -> None:
+2499:        _assert_helper_reads_only_committed_candidate(handle.read())
+2529:        _assert_helper_reads_only_committed_candidate(violating)
+
+=== gitnexus detect-changes (unstaged, before commit) ===
+
+  GitNexus Detect Changes (1.6.11)
+No changes detected.
+
+=== detect-changes captured BEFORE the implementation commit (required gate) ===
+The run above (after the commit) is empty because the working tree was clean.
+The pre-commit run, executed while the edit was still unstaged, reported:
+
+  GitNexus Detect Changes (1.6.11)
+  Changes: 1 files, 3 symbols
+  Affected processes: 0
+  Risk level: low
+
+  Changed symbols:
+    Function test_static_candidate_source_has_no_working_tree_fallback -> backend/tests/test_tenant_bootstrap_db_authority.py
+    Function test_mutation_m1_sentinel_reintroducing_runtime_replace_is_refused -> backend/tests/test_tenant_bootstrap_db_authority.py
+    Function test_mutation_m2_sentinel_ownership_precondition_is_load_bearing -> backend/tests/test_tenant_bootstrap_db_authority.py
+
+(The two mutation sentinels appear because the inserted checker functions
+shifted their line positions; their bytes are unchanged.)

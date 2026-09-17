@@ -1,0 +1,11 @@
+OLD-CHECK vs REPAIRED-CHECKER contrast (frozen candidate f440bfc8)
+===================================================================
+
+Violating helper (syntactically valid `with open(rel_path...)` injected
+in memory; ast.parse passes, so neither outcome is a syntax/import error):
+  R1-R5 text-search predicate : ACCEPTS (false green - CTO F1)
+  repaired AST-node checker   : REJECTED: _candidate_source violates the committed-candidate-only contract: calls open() at line 2215 (filesystem/workin
+
+Unmodified committed helper (positive control):
+  R1-R5 text-search predicate : ACCEPTS
+  repaired AST-node checker   : ACCEPTED (positive control)

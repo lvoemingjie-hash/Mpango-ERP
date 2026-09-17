@@ -97,4 +97,18 @@ NOT re-run or re-issued; this is one local correction.
 
 ## Successor manifest
 
-(see the manifest block appended in the follow-up commit)
+- SUCCESSOR_COMMIT=f440bfc856e021684e0772cb01cf579e938aae1e (`fix(tests): MPANGO-TENANT-BOOTSTRAP-R1-R5-R1-AST-SENTINEL-CLOSURE …`, normal hooks, no --no-verify, no amend/rebase/force)
+- EVIDENCE_COMMIT=1e4228f75884620f77047ede8ecf0523179d162d (targeted evidence pack; every prior journal/evidence byte preserved)
+- SUCCESSOR_DIGESTS (working-tree CRLF vs committed-blob LF, grouped):
+  - v3_suite wt=c0d8db53 979901c1 e9ed1e43 8307028a aa86e3fc 8bf38d50 bf914819 d4c1ecc7
+  - v3_suite blob=bd86ad91 93309d6d 389dc0e6 bced5d43 c644c285 f4f259b8 68642761 124fea7e
+- UNCHANGED-DIGESTS (zero product/harness/fixture drift vs FROZEN_BASE, EOL-normalized verified):
+  - grants wt=b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764 / blob=25330f40 794f08a2 4213c82f d9fbd3a4 eafa4719 7ed866a4 5761613d 193f4861
+  - bootstrap wt=fc0db066 66b44f69 c96463cb 0fea076a 69f90f88 dc4c1885 c1d2abd3 524a4818 / blob=3301a55b a995359c 23da826c 566d821d 17307471 5fbb5c8c d3278e12 74aeff6d
+  - harness blob=b3580402 a19b9e9e 190e686d 0e1b69dc 062008a5 d161e3c8 5a8de9d7 9d351fce
+  - utf8_fixture blob=748639f2 1dfa527e 15a4e726 2eba6f6b ce93005c aab12768 b1ef2598 864630d4
+- KEY_EVIDENCE_DIGESTS (blob form): pytest_focused_acceptance.txt=35b0ff20 674bf918 644e3b38 09576388 2a8ad50d 7658201e 18cff825 8e138458; old_check_vs_repaired_checker.txt=970d83e3 f000b8d4 f34df040 26b0c5a8 1e86d58b 92d991a6 c25e94da 8859d875
+- FROZEN_ACCEPTANCE=1 complete run, PYTHONUTF8=0 (cp936), 52 collected / 16 selected / 16 PASSED / rc=0 (15 R1-R5 node IDs retained + test_structural_checker_rejects_injected_file_read_call)
+- OLD_VS_NEW_CONTRAST=old text-search predicate ACCEPTS the injected violating helper (false green, CTO F1); repaired AST checker REJECTS it (named AssertionError "calls open()"); positive control ACCEPTS the unmodified helper; neither outcome from syntax/import errors
+- NOT_EXECUTED=PG scenarios, Docker, Alembic, 104-node regression, the nine runtime mutations — all prior evidence preserved, nothing inherited as this round's PASS
+- RESULT=R1_R5_R1_CANDIDATE_READY_FOR_CTO_REVIEW

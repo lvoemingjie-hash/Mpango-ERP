@@ -116,18 +116,22 @@ async def test_confirm_then_credit_payment_does_not_double_count_KNOWN_RED(
                              {"amount": 80.00, "method": "transfer"})
     assert pay2.status_code == HTTPStatus.OK, pay2.text
     after = await binding_balance(db, ws_id, ret_id)
-    # control: cash/transfer payment must NOT move the binding at all
-    # (the mid value itself embeds the known-RED double count and is not
-    # asserted absolutely here)
-    assert after == mid, (
-        "control face: cash/transfer payment must not move the binding "
-        f"(mid={mid} after={after})")
+    # R2-corrected control (was: assert after == mid): a full transfer
+    # settlement MUST reduce the order's own hold — the binding drops by
+    # exactly the settled 80.00 (frozen semantics 4/10: full cash/transfer
+    # settles the hold to zero, outstanding back to zero for that order).
+    assert after == mid - Decimal("80.00"), (
+        "R2 control: cash/transfer settlement must reduce the hold "
+        f"(mid={mid} after={after}, expected after == mid - 80.00)")
 
-    credit_order_after = after - Decimal("80.00")  # strip the control hold
-    assert credit_order_after - before == Decimal("80.00"), (
-        f"CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED: confirm-time hold + "
-        f"credit payment double-counted the exposure "
-        f"(movement={credit_order_after - before}, expected one total of 80.00)")
+    # exactly one total moves across confirm+credit for the credit order:
+    # confirm +80 (hold), credit conversion +0; the control order nets zero
+    # (+80 hold, -80 settlement). Net movement across both orders: 80.00.
+    movement = after - before
+    assert movement == Decimal("80.00"), (
+        f"R2: confirm-time hold + credit conversion moves the binding by "
+        f"exactly one total (movement={movement}, expected 80.00; the "
+        f"parent double-counts to 160.00)")
 
 
 # ---------------------------------------------------------------------------
@@ -182,12 +186,15 @@ async def test_receivables_summary_counts_exposure_once_KNOWN_RED(
         ctrl_row = by_ret.get(ret_ctrl)
         assert ctrl_row is not None, f"summary lacks control retailer: {rows}"
         ctrl_out = Decimal(str(ctrl_row.get("outstanding_balance", 0)))
-        # control face (current aggregation semantics): the confirm-only
-        # order contributes binding hold 50.00 + unpaid_order_balance 50.00
-        # = 100.00 — both tracks visible, the hold counted once
-        assert ctrl_out == Decimal("100.00"), (
-            f"confirm-only control face failed: summary={ctrl_out}, "
-            f"expected binding-hold(50)+unpaid(50)=100")
+        ctrl_unpaid = Decimal(str(ctrl_row.get("unpaid_order_balance", 0)))
+        ctrl_credit = Decimal(str(ctrl_row.get("credit_receivables", 0)))
+        # R2-corrected control (was: assert ctrl_out == 100.00): a
+        # confirm-only 50 order is reserved 50 / real receivable 0 / total
+        # occupation 50 — never the parent's double-counted 100.
+        assert (ctrl_out, ctrl_unpaid, ctrl_credit) == (
+            Decimal("50.00"), Decimal("50.00"), Decimal("0.00")), (
+            f"confirm-only control face failed: total={ctrl_out} "
+            f"unpaid={ctrl_unpaid} credit={ctrl_credit}; expected 50/0/50")
 
         cred_row = by_ret.get(str(ret_cred))
         assert cred_row is not None, f"summary lacks credit retailer: {rows}"

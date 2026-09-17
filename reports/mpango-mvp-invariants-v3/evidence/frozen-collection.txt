@@ -1,0 +1,77 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.2, pluggy-1.6.0
+rootdir: /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend
+configfile: pytest.ini
+plugins: cov-4.1.0, anyio-4.12.1, hypothesis-6.150.2, asyncio-0.26.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collected 52 items / 1 deselected / 51 selected
+
+<Dir backend>
+  <Package tests>
+    <Module test_mpango_mvp_invariants_r0_revocation.py>
+      <Coroutine test_r0_control_active_user_active_tenant_can_access>
+      <Coroutine test_r0_control_deactivated_user_denied>
+      <Coroutine test_r0_red_soft_deleted_user_in_active_tenant_denied>
+      <Coroutine test_r0_red_active_user_in_suspended_tenant_denied>
+      <Coroutine test_r0_red_refresh_nonexistent_principal_no_session>
+      <Coroutine test_r0_red_refresh_soft_deleted_user_no_session>
+      <Coroutine test_r0_red_refresh_suspended_tenant_no_session>
+      <Coroutine test_r0_control_refresh_live_subject_issues_usable_session>
+      <Coroutine test_r1_control_refresh_wrong_signature_refused>
+      <Coroutine test_r1_control_refresh_wrong_token_type_refused>
+      <Coroutine test_r1_control_tenant_isolation_no_cross_read>
+    <Module test_mpango_invariants_r0_r1_guards.py>
+      <Function test_r0_guard_refuses_missing_ownership_config>
+      <Function test_r0_guard_refuses_disagreeing_targets>
+      <Function test_r0_guard_refuses_non_task_owner_label>
+      <Function test_r0_guard_factory_mock_for_every_test_variant[test]>
+      <Function test_r0_guard_factory_mock_for_every_test_variant[TEST]>
+      <Function test_r0_guard_factory_mock_for_every_test_variant[ test ]>
+      <Function test_r0_guard_factory_mock_for_every_test_variant[\tTest]>
+      <Function test_r0_guard_factory_mock_for_every_test_variant[TeSt ]>
+      <Function test_r0_guard_factory_jwt_for_non_test_variants[staging]>
+      <Function test_r0_guard_factory_jwt_for_non_test_variants[ STAGING ]>
+      <Function test_r0_guard_factory_jwt_for_non_test_variants[production]>
+      <Function test_r0_guard_factory_jwt_for_non_test_variants[Production]>
+      <Function test_r0_assertion_logic_accepts_serialized_duplicate_return>
+      <Function test_r0_assertion_logic_accepts_rejected_duplicate_return>
+      <Function test_r0_assertion_logic_rejects_arbitrary_error_outcome>
+      <Function test_r0_assertion_logic_rejects_double_economic_effect>
+      <Function test_r0_assertion_chain_accepts_b_then_a_serial_order>
+      <Function test_r0_assertion_chain_accepts_a_then_b_serial_order>
+      <Function test_r0_assertion_chain_rejects_duplicate_reason_rows>
+      <Function test_r0_assertion_chain_rejects_chained_duplicate_reason_rows>
+      <Function test_r0_assertion_chain_exact_cto_counterexample_rows>
+      <Function test_r0_assertion_chain_rejects_unknown_reason>
+      <Function test_r0_assertion_chain_rejects_missing_movement>
+      <Function test_r0_assertion_chain_rejects_wrong_final_value>
+      <Function test_r0_assertion_chain_rejects_wrong_single_row_algebra>
+      <Function test_r0_assertion_chain_rejects_lost_update_journal>
+    <Module test_pw1r3_rate_limit_context.py>
+      <Coroutine test_middleware_order_auth_runs_before_rate_limiting>
+      <Coroutine test_anonymous_request_uses_ip_bucket_limit_100>
+      <Coroutine test_contextual_jwt_uses_tenant_bucket_limit_1000>
+      <Coroutine test_contextual_burst_stays_admitted_well_past_ip_limit>
+      <Coroutine test_identity_only_jwt_uses_ip_limit_100>
+      <Coroutine test_101st_anonymous_is_429_and_contextual_independently_admitted>
+      <Coroutine test_health_endpoints_are_exempt_from_rate_limiting>
+    <Module test_mpango_mvp_invariants_r0_concurrency.py>
+      <Coroutine test_r0_control_single_adjustment_and_failed_adjustment_rollback>
+      <Coroutine test_r0_harness_control_barrier_timeout_cancels_and_rolls_back>
+      <Coroutine test_r0_harness_control_task_exception_rolls_back_and_cleans>
+      <Coroutine test_r0_control_rejected_return_rolls_back_staging_write>
+      <Coroutine test_r0_red_concurrent_stock_adjustments_no_lost_update>
+      <Coroutine test_r0_control_single_full_return_single_economic_effect>
+      <Coroutine test_r1_control_adjustment_read_helper_preserves_duplicate_rows>
+
+=============================== warnings summary ===============================
+../../../sku-delivery-r2-v4-r1/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+database/base.py:7
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/database/base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================ 51/52 tests collected (1 deselected) in 2.06s =================

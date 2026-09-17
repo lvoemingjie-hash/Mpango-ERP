@@ -1,0 +1,19 @@
+============================= test session starts =============================
+collecting ... collected 51 items / 45 deselected / 6 selected
+
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_reads_non_ascii_utf8_from_committed_candidate PASSED [ 16%]
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_invalid_utf8 PASSED [ 33%]
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_git_failure PASSED [ 50%]
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_empty_output PASSED [ 66%]
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_subprocess_exception PASSED [ 83%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_candidate_source_has_no_working_tree_fallback PASSED [100%]
+
+=================================== PASSES ====================================
+=========================== short test summary info ===========================
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_reads_non_ascii_utf8_from_committed_candidate
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_invalid_utf8
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_git_failure
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_empty_output
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_subprocess_exception
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_static_candidate_source_has_no_working_tree_fallback
+====================== 6 passed, 45 deselected in 0.43s =======================

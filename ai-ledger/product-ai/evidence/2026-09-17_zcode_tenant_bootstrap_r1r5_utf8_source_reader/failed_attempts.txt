@@ -1,0 +1,110 @@
+TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=TRANSPARENT PREPARATION-PHASE FAILURES (none deleted, per the authorization)
+=
+
+The authorization allows transparent iteration during preparation; every
+failed attempt is recorded here.  The FINAL frozen acceptance ran once on
+the frozen bytes and passed 15/15 (pytest_focused_acceptance.txt).
+
+A1. Pre-commit focused run: 14/15 passed; the one failure was
+    test_candidate_source_reads_non_ascii_utf8_from_committed_candidate
+    with RuntimeError rc=128 'exists on disk, but not in HEAD' — the new
+    fixture was not committed yet.  This incidentally PROVED the helper's
+    real-git failure refusal works.  Resolved by committing the fixture;
+    the next run was 15/15.
+
+A2. Counterexample attempt 1: my sanity assertion compared the new helper
+    for the literal text 'text=True' — which the new helper's DOCSTRING
+    legitimately names — so the script aborted BEFORE writing anything.
+    The test file was never modified (sha256 verified unchanged
+    afterwards: 685cf270a37335e5...).  Not a test failure: a failed
+    counterexample-harness assertion.
+
+A3. Counterexample attempt 2: the patch anchor was rebuilt with rstrip()+
+    '
+
+
+' which does not match the file's CRLF+blank-line form, so the
+    'anchor not found' assertion aborted again BEFORE writing.  File again
+    unmodified (same sha256).  Fixed by using verbatim slices with the
+    file's own EOL, after which the counterexample ran: 6/6 named
+    assertions RED, byte-identical restore, post-restore GREEN.
+
+A4. environment.txt first write: the `chcp` capture used text=True and
+    lost the GBK codepage line to a reader-thread UnicodeDecodeError (the
+    same defect class).  Rewritten capturing bytes and decoding as GBK;
+    the file now records codepage 936.

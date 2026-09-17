@@ -1,0 +1,139 @@
+BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=BOUNDED COUNTEREXAMPLE — restore the R1-R4 encoding defect
+=
+
+1. original candidate test-file sha256: 685cf270a37335e53cb2d19c8bc154d1a834a4150f105c42f84c7855b30daa90
+2. replaced the FIXED _candidate_source() with the OLD (defective) one from
+   BASE 909d3e31 (subprocess.run(text=True) with no encoding + broad-except
+   working-tree fallback), converted to the file's EOL.
+3. ran the six named assertions under PYTHONUTF8=0 (system codec cp936/GBK):
+   rc=1, all six FAILED (see pytest_counterexample_red.txt),
+   with the exact CTO-reproduced signature 'UnicodeDecodeError: gbk codec ... illegal multibyte sequence'.
+   Failures are semantic (missing RuntimeError refusal / working-tree open
+   detected / content mismatch), never import or syntax errors: the old
+   helper is valid Python (it is the actual R1-R4 code).
+4. restored byte-identically: sha256 == 685cf270a37335e53cb2d19c8bc154d1a834a4150f105c42f84c7855b30daa90 == original.
+5. post-restore run is GREEN (see pytest_post_restore_green.txt).
+
+The two helpers (unified diff, defect -> fix):
+
+--- defective (R1-R4, BASE)
++++ fixed (R1-R5 candidate)
+@@ -5,20 +5,50 @@
+     be checked against the COMMITTED candidate (git HEAD) — the exact bytes
+     the declarations were written against, and the bytes the harness restores
+-    afterwards.  Falls back to the working tree when git is unavailable (for
+-    example in an exported sandbox), where no mutation is active anyway.
++    afterwards.
++
++    R1-R5 (Windows encoding defect repair): the bytes are captured raw and
++    decoded STRICTLY as UTF-8.  The previous implementation used
++    ``subprocess.run(text=True)`` with no encoding, which decodes git's UTF-8
++    output with the process default codec — on Windows that is cp936/GBK (or
++    cp1252), so any committed file containing non-ASCII content failed to
++    decode and the broad ``except`` then silently fell back to reading the
++    WORKING TREE, breaking the "checked source == committed candidate"
++    boundary.  Every failure now refuses explicitly — a git error, invalid
++    UTF-8 or empty output is a tool defect, never a reason to accept anything
++    other than the committed candidate, and there is deliberately NO fallback.
+     """
+     import subprocess
+
+     try:
+-        return subprocess.run(
++        result = subprocess.run(
+             ["git", "show", f"HEAD:{rel_path}"],
+-            cwd=BACKEND_DIR, capture_output=True, text=True, check=True,
+-        ).stdout
+-    except Exception:  # noqa: BLE001 - non-git environments keep working
+-        with open(
+-            os.path.join(os.path.dirname(BACKEND_DIR), rel_path),
+-            encoding="utf-8",
+-        ) as handle:
+-            return handle.read()
++            cwd=BACKEND_DIR, capture_output=True, timeout=60,
++        )
++    except (OSError, subprocess.SubprocessError) as exc:
++        raise RuntimeError(
++            "cannot read the committed candidate source "
++            f"{rel_path!r}: git show could not run "
++            f"({type(exc).__name__}: {exc})"
++        ) from exc
++    if result.returncode != 0:
++        stderr = result.stderr.decode("utf-8", errors="replace")
++        raise RuntimeError(
++            f"git show HEAD:{rel_path} refused with rc={result.returncode} "
++            "— the check requires the committed candidate and nothing else: "
++            f"{stderr[-500:]}"
++        )
++    if not result.stdout:
++        raise RuntimeError(
++            f"git show HEAD:{rel_path} produced no bytes; refusing to "
++            "substitute any other source for the committed candidate"
++        )
++    try:
++        return result.stdout.decode("utf-8")
++    except UnicodeDecodeError as exc:
++        raise RuntimeError(
++            f"the committed candidate source {rel_path!r} is not valid "
++            f"UTF-8 ({exc}); refusing to decode it with a default codec, "
++            "replace bytes, or read anything but the committed candidate"
++        ) from exc

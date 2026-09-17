@@ -1,0 +1,94 @@
+GITNEXUS IMPACT ANALYSIS — _candidate_source (executed BEFORE the symbol change)
+tool: gitnexus 1.6.11 | repo indexed fresh (this worktree, commit 909d3e3, 2026-09-17 09:08)
+
+=== gitnexus impact _candidate_source ===
+
+  GitNexus Impact (1.6.11)
+{
+  "target": {
+    "id": "Function:backend/tests/test_tenant_bootstrap_db_authority.py:_candidate_source",
+    "name": "_candidate_source",
+    "type": "Function",
+    "filePath": "backend/tests/test_tenant_bootstrap_db_authority.py"
+  },
+  "direction": "upstream",
+  "impactedCount": 0,
+  "risk": "UNKNOWN",
+  "riskSharedAxes": "UNKNOWN",
+  "riskScale": {
+    "comparableAcrossKinds": true,
+    "unusedAxes": []
+  },
+  "riskNote": "No callers resolved. Absence of edges is not evidence the symbol is unused: a caller reaching it through a reference class this index does not record — plain-object property access, a bare-identifier read of a module-scope const — produces no edge to find. Confirm with a text search before treating the change as safe.",
+  "epistemic": "exact",
+  "summary": {
+    "direct": 0,
+    "processes_affected": 0,
+    "modules_affected": 0
+  },
+  "byDepthCounts": {},
+  "affected_processes": [],
+  "affected_modules": [],
+  "byDepth": {},
+  "staleness": {
+    "commitsBehind": 1,
+    "hint": "⚠️ Index is 1 commit behind HEAD. Run analyze tool to update."
+  }
+}
+
+=== gitnexus context _candidate_source ===
+
+  GitNexus Context (1.6.11)
+{
+  "status": "found",
+  "symbol": {
+    "uid": "Function:backend/tests/test_tenant_bootstrap_db_authority.py:_candidate_source",
+    "name": "_candidate_source",
+    "kind": "Function",
+    "filePath": "backend/tests/test_tenant_bootstrap_db_authority.py",
+    "startLine": 2170,
+    "endLine": 2191
+  },
+  "epistemic": "exact",
+  "incoming": {
+    "calls": [
+      {
+        "uid": "Function:backend/tests/test_tenant_bootstrap_db_authority.py:test_static_every_mutation_is_parseable_and_fully_declared",
+        "name": "test_static_every_mutation_is_parseable_and_fully_declared",
+        "filePath": "backend/tests/test_tenant_bootstrap_db_authority.py"
+      }
+    ]
+  },
+  "outgoing": {},
+  "processes": [],
+  "staleness": {
+    "commitsBehind": 1,
+    "hint": "⚠️ Index is 1 commit behind HEAD. Run analyze tool to update."
+  }
+}
+
+=== DIRECT-CALL VERIFICATION (grep, independent of the graph) ===
+$ grep -rn "_candidate_source" backend/ --include="*.py"
+backend/\tests\test_tenant_bootstrap_db_authority.py:2170:def _candidate_source(rel_path: str) -> str:
+backend/\tests\test_tenant_bootstrap_db_authority.py:2252:        text = _candidate_source(rel_path)
+backend/\tests\test_tenant_bootstrap_db_authority.py:2303:def test_candidate_source_reads_non_ascii_utf8_from_committed_candidate(
+backend/\tests\test_tenant_bootstrap_db_authority.py:2323:    content = _candidate_source(_UTF8_PROBE_REL_PATH)
+backend/\tests\test_tenant_bootstrap_db_authority.py:2334:def test_candidate_source_refuses_invalid_utf8(monkeypatch):
+backend/\tests\test_tenant_bootstrap_db_authority.py:2342:        _candidate_source(_UTF8_PROBE_REL_PATH)
+backend/\tests\test_tenant_bootstrap_db_authority.py:2348:def test_candidate_source_refuses_git_failure(monkeypatch):
+backend/\tests\test_tenant_bootstrap_db_authority.py:2356:        _candidate_source(_UTF8_PROBE_REL_PATH)
+backend/\tests\test_tenant_bootstrap_db_authority.py:2362:def test_candidate_source_refuses_empty_output(monkeypatch):
+backend/\tests\test_tenant_bootstrap_db_authority.py:2367:        _candidate_source(_UTF8_PROBE_REL_PATH)
+backend/\tests\test_tenant_bootstrap_db_authority.py:2371:def test_candidate_source_refuses_subprocess_exception(monkeypatch):
+backend/\tests\test_tenant_bootstrap_db_authority.py:2379:        _candidate_source(_UTF8_PROBE_REL_PATH)
+backend/\tests\test_tenant_bootstrap_db_authority.py:2383:def test_static_candidate_source_has_no_working_tree_fallback():
+backend/\tests\test_tenant_bootstrap_db_authority.py:2392:        if isinstance(node, ast.FunctionDef) and node.name == "_candidate_source"
+backend/\tests\test_tenant_bootstrap_db_authority.py:2394:    assert len(helpers) == 1, "_candidate_source must be defined exactly once"
+
+CONCLUSION: GitNexus context shows exactly ONE incoming caller
+(test_static_every_mutation_is_parseable_and_fully_declared, same file);
+impact resolves no other callers (with its own epistemic caveat, recorded
+verbatim above). The grep above was run AFTER the fix, so it also lists the new R1-R5 helper
+tests; before the change the symbol had exactly one definition and one call
+site. Impact of the change is confined to that acceptance node plus the new
+helper tests; no production code, no harness reference, no other tests.

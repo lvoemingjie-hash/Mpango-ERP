@@ -1,0 +1,108 @@
+$ PYTHONUTF8=0 pytest tests/test_tenant_bootstrap_db_authority.py -k candidate_source (defect-restored counterexample)
+rc=1
+original_candidate_sha256=685cf270a37335e53cb2d19c8bc154d1a834a4150f105c42f84c7855b30daa90
+
+============================= test session starts =============================
+collecting ... collected 51 items / 45 deselected / 6 selected
+
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_reads_non_ascii_utf8_from_committed_candidate FAILED [ 16%]
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_invalid_utf8 FAILED [ 33%]
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_git_failure FAILED [ 50%]
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_empty_output FAILED [ 66%]
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_subprocess_exception FAILED [ 83%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_candidate_source_has_no_working_tree_fallback FAILED [100%]
+
+================================== FAILURES ===================================
+_____ test_candidate_source_reads_non_ascii_utf8_from_committed_candidate _____
+tests\test_tenant_bootstrap_db_authority.py:2295: in test_candidate_source_reads_non_ascii_utf8_from_committed_candidate
+    assert isinstance(content, str)
+E   assert False
+E    +  where False = isinstance(None, str)
+_________________ test_candidate_source_refuses_invalid_utf8 __________________
+tests\test_tenant_bootstrap_db_authority.py:2311: in test_candidate_source_refuses_invalid_utf8
+    with pytest.raises(RuntimeError) as excinfo:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE <class 'RuntimeError'>
+__________________ test_candidate_source_refuses_git_failure __________________
+tests\test_tenant_bootstrap_db_authority.py:2325: in test_candidate_source_refuses_git_failure
+    with pytest.raises(RuntimeError) as excinfo:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE <class 'RuntimeError'>
+_________________ test_candidate_source_refuses_empty_output __________________
+tests\test_tenant_bootstrap_db_authority.py:2336: in test_candidate_source_refuses_empty_output
+    with pytest.raises(RuntimeError) as excinfo:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE <class 'RuntimeError'>
+_____________ test_candidate_source_refuses_subprocess_exception ______________
+tests\test_tenant_bootstrap_db_authority.py:2348: in test_candidate_source_refuses_subprocess_exception
+    with pytest.raises(RuntimeError) as excinfo:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE <class 'RuntimeError'>
+__________ test_static_candidate_source_has_no_working_tree_fallback __________
+tests\test_tenant_bootstrap_db_authority.py:2369: in test_static_candidate_source_has_no_working_tree_fallback
+    assert "except Exception" not in ast.unparse(helpers[0]), (
+E   AssertionError: no broad except may hide a fallback path
+E   assert 'except Exception' not in 'def _candidate_source(rel_path: str) -> str:\n    """Pristine candidate source text for mutation-declaration checks.\n\n    A mutation run has already patched the working tree, so declarations must\n    be checked against the COMMITTED candidate (git HEAD) �� the exact bytes\n    the declarations were written against, and the bytes the harness restores\n    afterwards.  Falls back to the working tree when git is unavailable (for\n    example in an exported sandbox), where no mutation is active anyway.\n    """\n    import subprocess\n    try:\n        return subprocess.run([\'git\', \'show\', f\'HEAD:{rel_path}\'], cwd=BACKEND_DIR, capture_output=True, text=True, check=True).stdout\n    except Exception:\n        with open(os.path.join(os.path.dirname(BACKEND_DIR), rel_path), encoding=\'utf-8\') as handle:\n            return handle.read()'
+E
+E     'except Exception' is contained here:
+E       def _candidate_source(rel_path: str) -> str:
+E           """Pristine candidate source text for mutation-declaration checks.
+E
+E           A mutation run has already patched the working tree, so declarations must
+E           be checked against the COMMITTED candidate (git HEAD) �� the exact bytes
+E           the declarations were written against, and the bytes the harness restores
+E           afterwards.  Falls back to the working tree when git is unavailable (for
+E           example in an exported sandbox), where no mutation is active anyway.
+E           """
+E           import subprocess
+E           try:
+E               return subprocess.run(['git', 'show', f'HEAD:{rel_path}'], cwd=BACKEND_DIR, capture_output=True, text=True, check=True).stdout
+E           except Exception:
+E               with open(os.path.join(os.path.dirname(BACKEND_DIR), rel_path), encoding='utf-8') as handle:
+E                   return handle.read()
+============================== warnings summary ===============================
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_reads_non_ascii_utf8_from_committed_candidate
+  C:\Users\Jeff0\MPANGO ERP\_zcode_mvp_invariants_r0_venv\Lib\site-packages\_pytest\threadexception.py:58: PytestUnhandledThreadExceptionWarning: Exception in thread Thread-1 (_readerthread)
+
+  Traceback (most recent call last):
+    File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075, in _bootstrap_inner
+      self.run()
+    File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012, in run
+      self._target(*self._args, **self._kwargs)
+    File "C:\Users\Jeff0\AppData\Local\Programs\Python\Python312\Lib\subprocess.py", line 1599, in _readerthread
+      buffer.append(fh.read())
+                    ^^^^^^^^^
+  UnicodeDecodeError: 'gbk' codec can't decode byte 0x94 in position 21: illegal multibyte sequence
+
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnhandledThreadExceptionWarning(msg))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_reads_non_ascii_utf8_from_committed_candidate - assert False
+ +  where False = isinstance(None, str)
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_invalid_utf8 - Failed: DID NOT RAISE <class 'RuntimeError'>
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_git_failure - Failed: DID NOT RAISE <class 'RuntimeError'>
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_empty_output - Failed: DID NOT RAISE <class 'RuntimeError'>
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_subprocess_exception - Failed: DID NOT RAISE <class 'RuntimeError'>
+FAILED tests/test_tenant_bootstrap_db_authority.py::test_static_candidate_source_has_no_working_tree_fallback - AssertionError: no broad except may hide a fallback path
+assert 'except Exception' not in 'def _candidate_source(rel_path: str) -> str:\n    """Pristine candidate source text for mutation-declaration checks.\n\n    A mutation run has already patched the working tree, so declarations must\n    be checked against the COMMITTED candidate (git HEAD) �� the exact bytes\n    the declarations were written against, and the bytes the harness restores\n    afterwards.  Falls back to the working tree when git is unavailable (for\n    example in an exported sandbox), where no mutation is active anyway.\n    """\n    import subprocess\n    try:\n        return subprocess.run([\'git\', \'show\', f\'HEAD:{rel_path}\'], cwd=BACKEND_DIR, capture_output=True, text=True, check=True).stdout\n    except Exception:\n        with open(os.path.join(os.path.dirname(BACKEND_DIR), rel_path), encoding=\'utf-8\') as handle:\n            return handle.read()'
+
+  'except Exception' is contained here:
+    def _candidate_source(rel_path: str) -> str:
+        """Pristine candidate source text for mutation-declaration checks.
+
+        A mutation run has already patched the working tree, so declarations must
+        be checked against the COMMITTED candidate (git HEAD) �� the exact bytes
+        the declarations were written against, and the bytes the harness restores
+        afterwards.  Falls back to the working tree when git is unavailable (for
+        example in an exported sandbox), where no mutation is active anyway.
+        """
+        import subprocess
+        try:
+            return subprocess.run(['git', 'show', f'HEAD:{rel_path}'], cwd=BACKEND_DIR, capture_output=True, text=True, check=True).stdout
+        except Exception:
+            with open(os.path.join(os.path.dirname(BACKEND_DIR), rel_path), encoding='utf-8') as handle:
+                return handle.read()
+================= 6 failed, 45 deselected, 1 warning in 0.85s =================

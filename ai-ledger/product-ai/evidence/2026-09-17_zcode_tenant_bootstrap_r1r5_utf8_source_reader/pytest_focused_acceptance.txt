@@ -1,0 +1,38 @@
+$ PYTHONUTF8=0 pytest tests/test_tenant_bootstrap_db_authority.py -k "candidate_source or mutation_validator or formal_gate or parseable or parse_gate or static_formal_gate" (FINAL FROZEN ACCEPTANCE)
+============================= test session starts =============================
+collecting ... collected 51 items / 36 deselected / 15 selected
+
+tests/test_tenant_bootstrap_db_authority.py::test_mutation_validator_rejects_two_expected_one_hit PASSED [  6%]
+tests/test_tenant_bootstrap_db_authority.py::test_mutation_validator_rejects_extra_and_undeclared_reds PASSED [ 13%]
+tests/test_tenant_bootstrap_db_authority.py::test_mutation_validator_rejects_empty_declaration PASSED [ 20%]
+tests/test_tenant_bootstrap_db_authority.py::test_mutation_validator_rejects_named_red_that_never_fired PASSED [ 26%]
+tests/test_tenant_bootstrap_db_authority.py::test_mutation_validator_accepts_exact_and_tolerated_sets PASSED [ 33%]
+tests/test_tenant_bootstrap_db_authority.py::test_formal_gate_declares_its_own_negative_cases_and_they_fail_closed PASSED [ 40%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_formal_gate_uses_the_exact_set_validator PASSED [ 46%]
+tests/test_tenant_bootstrap_db_authority.py::test_mutation_apply_gate_refuses_unparseable_mutation PASSED [ 53%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_every_mutation_is_parseable_and_fully_declared PASSED [ 60%]
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_reads_non_ascii_utf8_from_committed_candidate PASSED [ 66%]
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_invalid_utf8 PASSED [ 73%]
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_git_failure PASSED [ 80%]
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_empty_output PASSED [ 86%]
+tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_subprocess_exception PASSED [ 93%]
+tests/test_tenant_bootstrap_db_authority.py::test_static_candidate_source_has_no_working_tree_fallback PASSED [100%]
+
+=================================== PASSES ====================================
+=========================== short test summary info ===========================
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_mutation_validator_rejects_two_expected_one_hit
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_mutation_validator_rejects_extra_and_undeclared_reds
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_mutation_validator_rejects_empty_declaration
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_mutation_validator_rejects_named_red_that_never_fired
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_mutation_validator_accepts_exact_and_tolerated_sets
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_formal_gate_declares_its_own_negative_cases_and_they_fail_closed
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_static_formal_gate_uses_the_exact_set_validator
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_mutation_apply_gate_refuses_unparseable_mutation
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_static_every_mutation_is_parseable_and_fully_declared
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_reads_non_ascii_utf8_from_committed_candidate
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_invalid_utf8
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_git_failure
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_empty_output
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_candidate_source_refuses_subprocess_exception
+PASSED tests/test_tenant_bootstrap_db_authority.py::test_static_candidate_source_has_no_working_tree_fallback
+====================== 15 passed, 36 deselected in 1.14s ======================

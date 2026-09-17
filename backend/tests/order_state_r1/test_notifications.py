@@ -124,9 +124,9 @@ async def test_rollback_produces_zero_sends(
     # the credit-reservation seam.
     from services import order_command_service as ocs_mod
 
-    real_reserve_credit = ocs_mod.OrderCommandService._reserve_credit
+    real_reserve_credit = ocs_mod.OrderCommandService._open_credit_hold
 
-    async def exploding_credit(self, order):
+    async def exploding_credit(self, order, updated_by=None):
         raise RuntimeError("R1 fault after state write, before commit")
 
     monkeypatch.setattr(ocs_mod.OrderCommandService, "_open_credit_hold",

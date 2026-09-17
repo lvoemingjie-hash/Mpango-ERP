@@ -47,6 +47,12 @@ async def ensure_binding(
 ) -> None:
     """A confirmable order needs a live binding for its (ws, retailer)."""
     await session.execute(text(
+        "INSERT INTO public.wholesalers (id, code, name, status, is_deleted) "
+        "VALUES (:w, :code, 'Contract Fixture Wholesaler', 'active', FALSE) "
+        "ON CONFLICT (id) DO NOTHING"
+    ), {"w": str(wholesaler_id),
+        "code": f"CFX{str(wholesaler_id).replace('-', '')[:12].upper()}"})
+    await session.execute(text(
         "INSERT INTO public.retailers (id, phone, name, is_deleted) "
         "VALUES (:r, :phone, 'Contract Fixture Retailer', FALSE) "
         "ON CONFLICT (id) DO NOTHING"

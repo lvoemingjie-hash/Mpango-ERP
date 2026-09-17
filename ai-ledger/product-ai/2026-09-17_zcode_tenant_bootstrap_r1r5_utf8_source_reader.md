@@ -108,4 +108,20 @@ round; it is NOT inherited as an independent R1-R5 PASS.
 
 ## Successor manifest
 
-(see the manifest block appended in the follow-up commit)
+- SUCCESSOR_COMMIT=9da7454fe78274afd83e46b758bdf96050715502 (`fix(tests): MPANGO-TENANT-BOOTSTRAP-R1-R5-UTF8-SOURCE-READER …`, normal hooks, no --no-verify, no amend/rebase/force)
+- EVIDENCE_COMMIT=e707431d368e7d1309ff21e6bef99c964888652c (targeted evidence pack; R1-R4 and earlier evidence untouched)
+- SUCCESSOR_DIGESTS (working-tree CRLF vs committed-blob LF, grouped):
+  - v3_suite wt=685cf270 a37335e5 3cb2d19c 8bc154d1 a834a415 0f105c42 f84c7855 b30daa90
+  - v3_suite blob=2225bc79 525ca8ac b579d51c 75e4ad45 cdb92b4f b96744cf cdc25ae7 ea8fe822
+  - utf8_fixture wt=blob=748639f2 1dfa527e 15a4e726 2eba6f6b ce93005c aab12768 b1ef2598 864630d4
+  - NOTE: the v3_suite wt digest equals the sha256 recorded before the counterexample and re-verified after the byte-identical restore — the counterexample left the file exactly at the committed-candidate bytes.
+- UNCHANGED-PRODUCT-DIGESTS (proof of zero product drift, identical to R1-R4):
+  - grants wt=b2ee0eb4 320691c0 8256daf0 468dd521 361c834c f6e4abd0 b6f56d72 23630764
+  - grants blob=25330f40 794f08a2 4213c82f d9fbd3a4 eafa4719 7ed866a4 5761613d 193f4861
+  - bootstrap wt=fc0db066 66b44f69 c96463cb 0fea076a 69f90f88 dc4c1885 c1d2abd3 524a4818
+  - bootstrap blob=3301a55b a995359c 23da826c 566d821d 17307471 5fbb5c8c d3278e12 74aeff6d
+  - harness blob=b3580402 a19b9e9e 190e686d 0e1b69dc 062008a5 d161e3c8 5a8de9d7 9d351fce (worktree is the CRLF form of the same bytes, eol-normalized identical)
+- FORMAL_INVOCATIONS=1 focused frozen acceptance (15/15 PASSED); PRE-FORMAL_ITERATIONS documented in failed_attempts.txt (fixture pre-commit failure, two safe counterexample aborts, chcp capture issue) — none deleted
+- COUNTEREXAMPLE=bounded, defect restored from BASE bytes -> 6/6 named assertions RED (rc=1) -> byte-identical restore -> 6/6 GREEN; failures semantic, never import/syntax
+- NOT_EXECUTED=PG scenarios, second cluster, alembic, 104-node regression, the nine runtime mutations — R1-R4 evidence preserved as-is and NOT inherited as an R1-R5 PASS
+- RESULT=R1_R5_CANDIDATE_READY_FOR_CTO_REVIEW

@@ -585,13 +585,23 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
                 ),
                 {"sku_id": other_sku_id},
             )
+            # R2 contract: the isolation tenant is a legitimately provisioned
+            # neighbour — it needs wholesaler/retailer/binding public rows for
+            # its confirmed order's credit hold.
+            isolation_retailer_id = uuid.uuid4()
+            from tests.order_state_r2.contract_helpers import ensure_binding as _r2_binding
+            async with AsyncSessionLocal() as public_session:
+                await _r2_binding(public_session, isolation_tenant_id,
+                                  isolation_retailer_id)
+                await public_session.commit()
             other_order_id = (
                 await other_session.execute(
                     text(
                         "INSERT INTO orders (wholesaler_id, retailer_id, total_amount, notes) "
                         "VALUES (:wholesaler_id, :retailer_id, 100.00, 'S5-A isolation') RETURNING id"
                     ),
-                    {"wholesaler_id": isolation_tenant_id, "retailer_id": uuid.uuid4()},
+                    {"wholesaler_id": isolation_tenant_id,
+                     "retailer_id": isolation_retailer_id},
                 )
             ).scalar_one()
             await other_session.execute(

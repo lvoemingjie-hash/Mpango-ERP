@@ -1444,6 +1444,173 @@ async def _reconcile_s2b_i1(db, ts: str) -> None:
     print(f"[reconcile] {ts}: ensured DC-12R1-S3-S2B-I1 payment_declarations + receipt_sequences + receipt_number")
 
 
+# ---------------------------------------------------------------------------
+# R2 C5/C7: per-order credit hold contract (039-isomorphic, self-contained).
+# The DDL text below is a byte-for-byte sibling of the frozen 039 DDL; the
+# two files MUST NOT import each other — catalog parity is proven by test.
+# Bootstrap NEVER backfills or rewrites lifecycle rows: migration 039 owns
+# synthesis; bootstrap only creates the (empty) table for fresh tenants and
+# verifies the contract + the four-way identity for already-migrated ones.
+# ---------------------------------------------------------------------------
+
+HOLD_TABLE_COLUMNS = {
+    "id": "uuid", "order_id": "uuid", "amount": "numeric",
+    "remaining_amount": "numeric", "status": "character varying",
+    "created_at": "timestamp with time zone",
+    "updated_at": "timestamp with time zone",
+    "created_by": "uuid", "updated_by": "uuid",
+}
+HOLD_REQUIRED_CONSTRAINTS = {
+    "uq_order_credit_holds_order_id": "u",
+    "ck_order_credit_holds_status": "c",
+    "ck_order_credit_holds_amount_positive": "c",
+    "ck_order_credit_holds_remaining_cap": "c",
+    "ck_order_credit_holds_lifecycle_shape": "c",
+    "fk_order_credit_holds_order": "f",
+}
+HOLD_REQUIRED_INDEXES = {
+    "uq_order_credit_holds_order_id",
+    "ix_order_credit_holds_active",
+}
+
+HOLD_TABLE_DDL = """
+        CREATE TABLE IF NOT EXISTS {ts}.order_credit_holds (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            order_id UUID NOT NULL
+                CONSTRAINT fk_order_credit_holds_order
+                REFERENCES {ts}.orders(id) ON DELETE RESTRICT,
+            amount NUMERIC(12, 2) NOT NULL,
+            remaining_amount NUMERIC(12, 2) NOT NULL,
+            status VARCHAR(16) NOT NULL DEFAULT 'active',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            created_by UUID,
+            updated_by UUID,
+            CONSTRAINT uq_order_credit_holds_order_id UNIQUE (order_id),
+            CONSTRAINT ck_order_credit_holds_status CHECK (
+                status IN ('active', 'released', 'settled', 'converted')),
+            CONSTRAINT ck_order_credit_holds_amount_positive CHECK (
+                amount > 0),
+            CONSTRAINT ck_order_credit_holds_remaining_cap CHECK (
+                remaining_amount <= amount),
+            CONSTRAINT ck_order_credit_holds_lifecycle_shape CHECK (
+                (status = 'active' AND remaining_amount > 0)
+                OR (status IN ('released', 'settled', 'converted')
+                    AND remaining_amount = 0))
+        )
+"""
+HOLD_ACTIVE_INDEX_DDL = (
+    "CREATE INDEX IF NOT EXISTS ix_order_credit_holds_active "
+    "ON {ts}.order_credit_holds (order_id) WHERE status = 'active'"
+)
+
+
+async def _reconcile_credit_holds(db, ts: str) -> None:
+    """Fresh tenants: create the empty lifecycle table. Existing tenants:
+    validate the frozen contract and verify the four-way identity; NEVER
+    regenerate, delete, or rewrite lifecycle rows."""
+    from sqlalchemy import text
+
+    if not await _table_exists(db, ts, "order_credit_holds"):
+        await db.execute(text(HOLD_TABLE_DDL.format(ts=f'"{ts}"')))
+        await db.execute(text(HOLD_ACTIVE_INDEX_DDL.format(ts=f'"{ts}"')))
+        print(f"[reconcile] {ts}: created empty order_credit_holds (fresh)")
+        return
+
+    columns = {row["column_name"]: row["data_type"] for row in (await db.execute(
+        text(
+            "SELECT column_name, data_type FROM information_schema.columns "
+            "WHERE table_schema = :s AND table_name = 'order_credit_holds'"
+        ), {"s": ts})).mappings()}
+    missing_columns = set(HOLD_TABLE_COLUMNS) - set(columns)
+    wrong_columns = {
+        c: (columns[c], expected)
+        for c, expected in HOLD_TABLE_COLUMNS.items()
+        if c in columns and columns[c] != expected
+    }
+    soft_delete_columns = {"is_deleted", "deleted_at"} & set(columns)
+    if missing_columns or wrong_columns or soft_delete_columns:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts}.order_credit_holds contract drift "
+            f"(missing={sorted(missing_columns)}, "
+            f"wrong_types={wrong_columns}, "
+            f"soft_delete_columns={sorted(soft_delete_columns)})")
+
+    constraints = {row["conname"]: row["contype"] for row in (await db.execute(
+        text(
+            "SELECT c.conname, c.contype FROM pg_constraint c "
+            "JOIN pg_class t ON t.oid = c.conrelid "
+            "JOIN pg_namespace n ON n.oid = c.connamespace "
+            "WHERE n.nspname = :s AND t.relname = 'order_credit_holds'"
+        ), {"s": ts})).mappings()}
+    for name, kind in HOLD_REQUIRED_CONSTRAINTS.items():
+        if constraints.get(name) != kind:
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts}.order_credit_holds is missing "
+                f"or has a wrong {kind}-constraint {name}")
+
+    index_names = {row["indexname"] for row in (await db.execute(
+        text(
+            "SELECT indexname FROM pg_indexes "
+            "WHERE schemaname = :s AND tablename = 'order_credit_holds'"
+        ), {"s": ts})).mappings()}
+    missing_indexes = HOLD_REQUIRED_INDEXES - index_names
+    if missing_indexes:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts}.order_credit_holds is missing "
+            f"indexes {sorted(missing_indexes)}")
+
+    # Four-way identity verification (read-only; drift fails closed —
+    # bootstrap never "repairs" a migrated tenant's financial state).
+    drift = (await db.execute(text(f"""
+        WITH effective_payments AS (
+            SELECT p.order_id,
+                   COALESCE(SUM(p.amount) FILTER (
+                       WHERE p.method IN ('cash', 'transfer')), 0) AS cash_total,
+                   COALESCE(SUM(p.amount) FILTER (
+                       WHERE p.method = 'credit'), 0) AS credit_total
+            FROM "{ts}".payments p
+            WHERE p.is_deleted IS FALSE
+            GROUP BY p.order_id
+        ),
+        holds AS (
+            SELECT o.retailer_id::text AS retailer_id,
+                   SUM(h.remaining_amount) AS hold_total
+            FROM "{ts}".order_credit_holds h
+            JOIN "{ts}".orders o ON o.id = h.order_id
+                AND o.is_deleted IS FALSE
+            WHERE h.status = 'active'
+            GROUP BY o.retailer_id
+        ),
+        exposure AS (
+            SELECT o.retailer_id::text AS retailer_id,
+                   SUM(e.credit_total - e.cash_total) AS exposure_total
+            FROM "{ts}".orders o
+            JOIN effective_payments e ON e.order_id = o.id
+            WHERE o.is_deleted IS FALSE AND e.credit_total > 0
+            GROUP BY o.retailer_id
+        )
+        SELECT COUNT(*)
+        FROM public.wholesaler_retailer_bindings wrb
+        LEFT JOIN holds h ON h.retailer_id = wrb.retailer_id::text
+        LEFT JOIN exposure x ON x.retailer_id = wrb.retailer_id::text
+        WHERE wrb.is_deleted IS FALSE
+          AND wrb.wholesaler_id::text IN (
+              SELECT DISTINCT o.wholesaler_id::text
+              FROM "{ts}".orders o WHERE o.is_deleted IS FALSE)
+          AND wrb.outstanding_balance
+              <> (COALESCE(h.hold_total, 0)
+                  + COALESCE(x.exposure_total, 0))::numeric(12, 2)
+    """))).scalar()
+    if int(drift or 0):
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts} binding cache drift detected for "
+            f"{int(drift)} binding(s) (cache != active holds + net credit "
+            "exposure); bootstrap never repairs financial state — restore "
+            "from the authoritative history or re-run migration 039.")
+    print(f"[reconcile] {ts}: order_credit_holds contract verified")
+
+
 async def _reconcile_catalog_identity(db, ts: str) -> None:
     """Bring pre-038 bootstrap-only tenants to the SKU-M1 schema contract."""
     from sqlalchemy import text
@@ -1597,6 +1764,25 @@ async def _reconcile_catalog_identity(db, ts: str) -> None:
     ))
 
 
+async def _require_alembic_at_least(db, minimum_revision: str) -> str:
+    """C5: bootstrap runs ONLY after `alembic upgrade head`. The current
+    public.alembic_version must be >= the R2 revision; anything older (or a
+    missing version table) is refused BEFORE any tenant object is created.
+    bootstrap-first deployment is not supported."""
+    from sqlalchemy import text
+
+    row = (await db.execute(
+        text("SELECT version_num FROM public.alembic_version LIMIT 1")
+    )).first()
+    current = str(row[0]) if row else None
+    if not current or current < minimum_revision:
+        raise RuntimeError(
+            "bootstrap-first is not supported: run `alembic upgrade head` "
+            f"before bootstrapping tenant schemas (database is at "
+            f"{current!r}, requires >= {minimum_revision!r})")
+    return current
+
+
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
     """Create tenant schema and all required tables."""
     from sqlalchemy import text
@@ -1612,6 +1798,9 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
     ts = tenant_schema
 
     async with async_session() as db:
+        # C5 deployment-order gate: refuse BEFORE creating ANY tenant object.
+        await _require_alembic_at_least(db, "039_order_credit_holds")
+
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))
         await _ensure_public_binding_balance_constraint(db)
@@ -1996,6 +2185,9 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # --- DC-12R1-S3-S2B-I1: payment_declarations + receipt_sequences + receipt_number index ---
         await _reconcile_s2b_i1(db, ts)
+
+        # --- R2 C5/C7: hold contract (039-isomorphic, self-contained) ---
+        await _reconcile_credit_holds(db, ts)
 
         # --- SKU-M1: reconcile bootstrap-only tenants that Alembic cannot see ---
         await _reconcile_catalog_identity(db, ts)

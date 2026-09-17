@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.domain.order_state import OrderState
 from models.order import Order as OrderModel
+from models.order_credit_hold import OrderCreditHold
 import repositories.payment_repository as payment_repository_module
 import services.ledger_service as ledger_service_module
 import services.order_command_service as order_command_module
@@ -20,6 +21,22 @@ import services.payment_service as payment_service_module
 
 def _payment_error(status_code: int, code: str, message: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail={"code": code, "message": message})
+
+
+def _uuid_or_none(value):
+    if value is None:
+        return None
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _credit_hold_mismatch(message: str) -> HTTPException:
+    """R2 integrity refusal: any hold-lifecycle corruption is a hard 409
+    with zero financial writes."""
+    return _payment_error(
+        status.HTTP_409_CONFLICT, "CREDIT_HOLD_MISMATCH", message)
 
 
 def _same_payment_request(
@@ -127,6 +144,110 @@ class CanonicalPaymentService:
             .where(OrderModel.is_deleted == False)
         )
         return result.scalar_one_or_none()
+
+    async def _lock_hold_rows(self, db: AsyncSession, order_id: uuid.UUID) -> list[OrderCreditHold]:
+        """Lock the order's credit-hold lifecycle rows (0 or 1 — the UNIQUE
+        constraint allows at most one)."""
+        result = await db.execute(
+            select(OrderCreditHold)
+            .where(OrderCreditHold.order_id == order_id)
+            .order_by(OrderCreditHold.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return list(result.scalars().all())
+
+    async def _verify_hold_contract(
+        self,
+        db: AsyncSession,
+        order: OrderModel,
+        holds: list[OrderCreditHold],
+        *,
+        method: str,
+        amount: Decimal,
+        is_credit_collection: bool,
+    ) -> None:
+        """C1: validate the lifecycle contract BEFORE any financial write.
+
+        Collection (PAID credit order) requires exactly one CONVERTED hold
+        with remaining=0 and amount == order.total == effective credit
+        total. Settlement (cash/transfer) and credit conversion require
+        exactly one ACTIVE hold with remaining == total - effective paid.
+        Any other shape is refused with zero writes.
+        """
+        total = Decimal(str(order.total_amount))
+        shapes = [(h.status, str(h.remaining_amount)) for h in holds]
+
+        if is_credit_collection:
+            if len(holds) != 1 or holds[0].status != "converted":
+                raise _credit_hold_mismatch(
+                    "Credit collection requires exactly one converted "
+                    f"credit hold, found {shapes or 'none'}")
+            hold = holds[0]
+            if Decimal(str(hold.remaining_amount)) != Decimal("0"):
+                raise _credit_hold_mismatch(
+                    "Converted credit hold must have remaining_amount = 0, "
+                    f"found {hold.remaining_amount}")
+            if Decimal(str(hold.amount)) != total:
+                raise _credit_hold_mismatch(
+                    f"Converted credit hold amount {hold.amount} does not "
+                    f"match the order total {total}")
+            credit_total = await self._repo.get_order_method_total(
+                db, order_id=order.id, methods=("credit",))
+            if credit_total != total:
+                raise _credit_hold_mismatch(
+                    f"Effective credit total {credit_total} does not match "
+                    f"the order total {total}")
+            return
+
+        if len(holds) != 1 or holds[0].status != "active":
+            raise _credit_hold_mismatch(
+                f"{method} settlement requires exactly one active credit "
+                f"hold, found {shapes or 'none'}")
+        hold = holds[0]
+        if Decimal(str(hold.amount)) != total:
+            raise _credit_hold_mismatch(
+                f"Active credit hold amount {hold.amount} does not match "
+                f"the order total {total}")
+        prior_paid = await self._repo.get_order_paid_total(db, order_id=order.id)
+        expected_remaining = total - prior_paid
+        if Decimal(str(hold.remaining_amount)) != expected_remaining:
+            raise _credit_hold_mismatch(
+                f"Active credit hold remaining {hold.remaining_amount} does "
+                f"not match the effective unsettled total "
+                f"{expected_remaining}")
+        if method in ("cash", "transfer") and amount > expected_remaining:
+            raise _credit_hold_mismatch(
+                f"Settlement amount {amount} exceeds the hold remaining "
+                f"{hold.remaining_amount}")
+
+    async def _convert_hold(
+        self, db: AsyncSession, holds: list[OrderCreditHold], actor: str | None,
+    ) -> None:
+        hold = holds[0]
+        hold.status = "converted"
+        hold.remaining_amount = Decimal("0.00")
+        hold.updated_by = _uuid_or_none(actor)
+        await db.flush()
+
+    async def _reduce_hold(
+        self,
+        db: AsyncSession,
+        holds: list[OrderCreditHold],
+        amount: Decimal,
+        actor: str | None,
+    ) -> None:
+        hold = holds[0]
+        remaining = Decimal(str(hold.remaining_amount)) - Decimal(str(amount))
+        if remaining < Decimal("0"):
+            raise _credit_hold_mismatch(
+                f"Settlement would drive the hold remaining below zero "
+                f"({hold.remaining_amount} - {amount})")
+        hold.remaining_amount = remaining
+        if remaining == Decimal("0"):
+            hold.status = "settled"
+        hold.updated_by = _uuid_or_none(actor)
+        await db.flush()
 
     async def _replay_result(self, db: AsyncSession, payment_record: Mapping[str, Any]) -> CanonicalPaymentResult:
         order = await self._get_order_for_payment_record(db, uuid.UUID(str(payment_record["order_id"])))
@@ -306,6 +427,17 @@ class CanonicalPaymentService:
                 if existing_transfer:
                     raise _duplicate_transfer_reference()
 
+        # R2 C1: lock and verify the order's credit-hold lifecycle BEFORE
+        # any financial write (payment, receipt, ledger, binding). Lock
+        # order: order -> hold -> payment/receipt/ledger -> binding.
+        holds = await self._lock_hold_rows(db, order.id)
+        await self._verify_hold_contract(
+            db, order, holds,
+            method=method,
+            amount=amount,
+            is_credit_collection=is_credit_collection,
+        )
+
         payment_status = (
             "completed"
             if force_completed or is_credit_collection or (method == "transfer" and target_state == OrderState.PAID)
@@ -335,25 +467,37 @@ class CanonicalPaymentService:
         payment_service = payment_service_module.PaymentService()
         try:
             if is_credit_collection:
+                # R2: the converted lifecycle row is preserved untouched;
+                # a collection only reduces the real credit exposure and
+                # the binding cache. Lock order: ledger -> binding.
+                await ledger_service_module.LedgerService(db).post_payment_received(
+                    order_id=order.id,
+                    amount=amount,
+                    description=f"Credit collection for order {order.id} - Amount: {amount}",
+                )
                 await payment_service._apply_outstanding_balance_delta(
                     db,
                     wholesaler_id=order.wholesaler_id,
                     retailer_id=order.retailer_id,
                     delta=-amount,
                 )
-                await ledger_service_module.LedgerService(db).post_payment_received(
-                    order_id=order.id,
-                    amount=amount,
-                    description=f"Credit collection for order {order.id} - Amount: {amount}",
-                )
                 await db.refresh(order)
             else:
                 if method == "credit":
+                    # R2: the full active hold converts to the real credit
+                    # exposure. The binding is NOT incremented again — the
+                    # confirm-time reservation already occupies the cache
+                    # (removes the parent double-count).
+                    await self._convert_hold(db, holds, created_by)
+                else:
+                    # R2: cash/transfer settlement reduces the order's own
+                    # hold; the binding cache drops by the same amount.
+                    await self._reduce_hold(db, holds, amount, created_by)
                     await payment_service._apply_outstanding_balance_delta(
                         db,
                         wholesaler_id=order.wholesaler_id,
                         retailer_id=order.retailer_id,
-                        delta=amount,
+                        delta=-amount,
                     )
                 # F2: canonical payment service calls the ONE payment
                 # status command directly (AST-guarded call site).

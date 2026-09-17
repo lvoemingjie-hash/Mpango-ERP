@@ -172,8 +172,37 @@ class PaymentDeclarationService:
         wholesaler_id: uuid.UUID,
         confirmed_by: uuid.UUID,
     ) -> tuple[Mapping[str, Any], CanonicalPaymentResult]:
-        # Lock by (declaration_id, wholesaler_id) for ownership enforcement.
-        # A wrong wholesaler gets a neutral 404, never a 403.
+        # R2 C6 lock order: the ORDER row is the FIRST lock of this
+        # transaction. Locate the declaration read-only, lock the order
+        # fresh, and only then take the declaration row lock — the reverse
+        # edge (declaration/binding held while waiting on the order) is
+        # gone. A wrong wholesaler keeps getting a neutral 404.
+        located = await self._repo.get_by_wholesaler_dual_key(
+            db, declaration_id=declaration_id, wholesaler_id=wholesaler_id
+        )
+        if located is None:
+            raise _declaration_error(
+                status.HTTP_404_NOT_FOUND,
+                "DECLARATION_NOT_FOUND",
+                "Declaration not found",
+            )
+
+        order = await self._get_order_by_id_for_update(
+            db, uuid.UUID(str(located["order_id"]))
+        )
+        if (
+            order is None
+            or getattr(order, "wholesaler_id", None) != wholesaler_id
+            or getattr(order, "retailer_id", None)
+            != (located["retailer_id"] if isinstance(located["retailer_id"], uuid.UUID)
+                else uuid.UUID(str(located["retailer_id"])))
+        ):
+            raise _declaration_error(
+                status.HTTP_404_NOT_FOUND,
+                "DECLARATION_NOT_FOUND",
+                "Declaration not found",
+            )
+
         declaration = await self._repo.get_for_update_by_wholesaler(
             db, declaration_id=declaration_id, wholesaler_id=wholesaler_id
         )
@@ -195,15 +224,18 @@ class PaymentDeclarationService:
                 "Cannot confirm a declaration that has already been rejected",
             )
 
-        # Verify order ownership and active binding under the same transaction.
-        await self._verify_ownership_and_binding(
+        # The binding must exist and be active; it is checked WITHOUT taking
+        # a row lock — the binding row is locked LAST by the canonical
+        # service's atomic conditional update.
+        await self._verify_binding_exists(
             db,
-            order_id=uuid.UUID(str(declaration["order_id"])),
-            retailer_id=uuid.UUID(str(declaration["retailer_id"])),
             wholesaler_id=wholesaler_id,
+            retailer_id=order.retailer_id,
         )
 
-        # pending -> proceed.
+        # pending -> proceed. The canonical service reuses the already
+        # locked fresh order (its own FOR UPDATE re-read is re-entrant on
+        # the row this transaction already holds).
         canonical_key = f"{DECLARATION_CONFIRMATION_KEY_PREFIX}{declaration_id.hex}"
         transaction_id = declaration["transfer_reference"] or None
 
@@ -278,48 +310,6 @@ class PaymentDeclarationService:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-    async def _verify_ownership_and_binding(
-        self,
-        db: AsyncSession,
-        *,
-        order_id: uuid.UUID,
-        retailer_id: uuid.UUID,
-        wholesaler_id: uuid.UUID,
-    ) -> None:
-        """Verify the order exists, is not soft-deleted, belongs to the same
-        (wholesaler, retailer), and the binding is active. Fails closed with
-        a neutral 404 on any mismatch."""
-        order = await self._get_order_by_id(db, order_id)
-        if order is None or getattr(order, "is_deleted", False):
-            raise _declaration_error(
-                status.HTTP_404_NOT_FOUND, "ORDER_NOT_FOUND",
-                "Order not found",
-            )
-        if (
-            getattr(order, "wholesaler_id", None) != wholesaler_id
-            or getattr(order, "retailer_id", None) != retailer_id
-        ):
-            raise _declaration_error(
-                status.HTTP_404_NOT_FOUND, "DECLARATION_NOT_FOUND",
-                "Declaration not found",
-            )
-        # Verify active binding with row-level protection.
-        result = await db.execute(
-            text(
-                "SELECT status FROM public.wholesaler_retailer_bindings "
-                "WHERE wholesaler_id = :wid AND retailer_id = :rid "
-                "AND is_deleted IS FALSE "
-                "FOR UPDATE LIMIT 1"
-            ),
-            {"wid": str(wholesaler_id), "rid": str(retailer_id)},
-        )
-        binding = result.fetchone()
-        if binding is None or binding.status != "active":
-            raise _declaration_error(
-                status.HTTP_404_NOT_FOUND, "DECLARATION_NOT_FOUND",
-                "Declaration not found",
-            )
-
     async def _resolve_confirmed_replay(
         self,
         db: AsyncSession,
@@ -379,6 +369,45 @@ class PaymentDeclarationService:
             replayed=True,
             order_state=str(order_state),
         )
+
+    async def _get_order_by_id_for_update(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> OrderModel | None:
+        """Locked-fresh order read: the FIRST lock of the confirmation
+        transaction (populate_existing keeps ORM state current)."""
+        result = await db.execute(
+            select(OrderModel)
+            .where(OrderModel.id == order_id)
+            .where(OrderModel.is_deleted == False)  # noqa: E712
+            .execution_options(populate_existing=True)
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
+
+    async def _verify_binding_exists(
+        self,
+        db: AsyncSession,
+        *,
+        wholesaler_id: uuid.UUID,
+        retailer_id: uuid.UUID,
+    ) -> None:
+        """Plain (lock-free) binding existence/activeness check. Neutral 404
+        on mismatch. The authoritative binding row lock happens LAST inside
+        the canonical service's atomic conditional update."""
+        result = await db.execute(
+            text(
+                "SELECT status FROM public.wholesaler_retailer_bindings "
+                "WHERE wholesaler_id = :wid AND retailer_id = :rid "
+                "AND is_deleted IS FALSE LIMIT 1"
+            ),
+            {"wid": str(wholesaler_id), "rid": str(retailer_id)},
+        )
+        binding = result.fetchone()
+        if binding is None or binding.status != "active":
+            raise _declaration_error(
+                status.HTTP_404_NOT_FOUND, "DECLARATION_NOT_FOUND",
+                "Declaration not found",
+            )
 
     async def _get_order_by_id(self, db: AsyncSession, order_id: uuid.UUID) -> OrderModel | None:
         result = await db.execute(

@@ -170,6 +170,32 @@ class ReceivablesService:
             )
             cash_totals = {row["order_id"]: Decimal(str(row["cash_total"])) for row in cash_totals_result.mappings().all()}
 
+        # R2: the unpaid track is the per-order ACTIVE CREDIT HOLD
+        # (reserved, not-yet-settled occupation), read from the tenant
+        # order_credit_holds table. The credit track stays payment-derived
+        # (per-order net exposure). The binding cache is the total
+        # occupation; drift between the cache and the derived tracks stays
+        # VISIBLE in the payload — retailer rows are never dropped to hide
+        # it.
+        holds_result = await tenant_db.execute(
+            text(
+                """
+                SELECT o.retailer_id,
+                       COALESCE(SUM(h.remaining_amount), 0) AS hold_total,
+                       COUNT(*) AS hold_count
+                FROM order_credit_holds h
+                JOIN orders o ON o.id = h.order_id AND o.is_deleted IS FALSE
+                WHERE h.status = 'active'
+                GROUP BY o.retailer_id
+                """
+            ),
+            {},
+        )
+        hold_totals = {
+            row["retailer_id"]: (Decimal(str(row["hold_total"])), int(row["hold_count"]))
+            for row in holds_result.mappings().all()
+        }
+
         # Build per-retailer breakdown
         by_retailer = []
         total_outstanding = Decimal("0")
@@ -182,7 +208,6 @@ class ReceivablesService:
             retailer_orders = [o for o in order_rows if o.retailer_id == retailer_id]
 
             retailer_credit = Decimal("0")
-            retailer_unpaid = Decimal("0")
             retailer_order_count = 0
 
             for order in retailer_orders:
@@ -190,35 +215,35 @@ class ReceivablesService:
                 credit_amt = credit_totals.get(order_id, Decimal("0"))
                 cash_amt = cash_totals.get(order_id, Decimal("0"))
                 credit_balance = _credit_exposure(credit_amt, cash_amt)
-                balance_due = _non_negative_amount(order.total_amount - cash_amt)
 
                 # Credit receivable: orders with credit payment exposure
                 if credit_balance > 0:
                     retailer_credit += credit_balance
                     retailer_order_count += 1
 
-                # Unpaid order: confirmed/partially_paid with remaining balance
-                elif order.status in [OrderStatus.CONFIRMED, OrderStatus.PARTIALLY_PAID] and balance_due > 0:
-                    retailer_unpaid += balance_due
-                    retailer_order_count += 1
-
-            binding_credit = _non_negative_amount(
+            binding_cache = _non_negative_amount(
                 Decimal(str(binding_info["outstanding_balance"]))
             )
-            retailer_outstanding = binding_credit + retailer_unpaid
-            if retailer_outstanding <= 0:
+            reserved_hold, hold_count = hold_totals.get(
+                retailer_id, (Decimal("0"), 0))
+            retailer_unpaid = reserved_hold
+            retailer_order_count += hold_count
+
+            # Drop the row only when NOTHING is occupied anywhere: a zero
+            # cache with non-zero derived tracks is drift and MUST surface.
+            if binding_cache == 0 and retailer_unpaid == 0 and retailer_credit == 0:
                 continue
 
             by_retailer.append({
                 "retailer_id": str(binding_info["retailer_id"]),
                 "retailer_name": binding_info["retailer_name"] or "Unknown",
-                "outstanding_balance": float(retailer_outstanding),
+                "outstanding_balance": float(binding_cache),
                 "credit_receivables": float(retailer_credit),
                 "unpaid_order_balance": float(retailer_unpaid),
                 "order_count": retailer_order_count,
             })
 
-            total_outstanding += retailer_outstanding
+            total_outstanding += binding_cache
             total_credit_receivables += retailer_credit
             total_unpaid_balance += retailer_unpaid
             total_order_count += retailer_order_count
@@ -378,6 +403,23 @@ class ReceivablesService:
             )
             cash_totals = {row["order_id"]: Decimal(str(row["cash_total"])) for row in cash_result.mappings().all()}
 
+            # R2: the unpaid track per order is the ACTIVE CREDIT HOLD.
+            hold_result = await tenant_db.execute(
+                text(
+                    """
+                    SELECT h.order_id, h.remaining_amount
+                    FROM order_credit_holds h
+                    JOIN orders o ON o.id = h.order_id AND o.is_deleted IS FALSE
+                    WHERE h.status = 'active' AND h.order_id = ANY(:order_ids)
+                    """
+                ),
+                {"order_ids": order_ids},
+            )
+            hold_remaining = {
+                row["order_id"]: Decimal(str(row["remaining_amount"]))
+                for row in hold_result.mappings().all()
+            }
+
         # Get retailer names from public bindings
         retailer_ids = list(set([order.retailer_id for order in order_rows]))
         retailer_result = await tenant_db.execute(
@@ -407,7 +449,9 @@ class ReceivablesService:
             credit_amt = credit_totals.get(order_id, Decimal("0"))
             cash_amt = cash_totals.get(order_id, Decimal("0"))
             credit_balance = _credit_exposure(credit_amt, cash_amt)
-            balance_due = _non_negative_amount(order.total_amount - cash_amt)
+            # R2: unpaid balance_due comes from the active credit hold, not
+            # a total-minus-cash recomputation (effective history only).
+            balance_due = hold_remaining.get(order_id, Decimal("0"))
 
             # Determine classification
             order_classification = None

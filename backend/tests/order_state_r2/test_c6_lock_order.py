@@ -28,6 +28,7 @@ from tests.order_state_r2.support import (
     binding_balance,
     errcode,
     http_action,
+    inventory_vector,
     http_create_order,
     make_bound_retailer,
     order_vector,
@@ -142,18 +143,16 @@ async def test_c6_pay_vs_cancel_same_order_both_interleavings(
         f"{balance}, expected 0.00 under both interleavings — parent "
         "strands the hold in both")
 
-    inv = await inventory_vector_status(db, schema, sid, oid)
-    assert inv in {"paid-shape", "cancelled-shape"}, inv
-
-
-async def inventory_vector_status(db, schema, sku_id, oid) -> str:
-    from tests.order_state_r2.support import inventory_vector, reservation_vector
-    inv = await inventory_vector(db, schema, [sku_id])
+    # inventory shape per branch: PAID keeps its reservations reserved
+    # (fulfill consumes them); CANCELLED releases them.
+    inv = await inventory_vector(db, schema, [sid])
     resv = await reservation_vector(db, schema, oid)
-    reserved_total = sum(int(Decimal(r["qty"])) for r in resv
-                         if r["status"] == "reserved")
-    return ("paid-shape" if inv[sku_id].endswith("/0")
-            and reserved_total == 0 else f"unexpected:{inv}:{resv}")
+    if status == "paid":
+        assert all(r["status"] == "reserved" for r in resv), (inv, resv)
+        assert inv[sid].endswith("/2"), (inv, resv)
+    else:
+        assert all(r["status"] == "released" for r in resv), (inv, resv)
+        assert inv[sid].endswith("/0"), (inv, resv)
 
 
 async def test_c6_declaration_confirm_vs_direct_pay_same_order(

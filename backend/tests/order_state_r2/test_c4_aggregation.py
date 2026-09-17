@@ -135,10 +135,23 @@ async def test_c4_soft_deleted_credit_payment_removes_exposure(
         f"({resp.status_code}): {resp.text}")
     assert errcode(resp) == "ORDER_ALREADY_PAID", resp.text
 
-    balance = await binding_balance(db, ws_id, ret_id)
-    assert balance == Decimal("0.00"), (
-        f"C4-RED-3 binding with soft-deleted credit history = {balance}, "
-        "expected 0.00 (no effective hold, no effective exposure)")
+    # Runtime aggregation is consistent with EFFECTIVE history (the deleted
+    # credit row contributes nothing: no exposure, collection refused). The
+    # out-of-band soft-delete is cache tampering — the residue stays VISIBLE
+    # as drift in the summary (cache 100 vs derived tracks 0), never hidden.
+    from tests.order_state_r1.support import _second_session
+    reader = await _second_session(schema, ws_id)
+    try:
+        summary = await summary_for(reader, ws_id)
+    finally:
+        await reader.close()
+    row = summary_row(summary, ret_id)
+    assert row is not None, "drifted retailer row must not be dropped"
+    total = Decimal(str(row["outstanding_balance"]))
+    derived = (Decimal(str(row["unpaid_order_balance"]))
+               + Decimal(str(row["credit_receivables"])))
+    assert total == Decimal("100.00") and derived == Decimal("0.00"), (
+        f"C4-RED-3 tampered cache must stay visible as drift: row={row}")
 
 
 async def order_vector_status(db, schema, order_id) -> str:

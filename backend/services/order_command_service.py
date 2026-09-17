@@ -63,12 +63,27 @@ from core.domain.order_state import (
 from core.structured_logging import get_logger
 from models.inventory_reservation import InventoryReservation
 from models.order import Order
+from models.order_credit_hold import OrderCreditHold
 
 logger = get_logger(__name__)
 
 # Temporary fail-closed policy (CTO frozen decision): refund / funds
 # disposition is not implemented in this round.
 REFUND_WORKFLOW_NOT_IMPLEMENTED = "REFUND_WORKFLOW_NOT_IMPLEMENTED"
+
+# R2 integrity codes: hold-lifecycle/attribution corruption is a hard 409
+# with ZERO persisted writes — never a silent repair or best-effort release.
+CREDIT_HOLD_MISMATCH = "CREDIT_HOLD_MISMATCH"
+BINDING_NOT_FOUND = "BINDING_NOT_FOUND"
+
+
+def _uuid_or_none(value) -> Optional[uuid.UUID]:
+    if value is None:
+        return None
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        return None
 
 # F1: the generic transition path must NEVER perform a bare-state write for
 # these targets — each has an explicit command (confirm/cancel/fulfill/
@@ -153,7 +168,7 @@ class OrderCommandService:
         self._assign_status(order, OrderState.CONFIRMED, updated_by)
         await self.db.flush()
 
-        credit_reserved = await self._reserve_credit(order)
+        credit_reserved = await self._open_credit_hold(order, updated_by)
 
         return OrderCommandResult(
             order=order,
@@ -202,13 +217,18 @@ class OrderCommandService:
 
         released = await self._release_reservations(order, stocks)
 
+        # R2 C2 gate: verify the full reservation snapshot and release the
+        # hold exactly once. Lock order: order -> stocks -> reservations ->
+        # hold -> binding (the binding is touched last, inside the gate).
+        credit_released = await self._settle_cancel_hold(order, updated_by)
+
         self._assign_status(order, OrderState.CANCELLED, updated_by)
         await self.db.flush()
 
         return OrderCommandResult(
             order=order,
             released_reservations=released,
-            credit_reserved=None,
+            credit_reserved=credit_released,
             notification_intents=[],
         )
 
@@ -596,15 +616,43 @@ class OrderCommandService:
         await self.db.flush()
         return reservations
 
-    async def _reserve_credit(self, order: Order) -> Decimal:
-        """Reserve retailer credit for the confirmed order total.
+    async def _open_credit_hold(self, order: Order, updated_by: Optional[str]) -> Decimal:
+        """R2: open the per-order credit hold and reserve the binding cache.
 
-        Adds the order total to the binding's outstanding balance — the
-        same single-column credit-occupation primitive the payment service
-        uses for credit movements (no ledger entries; frozen decision).
+        Creates the single lifecycle row (active, amount=remaining=total)
+        for the confirmed order and increments the binding cache with ONE
+        atomic conditional update (rowcount 0 => no live binding => 409;
+        the parent silently confirmed without a binding). No receivable,
+        revenue, or payment ledger entries are written (frozen decision).
         """
         delta = Decimal(str(order.total_amount))
-        await self.db.execute(
+        if delta <= Decimal("0.00"):
+            raise OrderInvariantViolation(
+                "Cannot open a credit hold for a zero or negative total")
+
+        existing = await self.db.execute(
+            select(OrderCreditHold.order_id)
+            .where(OrderCreditHold.order_id == order.id)
+            .limit(1)
+        )
+        if existing.first() is not None:
+            raise _conflict(
+                CREDIT_HOLD_MISMATCH,
+                f"Order {order.id} already carries a credit-hold lifecycle row",
+            )
+
+        actor = _uuid_or_none(updated_by)
+        self.db.add(OrderCreditHold(
+            order_id=order.id,
+            amount=delta,
+            remaining_amount=delta,
+            status="active",
+            created_by=actor,
+            updated_by=actor,
+        ))
+        await self.db.flush()
+
+        result = await self.db.execute(
             text(
                 """
                 UPDATE public.wholesaler_retailer_bindings
@@ -613,6 +661,8 @@ class OrderCommandService:
                 WHERE wholesaler_id = :wholesaler_id
                   AND retailer_id = :retailer_id
                   AND is_deleted IS FALSE
+                  AND status = 'active'
+                  AND outstanding_balance + :delta >= 0
                 """
             ),
             {
@@ -621,7 +671,91 @@ class OrderCommandService:
                 "retailer_id": order.retailer_id,
             },
         )
+        if result.rowcount == 0:
+            raise _conflict(
+                BINDING_NOT_FOUND,
+                "Order cannot be confirmed: the retailer binding is missing "
+                "or inactive",
+            )
         return delta
+
+    async def _settle_cancel_hold(self, order: Order, updated_by: Optional[str]) -> Decimal:
+        """R2 C2 gate: release the order's credit hold exactly once.
+
+        DRAFT cancel requires ZERO lifecycle rows (any row is corruption).
+        CONFIRMED cancel requires exactly one ACTIVE row whose remaining ==
+        amount == order.total. The row flips to released/remaining=0 and the
+        binding cache drops by the released amount in the same transaction.
+        Every mismatch is a 409 with zero persisted writes (the caller's
+        transaction rolls back).
+        """
+        holds = list((await self.db.execute(
+            select(OrderCreditHold)
+            .where(OrderCreditHold.order_id == order.id)
+            .order_by(OrderCreditHold.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )).scalars().all())
+
+        if order.status.value == "draft":
+            if holds:
+                raise _conflict(
+                    CREDIT_HOLD_MISMATCH,
+                    "DRAFT order carries a credit-hold lifecycle row: "
+                    f"{[h.status for h in holds]}",
+                )
+            return Decimal("0.00")
+
+        total = Decimal(str(order.total_amount))
+        if len(holds) != 1 or holds[0].status != "active":
+            raise _conflict(
+                CREDIT_HOLD_MISMATCH,
+                "CONFIRMED cancel requires exactly one active credit hold, "
+                f"found "
+                + str([(h.status, str(h.remaining_amount)) for h in holds]
+                      or "none"),
+
+            )
+        hold = holds[0]
+        if (Decimal(str(hold.amount)) != total
+                or Decimal(str(hold.remaining_amount)) != total):
+            raise _conflict(
+                CREDIT_HOLD_MISMATCH,
+                "Credit hold snapshot mismatch for cancel: "
+                f"amount={hold.amount} remaining={hold.remaining_amount} "
+                f"order.total={order.total_amount}",
+            )
+
+        hold.status = "released"
+        hold.remaining_amount = Decimal("0.00")
+        hold.updated_by = _uuid_or_none(updated_by)
+        await self.db.flush()
+
+        result = await self.db.execute(
+            text(
+                """
+                UPDATE public.wholesaler_retailer_bindings
+                SET outstanding_balance = outstanding_balance - :delta,
+                    updated_at = now()
+                WHERE wholesaler_id = :wholesaler_id
+                  AND retailer_id = :retailer_id
+                  AND is_deleted IS FALSE
+                  AND outstanding_balance - :delta >= 0
+                """
+            ),
+            {
+                "delta": total,
+                "wholesaler_id": order.wholesaler_id,
+                "retailer_id": order.retailer_id,
+            },
+        )
+        if result.rowcount == 0:
+            raise _conflict(
+                BINDING_NOT_FOUND,
+                "Cannot release the credit hold: the retailer binding is "
+                "missing, inactive, or the cache would underflow",
+            )
+        return total
 
     async def _post_transition_ledger(
         self,

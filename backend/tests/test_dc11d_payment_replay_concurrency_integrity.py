@@ -208,6 +208,43 @@ async def _bootstrap_minimal_tenant_schema(session, schema: str) -> None:
     await session.execute(
         text(
             f"""
+            CREATE TABLE IF NOT EXISTS "{schema}".order_credit_holds (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                order_id UUID NOT NULL UNIQUE
+                    REFERENCES "{schema}".orders(id) ON DELETE RESTRICT,
+                amount NUMERIC(12, 2) NOT NULL,
+                remaining_amount NUMERIC(12, 2) NOT NULL,
+                status VARCHAR(16) NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                created_by UUID,
+                updated_by UUID,
+                CONSTRAINT ck_order_credit_holds_status CHECK (
+                    status IN ('active', 'released', 'settled', 'converted')),
+                CONSTRAINT ck_order_credit_holds_amount_positive CHECK (
+                    amount > 0),
+                CONSTRAINT ck_order_credit_holds_remaining_cap CHECK (
+                    remaining_amount <= amount),
+                CONSTRAINT ck_order_credit_holds_lifecycle_shape CHECK (
+                    (status = 'active' AND remaining_amount > 0)
+                    OR (status IN ('released', 'settled', 'converted')
+                        AND remaining_amount = 0))
+            )
+            """
+        )
+    )
+    await session.execute(
+        text(
+            f"""
+            CREATE INDEX IF NOT EXISTS ix_order_credit_holds_active
+            ON "{schema}".order_credit_holds (order_id)
+            WHERE status = 'active'
+            """
+        )
+    )
+    await session.execute(
+        text(
+            f"""
             CREATE TABLE IF NOT EXISTS "{schema}".ledger_entries (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 transaction_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
@@ -268,10 +305,10 @@ async def _seed_confirmed_order(
             INSERT INTO public.wholesaler_retailer_bindings (
                 wholesaler_id, retailer_id, status, outstanding_balance, is_deleted
             )
-            VALUES (:tenant_id, :retailer_id, 'active', :initial_outstanding, FALSE)
+            VALUES (:tenant_id, :retailer_id, 'active', :seed_balance, FALSE)
             ON CONFLICT (wholesaler_id, retailer_id) DO UPDATE
             SET status = 'active',
-                outstanding_balance = :initial_outstanding,
+                outstanding_balance = :seed_balance,
                 is_deleted = FALSE,
                 updated_at = now()
             """
@@ -279,7 +316,8 @@ async def _seed_confirmed_order(
         {
             "tenant_id": tenant_id,
             "retailer_id": retailer_id,
-            "initial_outstanding": initial_outstanding,
+            # R2: the cache includes the confirm-time hold being seeded.
+            "seed_balance": initial_outstanding + total,
         },
     )
     await session.execute(
@@ -290,6 +328,18 @@ async def _seed_confirmed_order(
             """
         ),
         {"order_id": order_id, "tenant_id": tenant_id, "retailer_id": retailer_id, "total": total},
+    )
+    # R2 contract: a CONFIRMED order carries exactly one active credit hold
+    # (amount = remaining = total) — the lifecycle row `confirm_order` would
+    # have created.
+    await session.execute(
+        text(
+            """
+            INSERT INTO order_credit_holds (order_id, amount, remaining_amount, status)
+            VALUES (:order_id, :total, :total, 'active')
+            """
+        ),
+        {"order_id": order_id, "total": total},
     )
     return order_id, retailer_id, _Token(tenant_id=tenant_id, tenant_schema=str(session.info["tenant_schema"]))
 
@@ -486,6 +536,18 @@ async def _restore_public_tenant(session, *, wholesaler_id: str, snap: dict) -> 
             text(_insert_sql("public.wholesaler_retailer_bindings", binding)),
             _flatten(binding),
         )
+
+
+@pytest.fixture(autouse=True)
+async def _ensure_hold_contract():
+    """Keep the harness-owned t_test schema at the deployed (post-039)
+    contract: the per-order credit-hold table must exist before any payment
+    path runs. Additive only (IF NOT EXISTS); no rows are ever written or
+    rewritten here."""
+    async with AsyncSessionLocal() as session:
+        await _bootstrap_minimal_tenant_schema(session, "t_test")
+        await session.commit()
+    yield
 
 
 @pytest.fixture
@@ -838,16 +900,19 @@ async def test_unrelated_integrity_error_is_not_idempotency_conflict_and_rolls_b
         async_session, order_id=order_id, tenant_id=tenant_id, retailer_id=retailer_id
     )
 
-    async def fail_balance_delta(*_args, **_kwargs):
-        raise IntegrityError("dc11d-r1-downstream", {}, RuntimeError("forced integrity failure"))
+    async def fail_ledger_posting(*_args, **_kwargs):
+        raise IntegrityError("dc11d-r2-downstream", {}, RuntimeError("forced integrity failure"))
 
-    from services.payment_service import PaymentService
+    # R2: credit payments no longer touch the binding (the conversion is
+    # cache-neutral), so the forced downstream failure lives in a writer
+    # that still runs on this path — the settlement ledger posting.
+    from services.ledger_service import LedgerService
 
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr(
-            PaymentService,
-            "_apply_outstanding_balance_delta",
-            fail_balance_delta,
+            LedgerService,
+            "post_payment_received",
+            fail_ledger_posting,
         )
         async with AsyncSessionLocal() as failure_session:
             failure_session.info["tenant_schema"] = _tenant_schema(async_session)
@@ -858,7 +923,7 @@ async def test_unrelated_integrity_error_is_not_idempotency_conflict_and_rolls_b
                     order_id=str(order_id),
                     token=token,
                     db=failure_session,
-                    payment_input=PayOrderRequest(amount=Decimal("100.00"), method="credit"),
+                    payment_input=PayOrderRequest(amount=Decimal("100.00"), method="cash"),
                     x_idempotency_key="dc11d-r1-unknown-integrity",
                 )
 

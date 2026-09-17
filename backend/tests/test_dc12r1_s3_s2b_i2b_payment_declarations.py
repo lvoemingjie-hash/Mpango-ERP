@@ -318,6 +318,27 @@ async def _seed_confirmed_order(db: AsyncSession, schema: str, ws_id: str, ret_i
         ),
         {"id": oid, "ws": ws_id, "ret": ret_id, "total": total},
     )
+    # R2 contract: a CONFIRMED order carries exactly one active credit hold
+    # (amount = remaining = total) — what confirm_order would have created —
+    # and the binding cache includes that hold.
+    await db.execute(
+        text(
+            f'INSERT INTO "{schema}".order_credit_holds '
+            "(order_id, amount, remaining_amount, status) "
+            "VALUES (:id, :total, :total, 'active')"
+        ),
+        {"id": oid, "total": total},
+    )
+    await db.execute(
+        text(
+            "UPDATE public.wholesaler_retailer_bindings "
+            "SET outstanding_balance = outstanding_balance + :total, "
+            "    updated_at = now() "
+            "WHERE wholesaler_id = :ws AND retailer_id = :ret "
+            "AND is_deleted IS FALSE"
+        ),
+        {"ws": ws_id, "ret": ret_id, "total": total},
+    )
     await db.commit()
     return oid
 

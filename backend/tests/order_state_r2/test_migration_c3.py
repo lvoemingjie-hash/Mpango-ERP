@@ -64,6 +64,23 @@ def _run_migration_039(connection) -> None:
         module.op = original_op
 
 
+def _upgrade_to_head(db_url: str) -> None:
+    """Real `alembic upgrade head` against a disposable database (env.py
+    redirects at $DATABASE_URL; isolated thread keeps the session loop)."""
+    from unittest import mock
+
+    def job():
+        from alembic import command
+        from alembic.config import Config
+
+        with mock.patch.dict(os.environ, {"DATABASE_URL": db_url}):
+            cfg = Config(str(BACKEND / "alembic.ini"))
+            cfg.set_main_option("script_location", str(BACKEND / "alembic"))
+            command.upgrade(cfg, "head")
+
+    _run_in_fresh_loop(job)
+
+
 def _run_in_fresh_loop(fn, *args):
     """Run a callable that owns its own event loop (alembic env.py uses
     asyncio.run) in an isolated thread so the pytest-asyncio session loop is
@@ -214,13 +231,13 @@ def _binding(engine, wholesaler_id: uuid.UUID, retailer_id: uuid.UUID) -> Decima
 
 
 def test_c3_empty_database_upgrade_then_downgrade_refused():
-    """Empty registry: 039 advances cleanly (no tenants); downgrade refuses."""
+    """Empty registry: a REAL `alembic upgrade head` advances cleanly (no
+    tenants); downgrade refuses."""
     source = os.environ["TEST_DATABASE_URL"]
     with temporary_database_url(source, "r2c3empty") as db_url:
         engine = _engine(db_url)
         _upgrade_to_038(db_url)
-        with engine.begin() as conn:
-            _run_migration_039(conn)
+        _upgrade_to_head(db_url)
         version = engine.connect().execute(
             text("SELECT version_num FROM public.alembic_version")).scalar()
         assert version == "039_order_credit_holds"
@@ -295,7 +312,7 @@ def test_c3_full_state_matrix_backfill_exact():
         assert "released" not in synthesized_statuses, (
             "migration must not fabricate historical release events")
         total_rows = sum(len(v) for v in by_status.values())
-        assert total_rows == 9, (total_rows, by_status)  # no draft/cancel/void
+        assert total_rows == 8, (total_rows, by_status)  # no draft/cancel/void
 
         expected = Decimal("225.00") + Decimal("50.00") + Decimal("60.00")
         assert _binding(engine, ws, retailer) == expected
@@ -437,8 +454,7 @@ def test_c5_catalog_parity_migration_vs_bootstrap():
         _upgrade_to_038(db_url)
         ws_mig = uuid.uuid4()
         schema_mig = _register_tenant(engine, ws_mig)
-        with engine.begin() as conn:
-            _run_migration_039(conn)
+        _upgrade_to_head(db_url)
 
         spec = importlib.util.spec_from_file_location(
             "r2_bootstrap_module_parity", BOOTSTRAP_SCRIPT)

@@ -116,12 +116,39 @@ def _strip_sku_m1_schema(connection, schema: str) -> None:
     connection.execute(text(f"DROP TABLE {q}.catalog_products CASCADE"))
 
 
+def _satisfy_bootstrap_gate(connection) -> None:
+    """R2 C5: bootstrap refuses to run below alembic 039. This harness builds
+    GENUINE pre-039 tenant baselines, so the version row is temporarily moved
+    to 039 for the bootstrap call and restored afterwards; the 039 holds
+    table is dropped so the baseline stays genuine."""
+    connection.execute(text(
+        "CREATE TABLE IF NOT EXISTS public.alembic_version "
+        "(version_num VARCHAR(128) NOT NULL PRIMARY KEY)"))
+    connection.execute(text(
+        "UPDATE public.alembic_version SET version_num = '039_order_credit_holds'"))
+    connection.commit()
+
+
+def _restore_pre039_version(connection, revision: str) -> None:
+    connection.execute(text(
+        f"UPDATE public.alembic_version SET version_num = '{revision}'"))
+    connection.commit()
+
+
+def _drop_hold_table(connection, schema: str) -> None:
+    connection.execute(text(
+        f'DROP TABLE IF EXISTS "{schema}".order_credit_holds CASCADE'))
+
+
 def _prepare_old_tenant(connection, db_url: str, *, prefix: str) -> tuple[uuid.UUID, str]:
     wholesaler_id, schema = _register_tenant(connection, prefix=prefix)
     connection.commit()
+    _satisfy_bootstrap_gate(connection)
     run_coroutine(bootstrap(schema, _async_url(db_url)))
     connection.rollback()
     _strip_sku_m1_schema(connection, schema)
+    _drop_hold_table(connection, schema)
+    _restore_pre039_version(connection, REV_037)
     connection.commit()
     return wholesaler_id, schema
 
@@ -373,7 +400,14 @@ def test_real_pg16_two_tenant_upgrade_preserves_identity_snapshots_and_stock() -
                 run_alembic_upgrade(config, REV_038)
 
                 reference_schema = f"t_{uuid.uuid4().hex}"
+                connection = engine.connect()
+                _satisfy_bootstrap_gate(connection)
+                connection.commit()
                 run_coroutine(bootstrap(reference_schema, _async_url(db_url)))
+                _drop_hold_table(connection, reference_schema)
+                _restore_pre039_version(connection, REV_038)
+                connection.commit()
+                connection.close()
 
                 with engine.connect() as connection:
                     assert connection.execute(
@@ -501,9 +535,13 @@ def test_real_pg16_bootstrap_reconciles_unregistered_pre038_tenant() -> None:
             engine = create_engine(_sync_url(db_url), future=True)
             schema = "t_dev"
             try:
+                connection = engine.connect()
+                _satisfy_bootstrap_gate(connection)
                 run_coroutine(bootstrap(schema, _async_url(db_url)))
                 with engine.connect() as connection:
                     _strip_sku_m1_schema(connection, schema)
+                    _drop_hold_table(connection, schema)
+                    _restore_pre039_version(connection, REV_037)
                     sku_id = _insert_sku(
                         connection, schema, code="UNREGISTERED-BOOTSTRAP", with_stock=False
                     )
@@ -516,7 +554,14 @@ def test_real_pg16_bootstrap_reconciles_unregistered_pre038_tenant() -> None:
                         {"schema": schema},
                     ).scalar_one() == 0
 
+                connection = engine.connect()
+                _satisfy_bootstrap_gate(connection)
+                connection.commit()
+                connection.close()
                 run_coroutine(bootstrap(schema, _async_url(db_url)))
+                with engine.connect() as connection:
+                    _drop_hold_table(connection, schema)
+                    _restore_pre039_version(connection, REV_037)
 
                 with engine.connect() as connection:
                     assert connection.execute(
@@ -564,9 +609,12 @@ def test_real_pg16_bootstrap_rolls_back_unsafe_missing_stock_reconciliation() ->
             engine = create_engine(_sync_url(db_url), future=True)
             schema = "t_dev"
             try:
+                connection = engine.connect()
+                _satisfy_bootstrap_gate(connection)
                 run_coroutine(bootstrap(schema, _async_url(db_url)))
                 with engine.connect() as connection:
                     _strip_sku_m1_schema(connection, schema)
+                    _drop_hold_table(connection, schema)
                     sku_id = _insert_sku(
                         connection, schema, code="UNSAFE-MISSING-STOCK", with_stock=False
                     )
@@ -581,8 +629,16 @@ def test_real_pg16_bootstrap_rolls_back_unsafe_missing_stock_reconciliation() ->
                     )
                     connection.commit()
 
+                connection = engine.connect()
+                _satisfy_bootstrap_gate(connection)
+                connection.commit()
+                connection.close()
                 with pytest.raises(RuntimeError, match="inventory evidence but no stock row"):
                     run_coroutine(bootstrap(schema, _async_url(db_url)))
+                connection = engine.connect()
+                _restore_pre039_version(connection, REV_037)
+                connection.commit()
+                connection.close()
 
                 with engine.connect() as connection:
                     assert connection.execute(
@@ -627,7 +683,9 @@ def test_real_pg16_demo_seeder_uses_canonical_catalog_identity() -> None:
     with temporary_database_url(source_url, "skum1demoseed") as db_url:
         config = _alembic_config(db_url)
         with _database_url_env(db_url):
-            run_alembic_upgrade(config, REV_038)
+            # R2 C5: alembic-first — the demo seeder's internal bootstrap
+            # requires the migrated head (039).
+            run_alembic_upgrade(config, "head")
 
         env = os.environ.copy()
         env["DATABASE_URL"] = db_url

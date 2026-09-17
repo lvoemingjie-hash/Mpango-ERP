@@ -131,13 +131,22 @@ async def test_route_uses_canonical_payment_service_with_behavior_preserving_def
 
 
 @pytest.mark.asyncio
-async def test_service_does_not_commit_or_rollback_calls():
+async def test_service_does_not_commit_or_rollback_calls(
+    monkeypatch,):
     order_id = uuid.uuid4()
     retailer_id = uuid.uuid4()
     wholesaler_id = uuid.uuid4()
     created_by = str(uuid.uuid4())
     payment_id = uuid.uuid4()
     service = CanonicalPaymentService()
+
+    # R2: the hold verification touches the session; this fake-session
+    # unit test bypasses it (integration suites cover the real path).
+    from unittest.mock import AsyncMock as _AsyncMock
+    monkeypatch.setattr(CanonicalPaymentService, "_lock_hold_rows", _AsyncMock(return_value=[]))
+    monkeypatch.setattr(CanonicalPaymentService, "_verify_hold_contract", _AsyncMock())
+    monkeypatch.setattr(CanonicalPaymentService, "_convert_hold", _AsyncMock())
+    monkeypatch.setattr(CanonicalPaymentService, "_reduce_hold", _AsyncMock())
 
     class _DB:
         async def commit(self):
@@ -148,6 +157,11 @@ async def test_service_does_not_commit_or_rollback_calls():
 
         async def refresh(self, _obj):
             return None
+
+        async def execute(self, _query, *args, **kwargs):
+            # R2: the settlement's binding update runs inside the service;
+            # return a rowcount=1 result so the flow completes without I/O.
+            return SimpleNamespace(rowcount=1)
 
     service._get_order_by_id_for_update = AsyncMock(
         side_effect=[
@@ -536,6 +550,7 @@ async def _cross_tenant_residue_guard(async_session):
     the test transaction; the test session is rolled back first (idempotent —
     the async_session fixture repeats it) so its locks cannot block cleanup.
     """
+
     first_tenant_id = str(_tenant_id(async_session))
     async with AsyncSessionLocal() as snapshot_session:
         snap = await _snapshot_public_tenant(
@@ -736,18 +751,20 @@ async def test_service_failures_after_mutation_stages_rollback_all_effects(
         ),
     )
 
-    service_delta = CanonicalPaymentService()
-    original_delta = PaymentService._apply_outstanding_balance_delta
+    # R2: credit no longer applies a binding delta (cache-neutral
+    # conversion); the equivalent mutation stage is the hold conversion.
+    service_convert = CanonicalPaymentService()
+    original_convert = service_convert._convert_hold
 
-    async def _failing_delta(self, tenant_db, *, wholesaler_id, retailer_id, delta):
-        await original_delta(self, tenant_db, wholesaler_id=wholesaler_id, retailer_id=retailer_id, delta=delta)
-        raise RuntimeError("after-delta")
+    async def _failing_convert(db, holds, actor):
+        await original_convert(db, holds, actor)
+        raise RuntimeError("after-convert")
 
-    monkeypatch.setattr(PaymentService, "_apply_outstanding_balance_delta", _failing_delta)
+    monkeypatch.setattr(service_convert, "_convert_hold", _failing_convert)
     await _assert_stage_rollback(
         order_credit,
         retailer_credit,
-        lambda: service_delta.confirm_payment(
+        lambda: service_convert.confirm_payment(
             db=async_session,
             order_id=str(order_credit),
             amount=Decimal("100.00"),
@@ -758,7 +775,7 @@ async def test_service_failures_after_mutation_stages_rollback_all_effects(
         ),
     )
 
-    monkeypatch.setattr(PaymentService, "_apply_outstanding_balance_delta", original_delta)
+    monkeypatch.setattr(service_convert, "_convert_hold", original_convert)
     service_transition = CanonicalPaymentService()
     original_transition = OrderCommandService.apply_payment_transition
 

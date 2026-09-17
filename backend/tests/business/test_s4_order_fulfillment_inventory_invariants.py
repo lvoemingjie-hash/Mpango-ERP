@@ -21,6 +21,7 @@ from models.inventory_stock import InventoryStock
 from models.order import Order, OrderItem, OrderStatus
 from models.sku import SKU
 from tests.catalog_identity_helpers import create_sku_with_catalog, stable_order_items
+from tests.order_state_r2.contract_helpers import ensure_binding as _r2_ensure_binding
 
 
 def _tenant_id(async_session) -> uuid.UUID:
@@ -112,6 +113,7 @@ async def _create_order(
         notes="S4 inventory invariant test",
     )
     order.items = await stable_order_items(async_session, items)
+    await _r2_ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
     async_session.add(order)
     await async_session.commit()
     await async_session.refresh(order)

@@ -74,6 +74,17 @@ async def _seed_confirmed_order(async_session, *, total: Decimal):
         ),
         {"order_id": order_id, "tenant_id": tenant_id, "retailer_id": retailer_id, "total": total},
     )
+    # R2 contract: the confirmed order carries its full active hold and the
+    # binding cache includes it (seeded state == what confirm_order creates).
+    await async_session.execute(
+        text(
+            """
+            INSERT INTO order_credit_holds (order_id, amount, remaining_amount, status)
+            VALUES (:order_id, :total, :total, 'active')
+            """
+        ),
+        {"order_id": order_id, "total": total},
+    )
 
     return order_id, _Token(tenant_id=tenant_id, user_id=user_id)
 

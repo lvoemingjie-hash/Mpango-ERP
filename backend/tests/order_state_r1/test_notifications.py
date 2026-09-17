@@ -129,7 +129,7 @@ async def test_rollback_produces_zero_sends(
     async def exploding_credit(self, order):
         raise RuntimeError("R1 fault after state write, before commit")
 
-    monkeypatch.setattr(ocs_mod.OrderCommandService, "_reserve_credit",
+    monkeypatch.setattr(ocs_mod.OrderCommandService, "_open_credit_hold",
                         exploding_credit)
 
     with notification_spy() as spy:

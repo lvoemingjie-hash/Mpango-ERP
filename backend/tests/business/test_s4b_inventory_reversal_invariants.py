@@ -17,6 +17,7 @@ from models.ledger import AccountType, LedgerEntry
 from models.order import Order, OrderItem, OrderStatus
 from models.sku import SKU
 from tests.catalog_identity_helpers import create_sku_with_catalog, stable_order_items
+from tests.order_state_r2.contract_helpers import ensure_binding as _r2_ensure_binding
 
 
 def _tenant_id(async_session) -> uuid.UUID:
@@ -107,9 +108,21 @@ async def _create_order(
         notes="S4-B1 inventory reversal invariant audit",
     )
     order.items = await stable_order_items(async_session, items)
+    await _r2_ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
     async_session.add(order)
     await async_session.commit()
     await async_session.refresh(order)
+    if status in (OrderStatus.CONFIRMED, OrderStatus.PARTIALLY_PAID):
+        # R2 contract: hold-bearing statuses carry the active lifecycle row
+        # and the cache includes it.
+        from tests.order_state_r2.contract_helpers import seed_active_hold, add_binding_hold_cache
+        await seed_active_hold(async_session,
+                               async_session.info.get('tenant_schema', 't_test'),
+                               order.id, order.total_amount)
+        await add_binding_hold_cache(async_session, order.wholesaler_id,
+                                     order.retailer_id, order.total_amount)
+        await async_session.commit()
+        await async_session.refresh(order)
     return order
 
 

@@ -225,6 +225,34 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
     """))
 
     await session.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS "{tenant_schema}".order_credit_holds (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            order_id UUID NOT NULL UNIQUE
+                REFERENCES "{tenant_schema}".orders(id) ON DELETE RESTRICT,
+            amount NUMERIC(12, 2) NOT NULL,
+            remaining_amount NUMERIC(12, 2) NOT NULL,
+            status VARCHAR(16) NOT NULL DEFAULT 'active',
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+            created_by UUID,
+            updated_by UUID,
+            CONSTRAINT ck_order_credit_holds_status CHECK (
+                status IN ('active', 'released', 'settled', 'converted')),
+            CONSTRAINT ck_order_credit_holds_amount_positive CHECK (amount > 0),
+            CONSTRAINT ck_order_credit_holds_remaining_cap CHECK (
+                remaining_amount <= amount),
+            CONSTRAINT ck_order_credit_holds_lifecycle_shape CHECK (
+                (status = 'active' AND remaining_amount > 0)
+                OR (status IN ('released', 'settled', 'converted')
+                    AND remaining_amount = 0))
+        )
+    """))
+    await session.execute(text(
+        f'CREATE INDEX IF NOT EXISTS ix_order_credit_holds_active '
+        f'ON "{tenant_schema}".order_credit_holds (order_id) '
+        f"WHERE status = 'active'"))
+
+    await session.execute(text(f"""
         CREATE TABLE IF NOT EXISTS "{tenant_schema}".order_items (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             order_id UUID NOT NULL REFERENCES "{tenant_schema}".orders(id) ON DELETE CASCADE,

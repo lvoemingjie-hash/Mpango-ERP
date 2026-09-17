@@ -247,6 +247,10 @@ async def sample_order_for_ledger(async_session):
     )
     order.items = [item]
 
+    # R2 contract: confirm requires a live (wholesaler, retailer) binding.
+    from tests.order_state_r2.contract_helpers import ensure_binding
+    await ensure_binding(async_session, wholesaler_id, retailer_id)
+
     async_session.add(order)
     await async_session.flush()
     await async_session.refresh(order)
@@ -491,6 +495,10 @@ async def test_multiple_orders_accounting(async_session):
         async_session.add(order)
         await async_session.flush()
         await async_session.refresh(order)
+
+        # R2 contract: confirm requires a live binding for this retailer.
+        from tests.order_state_r2.contract_helpers import ensure_binding
+        await ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
 
         # Confirm order
         order = (await OrderCommandService(async_session).confirm_order(order.id)).order

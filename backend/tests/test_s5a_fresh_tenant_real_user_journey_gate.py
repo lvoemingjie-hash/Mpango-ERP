@@ -369,6 +369,11 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
         await _seed_public_tenant_and_retailer(
             tenant_id=tenant_id, code=tenant_code, retailer_id=retailer_id
         )
+        # R2 contract: confirm requires a live (wholesaler, retailer) binding.
+        from tests.order_state_r2.contract_helpers import ensure_binding
+        async with AsyncSessionLocal() as binding_session:
+            await ensure_binding(binding_session, tenant_id, retailer_id)
+            await binding_session.commit()
         await _seed_admin(tenant_schema, admin_id, admin_email, admin_password)
 
         async with _tenant_session(tenant_schema, tenant_id) as session:

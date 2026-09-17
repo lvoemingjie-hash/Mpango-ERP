@@ -51,7 +51,8 @@ async def test_retailer_summary_aggregates_totals(mock_db_session, receivables_s
         },
         {
             "retailer_id": uuid.UUID("22222222-2222-2222-2222-222222222222"),
-            "outstanding_balance": Decimal("0.00"),
+            # R2: cache includes the active hold (consistent four-way state).
+            "outstanding_balance": Decimal("1500.00"),
             "retailer_name": "Retailer B",
         },
     ]
@@ -90,10 +91,19 @@ async def test_retailer_summary_aggregates_totals(mock_db_session, receivables_s
         {"order_id": mock_order_a.id, "cash_total": Decimal("500.00")},
     ]
 
+    # R2: the unpaid track is the active credit hold on order B.
+    mock_holds_result = MagicMock()
+    mock_holds_result.mappings.return_value.all.return_value = [
+        {"retailer_id": retailer_b_id, "hold_total": Decimal("1500.00"),
+         "hold_count": 1},
+    ]
+
     # Setup execute to return different results based on query
     def mock_execute(query, params=None):
         if "wholesaler_retailer_bindings" in str(query):
             return mock_binding_result
+        elif "order_credit_holds" in str(query):
+            return mock_holds_result
         elif "SELECT orders.retailer_id" in str(query) or "SELECT" in str(query) and "orders" in str(query):
             return mock_orders_result
         elif "method = 'credit'" in str(query):
@@ -302,6 +312,13 @@ async def test_order_list_classifies_unpaid_order(mock_db_session, receivables_s
         {"order_id": order_id, "cash_total": Decimal("500.00")},
     ]
 
+    # R2: the unpaid balance comes from the active credit hold
+    # (total 2000 - allocated cash 500).
+    mock_hold_result = MagicMock()
+    mock_hold_result.mappings.return_value.all.return_value = [
+        {"order_id": order_id, "remaining_amount": Decimal("1500.00")},
+    ]
+
     mock_retailer_result = MagicMock()
     mock_retailer_result.mappings.return_value.all.return_value = [
         {"retailer_id": retailer_id, "retailer_name": "Test Retailer"},
@@ -312,6 +329,8 @@ async def test_order_list_classifies_unpaid_order(mock_db_session, receivables_s
         # Match count queries first (before generic "orders" match)
         if "count(" in query_str.lower() or "count(" in query_str:
             return mock_count_result
+        elif "order_credit_holds" in query_str:
+            return mock_hold_result
         elif "orders" in query_str.lower() and "count(" not in query_str.lower():
             return mock_orders_result
         elif "credit" in query_str.lower():

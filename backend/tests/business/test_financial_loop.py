@@ -24,6 +24,7 @@ from models.order import Order, OrderStatus
 from services.ledger_service import LedgerService
 from services.order_command_service import OrderCommandService
 from services.order_service import OrderService
+from tests.order_state_r2.contract_helpers import ensure_binding as _r2_ensure_binding
 
 
 @pytest.mark.asyncio
@@ -89,6 +90,7 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
         unit_price=order.total_amount,
         subtotal=order.total_amount,
     )]
+    await _r2_ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
     async_session.add(order)
     await async_session.commit()
 
@@ -180,6 +182,7 @@ async def test_ledger_entries_are_immutable(async_session):
         unit_price=order.total_amount,
         subtotal=order.total_amount,
     )]
+    await _r2_ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
     async_session.add(order)
     await async_session.commit()
 
@@ -246,6 +249,7 @@ async def test_inventory_deduction_gap_documented(async_session):
         unit_price=order.total_amount,
         subtotal=order.total_amount,
     )]
+    await _r2_ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
     async_session.add(order)
     await async_session.commit()
 

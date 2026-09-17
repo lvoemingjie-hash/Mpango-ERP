@@ -178,6 +178,24 @@ async def _seed_system_data(db) -> str:
     else:
         print("  . Retailer exists")
 
+    # R2 contract: confirming demo orders requires a live (wholesaler,
+    # retailer) binding.
+    row_b = (await db.execute(
+        text("SELECT 1 FROM public.wholesaler_retailer_bindings "
+             "WHERE wholesaler_id = :w AND retailer_id = :r AND is_deleted IS FALSE"),
+        {"w": DEMO_WHOLESALER_ID, "r": DEMO_RETAILER_ID},
+    )).scalar()
+    if row_b is None:
+        await db.execute(text(
+            "INSERT INTO public.wholesaler_retailer_bindings "
+            "(wholesaler_id, retailer_id, status, outstanding_balance, is_deleted) "
+            "VALUES (:w, :r, 'active', 0, FALSE) "
+            "ON CONFLICT (wholesaler_id, retailer_id) DO NOTHING"
+        ), {"w": DEMO_WHOLESALER_ID, "r": DEMO_RETAILER_ID})
+        print("  + Binding created")
+    else:
+        print("  . Binding exists")
+
     await db.commit()
     return Wholesaler.derive_schema_from_id(str(DEMO_WHOLESALER_ID))
 

@@ -707,6 +707,12 @@ async def _cleanup_seeded_rows(db: AsyncSession, schema: str, ids: dict):
         for oid in ids.get("order_ids") or []:
             if oid is None:
                 continue
+            # R2: lifecycle rows reference orders (FK RESTRICT) — remove the
+            # hold first; the seeded fixture created an active hold per order.
+            await clean_db.execute(
+                text(f'DELETE FROM "{schema}".order_credit_holds WHERE order_id = :id'),
+                {"id": oid},
+            )
             await clean_db.execute(
                 text(f'DELETE FROM "{schema}".orders WHERE id = :id'),
                 {"id": oid},

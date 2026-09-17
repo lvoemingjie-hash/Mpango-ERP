@@ -155,6 +155,10 @@ async def sample_order(async_session):
     )
     order.items = [item]
 
+    # R2 contract: confirm requires a live (wholesaler, retailer) binding.
+    from tests.order_state_r2.contract_helpers import ensure_binding
+    await ensure_binding(async_session, wholesaler_id, retailer_id)
+
     async_session.add(order)
     await async_session.flush()  # Flush to get ID, but don't commit
     await async_session.refresh(order)

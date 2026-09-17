@@ -1536,13 +1536,15 @@ async def _reconcile_credit_holds(db, ts: str) -> None:
             f"wrong_types={wrong_columns}, "
             f"soft_delete_columns={sorted(soft_delete_columns)})")
 
-    constraints = {row["conname"]: row["contype"] for row in (await db.execute(
-        text(
-            "SELECT c.conname, c.contype FROM pg_constraint c "
-            "JOIN pg_class t ON t.oid = c.conrelid "
-            "JOIN pg_namespace n ON n.oid = c.connamespace "
-            "WHERE n.nspname = :s AND t.relname = 'order_credit_holds'"
-        ), {"s": ts})).mappings()}
+    constraints = {
+        _catalog_code(row["conname"]): _catalog_code(row["contype"])
+        for row in (await db.execute(
+            text(
+                "SELECT c.conname, c.contype FROM pg_constraint c "
+                "JOIN pg_class t ON t.oid = c.conrelid "
+                "JOIN pg_namespace n ON n.oid = c.connamespace "
+                "WHERE n.nspname = :s AND t.relname = 'order_credit_holds'"
+            ), {"s": ts})).mappings()}
     for name, kind in HOLD_REQUIRED_CONSTRAINTS.items():
         if constraints.get(name) != kind:
             raise RuntimeError(

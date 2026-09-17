@@ -21,7 +21,30 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy import text
 
 from core.domain.order_state import OrderState
+import pytest as _pytest
+
 from schemas.order import PayOrderRequest
+
+
+@_pytest.fixture(autouse=True)
+def _bypass_r2_hold_verification(monkeypatch, request):
+    if "async_session" in request.fixturenames:
+        # real-database lifecycle test: the R2 hold path must run for real
+        yield
+        return
+    """Unit suite for the settle/rollback ROUTE mechanics: the R2 hold
+    lifecycle is covered by the integration suites (order_state_r2, dc11d,
+    declarations); here the hold verification is bypassed so the mocked
+    repository doubles can drive the route flow."""
+    from unittest.mock import AsyncMock as _AsyncMock
+
+    from services.canonical_payment_service import CanonicalPaymentService as _CPS
+
+    monkeypatch.setattr(_CPS, "_lock_hold_rows", _AsyncMock(return_value=[]))
+    monkeypatch.setattr(_CPS, "_verify_hold_contract", _AsyncMock())
+    monkeypatch.setattr(_CPS, "_convert_hold", _AsyncMock())
+    monkeypatch.setattr(_CPS, "_reduce_hold", _AsyncMock())
+    yield
 from repositories.payment_repository import PaymentRepository
 from database.session import AsyncSessionLocal
 from tests.test_dc11d_payment_replay_concurrency_integrity import (
@@ -649,6 +672,28 @@ async def test_route_settlement_failure_rolls_back_payment_order_balance_and_led
         ),
         {"order_id": order_id, "tenant_id": tenant_id, "retailer_id": retailer_id},
     )
+    # R2 contract: the confirmed order carries the active hold for its
+    # unsettled remainder (total 100 - allocated pending cash 40) and the
+    # cache includes it.
+    await async_session.execute(
+        text(
+            """
+            INSERT INTO order_credit_holds (order_id, amount, remaining_amount, status)
+            VALUES (:order_id, 100.00, 60.00, 'active')
+            """
+        ),
+        {"order_id": order_id},
+    )
+    await async_session.execute(
+        text(
+            """
+            UPDATE public.wholesaler_retailer_bindings
+            SET outstanding_balance = outstanding_balance + 60.00, updated_at = now()
+            WHERE wholesaler_id = :tenant_id AND retailer_id = :retailer_id
+            """
+        ),
+        {"tenant_id": tenant_id, "retailer_id": retailer_id},
+    )
     await async_session.execute(
         text(
             """
@@ -770,11 +815,14 @@ async def test_route_settlement_failure_rolls_back_payment_order_balance_and_led
             )
         ).mappings().one()
 
+    # R2: the seeded confirmed order carries an active hold of 60.00
+    # (total 100 - allocated pending cash 40), included in the cache.
+    seeded_balance = starting_balance + Decimal("60.00")
     assert dict(before_snapshot) == {
         "order_status": "confirmed",
         "payment_count": 1,
         "existing_payment_status": "pending",
-        "balance": starting_balance,
+        "balance": seeded_balance,
         "ledger_count": 2,
         "ledger_sum": Decimal("0.0000"),
     }

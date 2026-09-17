@@ -11,6 +11,7 @@ Covers:
 - Cumulative settlement: partial + partial = paid
 """
 
+import pytest as _pytest
 import pytest
 from decimal import Decimal
 from types import SimpleNamespace
@@ -20,6 +21,22 @@ from datetime import datetime
 # ---------------------------------------------------------------------------
 # 1. Schema Validation
 # ---------------------------------------------------------------------------
+
+@_pytest.fixture(autouse=True)
+def _bypass_r2_hold_verification(monkeypatch):
+    """Route-mechanics unit suite on a fake session: the R2 hold lifecycle
+    verification runs against real sessions in the integration suites; here
+    it is bypassed so the repository doubles drive the flow."""
+    from unittest.mock import AsyncMock as _AsyncMock
+
+    from services.canonical_payment_service import CanonicalPaymentService as _CPS
+
+    monkeypatch.setattr(_CPS, "_lock_hold_rows", _AsyncMock(return_value=[]))
+    monkeypatch.setattr(_CPS, "_verify_hold_contract", _AsyncMock())
+    monkeypatch.setattr(_CPS, "_convert_hold", _AsyncMock())
+    monkeypatch.setattr(_CPS, "_reduce_hold", _AsyncMock())
+    yield
+
 
 def test_pay_order_request_defaults():
     """PayOrderRequest with no fields: amount=None, method=None."""
@@ -1053,8 +1070,10 @@ async def test_credit_payment_applies_positive_balance_delta():
             x_idempotency_key="phase5-credit-delta",
         )
 
-    assert delta_captured["delta"] == Decimal("5000"), \
-        f"Expected delta=+5000 for credit, got {delta_captured['delta']}"
+    # R2: credit converts the hold to real exposure — the binding is NOT
+    # incremented again (the confirm-time hold already occupies the cache).
+    assert delta_captured == {}, (
+        f"R2: credit payment must not move the binding, got {delta_captured}")
 
 
 @pytest.mark.asyncio
@@ -1102,7 +1121,10 @@ async def test_cash_payment_does_not_apply_balance_delta_for_ordinary_settlement
             x_idempotency_key="phase5-cash-delta",
         )
 
-    assert delta_captured == {}
+    # R2: cash settlement releases the order's own hold from the cache.
+    assert delta_captured["delta"] == Decimal("-5000"), (
+        f"R2: cash settlement must reduce the hold by the settled amount, "
+        f"got {delta_captured}")
 
 
 @pytest.mark.asyncio
@@ -1150,7 +1172,10 @@ async def test_transfer_payment_does_not_apply_balance_delta_for_ordinary_settle
             x_idempotency_key="phase5-transfer-delta",
         )
 
-    assert delta_captured == {}
+    # R2: transfer settlement releases the order's own hold from the cache.
+    assert delta_captured["delta"] == Decimal("-5000"), (
+        f"R2: transfer settlement must reduce the hold by the settled "
+        f"amount, got {delta_captured}")
 
 
 # ---------------------------------------------------------------------------
@@ -1596,7 +1621,8 @@ async def test_first_credit_payment_allowed():
 
     assert resp.success is True
     assert resp.data["status"] == "paid"
-    assert delta_captured["delta"] == Decimal("5000")
+    # R2: credit conversion is cache-neutral — no binding delta at all.
+    assert delta_captured == {}
 
 
 # ============================================================================

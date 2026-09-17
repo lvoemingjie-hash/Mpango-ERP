@@ -30,6 +30,7 @@ from models.sku import SKU
 from tests.catalog_identity_helpers import create_sku_with_catalog, stable_order_items
 from schemas.order import PayOrderRequest
 from scripts.bootstrap_tenant_schema import bootstrap
+from tests.order_state_r2.contract_helpers import ensure_binding as _r2_ensure_binding
 
 
 def _tenant_id(async_session: AsyncSession) -> uuid.UUID:
@@ -134,6 +135,7 @@ async def _create_order(
         notes="S4-F business invariant closeout",
     )
     order.items = await stable_order_items(async_session, items)
+    await _r2_ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
     async_session.add(order)
     await async_session.commit()
     await async_session.refresh(order)
@@ -254,6 +256,9 @@ async def _insert_sku_order_in_schema(
             ),
             {"sku_id": sku_id, "on_hand": on_hand},
         )
+        retailer_id = uuid.uuid4()
+        from tests.order_state_r2.contract_helpers import ensure_binding
+        await ensure_binding(session, uuid.UUID(tenant_id), retailer_id)
         order_result = await session.execute(
             text(
                 f'INSERT INTO "{tenant_schema}".orders '
@@ -263,7 +268,7 @@ async def _insert_sku_order_in_schema(
             ),
             {
                 "wholesaler_id": uuid.UUID(tenant_id),
-                "retailer_id": uuid.uuid4(),
+                "retailer_id": retailer_id,
                 "total_amount": Decimal(quantity) * Decimal("25.00"),
             },
         )
@@ -701,6 +706,13 @@ async def test_same_sku_code_isolated_across_two_tenant_schemas(async_session):
 
     try:
         await bootstrap(tenant_b_schema, settings.DATABASE_URL)
+        async with AsyncSessionLocal() as public_session:
+            await public_session.execute(text(
+                "INSERT INTO public.wholesalers (id, code, name, status, is_deleted) "
+                "VALUES (:id, :code, 'S4F Isolation WS', 'active', FALSE) "
+                "ON CONFLICT (id) DO NOTHING"
+            ), {"id": tenant_b_id, "code": f"S4FISO{tenant_b_id.replace('-', '')[:8].upper()}"})
+            await public_session.commit()
         sku_a_id, order_a_id = await _insert_sku_order_in_schema(
             tenant_schema=tenant_a_schema,
             tenant_id=tenant_a_id,

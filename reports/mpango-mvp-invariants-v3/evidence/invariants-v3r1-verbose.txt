@@ -1,0 +1,152 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.2, pluggy-1.6.0 -- /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/venv/bin/python3
+cachedir: .pytest_cache
+hypothesis profile 'ci' -> database=None, deadline=None, print_blob=True, derandomize=True, suppress_health_check=(HealthCheck.too_slow,)
+rootdir: /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend
+configfile: pytest.ini
+plugins: cov-4.1.0, anyio-4.12.1, hypothesis-6.150.2, asyncio-0.26.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 52 items / 1 deselected / 51 selected
+
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r0_control_active_user_active_tenant_can_access PASSED [  1%]
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r0_control_deactivated_user_denied PASSED [  3%]
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r0_red_soft_deleted_user_in_active_tenant_denied PASSED [  5%]
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r0_red_active_user_in_suspended_tenant_denied PASSED [  7%]
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r0_red_refresh_nonexistent_principal_no_session PASSED [  9%]
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r0_red_refresh_soft_deleted_user_no_session PASSED [ 11%]
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r0_red_refresh_suspended_tenant_no_session PASSED [ 13%]
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r0_control_refresh_live_subject_issues_usable_session PASSED [ 15%]
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r1_control_refresh_wrong_signature_refused PASSED [ 17%]
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r1_control_refresh_wrong_token_type_refused PASSED [ 19%]
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r1_control_tenant_isolation_no_cross_read PASSED [ 21%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_guard_refuses_missing_ownership_config PASSED [ 23%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_guard_refuses_disagreeing_targets PASSED [ 25%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_guard_refuses_non_task_owner_label PASSED [ 27%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_guard_factory_mock_for_every_test_variant[test] PASSED [ 29%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_guard_factory_mock_for_every_test_variant[TEST] PASSED [ 31%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_guard_factory_mock_for_every_test_variant[ test ] PASSED [ 33%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_guard_factory_mock_for_every_test_variant[\tTest] PASSED [ 35%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_guard_factory_mock_for_every_test_variant[TeSt ] PASSED [ 37%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_guard_factory_jwt_for_non_test_variants[staging] PASSED [ 39%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_guard_factory_jwt_for_non_test_variants[ STAGING ] PASSED [ 41%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_guard_factory_jwt_for_non_test_variants[production] PASSED [ 43%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_guard_factory_jwt_for_non_test_variants[Production] PASSED [ 45%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_logic_accepts_serialized_duplicate_return PASSED [ 47%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_logic_accepts_rejected_duplicate_return PASSED [ 49%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_logic_rejects_arbitrary_error_outcome PASSED [ 50%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_logic_rejects_double_economic_effect PASSED [ 52%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_accepts_b_then_a_serial_order PASSED [ 54%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_accepts_a_then_b_serial_order PASSED [ 56%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_rejects_duplicate_reason_rows PASSED [ 58%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_rejects_chained_duplicate_reason_rows PASSED [ 60%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_exact_cto_counterexample_rows PASSED [ 62%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_rejects_unknown_reason PASSED [ 64%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_rejects_missing_movement PASSED [ 66%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_rejects_wrong_final_value PASSED [ 68%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_rejects_wrong_single_row_algebra PASSED [ 70%]
+tests/test_mpango_invariants_r0_r1_guards.py::test_r0_assertion_chain_rejects_lost_update_journal PASSED [ 72%]
+tests/test_pw1r3_rate_limit_context.py::test_middleware_order_auth_runs_before_rate_limiting PASSED [ 74%]
+tests/test_pw1r3_rate_limit_context.py::test_anonymous_request_uses_ip_bucket_limit_100 PASSED [ 76%]
+tests/test_pw1r3_rate_limit_context.py::test_contextual_jwt_uses_tenant_bucket_limit_1000 PASSED [ 78%]
+tests/test_pw1r3_rate_limit_context.py::test_contextual_burst_stays_admitted_well_past_ip_limit PASSED [ 80%]
+tests/test_pw1r3_rate_limit_context.py::test_identity_only_jwt_uses_ip_limit_100 PASSED [ 82%]
+tests/test_pw1r3_rate_limit_context.py::test_101st_anonymous_is_429_and_contextual_independently_admitted PASSED [ 84%]
+tests/test_pw1r3_rate_limit_context.py::test_health_endpoints_are_exempt_from_rate_limiting PASSED [ 86%]
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_single_adjustment_and_failed_adjustment_rollback PASSED [ 88%]
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_harness_control_barrier_timeout_cancels_and_rolls_back PASSED [ 90%]
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_harness_control_task_exception_rolls_back_and_cleans PASSED [ 92%]
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_rejected_return_rolls_back_staging_write PASSED [ 94%]
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_red_concurrent_stock_adjustments_no_lost_update PASSED [ 96%]
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_single_full_return_single_economic_effect PASSED [ 98%]
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r1_control_adjustment_read_helper_preserves_duplicate_rows PASSED [100%]
+
+=============================== warnings summary ===============================
+../../../sku-delivery-r2-v4-r1/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /home/ubuntu/sku-verify/sku-delivery-r2-v4-r1/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+database/base.py:7
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/database/base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/test_mpango_mvp_invariants_r0_revocation.py: 96 warnings
+tests/test_pw1r3_rate_limit_context.py: 1112 warnings
+tests/test_mpango_mvp_invariants_r0_concurrency.py: 29 warnings
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/core/structured_logging.py:89: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "timestamp": datetime.utcnow().isoformat() + "Z",
+
+tests/test_mpango_mvp_invariants_r0_revocation.py: 16 warnings
+tests/test_pw1r3_rate_limit_context.py: 3 warnings
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/core/security.py:150: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r0_control_active_user_active_tenant_can_access
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r0_control_refresh_live_subject_issues_usable_session
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r1_control_tenant_isolation_no_cross_read
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r1_control_tenant_isolation_no_cross_read
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/api/v1/skus.py:138: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r0_control_refresh_live_subject_issues_usable_session
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r1_control_tenant_isolation_no_cross_read
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/api/v1/auth.py:648: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_mpango_mvp_invariants_r0_revocation.py::test_r1_control_refresh_wrong_signature_refused
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/tests/test_mpango_mvp_invariants_r0_revocation.py:172: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "exp": datetime.utcnow() + timedelta(days=1),
+
+tests/test_pw1r3_rate_limit_context.py: 107 warnings
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/api/v1/auth.py:775: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_pw1r3_rate_limit_context.py::test_identity_only_jwt_uses_ip_limit_100
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/core/security.py:108: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/test_pw1r3_rate_limit_context.py::test_identity_only_jwt_uses_ip_limit_100
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/api/v1/auth.py:747: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_pw1r3_rate_limit_context.py::test_health_endpoints_are_exempt_from_rate_limiting
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/api/v1/health.py:167: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_rejected_return_rolls_back_staging_write
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_rejected_return_rolls_back_staging_write
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_single_full_return_single_economic_effect
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/api/v1/orders.py:495: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_rejected_return_rolls_back_staging_write
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_rejected_return_rolls_back_staging_write
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_single_full_return_single_economic_effect
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/api/v1/orders.py:644: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_rejected_return_rolls_back_staging_write
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_rejected_return_rolls_back_staging_write
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_single_full_return_single_economic_effect
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/repositories/payment_repository.py:288: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_rejected_return_rolls_back_staging_write
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_rejected_return_rolls_back_staging_write
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_single_full_return_single_economic_effect
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/api/v1/orders.py:891: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_rejected_return_rolls_back_staging_write
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_rejected_return_rolls_back_staging_write
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_single_full_return_single_economic_effect
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/api/v1/orders.py:983: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_rejected_return_rolls_back_staging_write
+tests/test_mpango_mvp_invariants_r0_concurrency.py::test_r0_control_single_full_return_single_economic_effect
+  /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/worktree/backend/api/v1/orders.py:1133: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ubuntu/sku-verify/mpango-inv-v3r1-20260916/evidence/invariants-v3r1.xml -
+=============== 51 passed, 1 deselected, 1392 warnings in 24.19s ===============

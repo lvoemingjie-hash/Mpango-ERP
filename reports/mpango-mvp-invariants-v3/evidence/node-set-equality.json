@@ -1,0 +1,7 @@
+{
+ "frozen_collection_format": "verbose tree (pytest.ini -v overrides -q)",
+ "frozen_function_level_nodes": 51,
+ "junit_function_level_nodes": 51,
+ "set_difference": "empty both directions",
+ "note": "tree-parsed node ids constructed with pytest junit classname convention; equality proven"
+}

@@ -360,7 +360,7 @@ def test_c3_preexisting_hold_table_rejected():
             conn.execute(text(
                 f'CREATE TABLE "{schema}".order_credit_holds '
                 "(id UUID PRIMARY KEY)"))
-        with pytest.raises(Exception, match=r"(?i)preflight|pre-existing|partial"):
+        with pytest.raises(Exception, match=r"pre-existing R2 schema"):
             with engine.begin() as conn:
                 _run_migration_039(conn)
 
@@ -380,7 +380,7 @@ def test_c3_p14_binding_cache_mismatch_rejected():
         # correct exposure-only cache is 100.00; corrupt it to 70.00
         _add_binding(engine, ws, retailer, "70.00")
 
-        with pytest.raises(Exception, match=r"(?i)cache|exposure|preflight|P14"):
+        with pytest.raises(Exception, match=r"P14 cache proof failed"):
             with engine.begin() as conn:
                 _run_migration_039(conn)
 
@@ -399,7 +399,7 @@ def test_c3_soft_deleted_payment_history_boundary():
         _add_payment(engine, schema, o, retailer, "credit", "100.00",
                      deleted=True)
         _add_binding(engine, ws, retailer, "0.00")
-        with pytest.raises(Exception, match=r"(?i)preflight|history|settle"):
+        with pytest.raises(Exception, match=r"state matrix"):
             with engine.begin() as conn:
                 _run_migration_039(conn)
 

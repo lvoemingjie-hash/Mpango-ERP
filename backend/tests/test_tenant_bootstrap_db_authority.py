@@ -2380,28 +2380,167 @@ def test_candidate_source_refuses_subprocess_exception(monkeypatch):
     assert "git show could not run" in str(excinfo.value), excinfo.value
 
 
-def test_static_candidate_source_has_no_working_tree_fallback():
-    """R1-R5 structural sentinel: the helper's body must contain NO open()
-    call and NO broad except that could fall back to the working tree."""
-    with open(
-        os.path.abspath(__file__), encoding="utf-8"
-    ) as handle:
-        tree = ast.parse(handle.read())
+def _helper_node_from_source(source: str):
+    """Locate the single ``_candidate_source`` definition in module source.
+
+    Shared by the structural sentinel and its deterministic negative
+    counterexample, so both always inspect the SAME real checker.
+    """
+    tree = ast.parse(source)
     helpers = [
         node for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef) and node.name == "_candidate_source"
     ]
-    assert len(helpers) == 1, "_candidate_source must be defined exactly once"
-    body = ast.dump(helpers[0])
-    assert "open(" not in body, (
-        "the helper must never open the working tree — only git show output"
+    if len(helpers) != 1:
+        raise AssertionError(
+            "_candidate_source must be defined exactly once, "
+            f"found {len(helpers)}"
+        )
+    return helpers[0]
+
+
+def _assert_helper_reads_only_committed_candidate(source: str) -> None:
+    """Bounded AST-node inspection of ``_candidate_source``'s own body.
+
+    R1-R5-R1: this replaces the R1-R5 text search for ``open(`` inside
+    ``ast.dump``, which could never match an actual call (``ast.dump``
+    renders one as ``Call(func=Name(id='open', ...)``) and therefore
+    accepted a helper containing ``open()`` — a false green.
+
+    Raises AssertionError unless the helper body:
+      - contains NO call to ``open()`` or ``builtins.open()`` (a filesystem /
+        working-tree fallback), and
+      - contains NO broad exception handler (``except:``,
+        ``except Exception`` or ``except BaseException``, alone or inside an
+        except-tuple) that could hide a fallback path, and
+      - DOES contain a strict UTF-8 decode of the git output.
+
+    This is a BOUNDED structural inspection of the named helper's own AST,
+    not a general data-flow proof: a filesystem read hidden inside another
+    function the helper calls is out of scope here by design and is covered
+    by the behavioral tests (the working-tree open spy and the refusal
+    tests).  Only the two explicit, known APIs ``open`` and
+    ``builtins.open`` are detected, as required.
+    """
+    helper = _helper_node_from_source(source)
+    problems: list[str] = []
+
+    def _is_broad_type(node) -> bool:
+        if isinstance(node, ast.Name):
+            return node.id in ("Exception", "BaseException")
+        if isinstance(node, ast.Attribute):
+            return node.attr in ("Exception", "BaseException")
+        return False
+
+    for node in ast.walk(helper):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == "open":
+                problems.append(
+                    f"calls open() at line {node.lineno} "
+                    "(filesystem/working-tree read)"
+                )
+            elif (
+                isinstance(func, ast.Attribute) and func.attr == "open"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "builtins"
+            ):
+                problems.append(
+                    f"calls builtins.open() at line {node.lineno}"
+                )
+        elif isinstance(node, ast.ExceptHandler):
+            if node.type is None:
+                problems.append(
+                    f"bare `except:` at line {node.lineno} can hide a fallback"
+                )
+            elif _is_broad_type(node.type):
+                problems.append(
+                    f"broad `except {ast.unparse(node.type)}` at line "
+                    f"{node.lineno} can hide a fallback"
+                )
+            elif isinstance(node.type, ast.Tuple):
+                for element in node.type.elts:
+                    if _is_broad_type(element):
+                        problems.append(
+                            f"except-tuple with broad "
+                            f"{ast.unparse(element)} at line {node.lineno} "
+                            "can hide a fallback"
+                        )
+
+    has_strict_utf8_decode = any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "decode"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == "utf-8"
+        for node in ast.walk(helper)
     )
-    assert "except Exception" not in ast.unparse(helpers[0]), (
-        "no broad except may hide a fallback path"
+    if not has_strict_utf8_decode:
+        problems.append("no strict .decode('utf-8') call on the git output")
+
+    if problems:
+        raise AssertionError(
+            "_candidate_source violates the committed-candidate-only "
+            "contract: " + "; ".join(problems)
+        )
+
+
+def test_static_candidate_source_has_no_working_tree_fallback():
+    """R1-R5-R1 structural sentinel (positive control): the REAL AST-node
+    checker must accept the unmodified helper — raw-byte capture, strict
+    UTF-8 decode, explicit refusals, no filesystem fallback.
+
+    The deterministic negative counterexample (a syntactically valid
+    forbidden file-read call rejected by the same checker) lives in
+    ``test_structural_checker_rejects_injected_file_read_call``.
+    """
+    with open(os.path.abspath(__file__), encoding="utf-8") as handle:
+        _assert_helper_reads_only_committed_candidate(handle.read())
+
+
+def test_structural_checker_rejects_injected_file_read_call():
+    """R1-R5-R1 deterministic negative counterexample: the SAME real
+    structural checker must REJECT a helper body carrying a syntactically
+    valid forbidden file-read call (the R1-R4 fallback defect class).
+
+    In-memory source substitution only — no worktree file is modified.  The
+    injected module parses cleanly, so the rejection is a semantic AST
+    finding, never a syntax/import error.  The previous ineffective
+    text-search predicate is shown, inline, to ACCEPT the very same
+    violating helper (the blind spot the CTO reproduced); the repaired
+    checker rejects it.
+    """
+    with open(os.path.abspath(__file__), encoding="utf-8") as handle:
+        real_source = handle.read()
+
+    violating = real_source.replace(
+        'return result.stdout.decode("utf-8")',
+        'with open(rel_path, encoding="utf-8") as handle:\n'
+        "            return handle.read()\n"
+        '        return result.stdout.decode("utf-8")',
+        1,
     )
-    assert 'decode("utf-8")' in ast.unparse(helpers[0]) or (
-        "decode('utf-8')" in ast.unparse(helpers[0])
-    ), "the helper must decode strictly as UTF-8"
+    assert violating != real_source, "the injection must change the source"
+    ast.parse(violating)  # syntactically valid: the rejection is semantic
+
+    # The SAME real structural checker must raise its named AssertionError.
+    with pytest.raises(AssertionError) as excinfo:
+        _assert_helper_reads_only_committed_candidate(violating)
+    assert "calls open()" in str(excinfo.value), excinfo.value
+
+    # Contrast, kept inline as documentation of the closed blind spot: the
+    # R1-R5 text-search predicate ACCEPTS the violating helper (it never
+    # matches a real call), while the repaired checker above rejected it.
+    violating_helper = _helper_node_from_source(violating)
+    old_text_search_predicate_accepts = (
+        "open(" not in ast.dump(violating_helper)
+        and "except Exception" not in ast.unparse(violating_helper)
+    )
+    assert old_text_search_predicate_accepts is True, (
+        "expected the OLD text search to stay blind to a real open() call — "
+        "the false green this round closes"
+    )
 
 
 # ---------------------------------------------------------------------------

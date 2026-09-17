@@ -2173,22 +2173,52 @@ def _candidate_source(rel_path: str) -> str:
     A mutation run has already patched the working tree, so declarations must
     be checked against the COMMITTED candidate (git HEAD) — the exact bytes
     the declarations were written against, and the bytes the harness restores
-    afterwards.  Falls back to the working tree when git is unavailable (for
-    example in an exported sandbox), where no mutation is active anyway.
+    afterwards.
+
+    R1-R5 (Windows encoding defect repair): the bytes are captured raw and
+    decoded STRICTLY as UTF-8.  The previous implementation used
+    ``subprocess.run(text=True)`` with no encoding, which decodes git's UTF-8
+    output with the process default codec — on Windows that is cp936/GBK (or
+    cp1252), so any committed file containing non-ASCII content failed to
+    decode and the broad ``except`` then silently fell back to reading the
+    WORKING TREE, breaking the "checked source == committed candidate"
+    boundary.  Every failure now refuses explicitly — a git error, invalid
+    UTF-8 or empty output is a tool defect, never a reason to accept anything
+    other than the committed candidate, and there is deliberately NO fallback.
     """
     import subprocess
 
     try:
-        return subprocess.run(
+        result = subprocess.run(
             ["git", "show", f"HEAD:{rel_path}"],
-            cwd=BACKEND_DIR, capture_output=True, text=True, check=True,
-        ).stdout
-    except Exception:  # noqa: BLE001 - non-git environments keep working
-        with open(
-            os.path.join(os.path.dirname(BACKEND_DIR), rel_path),
-            encoding="utf-8",
-        ) as handle:
-            return handle.read()
+            cwd=BACKEND_DIR, capture_output=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(
+            "cannot read the committed candidate source "
+            f"{rel_path!r}: git show could not run "
+            f"({type(exc).__name__}: {exc})"
+        ) from exc
+    if result.returncode != 0:
+        stderr = result.stderr.decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"git show HEAD:{rel_path} refused with rc={result.returncode} "
+            "— the check requires the committed candidate and nothing else: "
+            f"{stderr[-500:]}"
+        )
+    if not result.stdout:
+        raise RuntimeError(
+            f"git show HEAD:{rel_path} produced no bytes; refusing to "
+            "substitute any other source for the committed candidate"
+        )
+    try:
+        return result.stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError(
+            f"the committed candidate source {rel_path!r} is not valid "
+            f"UTF-8 ({exc}); refusing to decode it with a default codec, "
+            "replace bytes, or read anything but the committed candidate"
+        ) from exc
 
 
 def test_static_every_mutation_is_parseable_and_fully_declared():
@@ -2239,6 +2269,139 @@ def test_static_every_mutation_is_parseable_and_fully_declared():
                 f"(line {exc.lineno}: {exc.msg}) — broken tree, not a "
                 "semantic mutation"
             )
+
+
+# ---------------------------------------------------------------------------
+# R1-R5: committed-candidate source reader — strict UTF-8, fail closed,
+# never a working-tree fallback (Windows cp936/GBK decoding defect repair)
+# ---------------------------------------------------------------------------
+
+_UTF8_PROBE_REL_PATH = "backend/tests/_fixtures/utf8_probe.txt"
+_UTF8_PROBE_MARKER = "utf8-candidate-source-probe-已提交候选"
+
+
+def _git_show_bytes(rel_path: str) -> bytes:
+    import subprocess
+
+    return subprocess.run(
+        ["git", "show", f"HEAD:{rel_path}"],
+        cwd=BACKEND_DIR, capture_output=True, check=True,
+    ).stdout
+
+
+def _fake_run(stdout: bytes, *, returncode: int = 0, stderr: bytes = b""):
+    import subprocess as _subprocess
+
+    def _run(*args, **kwargs):
+        return _subprocess.CompletedProcess(
+            args[0], returncode, stdout=stdout, stderr=stderr
+        )
+
+    return _run
+
+
+def test_candidate_source_reads_non_ascii_utf8_from_committed_candidate(
+    monkeypatch,
+):
+    """R1-R5: the real helper returns the committed candidate's bytes decoded
+    as EXACT UTF-8 — non-ASCII content included — and never opens the working
+    tree at all (the R1-R4 fallback path is gone).
+
+    Restoring the old text=True decoding (bounded counterexample) makes this
+    go RED on a Windows default-codec machine: cp936 cannot decode the UTF-8
+    bytes, the old fallback then opens the working tree, which the spy proves.
+    """
+    opened: list = []
+    real_open = open
+
+    def _open_spy(*args, **kwargs):
+        opened.append(args[0] if args else kwargs.get("file"))
+        return real_open(*args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", _open_spy)
+
+    content = _candidate_source(_UTF8_PROBE_REL_PATH)
+
+    assert isinstance(content, str)
+    assert _UTF8_PROBE_MARKER in content
+    assert content == _git_show_bytes(_UTF8_PROBE_REL_PATH).decode("utf-8")
+    assert opened == [], (
+        "the helper must read the COMMITTED candidate via git, never the "
+        f"working tree (opened: {opened})"
+    )
+
+
+def test_candidate_source_refuses_invalid_utf8(monkeypatch):
+    """R1-R5: bytes that are not valid UTF-8 are REFUSED with an explicit
+    error — never decoded with a default codec, never replaced, never None,
+    never silently accepted."""
+    monkeypatch.setattr(
+        "subprocess.run", _fake_run(b"\xff\xfe\x00 not-valid-utf8")
+    )
+    with pytest.raises(RuntimeError) as excinfo:
+        _candidate_source(_UTF8_PROBE_REL_PATH)
+    message = str(excinfo.value)
+    assert "not valid UTF-8" in message, message
+    assert "refusing" in message, message
+
+
+def test_candidate_source_refuses_git_failure(monkeypatch):
+    """R1-R5: a failing `git show` refuses explicitly — no working-tree
+    fallback, no empty success."""
+    monkeypatch.setattr(
+        "subprocess.run",
+        _fake_run(b"", returncode=128, stderr=b"fatal: path not found"),
+    )
+    with pytest.raises(RuntimeError) as excinfo:
+        _candidate_source(_UTF8_PROBE_REL_PATH)
+    message = str(excinfo.value)
+    assert "rc=128" in message, message
+    assert "committed candidate" in message, message
+
+
+def test_candidate_source_refuses_empty_output(monkeypatch):
+    """R1-R5: empty git output refuses explicitly instead of returning an
+    empty string that could masquerade as an empty candidate."""
+    monkeypatch.setattr("subprocess.run", _fake_run(b""))
+    with pytest.raises(RuntimeError) as excinfo:
+        _candidate_source(_UTF8_PROBE_REL_PATH)
+    assert "produced no bytes" in str(excinfo.value), excinfo.value
+
+
+def test_candidate_source_refuses_subprocess_exception(monkeypatch):
+    """R1-R5: if git cannot even be spawned, the helper refuses explicitly —
+    there is no silent path back to the working tree."""
+    def _boom(*args, **kwargs):
+        raise OSError("simulated git spawn failure")
+
+    monkeypatch.setattr("subprocess.run", _boom)
+    with pytest.raises(RuntimeError) as excinfo:
+        _candidate_source(_UTF8_PROBE_REL_PATH)
+    assert "git show could not run" in str(excinfo.value), excinfo.value
+
+
+def test_static_candidate_source_has_no_working_tree_fallback():
+    """R1-R5 structural sentinel: the helper's body must contain NO open()
+    call and NO broad except that could fall back to the working tree."""
+    with open(
+        os.path.abspath(__file__), encoding="utf-8"
+    ) as handle:
+        tree = ast.parse(handle.read())
+    helpers = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_candidate_source"
+    ]
+    assert len(helpers) == 1, "_candidate_source must be defined exactly once"
+    body = ast.dump(helpers[0])
+    assert "open(" not in body, (
+        "the helper must never open the working tree — only git show output"
+    )
+    assert "except Exception" not in ast.unparse(helpers[0]), (
+        "no broad except may hide a fallback path"
+    )
+    assert 'decode("utf-8")' in ast.unparse(helpers[0]) or (
+        "decode('utf-8')" in ast.unparse(helpers[0])
+    ), "the helper must decode strictly as UTF-8"
 
 
 # ---------------------------------------------------------------------------

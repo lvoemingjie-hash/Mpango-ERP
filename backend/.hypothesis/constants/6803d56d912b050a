@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\Cursor mpango erp\backend\models\__init__.py
-# hypothesis_version: 6.150.1
-
-['AuditMixin', 'Base', 'BaseModel', 'Order', 'OrderItem', 'OrderStatus', 'Permission', 'PublicBaseModel', 'Role', 'User', 'UserTrackingMixin', 'Wholesaler', 'role_permissions', 'user_roles']

@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\services\payment_service.py
-# hypothesis_version: 6.150.2
-
-['BINDINGNOTFOUND', 'IDEMPOTENCY_CONFLICT', 'INVALID_ORDER_ID', 'Invalid order_id', 'ORDER_NOT_FOUND', 'amount', 'cash', 'code', 'completed', 'credit', 'delta', 'message', 'method', 'order_id', 'pending', 'retailer_id', 'transaction_id', 'transfer', 'wholesaler_id']

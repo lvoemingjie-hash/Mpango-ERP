@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\Cursor mpango erp\backend\schemas\auth.py
-# hypothesis_version: 6.150.1
-
-['Current user data', 'Expiration timestamp', 'JWT access token', 'JWT refresh token', 'Response timestamp', 'Tenant UUID', 'Tenant schema name', 'Token data', 'Token type', 'User UUID', 'User email', 'User full name', 'User password', 'User role names', 'access', 'bearer', 'from_attributes']

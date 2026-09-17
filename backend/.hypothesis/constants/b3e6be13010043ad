@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\Cursor mpango erp\backend\schemas\order.py
-# hypothesis_version: 6.150.1
-
-['Action message', 'Creation timestamp', 'Creator user UUID', 'Item quantity', 'Line item subtotal', 'Optional message', 'Order UUID', 'Order data', 'Order item UUID', 'Order items', 'Order notes', 'Order status', 'Order total amount', 'Product UUID', 'Product name', 'Response timestamp', 'Retailer UUID', 'Retailer name', 'Unit price', 'cancelled', 'confirmed', 'from_attributes', 'pending', 'shipped']

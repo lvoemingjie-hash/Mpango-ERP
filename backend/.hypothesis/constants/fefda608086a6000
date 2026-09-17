@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\models\audit.py
-# hypothesis_version: 6.150.2
-
-[100, 255, 512, 'actor_id', 'allowed', 'asset_urn', 'comment', 'confirm_deleted_rows', 'created_at', 'gen_random_uuid()', 'metadata', 'schema', 'sys_audit_logs', 'tenant_id']

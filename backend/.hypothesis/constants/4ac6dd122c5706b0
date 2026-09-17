@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\core\prometheus_metrics.py
-# hypothesis_version: 6.150.2
-
-[0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0, 500, '-', '/', '/api/v1/', '/health', '/metrics', 'Total HTTP requests', 'endpoint', 'from_state', 'http_requests_total', 'method', 'operation', 'route', 'status', 'status_code', 'tenant', 'tenant_id', 'to_state', 'unknown', '{id}']

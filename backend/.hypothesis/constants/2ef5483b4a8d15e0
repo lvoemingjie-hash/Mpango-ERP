@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\services\reporting\semantic_layer.py
-# hypothesis_version: 6.150.2
-
-['cash_flow_daily', 'currency', 'daily_revenue', 'date', 'day', 'entity_id', 'entity_type', 'entry_count', 'month', 'net_cash_change', 'net_change', 'outstanding_balance', 'receivables_summary', 'revenue', 'running_balance', 'sales_daily', 'transaction_count', 'transaction_date', 'week']

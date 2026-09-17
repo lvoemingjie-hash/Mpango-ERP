@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\models\invitation.py
-# hypothesis_version: 6.150.2
-
-['active', 'code', 'invitations', 'ix_invitations_code', 'public', 'public.retailers.id', 'retailer_phone', 'schema', 'wholesaler_id']

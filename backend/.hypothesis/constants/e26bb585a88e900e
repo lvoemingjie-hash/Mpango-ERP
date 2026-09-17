@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\auth\strategies\mock.py
-# hypothesis_version: 6.150.2
-
-['access', 'orders:read', 'orders:write', 'payments:create', 't_dev', 'tenant_schema', 'test']

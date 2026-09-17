@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\middleware\request_logging.py
-# hypothesis_version: 6.150.2
-
-[1000, 'Request completed', 'Request started', 'X-Request-ID', 'client_host', 'event', 'exception_type', 'latency_ms', 'request_complete', 'request_error', 'request_start', 'status_code', 'unknown', 'user-agent', 'user_agent']

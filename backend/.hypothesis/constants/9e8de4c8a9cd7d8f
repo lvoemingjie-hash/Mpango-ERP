@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\v1\orders.py
-# hypothesis_version: 6.150.2
-
-[100, '/{order_id}', '/{order_id}/cancel', '/{order_id}/confirm', 'Filter by status', 'INVALID_STATUS', 'Items per page', 'ORDER_NOT_FOUND', 'Page number', 'code', 'items', 'message', 'order_id', 'orders:create', 'orders:read', 'orders:update', 'pagination', 'product_name', 'quantity', 'sku_code', 'status', 'unit_price']

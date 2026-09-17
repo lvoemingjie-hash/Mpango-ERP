@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\models\order.py
-# hypothesis_version: 6.150.2
-
-['0.00', 'CASCADE', 'Order', 'OrderItem', 'all, delete-orphan', 'cancelled', 'confirmed', 'created_at', 'draft', 'items', 'ix_orders_created_at', 'ix_orders_status', 'order', 'order_id', 'order_items', 'order_status', 'orders', 'orders.id', 'retailer_id', 'selectin', 'sku_code', 'status', 'wholesaler_id']

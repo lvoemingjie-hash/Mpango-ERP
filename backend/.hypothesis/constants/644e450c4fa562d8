@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\core\cache.py
-# hypothesis_version: 6.150.2
-
-[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 300, 1000, '0B', ':', 'P', 'Redis client closed', 'T', 'Total cache hits', 'Total cache misses', 'cache_hits_total', 'cache_key', 'cache_key_prefix', 'cache_misses_total', 'connected_clients', 'default', 'deleted_count', 'duration_ms', 'error', 'get', 'operation', 'pattern', 'redis_url', 'return', 'set', 'total_keys', 'ttl_seconds', 'uptime_in_seconds', 'uptime_seconds', 'used_memory_human', 'utf-8']

@@ -1,4 +1,0 @@
-# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\schemas\dashboard.py
-# hypothesis_version: 6.150.2
-
-[500, 10000, '2026-01-01', '2026-01-31', 'Chart identifier', 'ISO 8601 date', 'ISO 8601 timestamp', 'Metric value', 'USD', 'available_values', 'code', 'currency', 'data', 'date', 'date_from', 'date_to', 'details', 'dimensions', 'error', 'examples', 'json_schema_extra', 'limit', 'message', 'metrics', 'revenue', 'sales_daily', 'success', 'timestamp', 'transaction_count', 'view']

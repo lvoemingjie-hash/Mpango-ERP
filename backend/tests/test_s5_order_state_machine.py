@@ -180,7 +180,7 @@ async def test_happy_path_draft_to_fulfilled(async_session, sample_order):
     order = sample_order
 
     # DRAFT → CONFIRMED
-    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+    order = (await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))).order
 
     assert order.status == OrderStatus.CONFIRMED
 
@@ -235,7 +235,7 @@ async def test_partially_paid_self_transition_allowed_only_for_payment_context(a
     service = OrderService(async_session)
     order = sample_order
 
-    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+    order = (await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))).order
 
     order = (await OrderCommandService(async_session).apply_payment_transition(order.id, OrderState.PARTIALLY_PAID)).order
     assert order.status == OrderStatus.PARTIALLY_PAID
@@ -280,7 +280,7 @@ async def test_invariant_violation_confirm_zero_total(async_session):
 
     # Attempt to confirm
     with pytest.raises(OrderInvariantViolation) as exc_info:
-        await OrderCommandService(async_session).confirm_order(order.id)
+        await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))
 
 
     # Verify error message
@@ -304,7 +304,7 @@ async def test_terminal_state_no_transitions(async_session, sample_order):
     order = sample_order
 
     # Transition to FULFILLED (via CONFIRMED → PAID → FULFILLED)
-    await OrderCommandService(async_session).confirm_order(order.id)
+    await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))
 
     (await OrderCommandService(async_session).apply_payment_transition(order.id, OrderState.PAID)).order
     await OrderCommandService(async_session).fulfill_order(order.id)
@@ -353,7 +353,7 @@ async def test_void_vs_cancel_rules(async_session, sample_order):
     # Test 2: VOID from PAID (should fail)
     # State machine doesn't allow PAID → VOIDED, so we get InvalidStateTransitionError
     order2 = sample_order
-    await OrderCommandService(async_session).confirm_order(order2.id)
+    await OrderCommandService(async_session).confirm_order(order2.id, updated_by=str(uuid.uuid4()))
 
     (await OrderCommandService(async_session).apply_payment_transition(order2.id, OrderState.PAID)).order
 
@@ -390,7 +390,7 @@ async def test_partial_payment_flow(async_session, sample_order):
     order = sample_order
 
     # DRAFT → CONFIRMED
-    await OrderCommandService(async_session).confirm_order(order.id)
+    await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))
 
 
     # CONFIRMED → PARTIALLY_PAID
@@ -423,7 +423,7 @@ async def test_concurrent_transition_with_locking(async_session, sample_order):
     order = sample_order
 
     # First transition should succeed
-    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+    order = (await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))).order
 
 
     # Verify state changed
@@ -486,7 +486,7 @@ async def test_cannot_fulfill_unpaid_order(async_session, sample_order):
     order = sample_order
 
     # DRAFT → CONFIRMED
-    await OrderCommandService(async_session).confirm_order(order.id)
+    await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))
 
 
     # Attempt CONFIRMED → FULFILLED (should fail - not allowed by state machine)

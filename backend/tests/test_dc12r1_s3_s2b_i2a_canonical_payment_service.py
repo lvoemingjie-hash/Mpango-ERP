@@ -112,7 +112,7 @@ async def test_route_uses_canonical_payment_service_with_behavior_preserving_def
         "repositories.payment_repository.PaymentRepository.get_order_paid_total",
         new=AsyncMock(return_value=Decimal("0.00")),
     ), patch(
-        "api.v1.orders._get_order_by_id_for_update",
+        "services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update",
         new=AsyncMock(return_value=locked_order),
     ):
         response = await pay_order(
@@ -177,6 +177,7 @@ async def test_service_does_not_commit_or_rollback_calls(
     service._get_order_for_payment_record = AsyncMock(return_value=_result_order(order_id, "partially_paid"))
     service._repo.get_by_idempotency_key = AsyncMock(return_value=None)
     service._repo.get_order_paid_total = AsyncMock(return_value=Decimal("0.00"))
+    service._repo.count_payments_with_status_outside = AsyncMock(return_value=0)
     service._repo.get_by_transaction_id = AsyncMock(return_value=None)
     service._repo.create = AsyncMock(
         return_value={

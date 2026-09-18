@@ -151,6 +151,18 @@ class OrderCommandService:
         """
         order = await self._load_locked(order_id)
 
+        # R2-R1 C7: a runtime hold MUST carry a valid actor; created_by IS
+        # NULL is reserved for the 039 synthetic backfill rows. Refused
+        # BEFORE any state, hold, or binding write.
+        actor = _uuid_or_none(updated_by)
+        if actor is None:
+            raise _conflict(
+                "CONFIRM_ACTOR_REQUIRED",
+                "Confirming an order requires an acting user "
+                "(updated_by); synthetic no-actor holds are reserved for "
+                "the 039 migration backfill",
+            )
+
         self._validate_transition(order, OrderState.CONFIRMED)
         self._validate_item_identities(order)
 
@@ -168,7 +180,7 @@ class OrderCommandService:
         self._assign_status(order, OrderState.CONFIRMED, updated_by)
         await self.db.flush()
 
-        credit_reserved = await self._open_credit_hold(order, updated_by)
+        credit_reserved = await self._open_credit_hold(order, updated_by, actor=actor)
 
         return OrderCommandResult(
             order=order,
@@ -616,7 +628,7 @@ class OrderCommandService:
         await self.db.flush()
         return reservations
 
-    async def _open_credit_hold(self, order: Order, updated_by: Optional[str]) -> Decimal:
+    async def _open_credit_hold(self, order: Order, updated_by: Optional[str], *, actor: uuid.UUID) -> Decimal:
         """R2: open the per-order credit hold and reserve the binding cache.
 
         Creates the single lifecycle row (active, amount=remaining=total)
@@ -641,7 +653,6 @@ class OrderCommandService:
                 f"Order {order.id} already carries a credit-hold lifecycle row",
             )
 
-        actor = _uuid_or_none(updated_by)
         self.db.add(OrderCreditHold(
             order_id=order.id,
             amount=delta,

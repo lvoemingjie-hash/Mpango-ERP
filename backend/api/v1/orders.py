@@ -224,15 +224,6 @@ async def _idempotency_replay_response(
     )
 
 
-async def _get_order_by_id_for_update(
-    db: AsyncSession,
-    order_id: str,
-) -> OrderModel | None:
-    try:
-        order_uuid = UUID(order_id)
-    except ValueError:
-        return None
-
     result = await db.execute(
         select(OrderModel)
         .where(OrderModel.id == order_uuid)
@@ -715,144 +706,14 @@ async def pay_order(
     pay_amount = Decimal(str(payment_input.amount))
     idempotency_key = _validate_idempotency_key(x_idempotency_key)
 
+    # R2-R1 correction: NO route-level payment logic. State, balance,
+    # idempotency, ordering and locking all live in the single canonical
+    # locked-fresh implementation; this route only validates the request
+    # shape and delegates.
     from repositories.payment_repository import PaymentRepository
 
-    payment_repo = PaymentRepository()
     canonical_payment_service = CanonicalPaymentService()
-
-    existing_payment = await payment_repo.get_by_idempotency_key(
-        db,
-        idempotency_key=idempotency_key,
-    )
-    existing_payment = _payment_mapping_or_none(existing_payment)
-    if existing_payment:
-        if _same_payment_request(
-            existing_payment,
-            order_id=order_id,
-            amount=pay_amount,
-            method=payment_method,
-            transaction_id=payment_input.transaction_id,
-        ):
-            return await _idempotency_replay_response(
-                db,
-                payment_record=existing_payment,
-            )
-        raise _idempotency_conflict()
-
-    order = await _get_order_by_id_for_update(db, order_id)
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "ORDER_NOT_FOUND",
-                "message": f"Order with ID '{order_id}' not found",
-            },
-        )
-
-    from core.domain.order_state import OrderState
-
-    existing_payment = await payment_repo.get_by_idempotency_key(
-        db,
-        idempotency_key=idempotency_key,
-    )
-    existing_payment = _payment_mapping_or_none(existing_payment)
-    if existing_payment:
-        if _same_payment_request(
-            existing_payment,
-            order_id=str(order.id),
-            amount=pay_amount,
-            method=payment_method,
-            transaction_id=payment_input.transaction_id,
-        ):
-            return await _idempotency_replay_response(
-                db,
-                payment_record=existing_payment,
-            )
-        raise _idempotency_conflict()
-
-    current_state = OrderState(order.status.value)
-    order_total = order.total_amount
-    prior_paid = await payment_repo.get_order_paid_total(db, order_id=order.id)
-    is_credit_collection = False
-
-    if current_state == OrderState.PAID:
-        if payment_method not in {"cash", "transfer"}:
-            raise _payment_error(
-                status.HTTP_409_CONFLICT,
-                "ORDER_ALREADY_PAID",
-                "Paid credit orders accept only cash or transfer collections",
-            )
-        credit_collection_exposure = await payment_repo.get_order_credit_exposure(
-            db, order_id=order.id,
-        )
-        if credit_collection_exposure <= 0:
-            raise _payment_error(
-                status.HTTP_409_CONFLICT,
-                "ORDER_ALREADY_PAID",
-                "Order has no remaining credit exposure to collect",
-            )
-        if pay_amount > credit_collection_exposure:
-            raise _payment_error(
-                status.HTTP_400_BAD_REQUEST,
-                "PAYMENT_EXCEEDS_REMAINING",
-                "Payment amount exceeds remaining credit exposure",
-            )
-        target_state = OrderState.PAID
-        is_credit_collection = True
-    else:
-        remaining_balance = order_total - prior_paid
-        if pay_amount > remaining_balance:
-            raise _payment_error(
-                status.HTTP_400_BAD_REQUEST,
-                "PAYMENT_EXCEEDS_REMAINING",
-                "Payment amount exceeds remaining balance",
-            )
-
-        if current_state not in (OrderState.CONFIRMED, OrderState.PARTIALLY_PAID):
-            raise _payment_error(
-                status.HTTP_409_CONFLICT,
-                "INVALID_STATE_TRANSITION",
-                "Order must be confirmed or partially_paid before payment",
-            )
-
-        if payment_method == "credit":
-            credit_count = await payment_repo.count_order_payments(
-                db, order_id=order.id, method="credit",
-            )
-            if credit_count > 0:
-                raise _payment_error(
-                    status.HTTP_409_CONFLICT,
-                    "DUPLICATE_CREDIT_PAYMENT",
-                    "Only one credit payment is allowed per order",
-                )
-            if prior_paid > 0:
-                raise _payment_error(
-                    status.HTTP_400_BAD_REQUEST,
-                    "CREDIT_SPLIT_TENDER_UNSUPPORTED",
-                    "Credit is allowed only on an order with no prior cash or transfer settlement",
-                )
-            if pay_amount != order_total:
-                raise _payment_error(
-                    status.HTTP_400_BAD_REQUEST,
-                    "CREDIT_AMOUNT_MISMATCH",
-                    "Credit amount must equal order total",
-                )
-
-        cumulative_after_payment = prior_paid + pay_amount
-        target_state = (
-            OrderState.PAID
-            if cumulative_after_payment >= order_total
-            else OrderState.PARTIALLY_PAID
-        )
-
-    if payment_method == "transfer" and payment_input.transaction_id:
-        existing_transfer = await payment_repo.get_by_transaction_id(
-            db,
-            transaction_id=payment_input.transaction_id,
-        )
-        existing_transfer = _payment_mapping_or_none(existing_transfer)
-        if existing_transfer:
-            raise _duplicate_transfer_reference()
+    payment_repo = PaymentRepository()
 
     try:
         result = await canonical_payment_service.confirm_payment(
@@ -864,10 +725,6 @@ async def pay_order(
             idempotency_key=idempotency_key,
             created_by=token.user_id if token.user_id else None,
             force_completed=False,
-            locked_order=order,
-            target_state=target_state,
-            is_credit_collection=is_credit_collection,
-            skip_prechecks=True,
         )
     except IntegrityError:
         await db.rollback()

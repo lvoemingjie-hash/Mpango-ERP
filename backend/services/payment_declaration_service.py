@@ -5,7 +5,7 @@ Encapsulates the three declaration lifecycle operations:
 * ``submit_declaration`` — retailer submission, ZERO financial effect.
 * ``confirm_declaration`` — cashier confirmation, delegates the entire financial
   write path to ``CanonicalPaymentService.confirm_payment`` with
-  ``skip_prechecks=False, force_completed=True, allocate_receipt=True``. This
+  its own full prechecks (force_completed=True, allocate_receipt=True). This
   service performs NO financial-rule replication.
 * ``reject_declaration`` — cashier rejection, terminal, zero financial effect.
 
@@ -233,9 +233,26 @@ class PaymentDeclarationService:
             retailer_id=order.retailer_id,
         )
 
-        # pending -> proceed. The canonical service reuses the already
-        # locked fresh order (its own FOR UPDATE re-read is re-entrant on
-        # the row this transaction already holds).
+        # R2-R1 C6 re-verification: the declaration POINTER is re-checked
+        # against the already-locked order AFTER the declaration row lock —
+        # a swapped/corrupt order_id can never be confirmed by stale memory
+        # of the read-only locate.
+        if str(declaration["order_id"]) != str(order.id):
+            raise _declaration_error(
+                status.HTTP_404_NOT_FOUND,
+                "DECLARATION_NOT_FOUND",
+                "Declaration not found",
+            )
+        if str(declaration["retailer_id"]) != str(order.retailer_id):
+            raise _declaration_error(
+                status.HTTP_404_NOT_FOUND,
+                "DECLARATION_NOT_FOUND",
+                "Declaration not found",
+            )
+
+        # pending -> proceed. The canonical service runs its OWN full
+        # prechecks; its FOR UPDATE re-read of this row is re-entrant on the
+        # lock this transaction already holds (same order, same transaction).
         canonical_key = f"{DECLARATION_CONFIRMATION_KEY_PREFIX}{declaration_id.hex}"
         transaction_id = declaration["transfer_reference"] or None
 
@@ -248,7 +265,6 @@ class PaymentDeclarationService:
             idempotency_key=canonical_key,
             created_by=str(confirmed_by),
             force_completed=True,
-            skip_prechecks=False,
             allocate_receipt=True,
         )
 
@@ -336,6 +352,12 @@ class PaymentDeclarationService:
                 status.HTTP_409_CONFLICT,
                 "DECLARATION_CONFIRMATION_KEY_CONFLICT",
                 "Confirmed declaration links to a missing payment",
+            )
+        if str(payment["order_id"]) != str(declaration["order_id"]):
+            raise _declaration_error(
+                status.HTTP_409_CONFLICT,
+                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
+                "Confirmed declaration links to a payment on another order",
             )
         receipt = payment.get("receipt_number")
         if not _is_valid_receipt_number(receipt):

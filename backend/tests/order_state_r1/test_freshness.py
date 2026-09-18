@@ -173,7 +173,7 @@ async def test_confirm_after_external_cancel_uses_locked_fresh_state(
         # no rollback: the stale DRAFT stays in the identity map
         rejected = False
         try:
-            await _Ocs(session).confirm_order(uuid.UUID(oid))
+            await _Ocs(session).confirm_order(uuid.UUID(oid), updated_by=str(uuid.uuid4()))
         except (_Iste, _Oiv):
             rejected = True
         assert rejected, (

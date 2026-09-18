@@ -283,7 +283,7 @@ async def test_order_confirmation_creates_ledger_entries(async_session, sample_o
     assert revenue_before == Decimal('0')
 
     # Confirm order
-    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+    order = (await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))).order
 
 
     # Check balances after confirmation
@@ -317,7 +317,7 @@ async def test_payment_received_updates_ledger(async_session, sample_order_for_l
     order = sample_order_for_ledger
 
     # Confirm order first
-    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+    order = (await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))).order
 
 
     # Check balances after confirmation
@@ -364,7 +364,7 @@ async def test_full_order_lifecycle_accounting(async_session, sample_order_for_l
     order = sample_order_for_ledger
 
     # Step 1: Confirm order
-    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+    order = (await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))).order
 
 
     # Step 2: Mark as paid (explicit payment command; frozen decision)
@@ -501,7 +501,7 @@ async def test_multiple_orders_accounting(async_session):
         await ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
 
         # Confirm order
-        order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+        order = (await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))).order
 
         orders.append(order)
 
@@ -556,7 +556,7 @@ async def test_credit_paid_skips_cash_settlement_ledger(async_session, sample_or
     order = sample_order_for_ledger
 
     # Confirm order first → RECEIVABLE +100, REVENUE -100
-    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+    order = (await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))).order
 
 
     receivable_after_confirm = await ledger_service.get_balance(AccountType.RECEIVABLE)
@@ -598,7 +598,7 @@ async def test_default_paid_posts_cash_settlement_ledger(async_session, sample_o
     order = sample_order_for_ledger
 
     # Confirm order
-    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+    order = (await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))).order
 
 
     # Transition to PAID without payment_method (legacy/default)
@@ -632,7 +632,7 @@ async def test_explicit_cash_paid_posts_cash_settlement(async_session, sample_or
     ledger_service = LedgerService(async_session)
     order = sample_order_for_ledger
 
-    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+    order = (await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))).order
 
 
     order = (await OrderCommandService(async_session).apply_payment_transition(

@@ -98,7 +98,7 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
     ledger_svc = LedgerService(async_session)
 
     # ── Step 1: DRAFT → CONFIRMED ─────────────────────────────────
-    order = (await OrderCommandService(async_session).confirm_order(order.id)).order
+    order = (await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))).order
 
     await async_session.commit()
 
@@ -187,7 +187,7 @@ async def test_ledger_entries_are_immutable(async_session):
     await async_session.commit()
 
     order_svc = OrderService(async_session)
-    await OrderCommandService(async_session).confirm_order(order.id)
+    await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))
 
     await async_session.commit()
 
@@ -254,7 +254,7 @@ async def test_inventory_deduction_gap_documented(async_session):
     await async_session.commit()
 
     order_svc = OrderService(async_session)
-    await OrderCommandService(async_session).confirm_order(order.id)
+    await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))
 
     await async_session.commit()
     (await OrderCommandService(async_session).apply_payment_transition(order.id, OrderState.PAID)).order

@@ -1453,24 +1453,55 @@ async def _reconcile_s2b_i1(db, ts: str) -> None:
 # verifies the contract + the four-way identity for already-migrated ones.
 # ---------------------------------------------------------------------------
 
+def _normalize_definition(definition: str) -> str:
+    return " ".join(str(definition).upper().split())
+
+
 HOLD_TABLE_COLUMNS = {
-    "id": "uuid", "order_id": "uuid", "amount": "numeric",
-    "remaining_amount": "numeric", "status": "character varying",
-    "created_at": "timestamp with time zone",
-    "updated_at": "timestamp with time zone",
-    "created_by": "uuid", "updated_by": "uuid",
+    "id": {"data_type": "uuid", "is_nullable": False, "column_default": "gen_random_uuid()"},
+    "order_id": {"data_type": "uuid", "is_nullable": False, "column_default": None},
+    "amount": {
+        "data_type": "numeric", "is_nullable": False, "column_default": None,
+        "numeric_precision": 12, "numeric_scale": 2},
+    "remaining_amount": {
+        "data_type": "numeric", "is_nullable": False, "column_default": None,
+        "numeric_precision": 12, "numeric_scale": 2},
+    "status": {
+        "data_type": "character varying", "is_nullable": False,
+        "column_default": "'active'::character varying",
+        "character_maximum_length": 16},
+    "created_at": {
+        "data_type": "timestamp with time zone", "is_nullable": False,
+        "column_default": "now()"},
+    "updated_at": {
+        "data_type": "timestamp with time zone", "is_nullable": False,
+        "column_default": "now()"},
+    "created_by": {"data_type": "uuid", "is_nullable": True, "column_default": None},
+    "updated_by": {"data_type": "uuid", "is_nullable": True, "column_default": None},
 }
-HOLD_REQUIRED_CONSTRAINTS = {
-    "uq_order_credit_holds_order_id": "u",
-    "ck_order_credit_holds_status": "c",
-    "ck_order_credit_holds_amount_positive": "c",
-    "ck_order_credit_holds_remaining_cap": "c",
-    "ck_order_credit_holds_lifecycle_shape": "c",
-    "fk_order_credit_holds_order": "f",
+# Exact pg_get_constraintdef output of the frozen DDL (schema placeholder
+# normalized), verified against a real PG16 render of the 039 DDL.
+HOLD_TABLE_CONSTRAINTS = {
+    "uq_order_credit_holds_order_id": "UNIQUE (ORDER_ID)",
+    "ck_order_credit_holds_status": (
+        "CHECK (STATUS::TEXT = ANY (ARRAY['ACTIVE'::CHARACTER VARYING, "
+        "'RELEASED'::CHARACTER VARYING, 'SETTLED'::CHARACTER VARYING, "
+        "'CONVERTED'::CHARACTER VARYING]::TEXT[]))"),
+    "ck_order_credit_holds_amount_positive": "CHECK (AMOUNT > 0::NUMERIC)",
+    "ck_order_credit_holds_remaining_cap": "CHECK (REMAINING_AMOUNT <= AMOUNT)",
+    "ck_order_credit_holds_lifecycle_shape": (
+        "CHECK (STATUS::TEXT = 'ACTIVE'::TEXT AND REMAINING_AMOUNT > 0::NUMERIC "
+        "OR (STATUS::TEXT = ANY (ARRAY['RELEASED'::CHARACTER VARYING, "
+        "'SETTLED'::CHARACTER VARYING, 'CONVERTED'::CHARACTER VARYING]::TEXT[])) "
+        "AND REMAINING_AMOUNT = 0::NUMERIC)"),
+    "fk_order_credit_holds_order": (
+        "FOREIGN KEY (ORDER_ID) REFERENCES SCHEMA.ORDERS(ID) ON DELETE RESTRICT"),
 }
-HOLD_REQUIRED_INDEXES = {
-    "uq_order_credit_holds_order_id",
-    "ix_order_credit_holds_active",
+HOLD_TABLE_INDEXES = {
+    "ix_order_credit_holds_active": (
+        "CREATE INDEX IX_ORDER_CREDIT_HOLDS_ACTIVE ON "
+        "SCHEMA.ORDER_CREDIT_HOLDS USING BTREE (ORDER_ID) "
+        "WHERE ((STATUS)::TEXT = 'ACTIVE'::TEXT)"),
 }
 
 HOLD_TABLE_DDL = """
@@ -1517,50 +1548,100 @@ async def _reconcile_credit_holds(db, ts: str) -> None:
         print(f"[reconcile] {ts}: created empty order_credit_holds (fresh)")
         return
 
-    columns = {row["column_name"]: row["data_type"] for row in (await db.execute(
+    # R2-R1 C5: full-definition catalog validation — names alone cannot
+    # detect a same-named but wrong object. Every column (type, nullability,
+    # default, precision), every constraint (exact CHECK/FK/UNIQUE
+    # definition text) and every index (columns + predicate) is compared.
+    column_rows = (await db.execute(
         text(
-            "SELECT column_name, data_type FROM information_schema.columns "
+            "SELECT column_name, data_type, is_nullable, column_default, "
+            "       numeric_precision, numeric_scale, "
+            "       character_maximum_length, udt_name "
+            "FROM information_schema.columns "
             "WHERE table_schema = :s AND table_name = 'order_credit_holds'"
-        ), {"s": ts})).mappings()}
-    missing_columns = set(HOLD_TABLE_COLUMNS) - set(columns)
-    wrong_columns = {
-        c: (columns[c], expected)
-        for c, expected in HOLD_TABLE_COLUMNS.items()
-        if c in columns and columns[c] != expected
-    }
-    soft_delete_columns = {"is_deleted", "deleted_at"} & set(columns)
-    if missing_columns or wrong_columns or soft_delete_columns:
+        ), {"s": ts})).mappings()
+    actual_columns = {r["column_name"]: dict(r) for r in column_rows}
+    missing_columns = set(HOLD_TABLE_COLUMNS) - set(actual_columns)
+    extra_columns = set(actual_columns) - set(HOLD_TABLE_COLUMNS)
+    wrong_columns: dict[str, str] = {}
+    for name, expected in HOLD_TABLE_COLUMNS.items():
+        actual = actual_columns.get(name)
+        if actual is None:
+            continue
+        if _catalog_code(actual["data_type"]) != _catalog_code(expected["data_type"]):
+            wrong_columns[name] = (
+                f"type {actual['data_type']} != {expected['data_type']}")
+        elif bool(actual["is_nullable"] == "YES") != bool(expected["is_nullable"]):
+            wrong_columns[name] = (
+                f"nullability {actual['is_nullable']} != "
+                f"{'YES' if expected['is_nullable'] else 'NO'}")
+        elif _catalog_code(actual["column_default"] or "") != _catalog_code(expected["column_default"] or ""):
+            wrong_columns[name] = (
+                f"default {actual['column_default']!r} != "
+                f"{expected['column_default']!r}")
+        elif (expected.get("numeric_precision") is not None
+              and (int(actual["numeric_precision"] or 0) != expected["numeric_precision"]
+                   or int(actual["numeric_scale"] or 0) != expected["numeric_scale"])):
+            wrong_columns[name] = (
+                f"precision {actual['numeric_precision']},{actual['numeric_scale']} "
+                f"!= {expected['numeric_precision']},{expected['numeric_scale']}")
+        elif (expected.get("character_maximum_length") is not None
+              and int(actual["character_maximum_length"] or 0)
+              != expected["character_maximum_length"]):
+            wrong_columns[name] = (
+                f"length {actual['character_maximum_length']} != "
+                f"{expected['character_maximum_length']}")
+    if missing_columns or extra_columns or wrong_columns:
         raise RuntimeError(
-            f"Bootstrap reconcile: {ts}.order_credit_holds contract drift "
-            f"(missing={sorted(missing_columns)}, "
-            f"wrong_types={wrong_columns}, "
-            f"soft_delete_columns={sorted(soft_delete_columns)})")
+            f"Bootstrap reconcile: {ts}.order_credit_holds column contract "
+            f"drift (missing={sorted(missing_columns)}, "
+            f"extra={sorted(extra_columns)}, wrong={wrong_columns})")
 
-    constraints = {
-        _catalog_code(row["conname"]): _catalog_code(row["contype"])
-        for row in (await db.execute(
-            text(
-                "SELECT c.conname, c.contype FROM pg_constraint c "
-                "JOIN pg_class t ON t.oid = c.conrelid "
-                "JOIN pg_namespace n ON n.oid = c.connamespace "
-                "WHERE n.nspname = :s AND t.relname = 'order_credit_holds'"
-            ), {"s": ts})).mappings()}
-    for name, kind in HOLD_REQUIRED_CONSTRAINTS.items():
-        if constraints.get(name) != kind:
+    constraint_rows = (await db.execute(
+        text(
+            "SELECT c.conname, c.contype, "
+            "       pg_get_constraintdef(c.oid, true) AS definition "
+            "FROM pg_constraint c "
+            "JOIN pg_class t ON t.oid = c.conrelid "
+            "JOIN pg_namespace n ON n.oid = c.connamespace "
+            "WHERE n.nspname = :s AND t.relname = 'order_credit_holds'"
+        ), {"s": ts})).mappings()
+    actual_constraints: dict[str, str] = {}
+    for row in constraint_rows:
+        actual_constraints[_catalog_code(row["conname"])] = _normalize_definition(
+            _catalog_code(row["definition"]).replace(ts, "SCHEMA"))
+    for name, expected in HOLD_TABLE_CONSTRAINTS.items():
+        actual = actual_constraints.get(name)
+        if actual is None:
             raise RuntimeError(
                 f"Bootstrap reconcile: {ts}.order_credit_holds is missing "
-                f"or has a wrong {kind}-constraint {name}")
-
-    index_names = {row["indexname"] for row in (await db.execute(
+                f"constraint {name}")
+        if actual != _normalize_definition(expected):
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts}.order_credit_holds constraint "
+                f"{name} has a wrong definition: {actual!r} != "
+                f"{_normalize_definition(expected)!r}")
+    index_rows = (await db.execute(
         text(
-            "SELECT indexname FROM pg_indexes "
+            "SELECT indexname, indexdef FROM pg_indexes "
             "WHERE schemaname = :s AND tablename = 'order_credit_holds'"
-        ), {"s": ts})).mappings()}
-    missing_indexes = HOLD_REQUIRED_INDEXES - index_names
-    if missing_indexes:
-        raise RuntimeError(
-            f"Bootstrap reconcile: {ts}.order_credit_holds is missing "
-            f"indexes {sorted(missing_indexes)}")
+        ), {"s": ts})).mappings()
+    actual_indexes = {
+        _catalog_code(r["indexname"]): _normalize_definition(
+            _catalog_code(r["indexdef"]).replace(ts, "SCHEMA"))
+        for r in index_rows
+    }
+    for name, expected in HOLD_TABLE_INDEXES.items():
+        actual = actual_indexes.get(name)
+        if actual is None:
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts}.order_credit_holds is missing "
+                f"index {name}")
+        if actual != _normalize_definition(expected):
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts}.order_credit_holds index {name} "
+                f"has a wrong definition: {actual!r} != "
+                f"{_normalize_definition(expected)!r}")
 
     # Four-way identity verification (read-only; drift fails closed —
     # bootstrap never "repairs" a migrated tenant's financial state).
@@ -1766,23 +1847,24 @@ async def _reconcile_catalog_identity(db, ts: str) -> None:
     ))
 
 
-async def _require_alembic_at_least(db, minimum_revision: str) -> str:
+async def _require_alembic_revision(db, required_revision: str) -> str:
     """C5: bootstrap runs ONLY after `alembic upgrade head`. The current
-    public.alembic_version must be >= the R2 revision; anything older (or a
-    missing version table) is refused BEFORE any tenant object is created.
-    bootstrap-first deployment is not supported."""
+    public.alembic_version must be EXACTLY the required revision (the sole
+    head); anything else — older, newer, multi-row, or a missing version
+    table — is refused BEFORE any tenant object is created. bootstrap-first
+    deployment is not supported."""
     from sqlalchemy import text
 
-    row = (await db.execute(
-        text("SELECT version_num FROM public.alembic_version LIMIT 1")
-    )).first()
-    current = str(row[0]) if row else None
-    if not current or current < minimum_revision:
+    rows = (await db.execute(
+        text("SELECT version_num FROM public.alembic_version")
+    )).fetchall()
+    versions = [str(r[0]) for r in rows]
+    if versions != [required_revision]:
         raise RuntimeError(
             "bootstrap-first is not supported: run `alembic upgrade head` "
             f"before bootstrapping tenant schemas (database is at "
-            f"{current!r}, requires >= {minimum_revision!r})")
-    return current
+            f"{versions!r}, requires exactly [{required_revision!r}])")
+    return required_revision
 
 
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
@@ -1801,7 +1883,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
     async with async_session() as db:
         # C5 deployment-order gate: refuse BEFORE creating ANY tenant object.
-        await _require_alembic_at_least(db, "039_order_credit_holds")
+        await _require_alembic_revision(db, "039_order_credit_holds")
 
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))

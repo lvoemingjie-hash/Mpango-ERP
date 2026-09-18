@@ -431,7 +431,7 @@ async def test_api_legacy_pay_empty_body():
     mock_db = _make_mock_db()
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("services.order_command_service.OrderCommandService") as MockOS, \
          pytest.raises(HTTPException) as exc_info:
         await pay_order(
@@ -460,7 +460,7 @@ async def test_api_structured_full_payment():
     pay_req = PayOrderRequest(amount=5000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
@@ -468,6 +468,7 @@ async def test_api_structured_full_payment():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         MockRepo.return_value = repo_instance
 
@@ -507,7 +508,7 @@ async def test_api_structured_partial_payment():
     pay_req = PayOrderRequest(amount=2000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
@@ -515,6 +516,7 @@ async def test_api_structured_partial_payment():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         MockRepo.return_value = repo_instance
 
@@ -553,13 +555,14 @@ async def test_api_reject_overpayment():
     pay_req = PayOrderRequest(amount=3000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          pytest.raises(HTTPException) as exc_info:
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("3000"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         MockRepo.return_value = repo_instance
 
         await pay_order(
@@ -729,7 +732,7 @@ class TestRouteLevelOrderPaymentMonkeypatch:
 
         try:
             with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-                 patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+                 patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
                  patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={order_id: "Retailer A"}):
 
                 paid_order = _make_route_test_order_row(order_id, "paid", Decimal("5000"))
@@ -803,7 +806,7 @@ class TestRouteLevelOrderPaymentMonkeypatch:
 
         try:
             with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-                 patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+                 patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
                  patch("services.order_command_service.OrderCommandService") as MockOrderCommandService, \
                  patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
                  patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
@@ -811,6 +814,8 @@ class TestRouteLevelOrderPaymentMonkeypatch:
 
                 repo_instance = AsyncMock()
                 repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+                repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
+                repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
                 repo_instance.create = AsyncMock(return_value={
                     "id": "pay-test-001",
                     "amount": Decimal("5000"),
@@ -885,13 +890,15 @@ class TestRouteLevelOrderPaymentMonkeypatch:
 
         try:
             with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-                 patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+                 patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
                  patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
                  patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
                  patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={order_id: "Retailer A"}):
 
                 repo_instance = AsyncMock()
                 repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+                repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
+                repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
                 repo_instance.create = AsyncMock(return_value={
                     "id": "pay-test-002",
                     "amount": Decimal("3000"),
@@ -971,12 +978,13 @@ class TestRouteLevelOrderPaymentMonkeypatch:
 
         try:
             with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-                 patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+                 patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
                  patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
                  patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
                 repo_instance = AsyncMock()
                 repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("3000"))
+                repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
                 MockRepo.return_value = repo_instance
 
                 def patched_init(self, db):
@@ -1043,7 +1051,7 @@ async def test_credit_payment_applies_positive_balance_delta():
         delta_captured["delta"] = delta
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
@@ -1051,6 +1059,7 @@ async def test_credit_payment_applies_positive_balance_delta():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.count_order_payments = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         MockRepo.return_value = repo_instance
@@ -1095,7 +1104,7 @@ async def test_cash_payment_does_not_apply_balance_delta_for_ordinary_settlement
         delta_captured["delta"] = delta
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
@@ -1103,6 +1112,7 @@ async def test_cash_payment_does_not_apply_balance_delta_for_ordinary_settlement
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         MockRepo.return_value = repo_instance
 
@@ -1146,7 +1156,7 @@ async def test_transfer_payment_does_not_apply_balance_delta_for_ordinary_settle
         delta_captured["delta"] = delta
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
@@ -1154,6 +1164,7 @@ async def test_transfer_payment_does_not_apply_balance_delta_for_ordinary_settle
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         MockRepo.return_value = repo_instance
 
@@ -1252,7 +1263,7 @@ async def test_credit_payment_status_is_pending():
     pay_req = PayOrderRequest(amount=5000, method="credit")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
@@ -1260,6 +1271,7 @@ async def test_credit_payment_status_is_pending():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.count_order_payments = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(side_effect=fake_create)
         MockRepo.return_value = repo_instance
@@ -1314,12 +1326,13 @@ async def test_credit_partial_amount_rejected():
     pay_req = PayOrderRequest(amount=5000, method="credit")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          pytest.raises(HTTPException) as exc_info:
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.count_order_payments = AsyncMock(return_value=0)
         MockRepo.return_value = repo_instance
 
@@ -1355,12 +1368,13 @@ async def test_credit_rejected_when_prior_cash_exists():
     pay_req = PayOrderRequest(amount=Decimal("5000"), method="credit")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          pytest.raises(HTTPException) as exc_info:
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=prior_paid)
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.count_order_payments = AsyncMock(return_value=0)
         MockRepo.return_value = repo_instance
 
@@ -1392,12 +1406,13 @@ async def test_credit_rejected_when_amount_exceeds_remaining():
     pay_req = PayOrderRequest(amount=6000, method="credit")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          pytest.raises(HTTPException) as exc_info:
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.count_order_payments = AsyncMock(return_value=0)
         MockRepo.return_value = repo_instance
 
@@ -1551,12 +1566,13 @@ async def test_duplicate_credit_payment_rejected():
     pay_req = PayOrderRequest(amount=5000, method="credit")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          pytest.raises(HTTPException) as exc_info:
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         # Simulate: a credit payment already exists for this order
         repo_instance.count_order_payments = AsyncMock(return_value=1)
         MockRepo.return_value = repo_instance
@@ -1592,7 +1608,7 @@ async def test_first_credit_payment_allowed():
         delta_captured["delta"] = delta
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
@@ -1600,6 +1616,7 @@ async def test_first_credit_payment_allowed():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.count_order_payments = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         MockRepo.return_value = repo_instance
@@ -1658,7 +1675,7 @@ async def test_credit_payment_passes_method_to_transition():
         ))
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
@@ -1666,6 +1683,7 @@ async def test_credit_payment_passes_method_to_transition():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.count_order_payments = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         MockRepo.return_value = repo_instance
@@ -1711,7 +1729,7 @@ async def test_cash_payment_passes_method_to_transition():
         ))
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
@@ -1719,6 +1737,7 @@ async def test_cash_payment_passes_method_to_transition():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         MockRepo.return_value = repo_instance
 
@@ -1748,7 +1767,7 @@ async def test_legacy_pay_rejected_before_transition():
     mock_db = _make_mock_db()
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
          patch("services.order_command_service.OrderCommandService") as MockOS, \
          pytest.raises(HTTPException) as exc_info:
         await pay_order(

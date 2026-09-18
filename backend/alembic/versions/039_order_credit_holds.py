@@ -157,7 +157,9 @@ def _registered_tenants(bind) -> list[str]:
         sa.text(
             """
             SELECT tr.tenant_schema,
-                   ('t_' || replace(w.id::text, '-', '')) AS derived_schema
+                   ('t_' || replace(w.id::text, '-', '')) AS derived_schema,
+                   tr.status AS registration_status,
+                   w.status AS wholesaler_status
             FROM public.tenant_registrations tr
             JOIN public.wholesalers w ON w.id = tr.wholesaler_id
             WHERE tr.is_deleted IS FALSE
@@ -174,6 +176,14 @@ def _registered_tenants(bind) -> list[str]:
         if schema != row["derived_schema"]:
             raise PreflightFailure(
                 f"{schema}: registry schema does not match wholesaler identity"
+            )
+        if (
+            row["registration_status"] not in LIVE_REGISTRATION_STATUSES
+            or row["wholesaler_status"] not in WHOLESALER_ACTIVE_STATUSES
+        ):
+            raise PreflightFailure(
+                f"{schema}: registered tenant is outside R2 live migration "
+                "statuses (same registry contract as 038)"
             )
         if schema not in schemas:
             schemas.append(schema)
@@ -237,6 +247,8 @@ def _preflight_tenant(bind, schema: str) -> None:
               p.amount IS NULL OR p.amount <= 0
               OR p.method IS NULL
               OR p.method NOT IN ('cash', 'transfer', 'credit')
+              OR p.status IS NULL
+              OR p.status NOT IN ('pending', 'completed')
               OR o.id IS NULL OR o.is_deleted IS TRUE
               OR o.wholesaler_id::text <> :ws
               OR p.retailer_id IS DISTINCT FROM o.retailer_id
@@ -245,8 +257,9 @@ def _preflight_tenant(bind, schema: str) -> None:
     if bad_payments:
         raise PreflightFailure(
             f"{schema}: {bad_payments} invalid effective payment row(s) "
-            "(zero/negative amounts, unknown methods, orphaned, cross-"
-            "wholesaler or retailer-mismatched history cannot be explained)")
+            "(zero/negative amounts, unknown methods or statuses, orphaned, "
+            "cross-wholesaler or retailer-mismatched history cannot be "
+            "explained)")
 
     duplicate_credit = _count(bind, f"""
         WITH {EFFECTIVE_PER_ORDER.format(payments=q_payments)}

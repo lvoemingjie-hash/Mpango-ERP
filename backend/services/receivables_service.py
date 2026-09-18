@@ -15,6 +15,8 @@ authoritative retailer balance cache.
 from __future__ import annotations
 
 import uuid
+
+from fastapi import HTTPException, status as http_status
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -39,12 +41,33 @@ def calculate_age_days(created_at: datetime | None) -> int:
     return max((datetime.now(timezone.utc) - normalized).days, 0)
 
 
-def _non_negative_amount(amount: Decimal) -> Decimal:
-    return amount if amount > Decimal("0") else Decimal("0")
-
-
 def _credit_exposure(credit_amount: Decimal, collection_amount: Decimal) -> Decimal:
-    return _non_negative_amount(credit_amount - collection_amount)
+    """RAW net credit exposure. R2-R1 C4: NO zero-clamping — an
+    over-collected history (negative) is corrupt and the caller must fail
+    closed with a named integrity refusal instead of masking it as zero."""
+    return credit_amount - collection_amount
+
+
+def _assert_history_integrity(credit_amount: Decimal, collection_amount: Decimal) -> None:
+    """R2-R1 C4: corrupt effective history is a NAMED integrity refusal."""
+    if credit_amount > 0 and collection_amount > credit_amount:
+        raise HTTPException(
+            http_status.HTTP_409_CONFLICT,
+            detail={
+                "code": "PAYMENT_HISTORY_INTEGRITY",
+                "message": (
+                    "Over-collected credit history: credit "
+                    f"{credit_amount} vs collections {collection_amount}"),
+            },
+        )
+    if credit_amount < 0 or collection_amount < 0:
+        raise HTTPException(
+            http_status.HTTP_409_CONFLICT,
+            detail={
+                "code": "PAYMENT_HISTORY_INTEGRITY",
+                "message": "Negative payment history totals",
+            },
+        )
 
 
 class ReceivablesService:
@@ -214,6 +237,7 @@ class ReceivablesService:
                 order_id = order.id
                 credit_amt = credit_totals.get(order_id, Decimal("0"))
                 cash_amt = cash_totals.get(order_id, Decimal("0"))
+                _assert_history_integrity(credit_amt, cash_amt)
                 credit_balance = _credit_exposure(credit_amt, cash_amt)
 
                 # Credit receivable: orders with credit payment exposure
@@ -221,9 +245,9 @@ class ReceivablesService:
                     retailer_credit += credit_balance
                     retailer_order_count += 1
 
-            binding_cache = _non_negative_amount(
-                Decimal(str(binding_info["outstanding_balance"]))
-            )
+            # R2-R1: the cache is reported RAW — a negative or drifted
+            # cache stays visible as drift, never clamped to zero.
+            binding_cache = Decimal(str(binding_info["outstanding_balance"]))
             reserved_hold, hold_count = hold_totals.get(
                 retailer_id, (Decimal("0"), 0))
             retailer_unpaid = reserved_hold
@@ -448,6 +472,7 @@ class ReceivablesService:
             order_id = order.id
             credit_amt = credit_totals.get(order_id, Decimal("0"))
             cash_amt = cash_totals.get(order_id, Decimal("0"))
+            _assert_history_integrity(credit_amt, cash_amt)
             credit_balance = _credit_exposure(credit_amt, cash_amt)
             # R2: unpaid balance_due comes from the active credit hold, not
             # a total-minus-cash recomputation (effective history only).

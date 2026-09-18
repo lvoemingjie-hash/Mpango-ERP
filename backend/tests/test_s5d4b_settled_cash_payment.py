@@ -230,7 +230,7 @@ def _payment_key(name: str) -> str:
 
 def _patch_payment_route(mock_order):
     return patch(
-        "api.v1.orders._get_order_by_id_for_update",
+        "services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update",
         new_callable=AsyncMock,
         return_value=mock_order,
     )
@@ -255,6 +255,7 @@ async def test_api_full_cash_settles_payment_to_completed():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         repo_instance.update_cash_transfer_to_completed = AsyncMock(return_value=1)
         MockRepo.return_value = repo_instance
@@ -299,6 +300,7 @@ async def test_api_proposed_paid_but_returned_non_paid_does_not_settle():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         repo_instance.update_cash_transfer_to_completed = AsyncMock(return_value=1)
         MockRepo.return_value = repo_instance
@@ -346,6 +348,7 @@ async def test_api_partial_cash_does_not_settle():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         repo_instance.update_cash_transfer_to_completed = AsyncMock(return_value=0)
         MockRepo.return_value = repo_instance
@@ -439,6 +442,7 @@ async def test_api_transfer_full_payment_settle_called():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         repo_instance.update_cash_transfer_to_completed = AsyncMock(return_value=0)
         MockRepo.return_value = repo_instance
@@ -485,6 +489,7 @@ async def test_api_credit_paid_settle_targets_cash_transfer_only():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.count_order_payments = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         # Returns 0: the credit row is method='credit', excluded by the SQL filter
@@ -537,6 +542,7 @@ async def test_api_failed_transition_no_settle():
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         repo_instance.update_cash_transfer_to_completed = AsyncMock(return_value=0)
         MockRepo.return_value = repo_instance
@@ -575,7 +581,7 @@ async def test_api_legacy_pay_no_settle():
     mock_db = _make_mock_db()
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock) as get_order_mock, \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock) as lock_mock, \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock) as lock_mock, \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
          patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock) as balance_mock:

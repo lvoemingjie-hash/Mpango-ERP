@@ -30,7 +30,7 @@ Successor parent chain verified:
 
 **Old evidence / logs / scripts / fixtures / baseline:** Zero drift confirmed.
 - `backend/scripts/` — ZERO_DRIFT
-- `tests/fixtures/` — ZERO_DRIFT
+- `backend/tests/_fixtures/` — ZERO_DRIFT
 - `.secrets.baseline` — ZERO_DRIFT
 - `ai-ledger/` old content — ZERO_DRIFT
 
@@ -55,7 +55,7 @@ File-level blob differs because `_helper_node_from_source` and `_assert_helper_r
 ### `_assert_helper_reads_only_committed_candidate`
 - Inspects real `ast.Call` nodes for `open()` and `builtins.open()`
 - Inspects `ast.ExceptHandler` for bare `except:`, `except Exception`, `except BaseException`, and tuples containing them
-- Verifies strict `.decode('utf-8')` by checking the first `ast.Constant` argument equals `"utf-8"`
+- Detects the `utf-8` argument on the `.decode()` call; strictness is proven by the behavioral test, not by this bounded checker alone
 
 **Key finding:** The structural checker is **bounded** — it does not prove general dataflow or all indirect reads. This is by design and documented in the docstring.
 
@@ -153,8 +153,20 @@ Per task constraints, the following were **NOT RUN**:
 
 No product symbol edits were made. No merge, deployment, or container changes were performed.
 
-## 11. Verdict
+## 11. Material Correction Note (2026-09-18)
 
-**PASS_FOR_CTO_TENANT_BOOTSTRAP_R1R5R1_KILO_TARGETED_REVIEW**
+This section is appended per CTO directive CTO-AUTH-TENANT-BOOTSTRAP-R1-R5-R1-KILO-REPORT-CORRECTION-2026-09-18.
 
-All bounded conditions satisfied. O1 retained as known bounded limitation.
+The original report incorrectly stated that "all bounded conditions satisfied" at the material layer. This claim is withdrawn. The technical result (16-node focused pytest pass, real AST.Call detection, strict UTF-8 decode, zero drift on old evidence/fixtures) is accepted. The material package had the following defects:
+
+- **F-01:** `evidence_manifest.md` listed 40-character Git blob object IDs under "Blob SHA-256 Manifests" instead of actual SHA-256 content hashes.
+- **F-02:** `findings.csv` had three rows (`open() injection`, `builtins.open() injection`, `old text predicate`) with only five columns instead of the required six.
+- **F-03:** Original evidence artifacts (JUnit XML, O1 verification script) were not included in the report tree.
+
+These material defects do not affect the underlying 16-node pytest result or the technical acceptance of the source-reader repair. They are corrected in this amendment.
+
+## 12. Verdict
+
+**PASS_FOR_CTO_TENANT_BOOTSTRAP_R1R5R1_KILO_TARGETED_REVIEW** (material package corrected)
+
+Technical repair accepted. O1 retained as known bounded limitation.

@@ -21,9 +21,9 @@ PYTEST,environment,DATABASE_URL TEST_DATABASE_URL REDIS_URL unreachable loopback
 PYTEST,isolation,MPANGO_DB_AUTHORITY_MANIFEST SCENARIO not set,INFO,PASS,env config
 PYTEST,basetemp,New task basetemp used outside worktree,INFO,PASS,path check
 PYTEST,cache,pytest cache disabled -p no:cacheprovider,INFO,PASS,pytest args
-NEGATIVE,open() injection,Legitimate open() call rejected with AssertionError calls open(),PASS,independent probe
-NEGATIVE,builtins.open() injection,Legitimate builtins.open() call rejected with AssertionError builtins.open(),PASS,independent probe
-NEGATIVE,old text predicate,ast.dump text search accepts violating helper documented blind spot,PASS,independent probe
+NEGATIVE,open() injection,Legitimate open() call rejected with AssertionError("calls open()..."),INFO,PASS,independent probe
+NEGATIVE,builtins.open() injection,Legitimate builtins.open() call rejected with AssertionError("builtins.open()..."),INFO,PASS,independent probe
+NEGATIVE,old text predicate,ast.dump text search accepts violating helper documented blind spot,INFO,PASS,independent probe
 O1,structural checker,Accepts errors=replace on decode call,KNOWN_LIMIT,ACCEPTED,independent probe
 O1,behavioral test,_candidate_source still refuses invalid UTF-8 with RuntimeError,INFO,PASS,independent probe
 O1,verdict,No current actual regression found retained as known bounded limitation,INFO,PASS,review judgment

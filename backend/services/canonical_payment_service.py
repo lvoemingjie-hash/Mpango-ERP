@@ -279,6 +279,19 @@ class CanonicalPaymentService:
                 raise _credit_hold_mismatch(
                     f"Effective credit total {credit_total} does not match "
                     f"the order total {total}")
+            # E1/F2: the total alone cannot legalize the history — two
+            # split credit rows sum to the same total. The frozen contract
+            # (039 preflight, duplicate-credit refusal) allows EXACTLY ONE
+            # effective credit sale per order; soft-deleted rows do not
+            # count. Both the direct pay path and the declaration
+            # confirmation reach this seam, so the refusal path is shared.
+            credit_rows = await self._repo.count_order_payments(
+                db, order_id=order.id, method="credit")
+            if credit_rows != 1:
+                raise _credit_hold_mismatch(
+                    "Credit sale requires exactly one effective credit "
+                    f"payment, found {credit_rows} (a split or duplicated "
+                    "credit history cannot be collected)")
             return
 
         if len(holds) != 1 or holds[0].status != "active":
@@ -748,19 +761,20 @@ class CanonicalPaymentService:
                     await self._convert_hold(db, holds, created_by)
                 else:
                     # R2: cash/transfer settlement reduces the order's own
-                    # hold; the binding cache drops by the same amount.
+                    # hold first; the binding cache drops by the same
+                    # amount — but only AFTER the whole payment-side write
+                    # sequence below (E1/F3: frozen C6 resource partial
+                    # order is hold -> payment/receipt/ledger -> binding).
                     await self._reduce_hold(db, holds, amount, created_by)
-                    await payment_service._apply_outstanding_balance_delta(
-                        db,
-                        wholesaler_id=order.wholesaler_id,
-                        retailer_id=order.retailer_id,
-                        delta=-amount,
-                    )
                 # F2/SR1-R1: the caller's locked order is handed to the
                 # command service's PRIVATE locked-order implementation —
                 # the whole payment chain takes exactly ONE order FOR
                 # UPDATE (this method's own lock; the declaration chain's
-                # single declaration-side lock).
+                # single declaration-side lock). The binding identity is
+                # captured from the caller's locked order BEFORE the
+                # reassignment: same locked row, same transaction.
+                binding_ws = order.wholesaler_id
+                binding_ret = order.retailer_id
                 order = (
                     await order_command_module.OrderCommandService(
                         db
@@ -774,6 +788,20 @@ class CanonicalPaymentService:
                 order_status = getattr(order.status, "value", order.status)
                 if not force_completed and order_status == OrderState.PAID.value:
                     await self._repo.update_cash_transfer_to_completed(db, order_id=order.id)
+                if method != "credit":
+                    # E1/F3: the binding cache is the LAST financial write
+                    # of the settlement path — after the hold reduction,
+                    # the payment row, the receipt, the transition's
+                    # ledger posting and the cash/transfer batch settle,
+                    # all inside the SAME transaction (a failure at any
+                    # earlier point rolls the whole settlement back; a
+                    # failure here rolls back everything before it too).
+                    await payment_service._apply_outstanding_balance_delta(
+                        db,
+                        wholesaler_id=binding_ws,
+                        retailer_id=binding_ret,
+                        delta=-amount,
+                    )
         except HTTPException as exc:
             raise CanonicalPaymentMutationHttpError(exc) from exc
 

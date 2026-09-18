@@ -1677,6 +1677,164 @@ async def _reconcile_credit_holds(db, ts: str) -> None:
             "(the catalog must equal the contract exactly — the expected "
             "set already includes the PK and UNIQUE auto-indexes)")
 
+    # E1/F1: per-order effective-history legality BEFORE any aggregate use.
+    # Aggregate identity alone cannot prove history legal: a payment
+    # attributed to ANOTHER retailer, or a hold snapshot inconsistent with
+    # the order's own lifecycle, can still sum to the "right" totals. These
+    # gates mirror the frozen 039 preflight contract (invalid effective
+    # payment rows, duplicate credit sales, the C3 lifecycle state matrix)
+    # plus the per-order hold lifecycle contract. Read-only and fail-closed:
+    # bootstrap never repairs, backfills or rewrites an existing lifecycle
+    # to make validation pass; a soft-deleted row is not effective history,
+    # and a brand-new tenant's empty history is the legal positive control.
+    bad_payment = (await db.execute(text(f"""
+        SELECT p.id::text
+          FROM "{ts}".payments p
+          LEFT JOIN "{ts}".orders o ON o.id = p.order_id
+         WHERE p.is_deleted IS FALSE
+           AND (
+               p.amount IS NULL OR p.amount <= 0
+               OR p.amount IN ('NaN'::numeric, 'Infinity'::numeric,
+                               '-Infinity'::numeric)
+               OR p.method IS NULL
+               OR p.method NOT IN ('cash', 'transfer', 'credit')
+               OR p.status IS NULL
+               OR p.status NOT IN ('pending', 'completed')
+               OR o.id IS NULL OR o.is_deleted IS TRUE
+               OR p.retailer_id IS DISTINCT FROM o.retailer_id
+           )
+         LIMIT 1
+    """))).scalar()
+    if bad_payment is not None:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts} effective payment {bad_payment} is "
+            "illegal history (zero/negative/non-finite amount, unknown "
+            "method or status, orphaned, or retailer-mismatched — totals "
+            "cannot legalize attribution)")
+
+    duplicate_credit = (await db.execute(text(f"""
+        WITH effective_payments AS (
+            SELECT p.order_id,
+                   COUNT(*) FILTER (WHERE p.method = 'credit') AS credit_rows
+              FROM "{ts}".payments p
+             WHERE p.is_deleted IS FALSE
+             GROUP BY p.order_id
+        )
+        SELECT order_id::text
+          FROM effective_payments
+         WHERE credit_rows > 1
+         LIMIT 1
+    """))).scalar()
+    if duplicate_credit is not None:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts} order {duplicate_credit} carries "
+            "duplicate effective credit sales (a split credit history is "
+            "rejected even when the totals agree)")
+
+    matrix_offender = (await db.execute(text(f"""
+        WITH effective_payments AS (
+            SELECT p.order_id,
+                   COALESCE(SUM(p.amount) FILTER (
+                       WHERE p.method IN ('cash', 'transfer')), 0) AS cash_total,
+                   COALESCE(SUM(p.amount) FILTER (
+                       WHERE p.method = 'credit'), 0) AS credit_total
+              FROM "{ts}".payments p
+             WHERE p.is_deleted IS FALSE
+             GROUP BY p.order_id
+        ),
+        classified AS (
+            SELECT o.id, o.status::text AS status, o.total_amount,
+                   COALESCE(e.cash_total, 0) AS cash_total,
+                   COALESCE(e.credit_total, 0) AS credit_total
+              FROM "{ts}".orders o
+              LEFT JOIN effective_payments e ON e.order_id = o.id
+             WHERE o.is_deleted IS FALSE
+        )
+        SELECT id::text
+          FROM classified
+         WHERE (status = ANY(ARRAY['confirmed', 'partially_paid',
+                                   'paid', 'fulfilled', 'returned'])
+                AND total_amount <= 0)
+            OR (status = 'confirmed'
+                AND (cash_total <> 0 OR credit_total <> 0))
+            OR (status = 'partially_paid'
+                AND (credit_total <> 0
+                     OR cash_total <= 0 OR cash_total >= total_amount))
+            OR (status = ANY(ARRAY['paid', 'fulfilled', 'returned'])
+                AND credit_total > 0
+                AND (credit_total <> total_amount
+                     OR cash_total < 0 OR cash_total > credit_total))
+            OR (status = ANY(ARRAY['paid', 'fulfilled', 'returned'])
+                AND credit_total = 0
+                AND cash_total <> total_amount)
+            OR (status = ANY(ARRAY['draft', 'cancelled', 'voided'])
+                AND (cash_total <> 0 OR credit_total <> 0))
+         LIMIT 1
+    """))).scalar()
+    if matrix_offender is not None:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts} order {matrix_offender} does not "
+            "fit the frozen lifecycle state matrix (per-order history is "
+            "rejected, never repaired)")
+
+    hold_offender = (await db.execute(text(f"""
+        WITH effective_payments AS (
+            SELECT p.order_id,
+                   COALESCE(SUM(p.amount) FILTER (
+                       WHERE p.method IN ('cash', 'transfer')), 0) AS cash_total,
+                   COALESCE(SUM(p.amount) FILTER (
+                       WHERE p.method = 'credit'), 0) AS credit_total
+              FROM "{ts}".payments p
+             WHERE p.is_deleted IS FALSE
+             GROUP BY p.order_id
+        ),
+        expected AS (
+            SELECT o.id::text AS order_id,
+                   o.status::text AS status,
+                   o.total_amount,
+                   CASE WHEN COALESCE(e.credit_total, 0) > 0
+                        THEN 'converted'
+                        WHEN o.status::text IN ('confirmed', 'partially_paid')
+                            THEN 'active'
+                        ELSE 'settled' END AS want_status,
+                   CASE WHEN o.status::text IN ('confirmed', 'partially_paid')
+                             AND COALESCE(e.credit_total, 0) = 0
+                        THEN o.total_amount - COALESCE(e.cash_total, 0)
+                        ELSE 0 END AS want_remaining
+              FROM "{ts}".orders o
+              LEFT JOIN effective_payments e ON e.order_id = o.id
+             WHERE o.is_deleted IS FALSE
+        ),
+        actual AS (
+            SELECT h.order_id::text AS order_id,
+                   h.amount, h.remaining_amount, h.status::text AS status
+              FROM "{ts}".order_credit_holds h
+        )
+        SELECT e.order_id
+          FROM expected e
+          LEFT JOIN actual a ON a.order_id = e.order_id
+         WHERE (
+               e.status IN ('confirmed', 'partially_paid', 'paid',
+                            'fulfilled', 'returned')
+               AND (a.order_id IS NULL
+                    OR a.status <> e.want_status
+                    OR a.remaining_amount <> e.want_remaining
+                    OR a.amount <> e.total_amount))
+            OR (e.status = 'draft' AND a.order_id IS NOT NULL)
+            OR (e.status IN ('cancelled', 'voided')
+                AND a.order_id IS NOT NULL
+                AND NOT (a.status = 'released'
+                         AND a.remaining_amount = 0
+                         AND a.amount = e.total_amount))
+         LIMIT 1
+    """))).scalar()
+    if hold_offender is not None:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts} order {hold_offender} carries a "
+            "credit-hold lifecycle row inconsistent with the order's own "
+            "history and state (snapshot amount/remaining/status must "
+            "match the per-order contract exactly)")
+
     # Four-way identity verification (read-only; drift fails closed —
     # bootstrap never "repairs" a migrated tenant's financial state).
     drift = (await db.execute(text(f"""

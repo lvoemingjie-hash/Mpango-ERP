@@ -104,11 +104,18 @@ def test_no_placeholder_notification_values_in_production():
 
 
 def test_payment_command_single_caller_guard():
-    """F2: apply_payment_transition may be CALLED only by
-    CanonicalPaymentService (production)."""
+    """F2/SR1-R1: the payment status command may be CALLED only by
+    CanonicalPaymentService (production) — the public locking entry
+    ``apply_payment_transition`` or its private locked-order
+    implementation ``_apply_payment_transition_for_locked``, which is
+    the seam that keeps a whole payment chain at exactly ONE order FOR
+    UPDATE. The private name is additionally callable from inside the
+    command-service module itself (the public entry delegates to it)."""
     allowed_caller = "services/canonical_payment_service.py"
+    writer_module = "services/order_command_service.py"
     offenders: list[str] = []
     for path in _production_files():
+        relative = _relative(path)
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
@@ -119,9 +126,11 @@ def test_payment_command_single_caller_guard():
                 elif isinstance(func, ast.Name):
                     name = func.id
                 if name == "apply_payment_transition":
-                    if _relative(path) != allowed_caller:
-                        offenders.append(
-                            f"{_relative(path)}:{node.lineno}")
+                    if relative != allowed_caller:
+                        offenders.append(f"{relative}:{node.lineno}")
+                elif name == "_apply_payment_transition_for_locked":
+                    if relative not in (allowed_caller, writer_module):
+                        offenders.append(f"{relative}:{node.lineno}")
     assert not offenders, (
         f"non-canonical caller(s) of the payment command: {offenders}")
 

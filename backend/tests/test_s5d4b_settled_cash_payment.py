@@ -268,7 +268,7 @@ async def test_api_full_cash_settles_payment_to_completed():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.apply_payment_transition = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
         )))
         MockOS.return_value = svc_instance
@@ -313,7 +313,7 @@ async def test_api_proposed_paid_but_returned_non_paid_does_not_settle():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.apply_payment_transition = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id,
             status=OrderState.PARTIALLY_PAID,
             total_amount=mock_order.total_amount,
@@ -361,7 +361,7 @@ async def test_api_partial_cash_does_not_settle():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.apply_payment_transition = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PARTIALLY_PAID, total_amount=mock_order.total_amount
         )))
         MockOS.return_value = svc_instance
@@ -409,7 +409,7 @@ async def test_api_second_partial_completes_and_settles():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.apply_payment_transition = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
         )))
         MockOS.return_value = svc_instance
@@ -456,7 +456,7 @@ async def test_api_transfer_full_payment_settle_called():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.apply_payment_transition = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
         )))
         MockOS.return_value = svc_instance
@@ -505,7 +505,7 @@ async def test_api_credit_paid_settle_targets_cash_transfer_only():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.apply_payment_transition = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
         )))
         MockOS.return_value = svc_instance
@@ -556,7 +556,7 @@ async def test_api_failed_transition_no_settle():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.apply_payment_transition = AsyncMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(
             side_effect=InvalidStateTransitionError(OrderState.CONFIRMED, OrderState.PAID, "forced")
         )
         MockOS.return_value = svc_instance

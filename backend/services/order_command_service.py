@@ -434,12 +434,34 @@ class OrderCommandService:
         reason: Optional[str] = None,
     ) -> OrderCommandResult:
         """EXPLICIT payment transition — the only writer for PAID /
-        PARTIALLY_PAID, called solely by CanonicalPaymentService.
+        PARTIALLY_PAID.
 
-        Allows CONFIRMED/PARTIALLY_PAID -> PAID/PARTIALLY_PAID (plus the
-        same-state partial-payment progress with cash/transfer context).
+        Public COMPATIBILITY entry: takes the order FOR UPDATE lock
+        (locked-fresh) and delegates to the private locked-order
+        implementation. CanonicalPaymentService's already-locked path
+        calls that private implementation directly so a whole payment
+        chain performs exactly ONE order FOR UPDATE.
         """
         order = await self._load_locked(order_id)
+        return await self._apply_payment_transition_for_locked(
+            order, target_state,
+            payment_method=payment_method, updated_by=updated_by)
+
+    async def _apply_payment_transition_for_locked(
+        self,
+        order: Order,
+        target_state: OrderState,
+        *,
+        payment_method: Optional[str] = None,
+        updated_by: Optional[str] = None,
+    ) -> OrderCommandResult:
+        """Private locked-order payment transition.
+
+        PRECONDITION: the caller holds this order's FOR UPDATE lock in
+        the same transaction (this public entry's own lock, or the
+        canonical service's / declaration confirmation's). This method
+        NEVER queries or locks the order row.
+        """
         self._locked_order = order
         current = OrderState(order.status.value)
 

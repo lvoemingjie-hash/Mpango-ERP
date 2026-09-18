@@ -506,12 +506,15 @@ async def test_sr1_f1_concurrent_same_key_same_order_single_economic_effect(
 async def test_sr1_f1_concurrent_cross_order_same_key_conflict_classified(
     r1_client, s2_clean_db, provisioned_pool, cashier_identity,
 ):
-    """SR1-F1: two DIFFERENT orders (so no shared order lock) race the same
-    idempotency key and payload; an event barrier holds both entrants at the
-    payment INSERT so the loser truly hits uq_payments_idempotency_key. The
-    canonical service must classify that constraint: exactly one payment
-    total and a named idempotency conflict for the loser's order — never a
-    raw IntegrityError."""
+    """SR1-F1 / SR1-R1 cross-order race oracle: two DIFFERENT orders under
+    the SAME retailer (so no shared order lock, and the retailer check
+    cannot mask the order binding) race the same idempotency key and
+    payload; an event barrier holds both entrants at the payment INSERT so
+    the loser truly hits uq_payments_idempotency_key. Required outcome —
+    EXACTLY ONE success, EXACTLY ONE named 409 IDEMPOTENCY_KEY_CONFLICT,
+    a replayed loser is always RED, and the loser's order keeps its hold
+    and status EXACTLY as at confirm with zero payment rows (the shared
+    binding shows only the winner's own settlement)."""
     from repositories.payment_repository import PaymentRepository
     from services.canonical_payment_service import CanonicalPaymentService
     from tests.order_state_r1.support import _second_session, rebind_search_path
@@ -519,9 +522,13 @@ async def test_sr1_f1_concurrent_cross_order_same_key_conflict_classified(
     db, reg = s2_clean_db
     token = await osd1_cashier_token(r1_client, cashier_identity)
     orders = []
+    ret_id = schema = ws_id = None
     for _ in range(2):
+        # SAME retailer, DIFFERENT orders: no shared order lock, and the
+        # retailer check cannot mask the ORDER-ID binding under replay.
         oid, ret_id, schema, ws_id = await _make_confirmed_order(
-            r1_client, token, db, provisioned_pool, reg)
+            r1_client, token, db, provisioned_pool, reg,
+            retailer=(ret_id, schema, ws_id) if orders else None)
         orders.append(oid)
     await db.rollback()
 
@@ -586,15 +593,55 @@ async def test_sr1_f1_concurrent_cross_order_same_key_conflict_classified(
         f"SR1-F1: the cross-order same-key race wrote {total} payments "
         "with the raced key")
 
-    # The loser is a classified conflict (cross-order replay refused) or a
-    # classified replay when serialised by the key lookup; a raw
-    # IntegrityError is the only forbidden outcome and was asserted above.
-    classified = sum(
-        _is_named_conflict(payload) or (tag == "ok" and payload.replayed)
-        for tag, payload in outcomes)
-    assert classified == 1, (
-        "SR1-F1: expected exactly one classified loser outcome, got "
-        f"{classified}")
+    # a replayed loser is ALWAYS RED, and the winner order identity decides
+    # which order must show zero economic effect
+    successes = [r for tag, r in outcomes if tag == "ok"]
+    replayed = [r for r in successes if r.replayed]
+    assert len(successes) == 1 and not replayed, (
+        "SR1-F1: the cross-order same-key race must yield EXACTLY ONE "
+        f"success and NEVER a replayed loser (successes={len(successes)}, "
+        f"replayed={len(replayed)})")
+    conflicts = [payload for tag, payload in outcomes
+                 if tag != "ok" and _is_named_conflict(payload)]
+    assert len(conflicts) == 1, (
+        "SR1-F1: expected EXACTLY ONE named 409 IDEMPOTENCY_KEY_CONFLICT "
+        f"loser, got {len(conflicts)}")
+
+    winner_order = str(successes[0].order.id)
+    loser_order = next(o for o in orders if o != winner_order)
+    meta = {"schema": schema, "ws_id": ws_id, "ret_id": ret_id}
+
+    await db.rollback()
+    total = int((await db.execute(text(
+        f'SELECT COUNT(*) FROM "{schema}".payments '
+        "WHERE idempotency_key = :k"), {"k": key})).scalar_one())
+    assert total == 1, (
+        f"SR1-F1: the cross-order same-key race wrote {total} payments "
+        "with the raced key")
+    loser_pays = await payment_count(db, meta["schema"], loser_order)
+    assert loser_pays == 0, (
+        "SR1-F1: the loser order carried "
+        f"{loser_pays} payment row(s) — the cross-order binding failed")
+
+    holds = await fetch_holds(db, meta["schema"], loser_order)
+    assert len(holds) == 1 and holds[0]["status"] == "active" \
+        and holds[0]["remaining"] == "100.00", (
+            "SR1-F1: the loser order's hold moved — the race had an "
+            f"economic effect on it: {holds}")
+    loser_binding = await binding_balance(db, meta["ws_id"], meta["ret_id"])
+    # two confirms reserved 200.00 on the shared binding; the winner's own
+    # settlement releases exactly its 100.00 — what remains is the loser's
+    # own untouched reservation and nothing from the race loser.
+    assert loser_binding == Decimal("100.00"), (
+        "SR1-F1: the shared binding must show ONLY the loser's untouched "
+        f"reservation (200.00 reserved − 100.00 winner settlement) — got "
+        f"{loser_binding}")
+    loser_status = (await db.execute(text(
+        f'SELECT status::text FROM "{meta["schema"]}".orders '
+        "WHERE id = :o"), {"o": loser_order})).scalar()
+    assert loser_status == "confirmed", (
+        "SR1-F1: the loser order's status moved to "
+        f"{loser_status!r} — the race transitioned it")
 
 
 # ---------------------------------------------------------------------------
@@ -602,15 +649,16 @@ async def test_sr1_f1_concurrent_cross_order_same_key_conflict_classified(
 # ---------------------------------------------------------------------------
 
 
-async def test_sr1_f2_declaration_chain_canonical_acquires_no_order_lock(
+async def test_sr1_f2_exact_order_lock_counts_declaration_and_public_pay(
     r1_client, s2_clean_db, provisioned_pool, cashier_identity,
 ):
-    """SR1-F2: the declaration confirmation already holds the order FOR
-    UPDATE; the canonical service must perform ZERO order-lock
-    acquisitions of its own inside that chain (the private locked-order
-    implementation is entered directly). A raw-SQL counter over the same
-    window proves the only order FOR UPDATE statements left are the
-    declaration's own and the command-service write-path read."""
+    """SR1-F2 / SR1-R1 final lock seam: the REAL SQL oracle counts every
+    ``FROM orders ... FOR UPDATE`` statement issued in the window and the
+    total must be EXACTLY ONE for each whole payment chain — the
+    declaration confirmation (the declaration service's own lock; the
+    canonical service and the command service reuse it) and the canonical
+    public payment entry (its own lock). A method-level spy is never the
+    authority here."""
     from services.canonical_payment_service import CanonicalPaymentService
     from services.payment_declaration_service import PaymentDeclarationService
     from tests.order_state_r1.support import _second_session, rebind_search_path
@@ -619,22 +667,21 @@ async def test_sr1_f2_declaration_chain_canonical_acquires_no_order_lock(
     token = await osd1_cashier_token(r1_client, cashier_identity)
     oid, ret_id, schema, ws_id = await _make_confirmed_order(
         r1_client, token, db, provisioned_pool, reg)
+    oid_pay, ret_pay, schema_pay, ws_pay = await _make_confirmed_order(
+        r1_client, token, db, provisioned_pool, reg,
+        retailer=(ret_id, schema, ws_id))
     await db.rollback()
 
     session = await _second_session(schema, ws_id)
-    canonical_lock_calls = {"count": 0}
-    real_lock = CanonicalPaymentService._get_order_by_id_for_update
-
-    async def _spy_lock(self, db, order_id):
-        canonical_lock_calls["count"] += 1
-        return await real_lock(self, db, order_id)
-
-    order_for_update_sql = {"count": 0}
     engine = session.get_bind()
+    counted = {"n": 0}
 
-    def _count_order_locks(conn, cursor, statement, parameters, context, executemany):
+    def _count_order_locks(conn, cursor, statement, parameters,
+                           context, executemany):
         if re.search(r"\bFROM orders\b", statement) and "FOR UPDATE" in statement:
-            order_for_update_sql["count"] += 1
+            counted["n"] += 1
+
+    from sqlalchemy import event as _sa_event
 
     try:
         await rebind_search_path(session, schema)
@@ -651,36 +698,63 @@ async def test_sr1_f2_declaration_chain_canonical_acquires_no_order_lock(
         )
         await session.commit()
 
-        from sqlalchemy import event as _sa_event
-
+        # -- chain 1: declaration confirmation — exactly ONE order lock ----
         await rebind_search_path(session, schema)
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(CanonicalPaymentService, "_get_order_by_id_for_update",
-                       _spy_lock)
+        counted["n"] = 0
+        _sa_event.listen(engine, "before_cursor_execute", _count_order_locks)
+        try:
+            declaration, result = await PaymentDeclarationService(
+            ).confirm_declaration(
+                db=session,
+                declaration_id=uuid.UUID(str(record["id"])),
+                wholesaler_id=uuid.UUID(ws_id),
+                confirmed_by=uuid.UUID(str(cashier_identity["user_id"])),
+            )
+        finally:
+            _sa_event.remove(engine, "before_cursor_execute",
+                             _count_order_locks)
+        await session.commit()
+
+        assert counted["n"] == 1, (
+            "SR1-F2: the declaration confirmation chain issued "
+            f"{counted['n']} order FOR UPDATE statements (expected "
+            "EXACTLY 1 — the declaration service's own lock; canonical "
+            "and the command service must reuse the locked order)")
+        assert declaration["status"] == "confirmed", declaration
+        assert result.replayed is False
+        assert str(result.order_state) == "paid", result.order_state
+
+        # -- chain 2: canonical public payment — exactly ONE order lock ----
+        pay_session = await _second_session(schema_pay, ws_pay)
+        try:
+            await rebind_search_path(pay_session, schema_pay)
+            counted["n"] = 0
             _sa_event.listen(engine, "before_cursor_execute",
                              _count_order_locks)
             try:
-                declaration, result = await PaymentDeclarationService(
-                ).confirm_declaration(
-                    db=session,
-                    declaration_id=uuid.UUID(str(record["id"])),
-                    wholesaler_id=uuid.UUID(ws_id),
-                    confirmed_by=uuid.UUID(str(cashier_identity["user_id"])),
+                pay_result = await CanonicalPaymentService().confirm_payment(
+                    db=pay_session,
+                    order_id=oid_pay,
+                    amount=Decimal("100.00"),
+                    method="cash",
+                    transaction_id=None,
+                    idempotency_key=f"sr1f2pub-{uuid.uuid4().hex}",
+                    created_by=str(cashier_identity["user_id"]),
                 )
             finally:
                 _sa_event.remove(engine, "before_cursor_execute",
                                  _count_order_locks)
-        await session.commit()
+            await pay_session.commit()
 
-        assert canonical_lock_calls["count"] == 0, (
-            "SR1-F2: the canonical service acquired the order FOR UPDATE "
-            f"{canonical_lock_calls['count']} time(s) inside the "
-            "declaration chain — the second order lock is back "
-            f"(chain order-FOR UPDATE SQL total: "
-            f"{order_for_update_sql['count']})")
-        assert declaration["status"] == "confirmed", declaration
-        assert result.replayed is False
-        assert str(result.order_state) == "paid", result.order_state
+            assert counted["n"] == 1, (
+                "SR1-F2: the canonical public payment chain issued "
+                f"{counted['n']} order FOR UPDATE statements (expected "
+                "EXACTLY 1 — the public entry's own lock)")
+            assert pay_result.replayed is False
+            assert str(pay_result.order_state) == "paid", pay_result.order_state
+        finally:
+            await pay_session.rollback()
+            await pay_session.close()
     finally:
         await session.rollback()
         await session.close()

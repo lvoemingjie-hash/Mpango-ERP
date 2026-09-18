@@ -756,13 +756,16 @@ class CanonicalPaymentService:
                         retailer_id=order.retailer_id,
                         delta=-amount,
                     )
-                # F2: canonical payment service calls the ONE payment
-                # status command directly (AST-guarded call site).
+                # F2/SR1-R1: the caller's locked order is handed to the
+                # command service's PRIVATE locked-order implementation —
+                # the whole payment chain takes exactly ONE order FOR
+                # UPDATE (this method's own lock; the declaration chain's
+                # single declaration-side lock).
                 order = (
                     await order_command_module.OrderCommandService(
                         db
-                    ).apply_payment_transition(
-                        order.id,
+                    )._apply_payment_transition_for_locked(
+                        order,
                         target_state,
                         payment_method=method,
                         updated_by=created_by,

@@ -952,7 +952,7 @@ async def test_rollback_after_state_failure_leaves_tables_unchanged(async_sessio
     from services.order_command_service import OrderCommandService
 
     with pytest.raises(RuntimeError), pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setattr(OrderCommandService, "apply_payment_transition", fail_transition)
+        monkeypatch.setattr(OrderCommandService, "_apply_payment_transition_for_locked", fail_transition)
         async with AsyncSessionLocal() as failure_session:
             failure_session.info["tenant_schema"] = _tenant_schema(async_session)
             failure_session.info["tenant_id"] = str(tenant_id)

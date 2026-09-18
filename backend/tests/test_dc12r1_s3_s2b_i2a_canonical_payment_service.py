@@ -218,7 +218,7 @@ async def test_service_does_not_commit_or_rollback_calls(
     )
     service._repo.update_cash_transfer_to_completed = AsyncMock(return_value=0)
 
-    with patch.object(OrderCommandService, "apply_payment_transition", new=AsyncMock(return_value=SimpleNamespace(order=_result_order(order_id, "partially_paid")))):
+    with patch.object(OrderCommandService, "_apply_payment_transition_for_locked", new=AsyncMock(return_value=SimpleNamespace(order=_result_order(order_id, "partially_paid")))):
         result = await service.confirm_payment(
             db=_DB(),
             order_id=str(order_id),
@@ -797,13 +797,13 @@ async def test_service_failures_after_mutation_stages_rollback_all_effects(
 
     monkeypatch.setattr(service_convert, "_convert_hold", original_convert)
     service_transition = CanonicalPaymentService()
-    original_transition = OrderCommandService.apply_payment_transition
+    original_transition = OrderCommandService._apply_payment_transition_for_locked
 
     async def _failing_transition(self, *args, **kwargs):
         await original_transition(self, *args, **kwargs)
         raise RuntimeError("after-transition")
 
-    monkeypatch.setattr(OrderCommandService, "apply_payment_transition", _failing_transition)
+    monkeypatch.setattr(OrderCommandService, "_apply_payment_transition_for_locked", _failing_transition)
     await _assert_stage_rollback(
         order_transition,
         retailer_transition,
@@ -818,7 +818,7 @@ async def test_service_failures_after_mutation_stages_rollback_all_effects(
         ),
     )
 
-    monkeypatch.setattr(OrderCommandService, "apply_payment_transition", original_transition)
+    monkeypatch.setattr(OrderCommandService, "_apply_payment_transition_for_locked", original_transition)
     service_complete = CanonicalPaymentService()
     original_complete = service_complete._repo.update_cash_transfer_to_completed
 

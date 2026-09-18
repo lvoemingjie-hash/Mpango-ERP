@@ -20,19 +20,19 @@ Commit: f1dca3d5acc45f43c8988ec7a7046077c44150ba
 ### review.md
 ```
 Git blob: 136b164d9616e663547b8a67919eb8d402f3e672
-SHA-256: 4026840E9C230C366C5B31D444BB1DF5D496AE46788E3C4CF47A9BA871C54036
+SHA-256: f2ad4586d00f1e6fc47eb97a3220bdcc6cb758ad689b3036782bb16d95cdbc5c
 ```
 
 ### findings.csv
 ```
 Git blob: c5757f80f1da6ee01af1625a138d9fd0332c01c9
-SHA-256: 712413D59796EC6937D2BAC8D0795D738BD01025F923502F75DD565DB0F0BF1F
+SHA-256: 884bfcae1cf0af7cbcd52c5a6a4c2e780114520a4d8ce9a793b6f0779d522ae0
 ```
 
 ### evidence/results.xml
 ```
 Git blob: 193f4504cb2e16c10d372533ff6448292ed5b3bb
-SHA-256: 2CEC54ADDC407956392184B053C19D192064071FFC605531D0C51323D4CE42C1
+SHA-256: 9a9cd1c78d901815126b4553a7e588761d6651b28d8291f06ddebcf0ae3feb8d
 Original bytes SHA-256: 757073807BB97A52E779C073AD0D9487637B7106041F28318C19FCDB333C79C4
 Conversion note: git end-of-file-fixer added trailing newline during commit.
 Original bytes preserved in evidence/results.xml.gz.
@@ -41,23 +41,27 @@ Original bytes preserved in evidence/results.xml.gz.
 ### evidence/results.xml.gz
 ```
 Git blob: ae6211d1944a8b4d95505ba9ff586b05d26f327e
-SHA-256: 85D9D53A31A31D1C282FF5F23CF5D012629D5BC3D26B6106A333D2BC1ECAE874
+SHA-256: 97d2ab296d24e2d714137d685b9b673ff3ce6669e8d0fd53eb327a02d804e997
 Decompresses to original bytes SHA-256: 757073807BB97A52E779C073AD0D9487637B7106041F28318C19FCDB333C79C4
 ```
 
 ### evidence/verify_o1_fixed.py
 ```
 Git blob: 0d1697eac059ad74d94b558633c5e2380195da73
-SHA-256: 2BE15CD1B2C1737D08000B4D11532D44E04487E8A5594405A75C132FD98C189F
-Original bytes SHA-256: 2BE15CD1B2C1737D08000B4D11532D44E04487E8A5594405A75C132FD98C189F
+SHA-256: 2be15cd1b2c1737d08000b4d11532d44e04487e8a5594405a75c132fd98c189f
+Original bytes SHA-256: 2be15cd1b2c1737d08000b4d11532d44e04487e8a5594405a75c132fd98c189f
 ```
 
 ## Artifact Integrity
 
 | Artifact | Original SHA-256 | Published SHA-256 | Match |
 |----------|-----------------|-------------------|-------|
-| results.xml | 757073807BB97A52E779C073AD0D9487637B7106041F28318C19FCDB333C79C4 | 2CEC54ADDC407956392184B053C19D192064071FFC605531D0C51323D4CE42C1 | NO — end-of-file normalized; original preserved in .gz |
-| verify_o1_fixed.py | 2BE15CD1B2C1737D08000B4D11532D44E04487E8A5594405A75C132FD98C189F | 2BE15CD1B2C1737D08000B4D11532D44E04487E8A5594405A75C132FD98C189F | YES |
+| results.xml | 757073807BB97A52E779C073AD0D9487637B7106041F28318C19FCDB333C79C4 | 9a9cd1c78d901815126b4553a7e588761d6651b28d8291f06ddebcf0ae3feb8d | NO — end-of-file normalized; original preserved in .gz |
+| verify_o1_fixed.py | 2BE15CD1B2C1737D08000B4D11532D44E04487E8A5594405A75C132FD98C189F | 2be15cd1b2c1737d08000b4d11532d44e04487e8a5594405a75c132fd98c189f | YES |
+
+## Correction Note (2026-09-18)
+
+The SHA-256 values for review.md, findings.csv, evidence/results.xml, and evidence/results.xml.gz in the previous version of this manifest were computed from CRLF-converted bytes (Windows line-ending view), not from the committed Git blob bytes. Those values are replaced here with the correct Git blob content SHA-256 values. The gzip outer blob SHA-256 is also corrected; the decompressed original XML bytes remain unchanged and match the previously verified SHA-256 757073807bb97a52e779c073ad0d9487637b7106041f28318c19fcdb333c79c4.
 
 ## Retention Status
 

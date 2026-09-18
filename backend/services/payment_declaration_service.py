@@ -193,9 +193,6 @@ class PaymentDeclarationService:
         if (
             order is None
             or getattr(order, "wholesaler_id", None) != wholesaler_id
-            or getattr(order, "retailer_id", None)
-            != (located["retailer_id"] if isinstance(located["retailer_id"], uuid.UUID)
-                else uuid.UUID(str(located["retailer_id"])))
         ):
             raise _declaration_error(
                 status.HTTP_404_NOT_FOUND,
@@ -233,22 +230,12 @@ class PaymentDeclarationService:
             retailer_id=order.retailer_id,
         )
 
-        # R2-R1 C6 re-verification: the declaration POINTER is re-checked
-        # against the already-locked order AFTER the declaration row lock —
-        # a swapped/corrupt order_id can never be confirmed by stale memory
-        # of the read-only locate.
-        if str(declaration["order_id"]) != str(order.id):
-            raise _declaration_error(
-                status.HTTP_404_NOT_FOUND,
-                "DECLARATION_NOT_FOUND",
-                "Declaration not found",
-            )
-        if str(declaration["retailer_id"]) != str(order.retailer_id):
-            raise _declaration_error(
-                status.HTTP_404_NOT_FOUND,
-                "DECLARATION_NOT_FOUND",
-                "Declaration not found",
-            )
+        # R2-R1 C6 re-verification: the SINGLE attribution seam. The
+        # declaration POINTER and its retailer are re-checked against the
+        # already-locked order AFTER the declaration row lock — a swapped
+        # or corrupt pointer can never be confirmed from stale memory of
+        # the read-only locate.
+        self._verify_locked_attribution(declaration, order)
 
         # pending -> proceed. The canonical service runs its OWN full
         # prechecks; its FOR UPDATE re-read of this row is re-entrant on the
@@ -405,6 +392,25 @@ class PaymentDeclarationService:
             .with_for_update()
         )
         return result.scalar_one_or_none()
+
+    @staticmethod
+    def _verify_locked_attribution(
+        declaration: Mapping[str, Any], order: OrderModel,
+    ) -> None:
+        """Neutral 404 on any pointer/attribution mismatch between the
+        LOCKED declaration row and the LOCKED order row."""
+        if str(declaration["order_id"]) != str(order.id):
+            raise _declaration_error(
+                status.HTTP_404_NOT_FOUND,
+                "DECLARATION_NOT_FOUND",
+                "Declaration not found",
+            )
+        if str(declaration["retailer_id"]) != str(order.retailer_id):
+            raise _declaration_error(
+                status.HTTP_404_NOT_FOUND,
+                "DECLARATION_NOT_FOUND",
+                "Declaration not found",
+            )
 
     async def _verify_binding_exists(
         self,

@@ -61,43 +61,48 @@ async def test_stale_identity_map_cannot_drive_payment(
     await db.rollback()
 
     session_a = await _second_session(schema, ws_id)
-    session_b = await _second_session(schema, ws_id)
     try:
-        # Session A loads the order (DRAFT) into its identity map.
-        stale = (await session_a.execute(
-            text(f'SELECT id FROM "{schema}".orders WHERE id = :oid'),
-            {"oid": oid})).first()
-        assert stale is not None
+        # Session A loads the order (DRAFT) into its identity map INSIDE an
+        # open transaction (a rollback would expire it and defeat the point).
+        from models.order import Order as _Order
+        from sqlalchemy import select as _select
+        loaded = (await session_a.execute(
+            _select(_Order).where(_Order.id == uuid.UUID(oid)))).scalar_one()
+        assert loaded.status.value == "draft"
 
-        # Session B (another transaction) confirms the order for real.
+        # Another transaction confirms the order for real.
         result = await http_action(r1_client, token, oid, "confirm")
         assert result.status_code == 200, result.text
-        await session_a.rollback()  # drop A's snapshot, keep identity map
 
-        # A pays via the canonical service on ITS session: the locked read
-        # must refresh the identity map (populate_existing) and see
-        # CONFIRMED — with a stale map this would 409 INVALID_STATE.
-        await rebind_search_path(session_a, schema)
-        pay = await CanonicalPaymentService().confirm_payment(
-            db=session_a,
-            order_id=oid,
-            amount=Decimal("100.00"),
-            method="cash",
-            transaction_id=None,
-            idempotency_key=f"stale-{uuid.uuid4().hex}",
-            created_by=str(cashier_identity["user_id"]),
-        )
+        # A pays via the canonical service on ITS session WITHOUT rolling
+        # back first: the FOR UPDATE read must refresh the identity map
+        # (populate_existing) to CONFIRMED — with a stale map the cached
+        # DRAFT object drives a 409 INVALID_STATE_TRANSITION.
+        from fastapi import HTTPException as _HttpExc2
+        try:
+            pay = await CanonicalPaymentService().confirm_payment(
+                db=session_a,
+                order_id=oid,
+                amount=Decimal("100.00"),
+                method="cash",
+                transaction_id=None,
+                idempotency_key=f"stale-{uuid.uuid4().hex}",
+                created_by=str(cashier_identity["user_id"]),
+            )
+        except _HttpExc2 as exc:
+            raise AssertionError(
+                f"STALE-1: canonical read a stale identity-map state "
+                f"(got HTTP {exc.status_code}: {exc.detail})") from exc
         await session_a.commit()
         assert pay.order_state == "paid", (
             f"STALE-1: canonical read a stale identity-map state "
             f"(got {pay.order_state!r}, expected 'paid')")
     finally:
-        for s in (session_a, session_b):
-            try:
-                await s.rollback()
-                await s.close()
-            except Exception:
-                pass
+        try:
+            await session_a.rollback()
+            await session_a.close()
+        except Exception:
+            pass
 
 
 async def test_declaration_pointer_swap_refused_zero_writes(
@@ -163,16 +168,26 @@ async def test_declaration_pointer_swap_refused_zero_writes(
         pays_y_before = await payment_count(db, schema, oid_y)
 
         await rebind_search_path(session, schema)
-        with pytest.raises(Exception) as excinfo:
+        from fastapi import HTTPException as _HttpExc
+        try:
             await PaymentDeclarationService().confirm_declaration(
                 db=session,
                 declaration_id=uuid.UUID(str(record["id"])),
                 wholesaler_id=uuid.UUID(ws_id),
                 confirmed_by=uuid.UUID(str(cashier_identity["user_id"])),
             )
+        except _HttpExc as exc:
+            detail = str(exc.detail)
+            assert "DECLARATION_NOT_FOUND" in detail or \
+                "CREDIT_HOLD" in detail, (
+                    f"PTR-1: declaration pointer re-verification did not "
+                    f"refuse the swapped pointer (got {exc.status_code}: "
+                    f"{exc.detail})")
+        else:
+            raise AssertionError(
+                "PTR-1: the swapped declaration pointer was CONFIRMED — "
+                "the locked-order re-verification is missing")
         await session.rollback()
-        assert "DECLARATION_NOT_FOUND" in str(excinfo.value) or \
-            "CREDIT_HOLD" in str(excinfo.value), excinfo.value
 
         assert await binding_balance(db, ws_id, ret_id) == balance_before
         assert await payment_count(db, schema, oid_x) == pays_x_before
@@ -439,10 +454,17 @@ async def test_runtime_null_actor_refused_before_any_write(
     try:
         await rebind_search_path(session, schema)
         balance_before = await binding_balance(db, ws_id, ret_id)
-        with pytest.raises(Exception) as excinfo:
+        from fastapi import HTTPException as _HttpExc3
+        try:
             await OrderCommandService(session).confirm_order(uuid.UUID(oid))
+        except _HttpExc3 as exc:
+            assert "CONFIRM_ACTOR_REQUIRED" in str(exc.detail), (
+                f"ACTOR-1: refusal lacks the named code (got {exc.detail})")
+        else:
+            raise AssertionError(
+                "ACTOR-1: a no-actor confirm was ACCEPTED — the actor "
+                "requirement is missing")
         await session.rollback()
-        assert "CONFIRM_ACTOR_REQUIRED" in str(excinfo.value), excinfo.value
 
         status = (await db.execute(text(
             f'SELECT status::text FROM "{schema}".orders WHERE id = :oid'),

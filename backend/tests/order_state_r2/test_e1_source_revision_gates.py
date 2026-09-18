@@ -79,10 +79,15 @@ async def _paid_credit_order(r1_client, token, db, pool, reg, total="60.00"):
 # ---------------------------------------------------------------------------
 
 
-async def _dedicated_tenant(db, reg, ws_id, label, *, retailers=1):
+async def _dedicated_tenant(db, reg, label, *, retailers=1,
+                             bindings=True, register=True):
     """Bootstrap a fresh empty tenant schema; the bootstrap itself runs
-    the reconcile (the empty-history positive control). Returns
-    (bts, schema, retailer_ids)."""
+    the reconcile (the empty-history positive control). Each tenant gets
+    its OWN wholesaler (registrations are unique per wholesaler), a live
+    registration binding schema -> wholesaler when register=True, and
+    bound retailers (bindings=False keeps retailers WITHOUT bindings —
+    the missing-binding counterexample). Returns
+    (bts, schema, retailer_ids, ws_id)."""
     import os as _os
 
     from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (
@@ -96,14 +101,50 @@ async def _dedicated_tenant(db, reg, ws_id, label, *, retailers=1):
         "postgresql://", "postgresql+asyncpg://", 1)
     await bts.bootstrap(schema, url)
 
+    ws_id = uuid.uuid4()
+    await db.execute(text(
+        "INSERT INTO public.wholesalers (id, name, code, status) "
+        "VALUES (:w, :n, :c, 'active')"),
+        {"w": ws_id, "n": f"E1 {label} WS", "c": f"E1{label[:6].upper()}"})
+    if register:
+        # the trusted attribution anchor the reconcile resolves (same
+        # shape migration 039 reads)
+        await db.execute(text(
+            "INSERT INTO public.tenant_registrations "
+            "(company_name, country, owner_email, status, wholesaler_id, "
+            " tenant_schema, expires_at, password_hash_cleared_at, is_deleted) "
+            "VALUES (:c, 'KE', :e, 'active', :w, :s, "
+            "now() + interval '1 day', now(), FALSE)"),
+            {"c": f"E1 {label}", "e": f"e1-{label}-{uuid.uuid4().hex[:8]}"
+                                      "@example.test",
+             "w": ws_id, "s": schema})
     rets = []
     for i in range(retailers):
         ret = await _create_retailer(db, name=f"E1F1 {label} R{i+1}",
                                      registry=reg)
-        await _create_binding(db, wholesaler_id=ws_id, retailer_id=ret,
-                              tenant_user_id=str(uuid.uuid4()), registry=reg)
+        if bindings:
+            await _create_binding(db, wholesaler_id=ws_id, retailer_id=ret,
+                                  tenant_user_id=str(uuid.uuid4()),
+                                  registry=reg)
         rets.append(str(ret))
-    return bts, schema, rets
+    return bts, schema, rets, ws_id
+
+
+async def _drop_dedicated_tenant(db, schema, ws_id=None):
+    """Shared cleanup: schema, its registration and its private
+    wholesaler's bindings/row (retailer rows are registry-tracked)."""
+    await db.rollback()
+    await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+    await db.execute(text(
+        "DELETE FROM public.tenant_registrations "
+        "WHERE tenant_schema = :s"), {"s": schema})
+    if ws_id is not None:
+        await db.execute(text(
+            "DELETE FROM public.wholesaler_retailer_bindings "
+            "WHERE wholesaler_id = :w"), {"w": ws_id})
+        await db.execute(text(
+            "DELETE FROM public.wholesalers WHERE id = :w"), {"w": ws_id})
+    await db.commit()
 
 
 async def _seed_order(db, schema, ws_id, ret_id, status, total,
@@ -145,9 +186,8 @@ async def test_e1f1_retailer_mismatched_payment_with_consistent_totals_rejected(
     never reads payment.retailer_id, so every total still agrees — only
     the per-order history gate can refuse it."""
     db, reg = s2_clean_db
-    ws_id = provisioned_pool.tenants["a"]["ws_id"]
-    bts, schema, (ret_a, ret_b) = await _dedicated_tenant(
-        db, reg, ws_id, "mismatch", retailers=2)
+    bts, schema, (ret_a, ret_b), ws_id = await _dedicated_tenant(
+        db, reg, "mismatch", retailers=2)
     try:
         await _seed_order(db, schema, ws_id, ret_a, "paid", "60.00",
                           hold=("60.00", "0.00", "converted"),
@@ -161,9 +201,7 @@ async def test_e1f1_retailer_mismatched_payment_with_consistent_totals_rejected(
         assert "illegal history" in str(excinfo.value), excinfo.value
         await db.rollback()
     finally:
-        await db.rollback()
-        await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
-        await db.commit()
+        await _drop_dedicated_tenant(db, schema, ws_id)
 
 
 async def test_e1f1_hold_snapshot_inconsistent_with_lifecycle_rejected(
@@ -174,9 +212,8 @@ async def test_e1f1_hold_snapshot_inconsistent_with_lifecycle_rejected(
     consistent, and 55 of reserved exposure silently lost. The per-order
     hold contract (want remaining = total - effective paid = 60) refuses."""
     db, reg = s2_clean_db
-    ws_id = provisioned_pool.tenants["a"]["ws_id"]
-    bts, schema, (ret_a,) = await _dedicated_tenant(
-        db, reg, ws_id, "snapshot")
+    bts, schema, (ret_a,), ws_id = await _dedicated_tenant(
+        db, reg, "snapshot")
     try:
         await _seed_order(db, schema, ws_id, ret_a, "confirmed", "60.00",
                           hold=("60.00", "5.00", "active"))
@@ -189,9 +226,7 @@ async def test_e1f1_hold_snapshot_inconsistent_with_lifecycle_rejected(
             excinfo.value)
         await db.rollback()
     finally:
-        await db.rollback()
-        await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
-        await db.commit()
+        await _drop_dedicated_tenant(db, schema, ws_id)
 
 
 async def test_e1f1_legal_history_reconcile_positive_controls(
@@ -203,8 +238,7 @@ async def test_e1f1_legal_history_reconcile_positive_controls(
     converted credit sale, a settled full-cash order — reconciles GREEN.
     The new gates refuse corruption, never legal lifecycles."""
     db, reg = s2_clean_db
-    ws_id = provisioned_pool.tenants["a"]["ws_id"]
-    bts, schema, (ret_a,) = await _dedicated_tenant(db, reg, ws_id, "legal")
+    bts, schema, (ret_a,), ws_id = await _dedicated_tenant(db, reg, "legal")
     try:
         await _seed_order(db, schema, ws_id, ret_a, "confirmed", "60.00",
                           hold=("60.00", "60.00", "active"))
@@ -221,9 +255,104 @@ async def test_e1f1_legal_history_reconcile_positive_controls(
         await bts._reconcile_credit_holds(db, schema)  # GREEN
         await db.rollback()
     finally:
-        await db.rollback()
-        await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await _drop_dedicated_tenant(db, schema, ws_id)
+
+
+async def test_e1r1_cross_wholesaler_data_rejected_via_registration(
+    r1_client, s2_clean_db, provisioned_pool, cashier_identity
+):
+    """E1R1/F1-a: the schema is REGISTERED to wholesaler A, but its order,
+    payment and hold all belong to wholesaler B with a self-consistent
+    binding under B — totals agree everywhere. Only the registration-bound
+    attribution gate can refuse (mirrors 039's _wholesaler_for_schema)."""
+    db, reg = s2_clean_db
+    bts, schema, (ret_a,), ws_a = await _dedicated_tenant(
+        db, reg, "xwholesaler")
+    ws_b = uuid.uuid4()
+    try:
+        await db.execute(text(
+            "INSERT INTO public.wholesalers (id, name, code) "
+            "VALUES (:w, 'E1R1 Foreign WS', 'E1R1FW')"), {"w": ws_b})
+        await db.execute(text(
+            "INSERT INTO public.wholesaler_retailer_bindings "
+            "(wholesaler_id, retailer_id, tenant_user_id, "
+            " outstanding_balance, status, is_deleted) "
+            "VALUES (:w, :r, :u, 60.00, 'active', FALSE)"),
+            {"w": ws_b, "r": ret_a, "u": str(uuid.uuid4())})
+        await _seed_order(db, schema, ws_b, ret_a, "paid", "60.00",
+                          hold=("60.00", "0.00", "converted"),
+                          payments=[(ret_a, "60.00", "credit")])
         await db.commit()
+
+        with pytest.raises(RuntimeError) as excinfo:
+            await bts._reconcile_credit_holds(db, schema)
+        assert "other than the live registration" in str(excinfo.value), (
+            excinfo.value)
+        await db.rollback()
+    finally:
+        await db.rollback()
+        await db.execute(text(
+            "DELETE FROM public.wholesaler_retailer_bindings "
+            "WHERE wholesaler_id = :w"), {"w": ws_b})
+        await db.execute(text(
+            "DELETE FROM public.wholesalers WHERE id = :w"), {"w": ws_b})
+        await db.commit()
+        await _drop_dedicated_tenant(db, schema, ws_a)
+
+
+async def test_e1r1_missing_binding_row_is_not_zero_drift(
+    r1_client, s2_clean_db, provisioned_pool, cashier_identity
+):
+    """E1R1/F1-b: a CONFIRMED order with an active hold whose binding row
+    is COMPLETELY MISSING. The four-way drift query starts from existing
+    bindings, so nothing compares and the aggregate reads as zero drift —
+    the reverse NOT EXISTS coverage gate must refuse (mirrors 039)."""
+    db, reg = s2_clean_db
+    bts, schema, (ret_a,), ws_id = await _dedicated_tenant(
+        db, reg, "nobinding", bindings=False)
+    try:
+        await _seed_order(db, schema, ws_id, ret_a, "confirmed", "60.00",
+                          hold=("60.00", "60.00", "active"))
+        await db.commit()
+
+        with pytest.raises(RuntimeError) as excinfo:
+            await bts._reconcile_credit_holds(db, schema)
+        assert "no live binding" in str(excinfo.value), excinfo.value
+        await db.rollback()
+    finally:
+        await _drop_dedicated_tenant(db, schema, ws_id)
+
+
+async def test_e1r1_populated_schema_missing_hold_table_refused_zero_ddl(
+    r1_client, s2_clean_db, provisioned_pool, cashier_identity
+):
+    """E1R1/F1-c: a schema that already carries business data but lost the
+    order_credit_holds table must NOT be treated as fresh — the reconcile
+    refuses and performs ZERO DDL (the table must still be absent after
+    the refusal)."""
+    db, reg = s2_clean_db
+    bts, schema, (ret_a,), ws_id = await _dedicated_tenant(
+        db, reg, "notable")
+    try:
+        await db.execute(text(
+            f'DROP TABLE "{schema}".order_credit_holds CASCADE'))
+        await _seed_order(db, schema, ws_id, ret_a, "confirmed", "60.00")
+        await db.commit()
+
+        with pytest.raises(RuntimeError) as excinfo:
+            await bts._reconcile_credit_holds(db, schema)
+        assert "cannot be treated as fresh" in str(excinfo.value), (
+            excinfo.value)
+        await db.rollback()
+        still_missing = not (await db.execute(text(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = :s AND table_name = 'order_credit_holds')"
+        ), {"s": schema})).scalar()
+        assert still_missing, (
+            "E1R1/F1-c: the refusal path created the lifecycle table "
+            "(zero-DDL violated)")
+    finally:
+        await _drop_dedicated_tenant(db, schema, ws_id)
 
 
 # ---------------------------------------------------------------------------
@@ -364,6 +493,13 @@ async def test_e1f2_soft_deleted_duplicate_credit_is_legal(
 # E1-F3: binding cache is the LAST settlement write; whole-path rollback
 # ---------------------------------------------------------------------------
 
+async def _ledger_count(db, schema, order_id) -> int:
+    return int((await db.execute(text(
+        f"SELECT COUNT(*) FROM \"{schema}\".ledger_entries "
+        "WHERE reference_id = :o AND reference_type = 'order'"),
+        {"o": order_id})).scalar_one())
+
+
 _SPY_CLASSES = (
     ("hold", re.compile(r"\bUPDATE\s+(?:\"[^\"]+\"\.)?order_credit_holds\b", re.I)),
     ("payment_insert", re.compile(r"\bINSERT INTO\s+(?:\"[^\"]+\"\.)?payments\b", re.I)),
@@ -377,10 +513,12 @@ _SPY_CLASSES = (
 async def test_e1f3_settlement_binding_write_is_last_real_sql_order(
     r1_client, s2_clean_db, provisioned_pool, cashier_identity
 ):
-    """E1-F3: real-SQL write-order oracle over a full cash settlement —
-    every payment-side write (payment row, ledger posting, cash/transfer
-    batch settle) and the hold reduction must precede the binding-cache
-    UPDATE; the binding write is strictly the LAST of them."""
+    """E1-F3: real-SQL write-order oracle over a full cash settlement.
+    The actual write sequence is payment INSERT -> hold UPDATE -> ledger
+    posting -> cash/transfer batch settle -> binding UPDATE (the C6
+    "hold -> payment/receipt/ledger -> binding" phrasing is the RESOURCE
+    partial order, not the statement order); the binding-cache UPDATE is
+    asserted strictly LAST among the financial writes."""
     from sqlalchemy import event as _sa_event
     from services.canonical_payment_service import CanonicalPaymentService
     from tests.order_state_r1.support import rebind_search_path
@@ -444,7 +582,8 @@ async def test_e1f3_fault_at_binding_step_rolls_back_whole_settlement(
 ):
     """E1-F3: a fault at the (now final) binding write must roll the ENTIRE
     settlement back inside the one transaction — payment row, hold
-    reduction, status transition and ledger posting all vanish."""
+    reduction, status transition AND the ledger posting all vanish
+    (the ledger before/after vector is asserted explicitly)."""
     from services import payment_service as ps_mod
     from services.canonical_payment_service import CanonicalPaymentService
     from tests.order_state_r1.support import rebind_search_path
@@ -461,7 +600,9 @@ async def test_e1f3_fault_at_binding_step_rolls_back_whole_settlement(
     before_balance = await binding_balance(db, ws_id, ret_id)
     before_holds = await fetch_holds(db, schema, oid)
     before_payments = await payment_count(db, schema, oid)
+    before_ledger = await _ledger_count(db, schema, oid)
     assert before_balance == Decimal("60.00"), before_balance
+    assert before_ledger == 0, before_ledger
 
     real_delta = ps_mod.PaymentService._apply_outstanding_balance_delta
 
@@ -499,3 +640,7 @@ async def test_e1f3_fault_at_binding_step_rolls_back_whole_settlement(
     assert status == "confirmed", (
         f"E1-F3: the order left confirmed during a failed settlement "
         f"({status})")
+    after_ledger = await _ledger_count(db, schema, oid)
+    assert after_ledger == before_ledger == 0, (
+        f"E1-F3: the settlement's ledger posting survived the rollback "
+        f"({after_ledger} entry/entries remain)")

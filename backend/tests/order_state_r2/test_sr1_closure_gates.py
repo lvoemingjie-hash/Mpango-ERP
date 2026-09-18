@@ -1267,6 +1267,30 @@ async def _load_bts():
     return bts
 
 
+async def _sr1_f5_conforming_control(db, bts) -> None:
+    """SR1-F5 GREEN control on a CONFORMING tenant. Runs on a dedicated
+    fresh schema: the shared fixture schema intentionally carries other
+    gates' corruption fixtures (e.g. soft-deleted bindings with live
+    exposure), which the strengthened schema-wide reconcile must keep
+    refusing — only an isolated conforming tenant proves the GREEN
+    side."""
+    import os as _os
+    import uuid as _uuid
+
+    control_schema = f"t_sr1f5ctl_{_uuid.uuid4().hex[:10]}"
+    await bts.bootstrap(
+        control_schema,
+        _os.environ["DATABASE_URL"].replace(
+            "postgresql://", "postgresql+asyncpg://", 1))
+    try:
+        await bts._reconcile_credit_holds(db, control_schema)
+    finally:
+        await db.rollback()
+        await db.execute(text(
+            f'DROP SCHEMA IF EXISTS "{control_schema}" CASCADE'))
+        await db.commit()
+
+
 async def test_sr1_f5_extra_constraint_on_hold_table_rejected(
     r1_client, s2_clean_db, provisioned_pool, cashier_identity,
 ):
@@ -1296,7 +1320,7 @@ async def test_sr1_f5_extra_constraint_on_hold_table_rejected(
             "DROP CONSTRAINT IF EXISTS ck_sr1_f5_extra"))
         await db.commit()
 
-    await bts._reconcile_credit_holds(db, schema)
+    await _sr1_f5_conforming_control(db, bts)
     await db.rollback()
 
 
@@ -1329,5 +1353,5 @@ async def test_sr1_f5_extra_index_on_hold_table_rejected(
             f'DROP INDEX IF EXISTS "{schema}".ix_sr1_f5_extra'))
         await db.commit()
 
-    await bts._reconcile_credit_holds(db, schema)
+    await _sr1_f5_conforming_control(db, bts)
     await db.rollback()

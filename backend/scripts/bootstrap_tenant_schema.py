@@ -1549,12 +1549,30 @@ HOLD_ACTIVE_INDEX_DDL = (
 
 
 async def _reconcile_credit_holds(db, ts: str) -> None:
-    """Fresh tenants: create the empty lifecycle table. Existing tenants:
-    validate the frozen contract and verify the four-way identity; NEVER
+    """Fresh tenants (NO business data): create the empty lifecycle table.
+    Existing tenants: validate the frozen contract, the per-order history
+    and hold legality, the registration-bound wholesaler attribution and
+    the reverse binding coverage, then verify the four-way identity; NEVER
     regenerate, delete, or rewrite lifecycle rows."""
     from sqlalchemy import text
 
     if not await _table_exists(db, ts, "order_credit_holds"):
+        # E1R1/F1: a missing lifecycle table is legal ONLY for a schema
+        # with no human business data. A populated schema without the
+        # table is a broken or partially-migrated tenant — fail closed
+        # with ZERO DDL (an empty lifecycle must never be created over
+        # existing history).
+        populated = int((await db.execute(text(
+            f'SELECT (SELECT COUNT(*) FROM "{ts}".orders) + '
+            f'(SELECT COUNT(*) FROM "{ts}".payments)'))).scalar() or 0)
+        if populated:
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts} carries business history "
+                f"({populated} order/payment row(s)) but has no "
+                "order_credit_holds table — a populated tenant cannot be "
+                "treated as fresh; zero DDL was performed (restore the "
+                "lifecycle table from the authoritative history or re-run "
+                "migration 039)")
         await db.execute(text(HOLD_TABLE_DDL.format(ts=f'"{ts}"')))
         await db.execute(text(HOLD_ACTIVE_INDEX_DDL.format(ts=f'"{ts}"')))
         print(f"[reconcile] {ts}: created empty order_credit_holds (fresh)")
@@ -1834,6 +1852,85 @@ async def _reconcile_credit_holds(db, ts: str) -> None:
             "credit-hold lifecycle row inconsistent with the order's own "
             "history and state (snapshot amount/remaining/status must "
             "match the per-order contract exactly)")
+
+    # E1R1/F1: bind the schema to its AUTHORITATIVE wholesaler. The trust
+    # anchor is the live tenant registration — the same one migration 039
+    # resolves — and every order in a populated schema must belong to THAT
+    # wholesaler. Cross-wholesaler orders, payments and bindings that are
+    # self-consistent must not slide through on totals alone. An empty
+    # schema needs no attribution.
+    ws: str | None = None
+    live_orders = int((await db.execute(text(
+        f'SELECT COUNT(*) FROM "{ts}".orders '
+        "WHERE is_deleted IS FALSE"))).scalar() or 0)
+    if live_orders:
+        ws = (await db.execute(text(
+            "SELECT w.id::text "
+            "FROM public.tenant_registrations tr "
+            "JOIN public.wholesalers w ON w.id = tr.wholesaler_id "
+            "WHERE tr.tenant_schema = :s AND tr.is_deleted IS FALSE "
+            "  AND w.is_deleted IS FALSE "
+            "  AND tr.status = ANY(ARRAY['pending_email_verification', "
+            "                        'email_verified', 'provisioning', "
+            "                        'active', 'failed']) "
+            "  AND w.status IN ('active', 'provisioning') "
+            "LIMIT 1"), {"s": ts})).scalar()
+        if ws is None:
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts} carries business history but "
+                "has no live tenant registration to attribute a "
+                "wholesaler — unattributable data is rejected, never "
+                "aggregated")
+        foreign_order = (await db.execute(text(
+            f'SELECT id::text FROM "{ts}".orders '
+            "WHERE is_deleted IS FALSE AND wholesaler_id::text <> :ws "
+            "LIMIT 1"), {"ws": ws})).scalar()
+        if foreign_order is not None:
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts} order {foreign_order} belongs "
+                f"to a wholesaler other than the live registration "
+                f"({ws}) — cross-wholesaler data is rejected, never "
+                "aggregated")
+
+        # E1R1/F1: reverse binding coverage. The four-way drift query
+        # starts FROM existing bindings, so a COMPLETELY MISSING binding
+        # row would compare nothing and read as zero drift. Mirror the
+        # 039 preflight: every retailer holding an ACTIVE hold or net
+        # credit exposure under the attributed wholesaler must have a
+        # live binding.
+        binding_gap = (await db.execute(text(f"""
+            WITH effective_payments AS (
+                SELECT p.order_id,
+                       COALESCE(SUM(p.amount) FILTER (
+                           WHERE p.method = 'credit'), 0) AS credit_total
+                  FROM "{ts}".payments p
+                 WHERE p.is_deleted IS FALSE
+                 GROUP BY p.order_id
+            ),
+            exposed AS (
+                SELECT DISTINCT o.retailer_id::text AS retailer_id
+                  FROM "{ts}".orders o
+                  LEFT JOIN effective_payments e ON e.order_id = o.id
+                 WHERE o.is_deleted IS FALSE
+                   AND o.wholesaler_id::text = :ws
+                   AND (o.status::text IN ('confirmed', 'partially_paid')
+                        OR COALESCE(e.credit_total, 0) > 0)
+            )
+            SELECT retailer_id
+              FROM exposed
+             WHERE NOT EXISTS (
+                   SELECT 1
+                     FROM public.wholesaler_retailer_bindings wrb
+                    WHERE wrb.retailer_id::text = exposed.retailer_id
+                      AND wrb.wholesaler_id::text = :ws
+                      AND wrb.is_deleted IS FALSE)
+             LIMIT 1
+        """), {"ws": ws})).scalar()
+        if binding_gap is not None:
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts} retailer {binding_gap} holds "
+                f"active credit exposure under wholesaler {ws} but has no "
+                "live binding — a missing binding row is not zero drift")
 
     # Four-way identity verification (read-only; drift fails closed —
     # bootstrap never "repairs" a migrated tenant's financial state).

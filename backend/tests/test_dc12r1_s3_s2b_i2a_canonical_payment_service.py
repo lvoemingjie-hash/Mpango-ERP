@@ -917,17 +917,29 @@ async def test_r3_nan_and_infinity_rejected_without_500(async_session, bad_amoun
 
 @pytest.mark.asyncio
 async def test_r3_skip_prechecks_cannot_bypass_amount_guard():
+    """R2-R1: the precheck bypass parameters NO LONGER EXIST on the canonical
+    entry — the public API is closed, and the amount guard itself still
+    refuses non-positive amounts on the unified path."""
     order_id = uuid.uuid4()
-    locked_order = SimpleNamespace(
-        id=order_id,
-        status=_status("confirmed"),
-        total_amount=Decimal("100.00"),
-        wholesaler_id=uuid.uuid4(),
-        retailer_id=uuid.uuid4(),
-    )
     db = AsyncMock()
     service = CanonicalPaymentService()
 
+    # The bypass keywords must be rejected by the signature itself.
+    with pytest.raises(TypeError) as sig_info:
+        await service.confirm_payment(
+            db=db,
+            order_id=str(order_id),
+            amount=Decimal("100.00"),
+            method="cash",
+            transaction_id=None,
+            idempotency_key="i2a-r3-sig-closed",
+            created_by=str(uuid.uuid4()),
+            skip_prechecks=True,
+        )
+    assert "skip_prechecks" in str(sig_info.value), sig_info.value
+
+    # And the amount guard fires on the unified path before any lock use.
+    db.reset_mock()
     with pytest.raises(HTTPException) as exc_info:
         await service.confirm_payment(
             db=db,
@@ -935,16 +947,12 @@ async def test_r3_skip_prechecks_cannot_bypass_amount_guard():
             amount=Decimal("-50.00"),
             method="cash",
             transaction_id=None,
-            idempotency_key="i2a-r3-skip-bypass",
+            idempotency_key="i2a-r3-negative",
             created_by=str(uuid.uuid4()),
-            locked_order=locked_order,
-            target_state=SimpleNamespace(value="paid"),
-            is_credit_collection=False,
-            skip_prechecks=True,
         )
-
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail["code"] == "INVALID_PAYMENT_AMOUNT"
+
 
 
 @pytest.mark.asyncio

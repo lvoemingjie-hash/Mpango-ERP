@@ -408,7 +408,7 @@ async def _seed_orders(db, ts: str) -> None:
         for tname in spec["transitions"]:
             if tname == "confirmed":
                 result = await commands.confirm_order(
-                    order.id, updated_by=str(order.created_by) if order.created_by else None)
+                    order.id, updated_by=str(order.created_by or DEMO_WHOLESALER_ID))
                 order = result.order
             elif tname == "paid":
                 # payments go ONLY through the canonical service
@@ -424,11 +424,11 @@ async def _seed_orders(db, ts: str) -> None:
                 order = pay.order
             elif tname == "fulfilled":
                 result = await commands.fulfill_order(
-                    order.id, updated_by=None)
+                    order.id, updated_by=str(DEMO_WHOLESALER_ID))
                 order = result.order
             elif tname == "cancelled":
                 result = await commands.cancel_order(
-                    order.id, updated_by=None)
+                    order.id, updated_by=str(DEMO_WHOLESALER_ID))
                 order = result.order
             else:
                 raise ValueError(f"unknown demo transition {tname}")

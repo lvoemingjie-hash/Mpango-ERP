@@ -396,6 +396,7 @@ async def test_api_second_partial_completes_and_settles():
         repo_instance = AsyncMock()
         # Prior partial of 2000 already recorded; this 3000 completes the 5000 total
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("2000"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         repo_instance.update_cash_transfer_to_completed = AsyncMock(return_value=2)
         MockRepo.return_value = repo_instance

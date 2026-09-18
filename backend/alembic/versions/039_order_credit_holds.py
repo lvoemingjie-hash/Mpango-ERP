@@ -245,6 +245,11 @@ def _preflight_tenant(bind, schema: str) -> None:
         WHERE p.is_deleted IS FALSE
           AND (
               p.amount IS NULL OR p.amount <= 0
+              -- PostgreSQL numerics also admit NaN/Infinity/-Infinity; NaN
+              -- and +Infinity are NOT caught by "amount <= 0" (NaN sorts
+              -- above every non-NaN value), so they are named explicitly.
+              OR p.amount IN ('NaN'::numeric, 'Infinity'::numeric,
+                              '-Infinity'::numeric)
               OR p.method IS NULL
               OR p.method NOT IN ('cash', 'transfer', 'credit')
               OR p.status IS NULL
@@ -257,9 +262,9 @@ def _preflight_tenant(bind, schema: str) -> None:
     if bad_payments:
         raise PreflightFailure(
             f"{schema}: {bad_payments} invalid effective payment row(s) "
-            "(zero/negative amounts, unknown methods or statuses, orphaned, "
-            "cross-wholesaler or retailer-mismatched history cannot be "
-            "explained)")
+            "(zero/negative/non-finite amounts, unknown methods or statuses, "
+            "orphaned, cross-wholesaler or retailer-mismatched history cannot "
+            "be explained)")
 
     duplicate_credit = _count(bind, f"""
         WITH {EFFECTIVE_PER_ORDER.format(payments=q_payments)}

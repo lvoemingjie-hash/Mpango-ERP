@@ -158,10 +158,29 @@ async def test_service_does_not_commit_or_rollback_calls(
         async def refresh(self, _obj):
             return None
 
+        def begin_nested(self):
+            # SR1: the payment INSERT runs inside a savepoint so a unique
+            # race can be classified without losing the caller's lock.
+            db = self
+
+            class _Savepoint:
+                async def __aenter__(self):
+                    return db
+
+                async def __aexit__(self, *_exc):
+                    return False
+
+            return _Savepoint()
+
         async def execute(self, _query, *args, **kwargs):
             # R2: the settlement's binding update runs inside the service;
             # return a rowcount=1 result so the flow completes without I/O.
-            return SimpleNamespace(rowcount=1)
+            # SR1: the shared payment-history contract also issues a grouped
+            # aggregate through this session — model it as "no invalid rows".
+            return SimpleNamespace(
+                rowcount=1,
+                mappings=lambda: SimpleNamespace(all=lambda: []),
+            )
 
     service._get_order_by_id_for_update = AsyncMock(
         side_effect=[

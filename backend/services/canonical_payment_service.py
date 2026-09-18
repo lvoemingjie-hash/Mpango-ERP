@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.domain.order_state import OrderState
@@ -17,6 +18,7 @@ import repositories.payment_repository as payment_repository_module
 import services.ledger_service as ledger_service_module
 import services.order_command_service as order_command_module
 import services.payment_service as payment_service_module
+from services.payment_history_contract import assert_valid_payment_history
 
 
 def _payment_error(status_code: int, code: str, message: str) -> HTTPException:
@@ -57,6 +59,84 @@ def _same_payment_request(
 
 def _payment_mapping_or_none(candidate: Any) -> Mapping[str, Any] | None:
     return candidate if isinstance(candidate, Mapping) else None
+
+
+#: The ONLY unique objects whose INSERT race the canonical service may
+#: classify and answer with a replay/duplicate refusal. Any other
+#: IntegrityError — including a unique violation on any other object — is
+#: re-raised unchanged so it surfaces as the defect it is.
+#:
+#: The two names per contract cover both tenant-schema construction paths:
+#: the alembic unique INDEXES (005/006/021) and the bootstrap-created
+#: tenant schema, which declares payments.idempotency_key UNIQUE inline
+#: (PostgreSQL names that constraint <table>_<column>_key).
+_IDEMPOTENCY_UNIQUE_OBJECTS = frozenset({
+    "uq_payments_idempotency_key",
+    "payments_idempotency_key_key",
+})
+_TRANSACTION_UNIQUE_OBJECTS = frozenset({
+    "uq_payments_transaction_id",
+})
+_REPLAYABLE_UNIQUE_OBJECTS = (
+    _IDEMPOTENCY_UNIQUE_OBJECTS | _TRANSACTION_UNIQUE_OBJECTS
+)
+_UNIQUE_VIOLATION_SQLSTATE = "23505"
+#: PostgreSQL's unique-violation message form, used ONLY as a fallback
+#: when the driver's exception chain does not expose ``constraint_name``.
+#: The name it yields is still checked against the closed object set
+#: above, so message text can never widen the classification.
+_UNIQUE_CONSTRAINT_MESSAGE = re.compile(r'unique constraint "([^"]+)"')
+
+
+def _integrity_error_chain(exc: IntegrityError):
+    """Walk the wrapped error to the origin: the asyncpg path nests
+    (SQLAlchemy IntegrityError -> dialect adapter -> asyncpg error) and only
+    the innermost asyncpg error carries the constraint name and sqlstate,
+    while a directly constructed IntegrityError keeps the origin in
+    ``orig``. Both links are followed."""
+    node = exc
+    seen: set[int] = set()
+    for _ in range(8):
+        if node is None or id(node) in seen:
+            return
+        seen.add(id(node))
+        yield node
+        node = (
+            getattr(node, "__cause__", None)
+            or getattr(node, "__context__", None)
+            or getattr(node, "orig", None)
+        )
+
+
+def _integrity_sqlstate(exc: IntegrityError) -> str | None:
+    for node in _integrity_error_chain(exc):
+        state = (
+            getattr(node, "sqlstate", None)
+            or getattr(node, "pgcode", None)
+            or getattr(getattr(node, "diag", None), "sqlstate", None)
+        )
+        if state:
+            return str(state)
+    return None
+
+
+def _integrity_constraint_name(exc: IntegrityError) -> str | None:
+    for node in _integrity_error_chain(exc):
+        name = getattr(node, "constraint_name", None) or getattr(
+            getattr(node, "diag", None), "constraint_name", None)
+        if name:
+            return str(name)
+    match = _UNIQUE_CONSTRAINT_MESSAGE.search(str(exc))
+    return match.group(1) if match else None
+
+
+def _raise_invalid_amount(amount: Decimal) -> None:
+    if amount.is_nan() or amount.is_infinite() or amount <= 0:
+        raise _payment_error(
+            status.HTTP_400_BAD_REQUEST,
+            "INVALID_PAYMENT_AMOUNT",
+            "Payment amount must be a positive finite number",
+        )
 
 
 def _idempotency_conflict() -> HTTPException:
@@ -292,6 +372,116 @@ class CanonicalPaymentService:
             result.setdefault("receipt_number", payment_record["receipt_number"])
         return result
 
+    async def _lookup_idempotent_payment(
+        self,
+        db: AsyncSession,
+        *,
+        idempotency_key: str,
+        allocate_receipt: bool,
+    ) -> Mapping[str, Any] | None:
+        get_existing = (
+            self._repo.get_by_idempotency_key_with_receipt
+            if allocate_receipt
+            else self._repo.get_by_idempotency_key
+        )
+        return _payment_mapping_or_none(
+            await get_existing(db, idempotency_key=idempotency_key)
+        )
+
+    async def _replay_or_conflict_for_locked_order(
+        self,
+        db: AsyncSession,
+        *,
+        order: OrderModel,
+        existing_payment: Mapping[str, Any],
+        amount: Decimal,
+        method: str,
+        transaction_id: str | None,
+        allocate_receipt: bool,
+    ) -> CanonicalPaymentResult:
+        """Zero-write replay classification against a LOCKED order.
+
+        The caller holds the order FOR UPDATE lock; this helper performs NO
+        order query and NO order lock. The replayed payment's order and
+        retailer attribution are verified against the locked order, so a
+        mismatched record can never replay across orders or retailers.
+        """
+        if not _same_payment_request(
+            existing_payment,
+            order_id=str(order.id),
+            amount=amount,
+            method=method,
+            transaction_id=transaction_id,
+        ):
+            raise _idempotency_conflict()
+        _enforce_receipt_on_replay(existing_payment, allocate_receipt)
+        if str(existing_payment.get("retailer_id")) != str(order.retailer_id):
+            raise _payment_error(
+                status.HTTP_409_CONFLICT,
+                "IDEMPOTENCY_KEY_CONFLICT",
+                "Idempotent payment attribution does not match its order",
+            )
+        order_state = getattr(order.status, "value", order.status)
+        return CanonicalPaymentResult(
+            order=order,
+            payment_record=existing_payment,
+            replayed=True,
+            order_state=str(order_state),
+        )
+
+    async def _classify_payment_insert_race(
+        self,
+        db: AsyncSession,
+        *,
+        exc: IntegrityError,
+        order: OrderModel,
+        amount: Decimal,
+        method: str,
+        transaction_id: str | None,
+        idempotency_key: str,
+        allocate_receipt: bool,
+    ) -> CanonicalPaymentResult:
+        """Classify an INSERT race on the payment unique constraints.
+
+        R2-R1 SR1: ONLY ``uq_payments_idempotency_key`` and
+        ``uq_payments_transaction_id`` may be answered here — the INSERT
+        runs inside a SAVEPOINT, so the failed statement is undone while
+        the caller's order lock and transaction stay intact. Every other
+        IntegrityError (different sqlstate, or a unique violation on any
+        other constraint) is re-raised unchanged.
+        """
+        if (
+            _integrity_sqlstate(exc) != _UNIQUE_VIOLATION_SQLSTATE
+            or _integrity_constraint_name(exc) not in _REPLAYABLE_UNIQUE_OBJECTS
+        ):
+            raise exc
+
+        constraint = _integrity_constraint_name(exc)
+        if constraint in _TRANSACTION_UNIQUE_OBJECTS:
+            existing_transfer = _payment_mapping_or_none(
+                await self._repo.get_by_transaction_id(
+                    db, transaction_id=transaction_id)
+            )
+            if existing_transfer is not None:
+                raise _duplicate_transfer_reference()
+            raise exc
+
+        existing_payment = await self._lookup_idempotent_payment(
+            db, idempotency_key=idempotency_key, allocate_receipt=allocate_receipt)
+        if existing_payment is None:
+            # The constraint fired but no live row carries the key: not an
+            # idempotency race this service can explain — propagate as-is.
+            raise exc
+        return await self._replay_or_conflict_for_locked_order(
+            db,
+            order=order,
+            existing_payment=existing_payment,
+            amount=amount,
+            method=method,
+            transaction_id=transaction_id,
+            allocate_receipt=allocate_receipt,
+        )
+
     async def confirm_payment(
         self,
         *,
@@ -305,32 +495,21 @@ class CanonicalPaymentService:
         force_completed: bool = False,
         allocate_receipt: bool = False,
     ) -> CanonicalPaymentResult:
-        """The single locked-fresh payment writer.
+        """The PUBLIC canonical entry — locks and refreshes the order.
 
-        R2-R1 correction: there is NO precheck bypass. Every caller — the
-        direct ``POST /orders/{id}/pay`` route and the declaration
-        confirmation — enters here and this method performs the entire
-        sequence itself: idempotency lookup (with replay attribution
-        validation), order lock (FOR UPDATE + populate_existing), state /
-        balance / credit / transfer-reference prechecks, payment-history
-        integrity check, hold verification, and the financial writes.
+        R2-R1 SR1: this entry validates the amount, takes the fast
+        idempotency replay path, then LOCKS AND REFRESHES the order
+        (FOR UPDATE + populate_existing) and hands that locked order to
+        the private locked-order write implementation. There is NO public
+        bypass parameter and no public way to hand in a pre-locked order:
+        a caller that already holds the lock (the declaration
+        confirmation) calls ``_confirm_payment_for_locked_order`` directly.
         """
-        if amount.is_nan() or amount.is_infinite() or amount <= 0:
-            raise _payment_error(
-                status.HTTP_400_BAD_REQUEST,
-                "INVALID_PAYMENT_AMOUNT",
-                "Payment amount must be a positive finite number",
-            )
+        _raise_invalid_amount(amount)
 
-        get_existing = (
-            self._repo.get_by_idempotency_key_with_receipt
-            if allocate_receipt
-            else self._repo.get_by_idempotency_key
-        )
-        existing_payment = _payment_mapping_or_none(
-            await get_existing(db, idempotency_key=idempotency_key)
-        )
-        if existing_payment:
+        existing_payment = await self._lookup_idempotent_payment(
+            db, idempotency_key=idempotency_key, allocate_receipt=allocate_receipt)
+        if existing_payment is not None:
             if _same_payment_request(
                 existing_payment,
                 order_id=order_id,
@@ -342,8 +521,8 @@ class CanonicalPaymentService:
                 return await self._replay_result(db, existing_payment)
             raise _idempotency_conflict()
 
-        # The ONLY order lock: locked-fresh (populate_existing defeats a
-        # stale identity map).
+        # The ONLY order lock of the public path: locked-fresh
+        # (populate_existing defeats a stale identity map).
         order = await self._get_order_by_id_for_update(db, order_id)
         if not order:
             raise _payment_error(
@@ -352,20 +531,55 @@ class CanonicalPaymentService:
                 f"Order with ID '{order_id}' not found",
             )
 
-        existing_payment = _payment_mapping_or_none(
-            await get_existing(db, idempotency_key=idempotency_key)
+        return await self._confirm_payment_for_locked_order(
+            db=db,
+            order=order,
+            amount=amount,
+            method=method,
+            transaction_id=transaction_id,
+            idempotency_key=idempotency_key,
+            created_by=created_by,
+            force_completed=force_completed,
+            allocate_receipt=allocate_receipt,
         )
-        if existing_payment:
-            if _same_payment_request(
-                existing_payment,
-                order_id=str(order.id),
+
+    async def _confirm_payment_for_locked_order(
+        self,
+        *,
+        db: AsyncSession,
+        order: OrderModel,
+        amount: Decimal,
+        method: str,
+        transaction_id: str | None,
+        idempotency_key: str,
+        created_by: str | None,
+        force_completed: bool = False,
+        allocate_receipt: bool = False,
+    ) -> CanonicalPaymentResult:
+        """Private locked-order write implementation.
+
+        PRECONDITION: the caller holds this order's FOR UPDATE lock in the
+        same transaction — the public entry takes it, the declaration
+        confirmation already holds it. This method runs the entire write
+        sequence (idempotency re-check, shared payment-history contract,
+        state/balance/credit/transfer-reference prechecks, hold
+        verification and the financial writes) and NEVER queries or locks
+        the order row.
+        """
+        _raise_invalid_amount(amount)
+
+        existing_payment = await self._lookup_idempotent_payment(
+            db, idempotency_key=idempotency_key, allocate_receipt=allocate_receipt)
+        if existing_payment is not None:
+            return await self._replay_or_conflict_for_locked_order(
+                db,
+                order=order,
+                existing_payment=existing_payment,
                 amount=amount,
                 method=method,
                 transaction_id=transaction_id,
-            ):
-                _enforce_receipt_on_replay(existing_payment, allocate_receipt)
-                return await self._replay_result(db, existing_payment)
-            raise _idempotency_conflict()
+                allocate_receipt=allocate_receipt,
+            )
 
         await self._assert_history_integrity(db, order)
 
@@ -472,22 +686,40 @@ class CanonicalPaymentService:
         # Receipt allocation is opt-in. Only the declaration-confirmation flow
         # passes allocate_receipt=True; the direct pay_order path leaves the
         # default False so its behavior (and the I2A tests) is unchanged.
+        #
+        # The allocation and the INSERT share ONE savepoint: a unique-constraint
+        # race on the payment row rolls both back together, so a replayed
+        # confirmation never leaks a receipt gap, the caller's order lock
+        # survives, and only the two payment unique constraints are answered.
         receipt_number: str | None = None
-        if allocate_receipt and payment_status == "completed":
-            receipt_number = await self._repo.allocate_receipt_number(db)
+        try:
+            async with db.begin_nested():
+                if allocate_receipt and payment_status == "completed":
+                    receipt_number = await self._repo.allocate_receipt_number(db)
 
-        payment_record = await self._repo.create(
-            db,
-            order_id=order.id,
-            retailer_id=order.retailer_id,
-            transaction_id=transaction_id,
-            idempotency_key=idempotency_key,
-            amount=amount,
-            method=method,
-            status=payment_status,
-            created_by=_uuid_or_none(created_by),
-            receipt_number=receipt_number,
-        )
+                payment_record = await self._repo.create(
+                    db,
+                    order_id=order.id,
+                    retailer_id=order.retailer_id,
+                    transaction_id=transaction_id,
+                    idempotency_key=idempotency_key,
+                    amount=amount,
+                    method=method,
+                    status=payment_status,
+                    created_by=_uuid_or_none(created_by),
+                    receipt_number=receipt_number,
+                )
+        except IntegrityError as exc:
+            return await self._classify_payment_insert_race(
+                db,
+                exc=exc,
+                order=order,
+                amount=amount,
+                method=method,
+                transaction_id=transaction_id,
+                idempotency_key=idempotency_key,
+                allocate_receipt=allocate_receipt,
+            )
 
         payment_service = payment_service_module.PaymentService()
         try:
@@ -552,12 +784,11 @@ class CanonicalPaymentService:
         )
 
     async def _assert_history_integrity(self, db: AsyncSession, order: OrderModel) -> None:
-        """R2-R1 C4: corrupt effective history fails closed with a NAMED
-        refusal — unknown payment status/method, non-positive amounts, or
-        retailer attribution mismatch are never aggregated around."""
-        unknown_status = await self._repo.count_payments_with_status_outside(
-            db, order_id=order.id, statuses=("pending", "completed"))
-        if unknown_status:
-            raise _credit_hold_mismatch(
-                f"Order carries {unknown_status} payment row(s) with an "
-                "unknown status (expected pending/completed)")
+        """R2-R1 SR1: the SHARED valid-payment-history contract, enforced
+        here on the write path and by both receivables read paths. Live
+        rows must carry a positive finite amount, a canonical method, a
+        known status and the order's own retailer; anything else is the
+        named PAYMENT_HISTORY_INTEGRITY refusal — never aggregated around.
+        """
+        await assert_valid_payment_history(
+            db, order_ids=[order.id], context="Payment write path")

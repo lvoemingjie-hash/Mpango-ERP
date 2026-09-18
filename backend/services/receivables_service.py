@@ -25,6 +25,7 @@ from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.order import Order, OrderStatus
+from services.payment_history_contract import assert_valid_payment_history
 
 
 def calculate_age_days(created_at: datetime | None) -> int:
@@ -151,6 +152,17 @@ class ReceivablesService:
             .order_by(Order.retailer_id, Order.created_at.desc())
         )
         order_rows = orders_result.all()
+
+        # R2-R1 SR1: the shared valid-payment-history contract runs over the
+        # whole read scope BEFORE any aggregation. An unknown method or
+        # status, a non-positive or non-finite amount, or a payment whose
+        # retailer differs from its order is a NAMED refusal — never a value
+        # the credit/cash buckets silently drop.
+        await assert_valid_payment_history(
+            tenant_db,
+            order_ids=[order.id for order in order_rows],
+            context="Receivables summary",
+        )
 
         # Query 3: Get credit payment totals per order (exclude from paid calculation)
         # Skip payment aggregation if no orders found to avoid empty order_ids collection
@@ -387,6 +399,14 @@ class ReceivablesService:
                 }
 
         order_ids = [order.id for order in order_rows]
+
+        # R2-R1 SR1: same shared contract as the summary and the canonical
+        # write path — invalid live history never gets aggregated around.
+        await assert_valid_payment_history(
+            tenant_db,
+            order_ids=order_ids,
+            context="Receivables order list",
+        )
 
         # Fetch payment totals - skip if no orders to avoid empty order_ids collection
         credit_totals = {}

@@ -216,7 +216,14 @@ def _make_mock_db():
     mock_db.flush = AsyncMock()
     mock_db.refresh = AsyncMock()
 
-    async def fake_execute(stmt):
+    # SR1: the payment INSERT runs inside a savepoint so a unique-constraint
+    # race can be classified without losing the caller's order lock.
+    mock_savepoint = AsyncMock()
+    mock_savepoint.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_savepoint.__aexit__ = AsyncMock(return_value=False)
+    mock_db.begin_nested = MagicMock(return_value=mock_savepoint)
+
+    async def fake_execute(stmt, params=None):
         r = MagicMock()
         r.scalar_one_or_none.return_value = None
         return r

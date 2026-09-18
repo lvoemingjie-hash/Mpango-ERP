@@ -411,8 +411,15 @@ def _make_mock_db():
     mock_db.flush = AsyncMock()
     mock_db.refresh = AsyncMock()
 
+    # SR1: the payment INSERT runs inside a savepoint so a unique-constraint
+    # race can be classified without losing the caller's order lock.
+    mock_savepoint = AsyncMock()
+    mock_savepoint.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_savepoint.__aexit__ = AsyncMock(return_value=False)
+    mock_db.begin_nested = MagicMock(return_value=mock_savepoint)
+
     # Mock db.execute for get_order_by_id
-    async def fake_execute(stmt):
+    async def fake_execute(stmt, params=None):
         r = MagicMock()
         r.scalar_one_or_none.return_value = None
         return r
@@ -1449,7 +1456,7 @@ async def test_payment_service_credit_applies_positive_delta():
     mock_order.retailer_id = uuid.uuid4()
     mock_order.wholesaler_id = uuid.uuid4()
 
-    async def fake_execute(stmt):
+    async def fake_execute(stmt, params=None):
         r = MagicMock()
         r.scalar_one_or_none.return_value = mock_order
         return r
@@ -1495,7 +1502,7 @@ async def test_payment_service_cash_does_not_apply_balance_delta():
     mock_order.retailer_id = uuid.uuid4()
     mock_order.wholesaler_id = uuid.uuid4()
 
-    async def fake_execute(stmt):
+    async def fake_execute(stmt, params=None):
         r = MagicMock()
         r.scalar_one_or_none.return_value = mock_order
         return r

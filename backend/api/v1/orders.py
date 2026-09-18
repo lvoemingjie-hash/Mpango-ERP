@@ -13,16 +13,14 @@ State Machine:
 """
 from datetime import datetime, timezone
 from math import ceil
-from typing import Annotated, Mapping, Optional
+from typing import Annotated, Optional
 import uuid
 from uuid import UUID
 from decimal import Decimal
 from fastapi import APIRouter, Depends, Header, HTTPException, status, Query
 from fastapi import Request
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import selectinload
 
 from api.dependencies import get_tenant_db_session
 from api.dependencies import get_current_user_context
@@ -35,7 +33,6 @@ from core.domain.order_state import (
 from core.domain.order_state import (
     InvalidStateTransitionError,  # noqa: F401 (pay-path compatibility)
 )
-from models.order import Order as OrderModel
 from crud.order import (
     get_order_by_id,
     get_order_for_wholesaler,
@@ -173,26 +170,6 @@ def _validate_payment_notes_unsupported(payment_input: PayOrderRequest) -> None:
         )
 
 
-def _same_payment_request(
-    existing_payment,
-    *,
-    order_id: str,
-    amount: Decimal,
-    method: str,
-    transaction_id: str | None,
-) -> bool:
-    return (
-        str(existing_payment["order_id"]) == str(order_id)
-        and Decimal(str(existing_payment["amount"])) == amount
-        and str(existing_payment["method"]) == method
-        and (existing_payment.get("transaction_id") or None) == (transaction_id or None)
-    )
-
-
-def _payment_mapping_or_none(candidate):
-    return candidate if isinstance(candidate, Mapping) else None
-
-
 def _payment_response_data(order, payment_record) -> dict:
     order_status = getattr(order.status, "value", order.status)
     return {
@@ -202,52 +179,6 @@ def _payment_response_data(order, payment_record) -> dict:
         "payment_amount": str(payment_record["amount"]),
         "payment_method": payment_record["method"],
     }
-
-
-async def _idempotency_replay_response(
-    db: AsyncSession,
-    *,
-    payment_record,
-) -> OrderActionResponse:
-    order = await get_order_by_id(db, str(payment_record["order_id"]))
-    if not order:
-        raise _payment_error(
-            status.HTTP_404_NOT_FOUND,
-            "ORDER_NOT_FOUND",
-            "Order for idempotent payment was not found",
-        )
-    return OrderActionResponse(
-        success=True,
-        data=_payment_response_data(order, payment_record),
-        message="Payment replayed",
-        timestamp=datetime.utcnow(),
-    )
-
-
-    result = await db.execute(
-        select(OrderModel)
-        .where(OrderModel.id == order_uuid)
-        .where(OrderModel.is_deleted == False)
-        .options(selectinload(OrderModel.items))
-        .with_for_update()
-    )
-    return result.scalar_one_or_none()
-
-
-def _idempotency_conflict() -> HTTPException:
-    return _payment_error(
-        status.HTTP_409_CONFLICT,
-        "IDEMPOTENCY_KEY_CONFLICT",
-        "X-Idempotency-Key was already used with a different payment request",
-    )
-
-
-def _duplicate_transfer_reference() -> HTTPException:
-    return _payment_error(
-        status.HTTP_409_CONFLICT,
-        "DUPLICATE_TRANSFER_REFERENCE",
-        "Transfer transaction_id has already been recorded",
-    )
 
 
 async def _restore_tenant_search_path_after_rollback(db: AsyncSession) -> None:
@@ -710,10 +641,13 @@ async def pay_order(
     # idempotency, ordering and locking all live in the single canonical
     # locked-fresh implementation; this route only validates the request
     # shape and delegates.
-    from repositories.payment_repository import PaymentRepository
-
+    #
+    # R2-R1 SR1: the route holds NO idempotency fallback. Unique-constraint
+    # races are classified inside CanonicalPaymentService (precisely the
+    # two payment unique constraints, under a savepoint); every other
+    # IntegrityError propagates unchanged instead of being re-read and
+    # answered as a replay.
     canonical_payment_service = CanonicalPaymentService()
-    payment_repo = PaymentRepository()
 
     try:
         result = await canonical_payment_service.confirm_payment(
@@ -726,37 +660,6 @@ async def pay_order(
             created_by=token.user_id if token.user_id else None,
             force_completed=False,
         )
-    except IntegrityError:
-        await db.rollback()
-        await _restore_tenant_search_path_after_rollback(db)
-        existing_payment = await payment_repo.get_by_idempotency_key(
-            db,
-            idempotency_key=idempotency_key,
-        )
-        existing_payment = _payment_mapping_or_none(existing_payment)
-        if existing_payment:
-            if _same_payment_request(
-                existing_payment,
-                order_id=order_id,
-                amount=pay_amount,
-                method=payment_method,
-                transaction_id=payment_input.transaction_id,
-            ):
-                return await _idempotency_replay_response(
-                    db,
-                    payment_record=existing_payment,
-                )
-            raise _idempotency_conflict()
-
-        if payment_method == "transfer" and payment_input.transaction_id:
-            existing_transfer = await payment_repo.get_by_transaction_id(
-                db,
-                transaction_id=payment_input.transaction_id,
-            )
-            existing_transfer = _payment_mapping_or_none(existing_transfer)
-            if existing_transfer:
-                raise _duplicate_transfer_reference()
-        raise
     except CanonicalPaymentMutationHttpError as exc:
         await db.rollback()
         raise exc.http_exception

@@ -212,7 +212,8 @@ class PaymentDeclarationService:
 
         decl_status = declaration["status"]
         if decl_status == "confirmed":
-            existing_result = await self._resolve_confirmed_replay(db, declaration, wholesaler_id)
+            existing_result = await self._resolve_confirmed_replay(
+                db, declaration, order=order)
             return declaration, existing_result
         if decl_status == "rejected":
             raise _declaration_error(
@@ -237,15 +238,18 @@ class PaymentDeclarationService:
         # the read-only locate.
         self._verify_locked_attribution(declaration, order)
 
-        # pending -> proceed. The canonical service runs its OWN full
-        # prechecks; its FOR UPDATE re-read of this row is re-entrant on the
-        # lock this transaction already holds (same order, same transaction).
+        # pending -> proceed. The canonical service's PRIVATE locked-order
+        # implementation is entered directly: this transaction already holds
+        # the order FOR UPDATE lock, so the canonical service MUST NOT
+        # query or lock the order a second time. The private implementation
+        # is not a public entry point — there is no bypass parameter and no
+        # public locked-order keyword on ``confirm_payment``.
         canonical_key = f"{DECLARATION_CONFIRMATION_KEY_PREFIX}{declaration_id.hex}"
         transaction_id = declaration["transfer_reference"] or None
 
-        result = await self._canonical.confirm_payment(
+        result = await self._canonical._confirm_payment_for_locked_order(
             db=db,
-            order_id=str(declaration["order_id"]),
+            order=order,
             amount=declaration["declared_amount"],
             method=declaration["method"],
             transaction_id=transaction_id,
@@ -317,59 +321,80 @@ class PaymentDeclarationService:
         self,
         db: AsyncSession,
         declaration: Mapping[str, Any],
-        wholesaler_id: uuid.UUID,
+        *,
+        order: OrderModel,
     ) -> CanonicalPaymentResult:
         """Build a CanonicalPaymentResult for an already-confirmed declaration.
 
-        Zero new writes. Fails closed if the linked order is missing,
-        soft-deleted, or does not match the declaration's wholesaler/retailer.
-        Never returns order=None or empty order_state.
+        Zero new writes. R2-R1 SR1: the replay binds EVERY element of the
+        confirmation — the linked payment's order, retailer, canonical
+        decl-confirm idempotency key, amount, method and transaction
+        reference, its receipt, and the declaration's own payment link —
+        against the LOCKED declaration row and the LOCKED order row. Any
+        mismatch is the named 409 with zero writes. The order row is the
+        one this transaction already locked: no second order query and no
+        second order lock.
         """
-        payment_id_raw = declaration.get("confirmation_payment_id")
-        if payment_id_raw is None:
+        def _refuse(message: str) -> None:
             raise _declaration_error(
                 status.HTTP_409_CONFLICT,
                 "DECLARATION_CONFIRMATION_KEY_CONFLICT",
-                "Confirmed declaration is missing its canonical payment link",
-            )
-        payment_id = uuid.UUID(str(payment_id_raw))
-        payment = await self._payment_repo.get_by_id_with_receipt(db, payment_id=payment_id)
-        if payment is None:
-            raise _declaration_error(
-                status.HTTP_409_CONFLICT,
-                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
-                "Confirmed declaration links to a missing payment",
-            )
-        if str(payment["order_id"]) != str(declaration["order_id"]):
-            raise _declaration_error(
-                status.HTTP_409_CONFLICT,
-                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
-                "Confirmed declaration links to a payment on another order",
-            )
-        receipt = payment.get("receipt_number")
-        if not _is_valid_receipt_number(receipt):
-            raise _declaration_error(
-                status.HTTP_409_CONFLICT,
-                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
-                "Confirmed declaration links to a payment without a valid receipt",
+                message,
             )
 
-        order = await self._get_order_by_id(db, uuid.UUID(str(declaration["order_id"])))
-        if order is None or getattr(order, "is_deleted", False):
-            raise _declaration_error(
-                status.HTTP_409_CONFLICT,
-                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
-                "Order for confirmed declaration no longer exists",
-            )
-        if (
-            getattr(order, "wholesaler_id", None) != uuid.UUID(str(declaration["wholesaler_id"]))
-            or getattr(order, "retailer_id", None) != uuid.UUID(str(declaration["retailer_id"]))
-        ):
-            raise _declaration_error(
-                status.HTTP_409_CONFLICT,
-                "DECLARATION_CONFIRMATION_KEY_CONFLICT",
-                "Order ownership does not match confirmed declaration",
-            )
+        payment_id_raw = declaration.get("confirmation_payment_id")
+        if payment_id_raw is None:
+            _refuse("Confirmed declaration is missing its canonical payment link")
+        payment_id = uuid.UUID(str(payment_id_raw))
+        payment = await self._payment_repo.get_by_id_with_receipt(
+            db, payment_id=payment_id)
+        if payment is None:
+            _refuse("Confirmed declaration links to a missing payment")
+
+        # The declaration POINTER must name the order this transaction
+        # locked, and the missing/deleted order case is already impossible
+        # (the locked row exists and is live).
+        if str(declaration["order_id"]) != str(order.id):
+            _refuse("Confirmed declaration pointer does not match its order")
+        if getattr(order, "wholesaler_id", None) != uuid.UUID(
+                str(declaration["wholesaler_id"])):
+            _refuse("Order ownership does not match confirmed declaration")
+        if str(getattr(order, "retailer_id", "")) != str(declaration["retailer_id"]):
+            _refuse("Order retailer does not match confirmed declaration")
+
+        # 1. payment.order_id  2. payment.retailer_id
+        if str(payment["order_id"]) != str(declaration["order_id"]):
+            _refuse("Confirmed declaration links to a payment on another order")
+        if str(payment.get("retailer_id")) != str(declaration["retailer_id"]):
+            _refuse("Confirmed declaration links to a payment for another retailer")
+
+        # 3. the canonical declaration-confirmation idempotency key
+        canonical_key = (
+            f"{DECLARATION_CONFIRMATION_KEY_PREFIX}"
+            f"{uuid.UUID(str(declaration['id'])).hex}")
+        if str(payment.get("idempotency_key")) != canonical_key:
+            _refuse(
+                "Confirmed declaration's payment does not carry this "
+                "declaration's canonical idempotency key")
+
+        # 4./5./6. amount, method and transaction reference
+        if Decimal(str(payment.get("amount"))) != Decimal(
+                str(declaration["declared_amount"])):
+            _refuse("Confirmed declaration amount does not match its payment")
+        if str(payment.get("method")) != str(declaration["method"]):
+            _refuse("Confirmed declaration method does not match its payment")
+        if (payment.get("transaction_id") or None) != (
+                declaration["transfer_reference"] or None):
+            _refuse(
+                "Confirmed declaration transfer reference does not match "
+                "its payment")
+
+        # 7. the receipt
+        receipt = payment.get("receipt_number")
+        if not _is_valid_receipt_number(receipt):
+            _refuse(
+                "Confirmed declaration links to a payment without a valid "
+                "receipt")
 
         order_state = getattr(order.status, "value", "")
         return CanonicalPaymentResult(
@@ -436,14 +461,6 @@ class PaymentDeclarationService:
                 status.HTTP_404_NOT_FOUND, "DECLARATION_NOT_FOUND",
                 "Declaration not found",
             )
-
-    async def _get_order_by_id(self, db: AsyncSession, order_id: uuid.UUID) -> OrderModel | None:
-        result = await db.execute(
-            select(OrderModel)
-            .where(OrderModel.id == order_id)
-            .where(OrderModel.is_deleted == False)  # noqa: E712
-        )
-        return result.scalar_one_or_none()
 
     async def _get_order_for_declaration(
         self,

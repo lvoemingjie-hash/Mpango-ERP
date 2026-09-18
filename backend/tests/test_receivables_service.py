@@ -100,6 +100,11 @@ async def test_retailer_summary_aggregates_totals(mock_db_session, receivables_s
 
     # Setup execute to return different results based on query
     def mock_execute(query, params=None):
+        # SR1: the shared valid-payment-history contract query
+        if "invalid_rows" in str(query):
+            _clean = MagicMock()
+            _clean.mappings.return_value.all.return_value = []
+            return _clean
         if "wholesaler_retailer_bindings" in str(query):
             return mock_binding_result
         elif "order_credit_holds" in str(query):
@@ -160,6 +165,11 @@ async def test_retailer_summary_uses_public_binding_outstanding_balance(mock_db_
     mock_cash_result.mappings.return_value.all.return_value = []
 
     def mock_execute(query, params=None):
+        # SR1: the shared valid-payment-history contract query
+        if "invalid_rows" in str(query):
+            _clean = MagicMock()
+            _clean.mappings.return_value.all.return_value = []
+            return _clean
         if "wholesaler_retailer_bindings" in str(query):
             # Verify query targets public schema
             assert "public.wholesaler_retailer_bindings" in str(query)
@@ -252,6 +262,12 @@ async def test_order_list_classifies_credit_receivable(mock_db_session, receivab
 
     def mock_execute(query, params=None):
         query_str = str(query)
+        # SR1: the shared valid-payment-history contract query (grouped
+        # invalid-row aggregate) reports an empty scope here.
+        if "invalid_rows" in query_str:
+            _clean = MagicMock()
+            _clean.mappings.return_value.all.return_value = []
+            return _clean
         # Match count queries first (before generic "orders" match)
         if "count(" in query_str.lower() or "count(" in query_str:
             return mock_count_result
@@ -326,6 +342,12 @@ async def test_order_list_classifies_unpaid_order(mock_db_session, receivables_s
 
     def mock_execute(query, params=None):
         query_str = str(query)
+        # SR1: the shared valid-payment-history contract query (grouped
+        # invalid-row aggregate) reports an empty scope here.
+        if "invalid_rows" in query_str:
+            _clean = MagicMock()
+            _clean.mappings.return_value.all.return_value = []
+            return _clean
         # Match count queries first (before generic "orders" match)
         if "count(" in query_str.lower() or "count(" in query_str:
             return mock_count_result
@@ -392,6 +414,12 @@ async def test_order_list_supports_retailer_filter(mock_db_session, receivables_
 
     def mock_execute(query, params=None):
         query_str = str(query)
+        # SR1: the shared valid-payment-history contract query (grouped
+        # invalid-row aggregate) reports an empty scope here.
+        if "invalid_rows" in query_str:
+            _clean = MagicMock()
+            _clean.mappings.return_value.all.return_value = []
+            return _clean
         # Match count queries first (before generic "orders" match)
         if "count(" in query_str.lower() or "count(" in query_str:
             return mock_count_result
@@ -447,6 +475,12 @@ async def test_pagination_metadata_correct(mock_db_session, receivables_service)
 
     def mock_execute(query, params=None):
         query_str = str(query)
+        # SR1: the shared valid-payment-history contract query (grouped
+        # invalid-row aggregate) reports an empty scope here.
+        if "invalid_rows" in query_str:
+            _clean = MagicMock()
+            _clean.mappings.return_value.all.return_value = []
+            return _clean
         # Match count queries first (before generic "orders" match)
         if "count(" in query_str.lower() or "count(" in query_str:
             return mock_count_result
@@ -483,6 +517,11 @@ async def test_pagination_empty_result(mock_db_session, receivables_service):
     mock_count_result.scalar.return_value = 0
 
     def mock_execute(query, params=None):
+        # SR1: the shared valid-payment-history contract query
+        if "invalid_rows" in str(query):
+            _clean = MagicMock()
+            _clean.mappings.return_value.all.return_value = []
+            return _clean
         query_str = str(query)
         # Match count queries
         if "count(" in query_str.lower() or "count(" in query_str:
@@ -613,6 +652,11 @@ async def test_classification_pagination_across_db_pages(mock_db_session, receiv
     ]
 
     def mock_execute(query, params=None):
+        # SR1: the shared valid-payment-history contract query
+        if "invalid_rows" in str(query):
+            _clean = MagicMock()
+            _clean.mappings.return_value.all.return_value = []
+            return _clean
         query_str = str(query)
         # For classification filter, we should fetch ALL orders (no pagination)
         if "orders" in query_str.lower() and "count(" not in query_str.lower():
@@ -695,6 +739,11 @@ async def test_classification_pagination_page_beyond_first_db_page(mock_db_sessi
     ]
 
     def mock_execute(query, params=None):
+        # SR1: the shared valid-payment-history contract query
+        if "invalid_rows" in str(query):
+            _clean = MagicMock()
+            _clean.mappings.return_value.all.return_value = []
+            return _clean
         query_str = str(query)
         if "orders" in query_str.lower() and "count(" not in query_str.lower():
             return mock_orders_result
@@ -754,6 +803,11 @@ async def test_receivables_summary_empty_orders_safe(mock_db_session, receivable
     mock_orders_result.all.return_value = []
 
     def mock_execute(query, params=None):
+        # SR1: the shared valid-payment-history contract query
+        if "invalid_rows" in str(query):
+            _clean = MagicMock()
+            _clean.mappings.return_value.all.return_value = []
+            return _clean
         query_str = str(query)
         if "wholesaler_retailer_bindings" in query_str:
             return mock_binding_result
@@ -801,6 +855,11 @@ async def test_receivables_summary_binding_only_tenant_safe(mock_db_session, rec
     mock_orders_result.all.return_value = []
 
     def mock_execute(query, params=None):
+        # SR1: the shared valid-payment-history contract query
+        if "invalid_rows" in str(query):
+            _clean = MagicMock()
+            _clean.mappings.return_value.all.return_value = []
+            return _clean
         query_str = str(query)
         if "wholesaler_retailer_bindings" in query_str:
             return mock_binding_result
@@ -831,6 +890,11 @@ async def test_receivable_orders_empty_result_safe(mock_db_session, receivables_
     mock_count_result.scalar.return_value = 0
 
     def mock_execute(query, params=None):
+        # SR1: the shared valid-payment-history contract query
+        if "invalid_rows" in str(query):
+            _clean = MagicMock()
+            _clean.mappings.return_value.all.return_value = []
+            return _clean
         query_str = str(query)
         if "count(" in query_str.lower() or "count(" in query_str:
             return mock_count_result

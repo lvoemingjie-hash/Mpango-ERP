@@ -1480,8 +1480,11 @@ HOLD_TABLE_COLUMNS = {
     "updated_by": {"data_type": "uuid", "is_nullable": True, "column_default": None},
 }
 # Exact pg_get_constraintdef output of the frozen DDL (schema placeholder
-# normalized), verified against a real PG16 render of the 039 DDL.
+# normalized), verified against a real PG16 render of the 039 DDL. The PK
+# constraint is part of the frozen contract: the comparison is a FULL SET
+# comparison, so a table whose primary key was dropped or replaced is drift.
 HOLD_TABLE_CONSTRAINTS = {
+    "order_credit_holds_pkey": "PRIMARY KEY (ID)",
     "uq_order_credit_holds_order_id": "UNIQUE (ORDER_ID)",
     "ck_order_credit_holds_status": (
         "CHECK (STATUS::TEXT = ANY (ARRAY['ACTIVE'::CHARACTER VARYING, "
@@ -1497,7 +1500,16 @@ HOLD_TABLE_CONSTRAINTS = {
     "fk_order_credit_holds_order": (
         "FOREIGN KEY (ORDER_ID) REFERENCES SCHEMA.ORDERS(ID) ON DELETE RESTRICT"),
 }
+# Full index set including the PK and UNIQUE auto-indexes PostgreSQL
+# creates for the table constraints above — a conforming table produces
+# exactly these three entries and nothing else.
 HOLD_TABLE_INDEXES = {
+    "order_credit_holds_pkey": (
+        "CREATE UNIQUE INDEX ORDER_CREDIT_HOLDS_PKEY ON "
+        "SCHEMA.ORDER_CREDIT_HOLDS USING BTREE (ID)"),
+    "uq_order_credit_holds_order_id": (
+        "CREATE UNIQUE INDEX UQ_ORDER_CREDIT_HOLDS_ORDER_ID ON "
+        "SCHEMA.ORDER_CREDIT_HOLDS USING BTREE (ORDER_ID)"),
     "ix_order_credit_holds_active": (
         "CREATE INDEX IX_ORDER_CREDIT_HOLDS_ACTIVE ON "
         "SCHEMA.ORDER_CREDIT_HOLDS USING BTREE (ORDER_ID) "
@@ -1548,10 +1560,12 @@ async def _reconcile_credit_holds(db, ts: str) -> None:
         print(f"[reconcile] {ts}: created empty order_credit_holds (fresh)")
         return
 
-    # R2-R1 C5: full-definition catalog validation — names alone cannot
-    # detect a same-named but wrong object. Every column (type, nullability,
-    # default, precision), every constraint (exact CHECK/FK/UNIQUE
-    # definition text) and every index (columns + predicate) is compared.
+    # R2-R1 C5 + SR1: FULL SET catalog validation — the live catalog must
+    # equal the frozen contract exactly. Names alone cannot detect a
+    # same-named but wrong object, and a definition-only check cannot see
+    # an EXTRA object; both directions are compared (columns, constraints
+    # and indexes including the PK and UNIQUE auto-indexes), and every
+    # missing, extra or mismatched object fails closed.
     column_rows = (await db.execute(
         text(
             "SELECT column_name, data_type, is_nullable, column_default, "
@@ -1627,6 +1641,13 @@ async def _reconcile_credit_holds(db, ts: str) -> None:
                 f"Bootstrap reconcile: {ts}.order_credit_holds constraint "
                 f"{name} has a wrong definition: {actual!r} != "
                 f"{expected_normalized!r}")
+    extra_constraints = sorted(
+        set(actual_constraints) - set(HOLD_TABLE_CONSTRAINTS))
+    if extra_constraints:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts}.order_credit_holds carries "
+            f"constraint(s) outside the frozen contract: {extra_constraints} "
+            "(the catalog must equal the contract exactly)")
     index_rows = (await db.execute(
         text(
             "SELECT indexname, indexdef FROM pg_indexes "
@@ -1648,6 +1669,13 @@ async def _reconcile_credit_holds(db, ts: str) -> None:
                 f"Bootstrap reconcile: {ts}.order_credit_holds index {name} "
                 f"has a wrong definition: {actual!r} != "
                 f"{_normalize_definition(expected)!r}")
+    extra_indexes = sorted(set(actual_indexes) - set(HOLD_TABLE_INDEXES))
+    if extra_indexes:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts}.order_credit_holds carries "
+            f"index(es) outside the frozen contract: {extra_indexes} "
+            "(the catalog must equal the contract exactly — the expected "
+            "set already includes the PK and UNIQUE auto-indexes)")
 
     # Four-way identity verification (read-only; drift fails closed —
     # bootstrap never "repairs" a migrated tenant's financial state).

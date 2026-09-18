@@ -14,19 +14,33 @@ Contract (F1 directive #5, tightened by the F3 directive):
   and short-summary lines beginning ``ERROR ``;
 - rc=4 / environment errors / timeouts are VOID (FAIL);
 - finally: byte+mode restore and a git-clean proof for the touched path.
+
+R2-final governance closure — disposable detached worktree execution:
+every mutated byte lives ONLY inside a throwaway ``git worktree add
+--detach`` copy of HEAD. The authoritative tree hosting this runner is
+never written to: it is proven clean before the run, never touched by
+any mutation, and re-proven unchanged after the run. Restore inside the
+disposable copy is an in-memory byte backup plus chmod with sha256
+verification — there is deliberately NO git-restore code path in this
+file, so an interruption at any point can only ever leave the disposable
+copy dirty (which ``git worktree remove --force`` discards wholesale).
 """
 from __future__ import annotations
 
 import ast
+import atexit
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from typing import NamedTuple
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[2]
+REPO = BACKEND.parent
 
 ENV = {**os.environ, "MPANGO_ENV": "test"}
 
@@ -102,42 +116,34 @@ MUTATIONS = [
         "tests/order_state_r1/test_baseline.py::test_confirm_reserves_stock_and_credit_and_posts_no_ledger",
     ),
     m(
+        # R2-final: narrow anchor on the UNIQUE _release_reservations call
+        # site (the R2 cancel path inserts the settle-cancel-hold gate
+        # between the release and the status write, which broke the old
+        # three-statement block anchor without removing the semantic).
         "M3_STALE_CANCEL_RELEASE_DECISION",
         "services/order_command_service.py",
-        """        stocks = await self._prelock_reservation_stocks(order)
-
-        released = await self._release_reservations(order, stocks)
-
-        self._assign_status(order, OrderState.CANCELLED, updated_by)""",
-        """        stocks = await self._prelock_reservation_stocks(order)
-
-        # MUTATION M3: release decision no longer owned by the command
-        released = []
-
-        self._assign_status(order, OrderState.CANCELLED, updated_by)""",
+        """        released = await self._release_reservations(order, stocks)""",
+        """        released = []  # MUTATION M3: release decision no longer owned by the command""",
         "tests/order_state_r1/test_concurrency.py::test_race_confirm_then_cancel_releases_reservations",
         "OSR1-M3-ORACLE",
         "tests/order_state_r1/test_baseline.py::test_cancel_from_confirmed_releases_and_keeps_no_ledger",
     ),
     m(
+        # R2-final: narrow anchor on the UNIQUE _open_credit_hold call site
+        # (the R2 confirm path replaced _reserve_credit with the per-order
+        # credit hold; the pre-commit send is injected immediately before
+        # it, exactly where the R1 seam sat).
         "M4_RESTORE_PRE_COMMIT_NOTIFICATION",
         "services/order_command_service.py",
-        """        self._assign_status(order, OrderState.CONFIRMED, updated_by)
-        await self.db.flush()
-
-        credit_reserved = await self._reserve_credit(order)""",
-        """        self._assign_status(order, OrderState.CONFIRMED, updated_by)
-        await self.db.flush()
-
-        # MUTATION M4: pre-commit send with a placeholder recipient
+        """        credit_reserved = await self._open_credit_hold(order, updated_by, actor=actor)""",
+        """        # MUTATION M4: pre-commit send with a placeholder recipient
         from services.notification_service import notification_service as _ns
         await _ns.send_email(
             to="customer@placeholder.local",
             subject="order confirmed",
             body="sent before commit by mutation M4",
         )
-
-        credit_reserved = await self._reserve_credit(order)""",
+        credit_reserved = await self._open_credit_hold(order, updated_by, actor=actor)""",
         "tests/order_state_r1/test_notifications.py::test_rollback_produces_zero_sends",
         "sends observed for a rolled-back request",
         "tests/order_state_r1/test_baseline.py::test_draft_cancel_returns_cancelled_not_voided",
@@ -363,11 +369,82 @@ MUTATIONS = [
 ]
 
 
-def run_node(node: str, timeout: float = 600.0) -> tuple[int, str]:
+# ---------------------------------------------------------------------------
+# Disposable detached worktree execution (R2-final governance closure)
+# ---------------------------------------------------------------------------
+
+
+def make_disposable_worktree() -> tuple[Path, Path]:
+    """Create a throwaway detached worktree of HEAD.
+
+    Returns (repo_root, backend_dir) of the disposable copy. Every mutated
+    byte the runner ever writes lives under this copy only; the tree
+    hosting the runner is never a write target.
+    """
+    tmp = tempfile.mkdtemp(prefix="osr1-mutations-disposable-")
+    target = Path(tmp) / "disposable"
+    proc = subprocess.run(
+        ["git", "worktree", "add", "--detach", str(target), "HEAD"],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise RuntimeError(f"disposable worktree creation failed: {proc.stderr}")
+    return target, target / "backend"
+
+
+def drop_disposable_worktree(repo_root: Path) -> None:
+    """Force-remove a disposable worktree and its temp parent.
+
+    ``--force`` is required precisely because an interrupted mutation may
+    have left the disposable copy dirty; discarding it wholesale is the
+    safety property (the authoritative tree was never touched).
+    """
+    subprocess.run(
+        ["git", "worktree", "remove", "--force", str(repo_root)],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    parent = repo_root.parent
+    if parent.name.startswith("osr1-mutations-disposable-"):
+        shutil.rmtree(parent, ignore_errors=True)
+
+
+def authoritative_clean() -> str:
+    """Tracked-file dirt of the authoritative tree ('' when clean)."""
+    proc = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    return proc.stdout.strip()
+
+
+def apply_mutation(path: Path, old: str, new: str) -> tuple[bytes, int]:
+    """Write the mutated bytes; return (original_bytes, original_mode).
+
+    The caller MUST hold the returned backup until the restore step; the
+    restore itself is write_bytes + chmod, never a git operation.
+    """
+    original = path.read_bytes()
+    original_mode = path.stat().st_mode
+    src = original.decode("utf-8")
+    if src.count(old) != 1:
+        raise ValueError(f"anchor count={src.count(old)} (must be exactly 1)")
+    path.write_text(src.replace(old, new, 1))
+    return original, original_mode
+
+
+def restore_mutation(path: Path, original: bytes, original_mode: int) -> bool:
+    """In-memory byte+mode restore with sha verification (no git ops)."""
+    path.write_bytes(original)
+    os.chmod(path, original_mode)
+    return sha(path.read_bytes()) == sha(original)
+
+
+def run_node(backend_dir: Path, node: str, timeout: float = 600.0) -> tuple[int, str]:
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", node, "-q", "--tb=long",
          "-p", "no:cacheprovider"],
-        cwd=BACKEND, env=ENV, capture_output=True, text=True, timeout=timeout,
+        cwd=backend_dir, env=ENV, capture_output=True, text=True, timeout=timeout,
     )
     return proc.returncode, proc.stdout + proc.stderr
 
@@ -402,87 +479,105 @@ def classify(rc: int, out: str, node: str, marker: str) -> str:
 def main() -> int:
     only = sys.argv[1:] or None
 
-    # --- pristine gate: every oracle and control GREEN before mutating ---
-    nodes = []
-    for mutation in MUTATIONS:
-        if only and mutation.mid not in only:
-            continue
-        nodes += [mutation.oracle, mutation.control]
-    print("== PRISTINE GATE ==", flush=True)
-    bad = []
-    for node in nodes:
-        rc, out = run_node(node)
-        status = "GREEN" if rc == 0 else f"rc={rc}"
-        print(f"  {node}: {status}", flush=True)
-        if rc != 0:
-            bad.append(node)
-    if bad:
-        print(f"\nPRISTINE GATE FAILED: {bad} — no mutation is valid evidence")
-        return 2
+    pre_dirt = authoritative_clean()
+    if pre_dirt:
+        print(f"AUTHORITATIVE TREE NOT CLEAN BEFORE RUN: {pre_dirt!r}")
+        return 3
 
-    failures: list[str] = []
-    for mutation in MUTATIONS:
-        if only and mutation.mid not in only:
-            continue
-        print(f"== {mutation.mid} ==", flush=True)
-        path = BACKEND / mutation.rel_path
-        original = path.read_bytes()
-        original_mode = path.stat().st_mode
-        original_sha = sha(original)
+    repo_root, backend_dir = make_disposable_worktree()
+    atexit.register(drop_disposable_worktree, repo_root)
+    print(f"== DISPOSABLE DETACHED WORKTREE: {repo_root} ==")
+    print(f"== AUTHORITATIVE TREE {REPO} IS NEVER A WRITE TARGET ==")
 
-        src = original.decode("utf-8")
-        count = src.count(mutation.old)
-        if count != 1:
-            print(f"  FAIL anchor count={count} (must be exactly 1)")
-            failures.append(mutation.mid)
-            continue
-        mutated_src = src.replace(mutation.old, mutation.new, 1)
-        try:
-            ast.parse(mutated_src)
-            compile(mutated_src, mutation.rel_path, "exec")
-        except SyntaxError as exc:
-            print(f"  FAIL mutated source invalid: {exc}")
-            failures.append(mutation.mid)
-            continue
+    try:
+        # --- pristine gate: every oracle and control GREEN before mutating ---
+        nodes = []
+        for mutation in MUTATIONS:
+            if only and mutation.mid not in only:
+                continue
+            nodes += [mutation.oracle, mutation.control]
+        print("== PRISTINE GATE ==", flush=True)
+        bad = []
+        for node in nodes:
+            rc, out = run_node(backend_dir, node)
+            status = "GREEN" if rc == 0 else f"rc={rc}"
+            print(f"  {node}: {status}", flush=True)
+            if rc != 0:
+                bad.append(node)
+        if bad:
+            print(f"\nPRISTINE GATE FAILED: {bad} — no mutation is valid evidence")
+            return 2
 
-        path.write_text(mutated_src)
-        try:
-            rc, out = run_node(mutation.oracle)
-            verdict = classify(rc, out, mutation.oracle, mutation.marker)
-            if verdict != "SEMANTIC_RED":
-                tail = out[-300:].replace("\n", " | ")
-                print(f"  FAIL {verdict} :: {tail}")
+        failures: list[str] = []
+        for mutation in MUTATIONS:
+            if only and mutation.mid not in only:
+                continue
+            print(f"== {mutation.mid} ==", flush=True)
+            path = backend_dir / mutation.rel_path
+            backup: tuple[bytes, int] | None = None
+            try:
+                try:
+                    backup = apply_mutation(path, mutation.old, mutation.new)
+                except ValueError as exc:
+                    print(f"  FAIL {exc}")
+                    failures.append(mutation.mid)
+                    continue
+                mutated_src = path.read_text(encoding="utf-8")
+                try:
+                    ast.parse(mutated_src)
+                    compile(mutated_src, mutation.rel_path, "exec")
+                except SyntaxError as exc:
+                    print(f"  FAIL mutated source invalid: {exc}")
+                    failures.append(mutation.mid)
+                    continue
+
+                rc, out = run_node(backend_dir, mutation.oracle)
+                verdict = classify(rc, out, mutation.oracle, mutation.marker)
+                if verdict != "SEMANTIC_RED":
+                    tail = out[-300:].replace("\n", " | ")
+                    print(f"  FAIL {verdict} :: {tail}")
+                    failures.append(mutation.mid)
+                    continue
+                print("  semantic RED ok")
+            except subprocess.TimeoutExpired:
+                print("  FAIL TIMEOUT (void)")
                 failures.append(mutation.mid)
                 continue
-            print(f"  semantic RED ok")
-        except subprocess.TimeoutExpired:
-            print("  FAIL TIMEOUT (void)")
-            failures.append(mutation.mid)
-            continue
-        finally:
-            subprocess.run(["git", "checkout", "--", mutation.rel_path],
-                           cwd=BACKEND, check=True, capture_output=True)
-            os.chmod(path, original_mode)
-            restored = path.read_bytes()
-            if sha(restored) != original_sha:
-                print("  FAIL restore mismatch")
-                failures.append(mutation.mid)
-                continue
-            status = subprocess.run(
-                ["git", "status", "--porcelain", "--", mutation.rel_path],
-                cwd=BACKEND, capture_output=True, text=True).stdout.strip()
-            if status:
-                print(f"  FAIL worktree not clean: {status}")
-                failures.append(mutation.mid)
-                continue
-            print("  restore byte+mode identical, worktree clean")
+            finally:
+                # In-memory byte+mode restore INSIDE the disposable copy.
+                # A hard kill skips this — the authoritative tree stays
+                # byte-identical regardless; the disposable copy is
+                # discarded wholesale at exit.
+                if backup is not None:
+                    if not restore_mutation(path, *backup):
+                        print("  FAIL restore mismatch")
+                        failures.append(mutation.mid)
+                        continue
+                    status = subprocess.run(
+                        ["git", "status", "--porcelain", "--",
+                         f"backend/{mutation.rel_path}"],
+                        cwd=repo_root, capture_output=True, text=True,
+                    ).stdout.strip()
+                    if status:
+                        print(f"  FAIL disposable tree not clean: {status}")
+                        failures.append(mutation.mid)
+                        continue
+                    print("  restore byte+mode identical, disposable tree clean")
 
-        rc, _ = run_node(mutation.control)
-        if rc != 0:
-            print(f"  FAIL control not GREEN after restore")
-            failures.append(mutation.mid)
-            continue
-        print(f"  control GREEN — {mutation.mid} PROVEN")
+            rc, _ = run_node(backend_dir, mutation.control)
+            if rc != 0:
+                print(f"  FAIL control not GREEN after restore")
+                failures.append(mutation.mid)
+                continue
+            print(f"  control GREEN — {mutation.mid} PROVEN")
+    finally:
+        drop_disposable_worktree(repo_root)
+        atexit.unregister(drop_disposable_worktree)
+
+    post_dirt = authoritative_clean()
+    if post_dirt != pre_dirt:
+        print(f"AUTHORITATIVE TREE DRIFTED DURING RUN: {post_dirt!r}")
+        return 3
 
     if failures:
         print(f"\nMUTATIONS FAILED: {failures}")

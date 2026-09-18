@@ -167,3 +167,89 @@ def test_f3_oracle_file_has_no_broad_exception_capture():
         encoding="utf-8")
     assert "except Exception" not in src
     assert "except BaseException" not in src
+
+
+# ---------------------------------------------------------------------------
+# R2-final governance closure: the mutation runner must target the two
+# unique product call seams with narrow anchors, contain no git-restore
+# code path at all, and never write the authoritative tree even when a
+# mutation is interrupted before its restore step.
+# ---------------------------------------------------------------------------
+
+
+def _load_runner_module():
+    path = Path(__file__).parent / "run_mutations.py"
+    spec = importlib.util.spec_from_file_location("osr1_runner_full", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _product_source() -> str:
+    return (Path(__file__).resolve().parents[2] / "services"
+            / "order_command_service.py").read_text(encoding="utf-8")
+
+
+def test_m3_anchor_targets_unique_release_reservations_call():
+    """M3's anchor must be the narrow, UNIQUE _release_reservations call
+    site — not a multi-statement block that later refactors can break."""
+    runner = _load_runner_module()
+    m3 = next(x for x in runner.MUTATIONS
+              if x.mid == "M3_STALE_CANCEL_RELEASE_DECISION")
+    src = _product_source()
+    assert src.count(m3.old) == 1, (
+        f"M3 anchor must occur exactly once in the product file "
+        f"(count={src.count(m3.old)})")
+    assert m3.old.startswith(
+        "        released = await self._release_reservations(")
+
+
+def test_m4_anchor_targets_unique_open_credit_hold_call():
+    """M4's anchor must be the narrow, UNIQUE _open_credit_hold call
+    site — the R2 confirm-path seam the rollback oracle faults on."""
+    runner = _load_runner_module()
+    m4 = next(x for x in runner.MUTATIONS
+              if x.mid == "M4_RESTORE_PRE_COMMIT_NOTIFICATION")
+    src = _product_source()
+    assert src.count(m4.old) == 1, (
+        f"M4 anchor must occur exactly once in the product file "
+        f"(count={src.count(m4.old)})")
+    assert m4.old.startswith(
+        "        credit_reserved = await self._open_credit_hold(")
+
+
+def test_runner_source_has_no_git_restore_path():
+    """The runner must restore mutated bytes ONLY from its in-memory
+    backup — no git-restore verb may exist anywhere in the file, so an
+    interruption can never be 'fixed' by rewriting the tree from git."""
+    src = (Path(__file__).parent / "run_mutations.py").read_text(
+        encoding="utf-8")
+    assert "checkout" not in src
+    assert "git restore" not in src
+
+
+def test_interrupted_mutation_leaves_authoritative_tree_byte_identical():
+    """Simulated interruption: a mutation applied inside the disposable
+    detached worktree is never restored — the authoritative product file
+    must stay byte-identical throughout, and the disposable copy (left
+    dirty on purpose) must be discardable wholesale."""
+    runner = _load_runner_module()
+    m3 = next(x for x in runner.MUTATIONS
+              if x.mid == "M3_STALE_CANCEL_RELEASE_DECISION")
+    authoritative = (Path(__file__).resolve().parents[2] / "services"
+                     / "order_command_service.py")
+    before = authoritative.read_bytes()
+
+    repo_root, backend_dir = runner.make_disposable_worktree()
+    try:
+        disposable_path = backend_dir / m3.rel_path
+        runner.apply_mutation(disposable_path, m3.old, m3.new)
+        # interruption: NO restore runs — the disposable copy stays dirty
+        assert runner.sha(disposable_path.read_bytes()) != runner.sha(before)
+        # the authoritative tree was never a write target
+        assert authoritative.read_bytes() == before
+        dirt = runner.authoritative_clean()
+        assert "services/order_command_service.py" not in dirt, dirt
+    finally:
+        runner.drop_disposable_worktree(repo_root)
+    assert authoritative.read_bytes() == before

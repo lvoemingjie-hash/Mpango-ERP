@@ -1,12 +1,13 @@
 """F1 fix-round RED faces (real HTTP / real service on task PG16).
 
-Faces 1-3 document the credit-hold persistence gap as KNOWN REDs
-(CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED): per-order credit-hold
-attribution does not exist — only the aggregate
-bindings.outstanding_balance — so cancel cannot release what it cannot
-attribute, and confirm->credit-payment double-counts the same exposure in
-both the binding aggregate and the receivables summary. These REDs are
-evidence for the CTO decision; they are NOT fixed in this round.
+Faces 1-3 document the credit-hold attribution semantics. The R1-era
+KNOWN-RED narrative (aggregate-only binding, no per-order attribution,
+double-counted exposure) is superseded by R2: per-order credit holds
+exist — confirm opens one (binding cache += total), cancel
+settles/releases it, a credit payment converts it into actual credit
+exposure, and the 039 migration preflight proves the binding-cache
+identity. All three faces are GREEN under the R2 semantics and pin them
+as regression oracles.
 Faces 4-6 are fixed this round and must be GREEN.
 """
 from __future__ import annotations
@@ -46,17 +47,17 @@ pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------------------
-# Face 1 (KNOWN RED — credit release on cancel; STOP clause)
+# Face 1 (R2 GREEN — cancel releases the confirm-time per-order hold)
 # ---------------------------------------------------------------------------
 
 
 async def test_cancel_after_confirm_releases_credit_hold_KNOWN_RED(
     r1_client, s2_clean_db, provisioned_pool, cashier_identity
 ):
-    """Confirm reserves credit (binding += total); cancelling the confirmed
-    order MUST release that hold (binding back to before). Current product
-    cannot: no per-order credit-hold attribution exists to release —
-    aggregate-only. KNOWN RED pending CREDIT_HOLD_PERSISTENCE_DECISION."""
+    """Confirm opens a per-order credit hold (binding += total); cancelling
+    the confirmed order MUST settle and release that hold (binding back to
+    before). R2 gives cancel exactly this per-order attribution via
+    order_credit_holds + the settle-cancel-hold gate."""
     db, reg = s2_clean_db
     token = await osd1_cashier_token(r1_client, cashier_identity)
     ret_id, schema, ws_id = await make_bound_retailer(db, provisioned_pool, reg)
@@ -73,25 +74,25 @@ async def test_cancel_after_confirm_releases_credit_hold_KNOWN_RED(
 
     after = await binding_balance(db, ws_id, ret_id)
     assert after == before, (
-        f"CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED: cancel did not release "
-        f"the confirm-time credit hold (before={before} held={held} "
-        f"after_cancel={after}); per-order attribution is missing, the "
-        f"aggregate cannot be decremented without guessing")
+        f"R2 cancel did not settle/release the confirm-time per-order "
+        f"credit hold (before={before} held={held} "
+        f"after_cancel={after}); the settle-cancel-hold gate must return "
+        f"the binding to its pre-confirm value")
 
 
 # ---------------------------------------------------------------------------
-# Face 2 (KNOWN RED — confirm + credit payment must not double count)
+# Face 2 (R2 GREEN — credit payment converts the hold, no double count)
 # ---------------------------------------------------------------------------
 
 
 async def test_confirm_then_credit_payment_does_not_double_count_KNOWN_RED(
     r1_client, s2_clean_db, provisioned_pool, cashier_identity
 ):
-    """Confirm reserves credit (binding += total); a later full CREDIT
-    payment must CONVERT that hold into actual credit exposure — the total
-    binding movement across both events must be exactly one total, not
-    two. Current product adds the total twice (hold + credit payment
-    delta) with no linkage. KNOWN RED pending the same decision."""
+    """Confirm opens a per-order credit hold (binding += total); a later
+    full CREDIT payment must CONVERT that hold into actual credit
+    exposure — the total binding movement across both events must be
+    exactly one total, not two. R2 links the conversion to the same
+    order's hold, so the hold is never counted twice."""
     db, reg = s2_clean_db
     token = await osd1_cashier_token(r1_client, cashier_identity)
     ret_id, schema, ws_id = await make_bound_retailer(db, provisioned_pool, reg)
@@ -135,7 +136,7 @@ async def test_confirm_then_credit_payment_does_not_double_count_KNOWN_RED(
 
 
 # ---------------------------------------------------------------------------
-# Face 3 (KNOWN RED — receivables summary must not duplicate the exposure)
+# Face 3 (R2 GREEN — receivables summary counts the exposure exactly once)
 # ---------------------------------------------------------------------------
 
 
@@ -144,9 +145,10 @@ async def test_receivables_summary_counts_exposure_once_KNOWN_RED(
 ):
     """Two ISOLATED retailers: (a) confirm-only control — the summary
     reports its hold exactly once (GREEN control face); (b) credit flow —
-    the same credit exposure must be counted ONCE in the summary. The
-    summary reads the binding aggregate, which double-counts hold+credit
-    for the same exposure -> KNOWN RED pending the CTO credit decision."""
+    the same credit exposure must be counted ONCE in the summary. R2
+    reads the binding through the per-order hold lifecycle (reserve /
+    settle / convert), so a converted hold is one exposure, never
+    hold + credit double-counted."""
     from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (
         _create_binding,
         _create_retailer,
@@ -203,9 +205,9 @@ async def test_receivables_summary_counts_exposure_once_KNOWN_RED(
         await reader.close()
 
     assert cred_out == Decimal("100.00"), (
-        f"CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED: receivables summary "
-        f"double-counts the same exposure (got {cred_out}, expected "
-        f"100.00 exactly once for the credit order)")
+        f"R2 receivables summary must count the converted credit exposure "
+        f"exactly once (got {cred_out}, expected 100.00 exactly once for "
+        f"the credit order)")
 
 
 # ---------------------------------------------------------------------------

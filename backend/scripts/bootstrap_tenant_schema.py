@@ -1608,19 +1608,25 @@ async def _reconcile_credit_holds(db, ts: str) -> None:
         ), {"s": ts})).mappings()
     actual_constraints: dict[str, str] = {}
     for row in constraint_rows:
-        actual_constraints[_catalog_code(row["conname"])] = _normalize_definition(
-            _catalog_code(row["definition"]).replace(ts, "SCHEMA"))
+        # PG omits the schema qualifier for same-schema FK targets, so the
+        # comparison is schema-qualification-insensitive on both sides.
+        actual_constraints[_catalog_code(row["conname"])] = (
+            _normalize_definition(
+                _catalog_code(row["definition"]).replace(ts, "SCHEMA"))
+            .replace("SCHEMA.", ""))
     for name, expected in HOLD_TABLE_CONSTRAINTS.items():
         actual = actual_constraints.get(name)
         if actual is None:
             raise RuntimeError(
                 f"Bootstrap reconcile: {ts}.order_credit_holds is missing "
                 f"constraint {name}")
-        if actual != _normalize_definition(expected):
+        expected_normalized = _normalize_definition(expected).replace(
+            "SCHEMA.", "")
+        if actual != expected_normalized:
             raise RuntimeError(
                 f"Bootstrap reconcile: {ts}.order_credit_holds constraint "
                 f"{name} has a wrong definition: {actual!r} != "
-                f"{_normalize_definition(expected)!r}")
+                f"{expected_normalized!r}")
     index_rows = (await db.execute(
         text(
             "SELECT indexname, indexdef FROM pg_indexes "

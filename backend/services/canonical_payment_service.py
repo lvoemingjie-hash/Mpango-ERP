@@ -381,18 +381,20 @@ class CanonicalPaymentService:
                     "ORDER_ALREADY_PAID",
                     "Paid credit orders accept only cash or transfer collections",
                 )
-            # RAW exposure (never clamped): a negative value is corrupt
-            # history and fails closed with a named integrity refusal.
+            # RAW exposure (never clamped): a negative value on a
+            # credit-bearing order is corrupt history and fails closed with
+            # a named integrity refusal. A zero-credit PAID order simply has
+            # no credit exposure to collect.
             credit_total = await self._repo.get_order_method_total(
                 db, order_id=order.id, methods=("credit",))
             collection_total = await self._repo.get_order_method_total(
                 db, order_id=order.id, methods=("cash", "transfer"))
             credit_collection_exposure = credit_total - collection_total
-            if credit_collection_exposure < 0:
+            if credit_total > 0 and credit_collection_exposure < 0:
                 raise _credit_hold_mismatch(
                     f"Credit history is over-collected: credit {credit_total} "
                     f"vs collections {collection_total}")
-            if credit_collection_exposure == 0:
+            if credit_collection_exposure <= 0:
                 raise _payment_error(
                     status.HTTP_409_CONFLICT,
                     "ORDER_ALREADY_PAID",

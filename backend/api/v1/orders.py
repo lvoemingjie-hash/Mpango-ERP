@@ -767,6 +767,13 @@ async def pay_order(
             "INVALID_STATE_TRANSITION",
             "Payment cannot transition the order from its current state",
         )
+    except HTTPException:
+        # Precheck refusals from the canonical service carry zero writes;
+        # do NOT roll back here (the tenant middleware owns the HTTP-path
+        # rollback, and direct-service callers keep their transaction and
+        # search_path intact — matching the route semantics these callers
+        # were built against).
+        raise
     except Exception:
         await db.rollback()
         raise

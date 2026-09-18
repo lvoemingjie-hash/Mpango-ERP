@@ -386,8 +386,9 @@ def test_c3_p14_binding_cache_mismatch_rejected():
 
 
 def test_c3_soft_deleted_payment_history_boundary():
-    """Soft-deleted payments are NOT history: a paid order whose only credit
-    is soft-deleted is 'paid without coverage' and must be refused."""
+    """Soft-deleted payments are NOT history: a partially_paid order with
+    effective cash 40 + soft-deleted cash 60 migrates with hold remaining
+    60 (the deleted row contributes nothing). M3 anchor."""
     source = os.environ["TEST_DATABASE_URL"]
     with temporary_database_url(source, "r2c3soft") as db_url:
         engine = _engine(db_url)
@@ -395,13 +396,24 @@ def test_c3_soft_deleted_payment_history_boundary():
         ws = uuid.uuid4()
         schema = _register_tenant(engine, ws)
         retailer = uuid.uuid4()
-        o = _add_order(engine, schema, ws, retailer, "paid", "100.00")
-        _add_payment(engine, schema, o, retailer, "credit", "100.00",
+        o = _add_order(engine, schema, ws, retailer, "partially_paid", "100.00")
+        _add_payment(engine, schema, o, retailer, "cash", "40.00")
+        _add_payment(engine, schema, o, retailer, "cash", "60.00",
                      deleted=True)
         _add_binding(engine, ws, retailer, "0.00")
-        with pytest.raises(Exception, match=r"state matrix"):
+        try:
             with engine.begin() as conn:
                 _run_migration_039(conn)
+        except Exception as exc:  # noqa: BLE001 — converted to a named RED
+            raise AssertionError(
+                "M3: the migration refused a history whose ONLY anomaly is a "
+                "soft-deleted payment row — effective history must exclude "
+                f"is_deleted rows (got {type(exc).__name__}: {exc})") from exc
+        rows = _holds(engine, schema)
+        assert rows == [("partially_paid", "100.00", "60.00", "active")], (
+            f"M3: soft-deleted payment leaked into the backfill (rows={rows}; "
+            "effective history must exclude is_deleted rows — expected "
+            "remaining 60.00 from cash 40.00 only)")
 
 
 def test_c5_bootstrap_before_039_refuses_before_tenant_objects():

@@ -1,0 +1,41 @@
+category,subcategory,finding,severity,status,evidence
+SOURCE,scope,Seven paths between FROZEN_BASE and REVIEW_TIM confirmed,INFO,PASS,git diff --name-only
+SOURCE,drift,backend/scripts tests/fixtures .secrets.baseline zero drift,INFO,PASS,git diff filter
+SOURCE,_candidate_source,Function body byte-identical between FROZEN_BASE and REVIEW_TIP,INFO,PASS,extracted function comparison
+SOURCE,_helper_node_from_source,Rewritten in R1-R5-R1 from ast.dump text search to real ast.Call inspection,INFO,PASS,git diff
+SOURCE,_assert_helper_reads_only_committed_candidate,Rewritten in R1-R5-R1 with bounded AST-node inspection,INFO,PASS,git diff
+SOURCE,ast.Call detection,Detects real ast.Call nodes for open() and builtins.open() not ast.dump text,INFO,PASS,code review
+SOURCE,except handler detection,Detects bare except except Exception except BaseException and tuples,INFO,PASS,code review
+SOURCE,utf8 decode check,Verifies first ast.Constant argument equals utf-8 string,INFO,PASS,code review
+CAPTURE,subprocess.run,Uses capture_output=True no text=True raw bytes preserved,INFO,PASS,code review
+CAPTURE,strict decode,result.stdout.decode("utf-8") no errors parameter,INFO,PASS,code review
+CAPTURE,except handling,Bounded except OSError subprocess.SubprocessError,INFO,PASS,code review
+CAPTURE,stderr handling,stderr decoded with errors=replace only for diagnostic message,INFO,PASS,code review
+CAPTURE,no fallback,No working-tree fallback on any failure path,INFO,PASS,code review
+PYTEST,collection,52 collected 36 deselected 16 selected,INFO,PASS,pytest output
+PYTEST,result,16 passed rc=0 no skip failure error,INFO,PASS,pytest output
+PYTEST,nodeids,16 case-sensitive nodeids match expected set,INFO,PASS,JUnit XML parse
+PYTEST,nodeids,Original 15 nodes retained plus 1 new injected negative example,INFO,PASS,JUnit XML parse
+PYTEST,environment,PYTHONUTF8=0 utf8_mode=0 locale=cp936 confirmed,INFO,PASS,python -c probe
+PYTEST,environment,DATABASE_URL TEST_DATABASE_URL REDIS_URL unreachable loopback,INFO,PASS,env config
+PYTEST,isolation,MPANGO_DB_AUTHORITY_MANIFEST SCENARIO not set,INFO,PASS,env config
+PYTEST,basetemp,New task basetemp used outside worktree,INFO,PASS,path check
+PYTEST,cache,pytest cache disabled -p no:cacheprovider,INFO,PASS,pytest args
+NEGATIVE,open() injection,Legitimate open() call rejected with AssertionError calls open(),PASS,independent probe
+NEGATIVE,builtins.open() injection,Legitimate builtins.open() call rejected with AssertionError builtins.open(),PASS,independent probe
+NEGATIVE,old text predicate,ast.dump text search accepts violating helper documented blind spot,PASS,independent probe
+O1,structural checker,Accepts errors=replace on decode call,KNOWN_LIMIT,ACCEPTED,independent probe
+O1,behavioral test,_candidate_source still refuses invalid UTF-8 with RuntimeError,INFO,PASS,independent probe
+O1,verdict,No current actual regression found retained as known bounded limitation,INFO,PASS,review judgment
+SECRETS,baseline,SHA-256 before and after scan identical 03D01ADE9A61E4322E405550139EE26AE75A8A2577F717218081CAFF37DDF4C2,INFO,PASS,Get-FileHash
+SECRETS,scan,All seven candidate diff paths clean exit 0,INFO,PASS,detect-secrets-hook
+SECRETS,control,Synthetic AWS key pattern correctly detected exit 1,INFO,PASS,detect-secrets-hook
+GIT,diff-check,git diff --check clean no whitespace errors,INFO,PASS,git diff --check
+GIT,bom,No BOM bytes in any of seven files,INFO,PASS,blob inspection
+GIT,nul,No NUL bytes in any of seven files,INFO,PASS,blob inspection
+GIT,line-endings,All seven files use LF line endings,INFO,PASS,blob inspection
+GATES,full_db_runtime,NOT_RUN per task constraints,INFO,NOT_RUN,task constraint
+GATES,pg_scenarios,NOT_RUN per task constraints,INFO,NOT_RUN,task constraint
+GATES,regression_104,NOT_RUN per task constraints,INFO,NOT_RUN,task constraint
+GATES,nine_runtime_mutations,NOT_RUN per task constraints,INFO,NOT_RUN,task constraint
+GATES,sku_acceptance,NO per task constraints,INFO,NOT_RUN,task constraint

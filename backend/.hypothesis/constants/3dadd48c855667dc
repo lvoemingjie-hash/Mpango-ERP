@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\schemas\wholesaler.py
+# hypothesis_version: 6.150.2
+
+['Optional message', 'Response timestamp', 'Wholesaler data', '^[A-Z0-9]+$', 'from_attributes']

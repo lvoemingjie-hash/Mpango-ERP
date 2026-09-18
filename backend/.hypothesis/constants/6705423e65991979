@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\schemas\__init__.py
+# hypothesis_version: 6.150.2
+
+['AssignRolesRequest', 'CurrentUserData', 'CurrentUserResponse', 'DataResponse', 'ErrorDetail', 'ErrorResponse', 'LoginRequest', 'LoginResponse', 'MessageResponse', 'Order', 'OrderActionResponse', 'OrderCreateRequest', 'OrderItem', 'OrderItemCreate', 'OrderListResponse', 'OrderResponse', 'OrderStatus', 'PaginatedResponse', 'Pagination', 'RefreshTokenRequest', 'RoleListResponse', 'RoleRead', 'TokenData', 'TokenPayload', 'UserCreateRequest', 'UserListResponse', 'UserRead', 'UserResponse', 'UserUpdateRequest']

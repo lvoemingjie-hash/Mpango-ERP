@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\core\structured_logging.py
+# hypothesis_version: 6.150.2
+
+['******', 'INFO', 'Z', 'access_token', 'api_key', 'apikey', 'args', 'auth', 'authorization', 'card_number', 'ccv', 'client_secret', 'component', 'created', 'credit_card', 'cvv', 'env', 'exc_info', 'exc_text', 'exception', 'filename', 'formatter', 'funcName', 'level', 'levelname', 'levelno', 'lineno', 'logger', 'logging', 'message', 'method', 'module', 'msecs', 'msg', 'name', 'passwd', 'password', 'pathname', 'priv_key', 'private_key', 'process', 'processName', 'pwd', 'refresh_token', 'relativeCreated', 'request_id', 'route', 'secret', 'secret_key', 'service', 'social_security', 'span_id', 'ssn', 'stack_info', 'tenant_schema', 'thread', 'threadName', 'timestamp', 'token', 'traceback', 'type', 'user_id']

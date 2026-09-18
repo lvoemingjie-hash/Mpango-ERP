@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\models\binding.py
+# hypothesis_version: 6.150.2
+
+['Retailer id', 'active', 'active|inactive', 'public', 'public.retailers.id', 'retailer_id', 'schema', 'wholesaler_id']

@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\schemas\common.py
+# hypothesis_version: 6.150.2
+
+[100, 'Error message', 'Error timestamp', 'Items per page', 'Optional message', 'Response data', 'Response message', 'Response timestamp', 'T', 'from_attributes']

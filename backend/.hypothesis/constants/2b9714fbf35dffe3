@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\core\error_codes.py
+# hypothesis_version: 6.150.2
+
+[400, 401, 403, 404, 405, 409, 422, 429, 500, 503, 'CONFLICT', 'DATABASE_ERROR', 'DUPLICATE_RESOURCE', 'INVALID_CREDENTIALS', 'INVALID_INPUT', 'INVALID_ORDER_STATE', 'INVALID_TENANT_CODE', 'METHOD_NOT_ALLOWED', 'ORDER_NOT_FOUND', 'PAYMENT_NOT_FOUND', 'PERMISSION_DENIED', 'RATE_LIMIT_EXCEEDED', 'RESOURCE_NOT_FOUND', 'SERVICE_UNAVAILABLE', 'SKU_NOT_FOUND', 'TENANT_NOT_FOUND', 'TOKEN_EXPIRED', 'TOKEN_INVALID', 'UNAUTHORIZED', 'USER_NOT_FOUND', 'VALIDATION_ERROR', 'Validation error', 'code', 'component', 'details', 'error_code', 'error_handling', 'exception_message', 'exception_type', 'message', 'production', 'request_id', 'status_code', 'unknown', 'validation_errors']

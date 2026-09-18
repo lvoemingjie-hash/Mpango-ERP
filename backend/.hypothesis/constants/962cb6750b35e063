@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\context\__init__.py
+# hypothesis_version: 6.150.2
+
+['AuthContext', 'TenantContext', 'attach_auth_context', 'clear_auth_context', 'clear_tenant_context', 'extract_bearer_token', 'get_auth_context', 'get_tenant_context', 'resolve_auth_context']

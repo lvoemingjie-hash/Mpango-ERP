@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\models\sku.py
+# hypothesis_version: 6.150.2
+
+[255, 'created_at', 'is_active', 'ix_skus_created_at', 'ix_skus_is_active', 'sku_code', 'skus', 'unit', 'ux_skus_sku_code']

@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\api\v1\health.py
+# hypothesis_version: 6.150.2
+
+[200, 503, 1000, '/live', '/ready', '0.1.0', 'Check timestamp', 'ImportError', 'PONG', 'Readiness status', 'SELECT 1', 'Service is not ready', 'Service is ready', 'Service name', 'Service version', 'basic_query', 'checks_performed', 'connectivity', 'database', 'description', 'error', 'error_type', 'healthy', 'json', 'latency_ms', 'mpango-erp-backend', 'note', 'ping', 'redis', 'response', 'schema_access', 'status', 'unexpected', 'unhealthy', 'y', 'z']

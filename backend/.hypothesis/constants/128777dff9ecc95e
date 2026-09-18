@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\repositories\payment_repository.py
+# hypothesis_version: 6.150.2
+
+['amount', 'created_at', 'created_by', 'idempotency_key', 'method', 'order_id', 'retailer_id', 'status', 'transaction_id', 'updated_at', 'updated_by']

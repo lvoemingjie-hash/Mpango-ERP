@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\core\sql_profiling.py
+# hypothesis_version: 6.150.2
+
+[0.0, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 100, 200, 500, 1000, '...', 'BEGIN', 'COMMIT', 'DELETE', 'INSERT', 'OTHER', 'ROLLBACK', 'SELECT', 'SET', 'UPDATE', 'after_cursor_execute', 'duration_ms', 'query_start_time', 'query_type', 'route', 'sql_queries', 'sql_queries_total', 'sql_start_time', 'statement', 'tenant', 'tenant_schema', 'threshold_ms', 'unknown']

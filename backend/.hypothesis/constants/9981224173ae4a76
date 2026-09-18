@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\schemas\payment.py
+# hypothesis_version: 6.150.2
+
+['Order UUID', 'Payment amount', 'Payment method', 'cash', 'completed', 'credit', 'from_attributes', 'pending', 'transfer']

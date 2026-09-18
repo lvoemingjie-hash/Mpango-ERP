@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\crud\order.py
+# hypothesis_version: 6.150.2
+
+['0.00', 'allowed_from', 'cancel', 'confirm', 'items', 'product_name', 'quantity', 'sku_code', 'target', 'unit_price']

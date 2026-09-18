@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\main.py
+# hypothesis_version: 6.150.2
+
+['/', '/api/v1', '/health', '0.1.0', 'Mpango ERP API', 'api', 'endpoints', 'environment', 'grace_period_seconds', 'health', 'message', 'r', 'signal', 'status', 'v0.1-platform', 'version']

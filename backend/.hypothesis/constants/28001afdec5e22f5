@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\Cursor mpango erp\backend\models\order.py
+# hypothesis_version: 6.150.1
+
+['0.00', 'CASCADE', 'Order', 'OrderItem', 'all, delete-orphan', 'cancelled', 'confirmed', 'created_at', 'items', 'ix_orders_created_at', 'ix_orders_status', 'order', 'order_id', 'order_items', 'order_status', 'orders', 'orders.id', 'pending', 'product_id', 'retailer_id', 'selectin', 'shipped', 'status']

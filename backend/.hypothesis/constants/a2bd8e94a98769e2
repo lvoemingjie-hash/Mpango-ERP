@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\schemas\user.py
+# hypothesis_version: 6.150.2
+
+[100, 128, '"', "'", '*/', '--', '/*', ';', '<', '>', 'Creation timestamp', 'DELETE', 'DROP', 'INSERT', 'List of roles', 'Optional message', 'Response timestamp', 'Role UUID', 'Role description', 'Role name', 'UPDATE', 'User UUID', 'User active status', 'User data', 'User email', 'User full name', 'User password', 'User roles', '^[a-zA-Z0-9\\s\\-_.]+$', 'from_attributes', 'full_name', 'script', 'sp_', 'xp_']

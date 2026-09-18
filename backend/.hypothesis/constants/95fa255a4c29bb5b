@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\Cursor mpango erp\backend\core\config.py
+# hypothesis_version: 6.150.1
+
+['.env', 'Allowed CORS origins', 'Application name', 'Debug mode', 'HS256', 'Mpango ERP', 't_dev']

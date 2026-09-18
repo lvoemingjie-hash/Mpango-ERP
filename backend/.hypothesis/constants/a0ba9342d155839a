@@ -1,0 +1,4 @@
+# file: C:\Users\Jeff0\MPANGO ERP\windsurf mpango erp\backend\core\rate_limiter.py
+# hypothesis_version: 6.150.2
+
+[100, 429, 1000, ',', 'X-Forwarded-For', 'X-Real-IP', 'client_ip', 'count', 'limit', 'rate_limit_key', 'redis_key', 'retry_after', 'tenant_id', 'unknown', 'user_id', 'utf-8', 'window', 'window_size']

@@ -195,10 +195,10 @@ class TestParseDbUrl:
 
 class TestParseRedisUrl:
     def test_parses(self) -> None:
-        assert pf.parse_redis_url("redis://localhost:6379/0") == ("localhost", 6379)
+        assert pf.parse_redis_url("redis://localhost:6379/0") == ("localhost", 6379, 0)
 
     def test_default_port_is_6379(self) -> None:
-        assert pf.parse_redis_url("redis://127.0.0.1/0") == ("127.0.0.1", 6379)
+        assert pf.parse_redis_url("redis://127.0.0.1/0") == ("127.0.0.1", 6379, 0)
 
     @pytest.mark.parametrize(
         "url,expected",

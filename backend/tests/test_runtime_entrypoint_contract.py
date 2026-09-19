@@ -36,15 +36,12 @@ _FORBIDDEN_CODE = [
     r"\balembic\b",
     r"python\s+scripts/bootstrap_tenant_schema",
     r"provision_runtime_db_roles",
-    r"\bGRANT\b",
-    r"\bCREATE\b",
-    r"\bALTER\b",
-    r"\bDROP\b",
-    r"\bINSERT\b",
-    r"\bUPDATE\b",
-    r"\bDELETE\b",
     r"docker-entrypoint-initdb\.d",
 ]
+# SQL write verbs are matched CASE-SENSITIVELY (uppercase) so ordinary Python
+# identifiers such as sys.path.insert cannot false-positive.
+_FORBIDDEN_SQL_VERBS = [r"\bGRANT\b", r"\bCREATE\b", r"\bALTER\b", r"\bDROP\b",
+                        r"\bINSERT\b", r"\bUPDATE\b", r"\bDELETE\b"]
 
 
 def audit_runtime_entrypoint(text: str) -> list[str]:
@@ -65,6 +62,9 @@ def audit_runtime_entrypoint(text: str) -> list[str]:
     for pattern in _FORBIDDEN_CODE:
         if re.search(pattern, code, re.IGNORECASE):
             violations.append(f"forbidden invocation/statement in code: {pattern}")
+    for pattern in _FORBIDDEN_SQL_VERBS:
+        if re.search(pattern, code):
+            violations.append(f"forbidden SQL write verb in code: {pattern}")
     exec_lines = [l for l in code_lines if l.strip().startswith("exec ")]
     if len(exec_lines) != 1:
         violations.append(f"expected exactly one exec (the application runtime), found {len(exec_lines)}")
@@ -74,15 +74,19 @@ def audit_runtime_entrypoint(text: str) -> list[str]:
         if text.splitlines()[-1].strip() != exec_lines[0].strip() and \
                 not code.rstrip().endswith(exec_lines[0].strip()):
             violations.append("the runtime exec is not the final command")
-    # readiness gate, if present, must be strictly read-only
-    gate = re.search(r"python - <<'PY'\n(.*?)\nPY", text, re.DOTALL)
-    if gate is not None:
-        gate_code = gate.group(1)
-        for verb in ("INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "GRANT"):
-            if re.search(rf"\b{verb}\b", gate_code):
-                violations.append(f"readiness gate contains write verb {verb}")
-        if "SELECT" not in gate_code:
-            violations.append("readiness gate does not issue a read-only SELECT probe")
+    # readiness gate: the entrypoint must DELEGATE to the extracted helper
+    # (R1-R4), whose own SELECT-only property is proven by
+    # test_runtime_readiness_gate.py; the shim itself must stay write-free
+    gate = re.search(r"python - <<'PYEOF'\n(.*?)\nPYEOF", text, re.DOTALL)
+    if gate is None:
+        violations.append("no readiness gate block found (expected PYEOF heredoc)")
+    else:
+        shim = gate.group(1)
+        if "from scripts.runtime_readiness_gate import main" not in shim:
+            violations.append("readiness gate must delegate to "
+                              "scripts/runtime_readiness_gate.py")
+        if "sys.exit(main())" not in shim:
+            violations.append("readiness gate shim must exit with the gate result")
     return violations
 
 
@@ -107,12 +111,12 @@ def test_runtime_entrypoint_starts_only_the_application_runtime(entrypoint_text)
     assert entrypoint_text.rstrip().endswith("exec uvicorn main:app --host 0.0.0.0 --port 8000")
 
 
-def test_runtime_entrypoint_readiness_gate_is_strictly_read_only(entrypoint_text):
-    gate = re.search(r"python - <<'PY'\n(.*?)\nPY", entrypoint_text, re.DOTALL)
-    assert gate is not None, "the retained readiness gate must be present and auditable"
-    # the gate observes via catalog SELECTs only (migration head, tenant
-    # state, product read-only assertions); no write verbs anywhere
-    assert "SELECT" in gate.group(1)
+def test_runtime_entrypoint_readiness_gate_delegates_to_helper(entrypoint_text):
+    """R1-R4: the entrypoint's readiness block is a thin shim delegating to
+    scripts/runtime_readiness_gate.py; the helper's own SELECT-only
+    property is proven by test_runtime_readiness_gate.py."""
+    gate = re.search(r"python - <<'PYEOF'\n(.*?)\nPYEOF", entrypoint_text, re.DOTALL)
+    assert gate is not None, "the readiness gate shim must be present"
     assert audit_runtime_entrypoint(entrypoint_text) == []
 
 

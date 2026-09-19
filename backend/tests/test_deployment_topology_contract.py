@@ -110,15 +110,35 @@ def test_rendered_primary_compose_passes_real_preflight(monkeypatch, tmp_path):
 
 
 @pytest.mark.skipif(not _docker_available(), reason="docker CLI not available")
-def test_prod_compose_is_mechanically_non_runnable():
-    rendered = subprocess.run(
-        ["docker", "compose", "-f", str(COMPOSE_PROD), "config", "--quiet"],
-        capture_output=True, text=True, timeout=120, cwd=str(REPO_ROOT))
-    assert rendered.returncode != 0, (
-        "docker-compose.prod.yml must be fail-closed pending the authorized "
-        "deployment-contract task")
-    assert "R1R3_PROD_COMPOSE_IS_DISABLED" in rendered.stderr
-    text = COMPOSE_PROD.read_text(encoding="utf-8")
-    assert "postgres:15" not in text
-    assert "init.sql" not in text
-    assert "REPORTING_USER_PASSWORD" not in text
+@pytest.mark.parametrize("probe_variant", [
+    "unset", "alpine", "mpango-image-like", "explicit-service",
+])
+def test_prod_compose_is_unconditionally_non_runnable(probe_variant):
+    """R1-R4 P1: the fail-closed variable-interpolation stub was bypassable
+    (setting the blocker variable to any image name satisfied `:?`).  The
+    artifact is therefore DECOMMISSIONED — renamed out of the compose
+    extension — so every invocation on the original path fails
+    unconditionally, for every variable, profile, service selection or
+    ordinary Compose flag."""
+    assert not COMPOSE_PROD.exists(), (
+        "docker-compose.prod.yml must stay decommissioned")
+    decommissioned = COMPOSE_PROD.with_name(
+        COMPOSE_PROD.name + ".decommissioned-r1r4")
+    assert decommissioned.is_file(), \
+        "the decommissioned artifact must remain as the audit trail"
+
+    env = dict(os.environ)
+    env.pop("R1R3_PROD_COMPOSE_IS_DISABLED", None)
+    if probe_variant == "alpine":
+        env["R1R3_PROD_COMPOSE_IS_DISABLED"] = "alpine"
+    if probe_variant == "mpango-image-like":
+        env["R1R3_PROD_COMPOSE_IS_DISABLED"] = "mpango-backend:latest"
+    args = ["docker", "compose", "-f", str(COMPOSE_PROD)]
+    if probe_variant == "explicit-service":
+        # positional service selection (after the subcommand)
+        args += ["config", "--quiet", "backend"]
+    args += ["config", "--quiet"]
+    rendered = subprocess.run(args, capture_output=True, text=True,
+                              timeout=120, cwd=str(REPO_ROOT), env=env)
+    assert rendered.returncode != 0, rendered.stdout
+    assert "no such file" in (rendered.stderr + rendered.stdout).lower()

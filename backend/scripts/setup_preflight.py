@@ -143,10 +143,15 @@ def parse_db_url(url: str) -> tuple[str, str, str, int, str]:
     return user, password, host, port, database
 
 
-def parse_redis_url(url: str) -> tuple[str, int]:
-    """Return (host, port) from a REDIS_URL.  Rejects credentials — the
-    current Compose Redis service is no-auth, so a credentialed URL cannot
-    connect and must fail closed."""
+def parse_redis_url(url: str) -> tuple[str, int, int]:
+    """Return (host, port, logical_database_index) from a REDIS_URL.
+
+    Documented identity policy (R1-R4): the URL must use scheme redis, carry
+    NO credentials, NO query string and NO fragment, and MUST include an
+    explicit numeric logical database index in the path (for example /0).
+    The index is part of the Redis identity the host setup context and the
+    container runtime context must share, so any malformed, index-less,
+    query-bearing or fragment-bearing form fails closed."""
     try:
         u = urlparse(url)
     except Exception:
@@ -155,12 +160,20 @@ def parse_redis_url(url: str) -> tuple[str, int]:
         _fail("REDIS_URL scheme is not redis")
     if u.username or u.password:
         _fail("REDIS_URL must not carry credentials (Compose Redis is no-auth)")
+    if u.query:
+        _fail("REDIS_URL must not carry a query string")
+    if u.fragment:
+        _fail("REDIS_URL must not carry a fragment")
     host = u.hostname or ""
     try:
         port = u.port if u.port is not None else 6379
     except (ValueError, TypeError):
         _fail("REDIS_URL has an invalid port")
-    return host, port
+    index = u.path.lstrip("/")
+    if not index.isdigit():
+        _fail("REDIS_URL must include a numeric logical database index "
+              "(for example /0)")
+    return host, port, int(index)
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +252,7 @@ def run_initial(env_path: str) -> None:
         _fail("REPORTING_USER_PASSWORD conflict: process env differs from backend/.env")
 
     db_user, db_pass, db_host, db_port, db_name = parse_db_url(file_db)
-    rd_host, rd_port = parse_redis_url(file_redis)
+    rd_host, rd_port, rd_db_index = parse_redis_url(file_redis)
 
     if not _is_loopback(db_host):
         _fail("DATABASE_URL host must be local")
@@ -329,7 +342,7 @@ def run_initial(env_path: str) -> None:
     container_db = env.get("DATABASE_URL_CONTAINER", "")
     container_redis = env.get("REDIS_URL_CONTAINER", "")
     ct_user, ct_pass, ct_host, ct_port, ct_database = parse_db_url(container_db)
-    rd_ct_host, rd_ct_port = parse_redis_url(container_redis)
+    rd_ct_host, rd_ct_port, rd_ct_db_index = parse_redis_url(container_redis)
     if ct_host in ("localhost", "127.0.0.1", "::1"):
         _fail("DATABASE_URL_CONTAINER host must be the Compose service name, "
               "not a loopback host (the backend container cannot reach the "
@@ -348,6 +361,9 @@ def run_initial(env_path: str) -> None:
     if rd_ct_port != 6379:
         _fail("REDIS_URL_CONTAINER port must be the redis container target "
               "port")
+    if rd_ct_db_index != rd_db_index:
+        _fail("host and container Redis URLs must use the same logical "
+              "database index")
 
     # R15-R1: the rendered backend service MUST exist and carry a string
     # REPORTING_USER_PASSWORD that exactly matches .env. Missing service,

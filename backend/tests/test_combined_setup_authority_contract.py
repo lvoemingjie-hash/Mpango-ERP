@@ -266,6 +266,35 @@ def test_preflight_rejects_container_redis_drift(monkeypatch, tmp_path):
     assert "REDIS_URL_CONTAINER host must be the Compose redis service" in err
 
 
+@pytest.mark.parametrize("redis_container", [
+    # cross-index: /15 in the container is not the host context's /0 identity
+    "redis://redis:6379/15",
+    # index-less URL: the logical database index is part of the identity
+    "redis://redis:6379",
+    # non-numeric index
+    "redis://redis:6379/session",
+    # query drift
+    "redis://redis:6379/0?ssl_cert_reqs=none",
+    # fragment drift
+    "redis://redis:6379/0#fragment",
+])
+def test_preflight_rejects_container_redis_index_and_shape_drift(
+    monkeypatch, tmp_path, redis_container,
+):
+    err = _preflight_err(monkeypatch, tmp_path, {"REDIS_URL_CONTAINER": redis_container})
+    assert (
+        "same logical database index" in err
+        or "must include a numeric logical database index" in err
+        or "must not carry a query string" in err
+        or "must not carry a fragment" in err
+    ), err
+
+
+def test_preflight_rejects_host_redis_index_mismatch(monkeypatch, tmp_path):
+    err = _preflight_err(monkeypatch, tmp_path, {"REDIS_URL": "redis://localhost:6379/15"})
+    assert "same logical database index" in err
+
+
 def test_preflight_rejects_backend_service_with_host_loopback_url(monkeypatch, tmp_path):
     """Conflation rejection: a backend DATABASE_URL carrying the HOST-context
     loopback address differs from the container context and is refused."""

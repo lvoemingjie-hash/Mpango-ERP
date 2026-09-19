@@ -48,12 +48,25 @@ Topology (fresh PG15+/PG16 cluster):
     step 3 (migration authority): apply minimum object grants (--apply-grants)
     step 4 (any operator):        --verify
 
-Usage:
-    export MPANGO_DB_ADMIN_URL="postgresql://postgres:...@127.0.0.1:5433/postgres"
-    export MPANGO_DB_MIGRATE_URL="postgresql://mpango_migrate:...@127.0.0.1:5433/mpango"
-    export MPANGO_DB_APP_URL="postgresql://mpango_app:...@127.0.0.1:5433/mpango"
-    python scripts/provision_runtime_db_roles.py --provision --apply-grants
+Usage (the five ordered operator phases — NEVER combine provision and
+grants: a fresh database has not run migrations yet, so the EXECUTE grant on
+the migration-owned ledger guard would fail mid-way, AFTER roles were
+created):
+
+    # phase 1 (admin): create roles + application database   [this tool]
+    python scripts/provision_runtime_db_roles.py --provision
+    # phase 2 (migration authority): migrations through 039  [alembic, not this tool]
+    DATABASE_URL="$MPANGO_DB_MIGRATE_URL" alembic upgrade head
+    # phase 3 (migration authority): minimum object grants   [this tool]
+    python scripts/provision_runtime_db_roles.py --apply-grants
+    # phase 4 (any operator): read-only contract verification [this tool]
     python scripts/provision_runtime_db_roles.py --verify
+    # phase 5 (runtime role): tenant bootstrap / onboarding   [bootstrap script]
+    DATABASE_URL="$MPANGO_DB_APP_URL" python scripts/bootstrap_tenant_schema.py t_dev
+
+with MPANGO_DB_ADMIN_URL / MPANGO_DB_MIGRATE_URL / MPANGO_DB_APP_URL exported
+for phases 1, 3 and 4, and the admin/migration credentials unset again before
+phase 5 so they never linger in the runtime environment.
 """
 from __future__ import annotations
 
@@ -867,6 +880,17 @@ def main() -> None:
     if not (args.provision or args.apply_grants or args.verify):
         parser.error("nothing to do: pass --provision and/or --apply-grants "
                      "and/or --verify")
+    if args.provision and args.apply_grants:
+        # Phase-contract refusal BEFORE any connection, role, database or
+        # grant write: on a fresh deployment migrations have not run yet, so
+        # apply_minimum_grants() would fail on the EXECUTE grant for the
+        # migration-owned ledger guard mid-way, after roles already existed.
+        parser.error(
+            "invalid phase combination: --provision and --apply-grants must "
+            "not be combined in one invocation; run migrations as the "
+            "migration authority between provisioning and grants — see the "
+            "five-phase sequence in this module's docstring"
+        )
     sys.exit(asyncio.run(_async_main(args)))
 
 

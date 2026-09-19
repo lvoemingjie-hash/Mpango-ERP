@@ -83,6 +83,7 @@ services:
     environment:
       # Environment
       - MPANGO_ENV=production
+      - PUBLIC_FRONTEND_URL=${PUBLIC_FRONTEND_URL:?PUBLIC_FRONTEND_URL must be set to an absolute HTTPS origin}
       # Database (REQUIRED, RUNTIME ROLE ONLY, CONTAINER CONTEXT — the Compose
       # service DNS name; the host-side loopback translation lives in
       # backend/.env and is proven equivalent by setup_preflight)

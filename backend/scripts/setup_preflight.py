@@ -179,6 +179,33 @@ def parse_redis_url(url: str) -> tuple[str, int, int]:
 # ---------------------------------------------------------------------------
 # Compose port-object validator
 # ---------------------------------------------------------------------------
+def parse_public_frontend_url(value):
+    """R1-R6: stdlib-only shape validation of the PUBLIC_FRONTEND_URL runtime
+    input.  Mirrors the SHAPE rules of the authoritative production Settings
+    validator (absolute https origin; no credentials/query/fragment; origin
+    only, where a single trailing slash is accepted and stripped) WITHOUT
+    importing product Settings.  Returns (origin, None) on success or
+    (None, error) with a FIXED neutral message that never echoes the value.
+    """
+    if not isinstance(value, str) or value == "":
+        return None, "PUBLIC_FRONTEND_URL not found in backend/.env"
+    from urllib.parse import urlsplit
+    parts = urlsplit(value)
+    if parts.scheme != "https":
+        return None, "PUBLIC_FRONTEND_URL must use https"
+    if not parts.netloc:
+        return None, "PUBLIC_FRONTEND_URL must include a host"
+    if parts.username or parts.password:
+        return None, "PUBLIC_FRONTEND_URL must not contain credentials"
+    if parts.query:
+        return None, "PUBLIC_FRONTEND_URL must not contain a query string"
+    if parts.fragment:
+        return None, "PUBLIC_FRONTEND_URL must not contain a fragment"
+    if parts.path and parts.path != "/":
+        return None, "PUBLIC_FRONTEND_URL must be an origin only (no path)"
+    return value.rstrip("/"), None
+
+
 def _validate_port_entry(
     services: dict, svc_name: str, target_int: int, published_int: int,
     require_env: bool = True,
@@ -409,6 +436,22 @@ def run_initial(env_path: str) -> None:
     if _backend_redis != container_redis:
         _fail("backend service REDIS_URL does not match the container "
               "runtime context in backend/.env (REDIS_URL_CONTAINER)")
+
+    # R1-R6: PUBLIC_FRONTEND_URL is an explicit required runtime input.
+    # backend/.env is authoritative; the rendered backend service must carry
+    # the exact same value.  The shape rules mirrored here (stdlib only) are
+    # enforced authoritatively by production Settings at application import.
+    _pfu_value = env.get("PUBLIC_FRONTEND_URL", "")
+    _pfu_origin, _pfu_err = parse_public_frontend_url(_pfu_value)
+    if _pfu_err:
+        _fail(_pfu_err)
+    _rendered_pfu = _backend_env.get("PUBLIC_FRONTEND_URL")
+    if _rendered_pfu is None:
+        _fail("backend service environment must carry PUBLIC_FRONTEND_URL")
+    if not isinstance(_rendered_pfu, str):
+        _fail("backend service PUBLIC_FRONTEND_URL must be a string")
+    if _rendered_pfu != _pfu_value:
+        _fail("backend service PUBLIC_FRONTEND_URL does not match backend/.env")
 
     print("OK")
 

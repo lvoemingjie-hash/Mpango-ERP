@@ -266,12 +266,12 @@ def _constraint_names(conn) -> list[str]:
 @_requires_temp_db
 def test_two_role_lifecycle_and_public_contract_refusals():
     import psycopg2
-    from urllib.parse import urlsplit, urlunparse
+    from urllib.parse import urlsplit
 
     bts = _load_module("combined_contract_bts", BOOTSTRAP)
     source = os.environ["TEST_DATABASE_URL"]
     parsed = urlsplit(source)
-    admin_url = urlunparse(parsed._replace(path="/postgres"))
+    admin_url = parsed._replace(path="/postgres").geturl()
     suffix = uuid.uuid4().hex[:8]
     mig_role = f"mpango_migrate_{suffix}"
     app_role = f"mpango_app_{suffix}"
@@ -281,9 +281,9 @@ def test_two_role_lifecycle_and_public_contract_refusals():
     tenant = f"t_{uuid.uuid4().hex}"
 
     def _url(user: str, password: str) -> str:
-        return urlunparse(parsed._replace(
+        return parsed._replace(
             netloc=f"{user}:{password}@{parsed.hostname}:{parsed.port or 5432}",
-            path=f"/{sandbox_db}"))
+            path=f"/{sandbox_db}").geturl()
 
     mig_url = _url(mig_role, mig_pw)
     app_url = _url(app_role, app_pw)
@@ -301,6 +301,21 @@ def test_two_role_lifecycle_and_public_contract_refusals():
         # the product creates it owned by the migration authority.
         result = _run_provisioner(["--provision"], prov_env)
         assert result.returncode == 0, result.stderr
+        # Cluster-global role accommodation (test-env only): reporting_role /
+        # reporting_user live cluster-wide.  On a genuinely fresh cluster the
+        # sandbox migration authority creates them itself (and holds ADMIN);
+        # when another migration authority's run on this cluster created them
+        # first, confer ADMIN to the sandbox authority so migration 011 can
+        # ALTER/GRANT them.  No product objects are touched.
+        admin_conn0 = _admin_connect(admin_url)
+        try:
+            with admin_conn0.cursor() as cur:
+                for role in ("reporting_role", "reporting_user"):
+                    cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
+                    if cur.fetchone():
+                        cur.execute(f"GRANT {role} TO {mig_role} WITH ADMIN OPTION")
+        finally:
+            admin_conn0.close()
         # phase 2: migrations 001..039 as the migration authority
         result = subprocess.run(
             [sys.executable, "-m", "alembic", "upgrade", "head"],
@@ -317,9 +332,14 @@ def test_two_role_lifecycle_and_public_contract_refusals():
         assert result.returncode == 0, (result.stdout, result.stderr)
         assert '"ok": true' in result.stdout
 
-        admin = _admin_connect(admin_url)
+        cluster_admin = _admin_connect(admin_url)
+        # schema-level objects (guard function, public constraints, tenant
+        # schemas, alembic_version) live in the sandbox database — inspect
+        # them through a connection TO the sandbox, not the maintenance db
+        sandbox_admin_url = parsed._replace(path=f"/{sandbox_db}").geturl()
+        admin = _admin_connect(sandbox_admin_url)
         try:
-            with admin.cursor() as cur:
+            with cluster_admin.cursor() as cur:
                 cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (sandbox_db,))
                 assert cur.fetchone() is not None
                 cur.execute("SELECT pg_get_userbyid(datdba) FROM pg_database "
@@ -477,12 +497,13 @@ def test_two_role_lifecycle_and_public_contract_refusals():
             asyncio.run(_tenant_business())
         finally:
             admin.close()
+            cluster_admin.close()
     finally:
         # cleanup: drop the product-created database and roles
         try:
-            admin = _admin_connect(admin_url)
+            cluster_admin = _admin_connect(admin_url)
             try:
-                with admin.cursor() as cur:
+                with cluster_admin.cursor() as cur:
                     cur.execute(
                         "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
                         "WHERE datname = %s AND pid <> pg_backend_pid()", (sandbox_db,))
@@ -490,6 +511,6 @@ def test_two_role_lifecycle_and_public_contract_refusals():
                     cur.execute(f'DROP ROLE IF EXISTS "{app_role}"')
                     cur.execute(f'DROP ROLE IF EXISTS "{mig_role}"')
             finally:
-                admin.close()
+                cluster_admin.close()
         except Exception:
             pass

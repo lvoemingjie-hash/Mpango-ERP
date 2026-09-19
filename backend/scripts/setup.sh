@@ -132,8 +132,8 @@ for k in sys.argv[2:]:
 " "$SCRIPT_DIR" "${_NATIVE_KEYS[@]}" 2>/dev/null)"     || { echo "Could not resolve two-role credentials from backend/.env." >&2; exit 1; }
 mapfile -t _V <<<"$_NATIVE_VALUES"
 unset _NATIVE_VALUES
-_ADMIN_URL="${_V[0]%$''}"; _MIGRATE_URL="${_V[1]%$''}"; _RUNTIME_DB_URL="${_V[2]%$''}"
-_MIGRATE_PW="${_V[3]%$''}"; _APP_PW="${_V[4]%$''}"; _RUP="${_V[5]%$''}"
+_ADMIN_URL="${_V[0]%$'\r'}"; _MIGRATE_URL="${_V[1]%$'\r'}"; _RUNTIME_DB_URL="${_V[2]%$'\r'}"
+_MIGRATE_PW="${_V[3]%$'\r'}"; _APP_PW="${_V[4]%$'\r'}"; _RUP="${_V[5]%$'\r'}"
 unset _V
 for _k in _ADMIN_URL:_MPANGO_DB_ADMIN_URL _MIGRATE_URL:_MPANGO_DB_MIGRATE_URL _RUNTIME_DB_URL:DATABASE_URL _MIGRATE_PW:_MPANGO_DB_MIGRATE_PASSWORD _APP_PW:_MPANGO_DB_APP_PASSWORD _RUP:REPORTING_USER_PASSWORD; do
     _var="${_k%%:*}"; _envn="${_k##*:}"

@@ -124,7 +124,7 @@ def five_stage_database():
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=BACKEND_DIR, capture_output=True, text=True, timeout=600,
         env={**os.environ, "DATABASE_URL": mig_url,
-             "REPORTING_USER_PASSWORD": "rup_" + suffix, "MPANGO_ENV": "test"})
+             "REPORTING_USER_PASSWORD": "rup_" + suffix, "MPANGO_ENV": "test"})  # pragma: allowlist secret
     assert result.returncode == 0, result.stderr[-2000:]
     result = _run_provisioner(["--apply-grants"], env)
     assert result.returncode == 0, result.stderr
@@ -135,7 +135,7 @@ def five_stage_database():
         [sys.executable, "scripts/bootstrap_tenant_schema.py", "t_dev"],
         cwd=BACKEND_DIR, capture_output=True, text=True, timeout=300,
         env={**os.environ, "DATABASE_URL": app_url, "MPANGO_ENV": "test",
-             "SECRET_KEY": "gate_fixture_secret_key_value"})
+             "SECRET_KEY": "gate_fixture_secret_key_value"})  # pragma: allowlist secret
     assert result.returncode == 0, result.stderr[-2000:]
     yield {"app_url": app_url, "mig_url": mig_url, "db": sandbox_db,
            "server": server}
@@ -169,7 +169,7 @@ def test_gate_refuses_missing_tenant_bootstrap_state(five_stage_database):
             cwd=BACKEND_DIR, capture_output=True, text=True, timeout=300,
             env={**os.environ, "DATABASE_URL": five_stage_database["app_url"],
                  "MPANGO_ENV": "test",
-                 "SECRET_KEY": "gate_fixture_secret_key_value"})
+                 "SECRET_KEY": "gate_fixture_secret_key_value"})  # pragma: allowlist secret
         assert result.returncode == 0, result.stderr[-2000:]
         # damage ONLY the isolated tenant
         with admin.cursor() as cur:

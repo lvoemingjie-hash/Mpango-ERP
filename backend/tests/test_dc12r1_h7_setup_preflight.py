@@ -64,6 +64,7 @@ GOOD_ENV = (
     "POSTGRES_PASSWORD=pgpass\n"
     "POSTGRES_DB=pgdb\n"
     "REPORTING_USER_PASSWORD=reportingpass\n"  # pragma: allowlist secret
+    "PUBLIC_FRONTEND_URL=https://app.example.com\n"
 )
 
 PG_ENV_GOOD = {"POSTGRES_USER": "pguser", "POSTGRES_PASSWORD": "pgpass", "POSTGRES_DB": "pgdb"}  # pragma: allowlist secret
@@ -100,6 +101,7 @@ REDIS_SVC = {"ports": [_port_entry_redis()]}
 BACKEND_SVC = {"environment": {
     "DATABASE_URL": "postgresql://pgapp:pgapppass@postgres:5432/pgdb",  # pragma: allowlist secret
     "REDIS_URL": "redis://redis:6379/0",
+    "PUBLIC_FRONTEND_URL": "https://app.example.com",
 }}
 
 
@@ -364,10 +366,12 @@ class TestRunInitial:
             "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://127.0.0.1:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
+            "PUBLIC_FRONTEND_URL=https://app.example.com\n"
         )
         backend = {"environment": {
             "DATABASE_URL": "postgresql://pgapp:pgapppass@postgres:5432/pgdb",  # pragma: allowlist secret
-            "REDIS_URL": "redis://redis:6379/0"}}
+            "REDIS_URL": "redis://redis:6379/0",
+            "PUBLIC_FRONTEND_URL": "https://app.example.com"}}
         self._ok(capsys, pf.run_initial, self._env(tmp_path, content),
                  stdin_text=_compose(backend=backend))
 
@@ -382,10 +386,12 @@ class TestRunInitial:
             "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://localhost:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
+            "PUBLIC_FRONTEND_URL=https://app.example.com\n"
         )
         backend = {"environment": {
             "DATABASE_URL": "postgresql://pgapp:pgapppass@postgres:5432/pgdb",  # pragma: allowlist secret
-            "REDIS_URL": "redis://redis:6379/0"}}
+            "REDIS_URL": "redis://redis:6379/0",
+            "PUBLIC_FRONTEND_URL": "https://app.example.com"}}
         self._ok(capsys, pf.run_initial, self._env(tmp_path, content),
                  stdin_text=_compose(backend=backend))
 
@@ -398,6 +404,7 @@ class TestRunInitial:
             "MPANGO_DB_MIGRATE_URL=postgresql://mig%40user:mig%40ss@localhost:5432/pgdb\n"  # pragma: allowlist secret
             "MPANGO_DB_APP_PASSWORD=app@ss\n"
             "MPANGO_DB_MIGRATE_PASSWORD=mig@ss\n"
+            "PUBLIC_FRONTEND_URL=https://app.example.com\n"
             "DATABASE_URL_CONTAINER=postgresql://app%40user:app%40ss@postgres:5432/pgdb\n"  # pragma: allowlist secret
             "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://localhost:6379/0\n"
@@ -408,7 +415,8 @@ class TestRunInitial:
         }
         backend = {"environment": {
             "DATABASE_URL": "postgresql://app%40user:app%40ss@postgres:5432/pgdb",  # pragma: allowlist secret
-            "REDIS_URL": "redis://redis:6379/0"}}
+            "REDIS_URL": "redis://redis:6379/0",
+            "PUBLIC_FRONTEND_URL": "https://app.example.com"}}
         self._ok(capsys, pf.run_initial, self._env(tmp_path, content),
                  stdin_text=_compose(pg=pg, backend=backend))
 
@@ -460,6 +468,7 @@ class TestRunInitial:
             f"DATABASE_URL={url}\n"
             "REDIS_URL=redis://localhost:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
+            "PUBLIC_FRONTEND_URL=https://app.example.com\n"
         )
         err = _expect_fail(
             capsys, pf.run_initial, self._env(tmp_path, content), stdin_text=_compose(),
@@ -854,3 +863,109 @@ class TestRunPostInstall:
         pf.main()
         captured = capsys.readouterr()
         assert captured.out == "OK\n" and captured.err == ""
+
+
+# ---------------------------------------------------------------------------
+# R1-R6: PUBLIC_FRONTEND_URL runtime input contract
+# ---------------------------------------------------------------------------
+PFU_GOOD = "https://app.example.com"
+
+
+class TestPublicFrontendUrlParser:
+    @pytest.mark.parametrize("value,expected", [
+        ("http://app.example.com", "PUBLIC_FRONTEND_URL must use https"),
+        ("app.example.com", "PUBLIC_FRONTEND_URL must use https"),
+        ("//app.example.com", "PUBLIC_FRONTEND_URL must use https"),
+        ("https://user:pw@app.example.com",
+         "PUBLIC_FRONTEND_URL must not contain credentials"),
+        ("https://app.example.com/console",
+         "PUBLIC_FRONTEND_URL must be an origin only (no path)"),
+        ("https://app.example.com?x=1",
+         "PUBLIC_FRONTEND_URL must not contain a query string"),
+        ("https://app.example.com#frag",
+         "PUBLIC_FRONTEND_URL must not contain a fragment"),
+        ("", "PUBLIC_FRONTEND_URL not found in backend/.env"),
+    ])
+    def test_bad_shapes_refuse_neutral(self, value, expected) -> None:
+        origin, err = pf.parse_public_frontend_url(value)
+        assert origin is None
+        assert err == expected
+
+    def test_accepts_origin_and_strips_single_trailing_slash(self) -> None:
+        assert pf.parse_public_frontend_url(PFU_GOOD) == (PFU_GOOD, None)
+        assert pf.parse_public_frontend_url(PFU_GOOD + "/") == (PFU_GOOD, None)
+
+    def test_missing_key_reported_as_missing_value(self) -> None:
+        assert pf.parse_public_frontend_url(None) == (
+            None, "PUBLIC_FRONTEND_URL not found in backend/.env")
+
+
+class TestPublicFrontendUrlRunInitial:
+    @staticmethod
+    def _env_without_pf(tmp_path: Path) -> str:
+        content = GOOD_ENV.replace(
+            "PUBLIC_FRONTEND_URL=https://app.example.com\n", "")
+        p = tmp_path / ".env"
+        p.write_text(content, encoding="utf-8")
+        return str(p)
+
+    @staticmethod
+    def _env_with_pf(tmp_path: Path, value: str) -> str:
+        content = GOOD_ENV.replace(
+            "PUBLIC_FRONTEND_URL=https://app.example.com\n",
+            "PUBLIC_FRONTEND_URL=" + value + "\n")
+        p = tmp_path / ".env"
+        p.write_text(content, encoding="utf-8")
+        return str(p)
+
+    def test_ok_when_conforming_and_rendered_matches(
+            self, capsys, tmp_path: Path) -> None:
+        TestRunInitial._ok(capsys, pf.run_initial,
+                           self._env_with_pf(tmp_path, PFU_GOOD),
+                           stdin_text=_compose())
+
+    def test_ok_accepts_single_trailing_slash_in_file(
+            self, capsys, tmp_path: Path) -> None:
+        backend = {"environment": dict(BACKEND_SVC["environment"])}
+        backend["environment"]["PUBLIC_FRONTEND_URL"] = PFU_GOOD + "/"
+        TestRunInitial._ok(capsys, pf.run_initial,
+                           self._env_with_pf(tmp_path, PFU_GOOD + "/"),
+                           stdin_text=_compose(backend=backend))
+
+    def test_missing_file_value_refuses(self, capsys, tmp_path: Path) -> None:
+        err = _expect_fail(capsys, pf.run_initial, self._env_without_pf(tmp_path),
+                           stdin_text=_compose())
+        assert err == "PUBLIC_FRONTEND_URL not found in backend/.env"
+
+    def test_empty_file_value_refuses(self, capsys, tmp_path: Path) -> None:
+        err = _expect_fail(capsys, pf.run_initial, self._env_with_pf(tmp_path, ""),
+                           stdin_text=_compose())
+        assert err == "PUBLIC_FRONTEND_URL not found in backend/.env"
+
+    def test_http_file_value_refuses(self, capsys, tmp_path: Path) -> None:
+        err = _expect_fail(capsys, pf.run_initial,
+                           self._env_with_pf(tmp_path, "http://app.example.com"),
+                           stdin_text=_compose())
+        assert err == "PUBLIC_FRONTEND_URL must use https"
+
+    def test_rendered_key_missing_refuses(self, capsys, tmp_path: Path) -> None:
+        backend = {"environment": dict(BACKEND_SVC["environment"])}
+        del backend["environment"]["PUBLIC_FRONTEND_URL"]
+        err = _expect_fail(capsys, pf.run_initial, self._env_with_pf(tmp_path, PFU_GOOD),
+                           stdin_text=_compose(backend=backend))
+        assert err == "backend service environment must carry PUBLIC_FRONTEND_URL"
+
+    def test_rendered_non_string_refuses(self, capsys, tmp_path: Path) -> None:
+        backend = {"environment": dict(BACKEND_SVC["environment"])}
+        backend["environment"]["PUBLIC_FRONTEND_URL"] = 3
+        err = _expect_fail(capsys, pf.run_initial, self._env_with_pf(tmp_path, PFU_GOOD),
+                           stdin_text=_compose(backend=backend))
+        assert err == "backend service PUBLIC_FRONTEND_URL must be a string"
+
+    def test_rendered_mismatch_refuses(self, capsys, tmp_path: Path) -> None:
+        backend = {"environment": dict(BACKEND_SVC["environment"])}
+        backend["environment"]["PUBLIC_FRONTEND_URL"] = "https://other.example.com"
+        err = _expect_fail(capsys, pf.run_initial, self._env_with_pf(tmp_path, PFU_GOOD),
+                           stdin_text=_compose(backend=backend))
+        assert err == ("backend service PUBLIC_FRONTEND_URL does not match "
+                       "backend/.env")

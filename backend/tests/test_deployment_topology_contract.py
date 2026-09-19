@@ -55,6 +55,8 @@ REPORTING_USER_PASSWORD=compose_rup_pw
 # ---- container runtime context (Compose service DNS) ----
 DATABASE_URL_CONTAINER=postgresql://mpango_app:compose_app_pw@postgres:5432/mpango_erp
 REDIS_URL_CONTAINER=redis://redis:6379/0
+# ---- explicit required runtime input (R1-R6) ----
+PUBLIC_FRONTEND_URL=https://app.example.com
 # ---- compose interpolation ----
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=compose_admin_pw
@@ -142,3 +144,39 @@ def test_prod_compose_is_unconditionally_non_runnable(probe_variant):
                               timeout=120, cwd=str(REPO_ROOT), env=env)
     assert rendered.returncode != 0, rendered.stdout
     assert "no such file" in (rendered.stderr + rendered.stdout).lower()
+
+
+def test_compose_backend_public_frontend_url_is_required_interpolation_no_default():
+    """R1-R6: the committed backend service must pass PUBLIC_FRONTEND_URL
+    through REQUIRED Compose interpolation with NO default; the mapping must
+    sit inside the backend service block."""
+    text = COMPOSE.read_text(encoding="utf-8")
+    required = ("- PUBLIC_FRONTEND_URL=${PUBLIC_FRONTEND_URL:?PUBLIC_FRONTEND_URL "
+                "must be set to an absolute HTTPS origin}")
+    assert required in text
+    assert "PUBLIC_FRONTEND_URL:-" not in text, (
+        "a default would bypass the explicit operator input")
+    backend_block = text.split("  backend:", 1)[1]
+    assert required in backend_block
+
+
+def test_backend_env_example_has_uncommented_valid_https_origin():
+    """R1-R6: backend/.env.example documents the runtime input as an
+    uncommented, valid, origin-only HTTPS example (no credentials, path,
+    query, fragment, or localhost production origin)."""
+    import re
+    example = (REPO_ROOT / "backend" / ".env.example").read_text(encoding="utf-8")
+    matches = re.findall(r"(?m)^PUBLIC_FRONTEND_URL=(\S+)$", example)
+    assert matches, "uncommented PUBLIC_FRONTEND_URL example missing"
+    (origin,) = matches
+    assert origin == "https://app.example.com"
+    assert origin.startswith("https://")
+    assert "@" not in origin and "?" not in origin and "#" not in origin
+
+
+def test_compose_backend_mpango_env_stays_production():
+    """R1-R6 guard: the wiring must NOT weaken the production runtime posture
+    the V3 envelope relied on."""
+    text = COMPOSE.read_text(encoding="utf-8")
+    backend_block = text.split("  backend:", 1)[1]
+    assert "- MPANGO_ENV=production" in backend_block

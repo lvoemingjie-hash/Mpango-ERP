@@ -113,6 +113,7 @@ GOOD_ENV = {
     "REDIS_URL": "redis://localhost:6379/0",
     "REDIS_URL_CONTAINER": "redis://redis:6379/0",
     "REPORTING_USER_PASSWORD": "rup_pw",
+    "PUBLIC_FRONTEND_URL": "https://app.example.com",
 }
 
 
@@ -137,6 +138,7 @@ def _compose_json() -> dict:
         "backend": {"environment": {
             "DATABASE_URL": GOOD_ENV["DATABASE_URL_CONTAINER"],
             "REDIS_URL": GOOD_ENV["REDIS_URL_CONTAINER"],
+            "PUBLIC_FRONTEND_URL": GOOD_ENV["PUBLIC_FRONTEND_URL"],
         }},
     }}
 
@@ -858,3 +860,24 @@ def test_two_role_lifecycle_and_public_contract_refusals():
                 cluster_admin.close()
         except Exception:
             pass
+
+
+def test_preflight_accepts_exact_public_frontend_url_and_still_bans_setup_only(
+    monkeypatch, tmp_path,
+):
+    """R1-R6: the rendered backend environment carries the EXACT authoritative
+    PUBLIC_FRONTEND_URL value and the five setup-only credentials remain
+    forbidden by key even when the runtime input is otherwise conforming."""
+    code, out = _run_preflight(monkeypatch, tmp_path, {})
+    assert code == 0
+    assert out.strip() == "OK"
+    base = _compose_json()
+    bad_env = dict(base["services"]["backend"]["environment"])
+    bad_env["MPANGO_DB_ADMIN_URL"] = GOOD_ENV["MPANGO_DB_ADMIN_URL"]
+    override = {"services": {
+        "postgres": base["services"]["postgres"],
+        "redis": base["services"]["redis"],
+        "backend": {"environment": bad_env},
+    }}
+    err = _preflight_err(monkeypatch, tmp_path, {}, override)
+    assert "backend service environment must not contain MPANGO_DB_ADMIN_URL" in err

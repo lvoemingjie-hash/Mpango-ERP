@@ -1,0 +1,5 @@
+exported_utc: 2026-09-19T03:56:45Z
+evidence_branch: refs/heads/evidence/order-r2-e1-f1f3-kilo-v3-20260919
+evidence_body_commit: dfc90b22f1ad4ba4152401ebf2731e2b20b1ee57
+push_attempt_rc: 1 (0 = report branch pushed to origin; non-zero = network unavailable, bundle is the lossless export)
+note: the bundle sha256 is recorded only in the external transfer receipt on the executor control plane and in the transfer target directory; this receipt travels inside the bundle and therefore cannot contain the bundle hash.

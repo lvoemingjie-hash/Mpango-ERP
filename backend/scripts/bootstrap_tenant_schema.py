@@ -84,6 +84,18 @@ class LedgerGuardAuthorityError(RuntimeError):
     """
 
 
+class PublicContractError(RuntimeError):
+    """Fail-closed refusal on drifted migration-owned public contracts.
+
+    Raised before any tenant DDL is executed when a public object that
+    migrations own (e.g. the canonical wholesaler_retailer_bindings
+    outstanding-balance constraint) is missing, legacy-named, duplicated or
+    incompatible.  Bootstrap performs ZERO public DDL — the runtime role
+    deliberately holds no CREATE on schema public — so the named refusal
+    hands the repair to migrations/operator instead.
+"""
+
+
 async def _assert_ledger_guard_function_authority(db) -> None:
     """Fail closed unless the migration-owned ledger guard is exactly intact.
 
@@ -505,15 +517,34 @@ async def _ensure_index(
     await db.execute(text(create_sql))
 
 
-async def _ensure_public_binding_balance_constraint(db) -> None:
+async def _assert_public_binding_balance_contract(db) -> None:
+    """Read-only assertion of the migration-owned public balance contract.
+
+    ZERO DDL on schema public, fail closed on every drifted state, and it
+    runs BEFORE CREATE SCHEMA so a refusal provably leaves zero tenant
+    objects (refusal by precondition, not by transaction rollback).  The
+    canonical constraint is owned by migrations (005 creates the column,
+    035 canonicalizes the constraint name); the runtime role holds no
+    CREATE on public, so bootstrap can neither repair nor rename:
+
+      - bindings table or outstanding_balance column missing        -> refuse
+      - canonical constraint missing                                -> refuse
+      - canonical constraint present more than once (duplicate)     -> refuse
+      - legacy-named equivalent constraint (rename owed to 035)     -> refuse
+      - incompatible outstanding-balance-shaped constraint          -> refuse
+    """
     from sqlalchemy import text
 
     if not await _table_exists(db, "public", PUBLIC_BINDINGS):
-        return
+        raise PublicContractError(
+            "Bootstrap public-contract refusal: public.wholesaler_retailer_bindings "
+            "is missing — migrations own public objects and must create them "
+            "before tenant bootstrap; bootstrap performs no public DDL"
+        )
     if not await _column_exists(db, "public", PUBLIC_BINDINGS, "outstanding_balance"):
-        raise RuntimeError(
-            "Bootstrap reconcile: public.wholesaler_retailer_bindings is missing "
-            "outstanding_balance"
+        raise PublicContractError(
+            "Bootstrap public-contract refusal: public.wholesaler_retailer_bindings "
+            "is missing outstanding_balance"
         )
 
     rows = await _check_constraint_rows(db, "public", PUBLIC_BINDINGS)
@@ -522,20 +553,30 @@ async def _ensure_public_binding_balance_constraint(db) -> None:
         if row["conname"] == CK_BINDINGS_OUTSTANDING_NON_NEGATIVE
     ]
     if len(canonical_rows) > 1:
-        raise RuntimeError(
-            "Bootstrap reconcile: duplicate public binding outstanding balance constraints"
+        raise PublicContractError(
+            "Bootstrap public-contract refusal: duplicate public binding "
+            "outstanding balance constraints"
         )
     if canonical_rows:
         if not _is_outstanding_balance_non_negative_constraint(canonical_rows[0]):
-            raise RuntimeError(
-                "Bootstrap reconcile: public binding outstanding balance check "
-                "constraint is incompatible"
+            raise PublicContractError(
+                "Bootstrap public-contract refusal: public binding outstanding "
+                "balance check constraint is incompatible"
             )
         return
 
     equivalent_rows = [
         row for row in rows if _is_outstanding_balance_non_negative_constraint(row)
     ]
+    if equivalent_rows:
+        names = ", ".join(row["conname"] for row in equivalent_rows)
+        raise PublicContractError(
+            "Bootstrap public-contract refusal: legacy-named equivalent public "
+            f"binding outstanding balance constraint(s) ({names}) — the rename "
+            "to the canonical name is owned by migrations/operator repair; "
+            "bootstrap performs no public DDL"
+        )
+
     incompatible_rows = [
         row
         for row in rows
@@ -544,30 +585,17 @@ async def _ensure_public_binding_balance_constraint(db) -> None:
     ]
     if incompatible_rows:
         names = ", ".join(row["conname"] for row in incompatible_rows)
-        raise RuntimeError(
-            "Bootstrap reconcile: incompatible public binding outstanding balance "
-            f"constraints: {names}"
-        )
-    if len(equivalent_rows) > 1:
-        raise RuntimeError(
-            "Bootstrap reconcile: multiple equivalent public binding outstanding "
-            "balance constraints"
+        raise PublicContractError(
+            "Bootstrap public-contract refusal: incompatible public binding "
+            f"outstanding balance constraints: {names}"
         )
 
-    qualified_table = await _qualified_identifier(db, "public", PUBLIC_BINDINGS)
-    quoted_constraint = await _quote_ident(db, CK_BINDINGS_OUTSTANDING_NON_NEGATIVE)
-    if equivalent_rows:
-        legacy_name = await _quote_ident(db, equivalent_rows[0]["conname"])
-        await db.execute(text(
-            f"ALTER TABLE {qualified_table} RENAME CONSTRAINT {legacy_name} "
-            f"TO {quoted_constraint}"
-        ))
-        return
-
-    await db.execute(text(
-        f"ALTER TABLE {qualified_table} ADD CONSTRAINT {quoted_constraint} "
-        "CHECK (outstanding_balance >= 0)"
-    ))
+    raise PublicContractError(
+        "Bootstrap public-contract refusal: canonical public binding "
+        f"outstanding balance constraint {CK_BINDINGS_OUTSTANDING_NON_NEGATIVE!r} "
+        "is missing — migrations/operator repair owns public objects; "
+        "bootstrap performs no public DDL"
+    )
 
 
 async def _quote_ident(db, identifier: str) -> str:
@@ -2396,13 +2424,14 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
                 "rejected)"
             )
         await _assert_ledger_guard_function_authority(db)
+        await _assert_public_binding_balance_contract(db)
 
         # C5 deployment-order gate (Order stream): refuse BEFORE creating ANY
         # tenant object.
         await _require_alembic_revision(db, "039_order_credit_holds")
+
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))
-        await _ensure_public_binding_balance_constraint(db)
 
         # Enums (idempotent)
         for enum_ddl in [

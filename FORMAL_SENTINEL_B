@@ -1,0 +1,7 @@
+SENTINEL: FORMAL_SENTINEL_B
+authorization: CTO-AUTH-ORDER-R2-E1-F1-F3-KILO-V3-2026-09-19
+partition: B
+created_utc: 2026-09-19T03:20:16Z
+expected_nodes: 1 (test_sr1_f4_039_preflight_rejects_non_finite_amounts)
+opt_in: MPANGO_ALLOW_TEMP_DB_CREATE=1 scoped to this partition
+junitxml: evidence/formal-results-B.xml

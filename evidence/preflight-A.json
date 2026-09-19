@@ -1,0 +1,99 @@
+{
+  "authorization": "CTO-AUTH-ORDER-R2-E1-F1-F3-KILO-V3-2026-09-19",
+  "partition": "A",
+  "generated_utc": "2026-09-19T03:14:42Z",
+  "executor": "Fresh Kilo context (Kilo V3)",
+  "execution_host": "Tencent VPS VM-0-3-ubuntu (1.14.247.12), task root /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919",
+  "claim_ceiling": "ORDER_R2_E1_F1_F3_INDEPENDENT_TARGETED_EVIDENCE_ONLY",
+  "identity": {
+    "remote": "https://github.com/lvoemingjie-hash/Mpango-ERP.git",
+    "remote_branch": "codex/order-state-r2-e1-source-revision-f1-f3-20260919",
+    "remote_tip_via_ls_remote": "2df6a3bfe8a7975b05f882cda19a6ac390b7a978",
+    "remote_tip_equals_candidate": true,
+    "ls_remote_provenance": {
+      "vps_side_earlier_this_session": "success (real-time, pre-degradation); recorded in preparation-log and session",
+      "vps_side_this_attempt": "UNAVAILABLE_THIS_ATTEMPT",
+      "executor_control_plane": "real-time git ls-remote from the Kilo executor Windows control machine at preflight time; result identical to candidate"
+    },
+    "candidate": "2df6a3bfe8a7975b05f882cda19a6ac390b7a978",
+    "candidate_tree": "39b3c2c43d2c84db0497a34f1030824e70bd79e4",
+    "base": "f734e7b03e6905b9ce1a5abefdb4e2c782f22723",
+    "base_is_ancestor": true,
+    "successor_commit_count": 4,
+    "merge_commit_count": 0,
+    "delta_paths": [
+      "backend/scripts/bootstrap_tenant_schema.py",
+      "backend/services/canonical_payment_service.py",
+      "backend/tests/order_state_r2/test_e1_source_revision_gates.py",
+      "backend/tests/order_state_r2/test_sr1_closure_gates.py",
+      "harness-governance/inventory/inventory.json"
+    ],
+    "worktree": {
+      "path": "/home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree",
+      "detached_head": "2df6a3bfe8a7975b05f882cda19a6ac390b7a978",
+      "status_porcelain_entries": 0,
+      "head_tree": "39b3c2c43d2c84db0497a34f1030824e70bd79e4"
+    },
+    "network_notes": "GitHub intermittently unreachable from the VPS during preparation; candidate objects were fetched from the remote by the clone earlier in this session; remote tip re-verified in real time from the executor control plane and recorded with provenance"
+  },
+  "postgres": {
+    "image": "postgres:16",
+    "image_id": "sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94",
+    "container": "kilo-order-e1-f1f3-pg-a",
+    "loopback_port": "127.0.0.1:15441",
+    "labels": {
+      "task": "order-e1-f1f3-kilo-v3-20260919",
+      "owner": "kilo-order-e1-f1f3-v3",
+      "authorization": "CTO-AUTH-ORDER-R2-E1-F1-F3-KILO-V3-2026-09-19",
+      "partition": "A"
+    },
+    "database": "order_e1_f1f3_kilo_a",
+    "database_created_empty_by_container_or_superuser_init": true,
+    "alembic_head": "039_order_credit_holds",
+    "server_version_file": "evidence/pg-server-version-A.txt"
+  },
+  "roles": {
+    "supported_topology": "SINGLE dedicated non-superuser role for migration AND runtime (database owner, CREATEROLE; disclosed limitation of the candidate topology, not proof of production least privilege)",
+    "role_name": "oe1f3_kilo_run",
+    "role_attributes_file": "evidence/role-attributes-A.txt",
+    "role_runs": "alembic upgrade head (prep) + pytest formal invocation",
+    "temp_db_authority_exposed": false
+  },
+  "env_vars_required_presence_only": {
+    "TEST_DATABASE_URL": true,
+    "DATABASE_URL": true,
+    "MPANGO_ENV": "test",
+    "REPORTING_USER_PASSWORD": "present (value never persisted)",
+    "SECRET_KEY": "present (value never persisted)",
+    "MPANGO_ALLOW_TEMP_DB_CREATE": "NOT SET in partition A"
+  },
+  "frozen_collection": {
+    "count": 28,
+    "file": "evidence/frozen-collection-A.txt"
+  },
+  "selected_nodes": {
+    "count": 27,
+    "file": "evidence/selected-nodes-A.txt",
+    "deselected": [
+      "tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f4_039_preflight_rejects_non_finite_amounts"
+    ]
+  },
+  "formal_command": {
+    "cwd": "/home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree/backend",
+    "command": "python -m pytest -v -o addopts= tests/order_state_r2/test_e1_source_revision_gates.py tests/order_state_r2/test_sr1_closure_gates.py --deselect tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f4_039_preflight_rejects_non_finite_amounts --junitxml=<TASK>/evidence/formal-results-A.xml",
+    "python": "Python 3.12.3",
+    "env_file": "env-partition-a.sh (0600, task-owned; not reused from any prior task)",
+    "timeout_guard_seconds": 1800
+  },
+  "resource_ownership": {
+    "task_root": "/home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919",
+    "credentials_file": ".pg16-credentials-kilo-a (mode 0600; values excluded from this preflight)",
+    "cleanup_owner": "kilo-order-e1-f1f3-v3"
+  },
+  "smoke_validation": "full chain passed pre-freeze on throwaway DB order_e1_f1f3_kilo_a_smoke (alembic->039 + 1 real node PASSED), then dropped",
+  "sentinel": {
+    "path": "FORMAL_SENTINEL_A",
+    "mechanism": "bash noclobber atomic create immediately before launch",
+    "reuse_policy": "any reuse is a stop condition"
+  }
+}

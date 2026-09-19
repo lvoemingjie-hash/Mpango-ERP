@@ -1,0 +1,63 @@
+# Kilo V3 evidence index — 2026-09-19T03:56:45Z
+AUTHORIZATION_ID: CTO-AUTH-ORDER-R2-E1-F1-F3-KILO-V3-2026-09-19
+
+## evidence/ (sha256; INDEX.txt excluded from its own hashing)
+  82aa9617f74dabcd05b54f5d56818cd9ab1c640c1431782dbd567620dfdeb71c  ./blob-hashes-after-kilo.txt
+  411a415324d125ce3bcc5d6d75b1ec0428b6a9541c50d018baf862ccb9863bf5  ./blob-hashes-kilo.txt
+  769dc67b93e3df5774dc61dfbc3797b575d249be93f5d66a4aaf8a93d7d37af2  ./cleanup-proof-kilo.txt
+  bdb9f88a12d78cdb0c40457b88e42e23581bdd3add4c17353c7c7f323933cc74  ./clean-worktree-proof-kilo.txt
+  af0ce39247b7feb1900c20f95204fd9269303bc8ff83575323ae13960436d1ff  ./container-records-kilo.txt
+  acb57a7135b2d7d6e665f67f056e21353023b93835f54def1ae523bf76f1bfb3  ./detect-secrets-version.txt
+  b03c48960c9712c20eb702933fc8751191138dd9ce29d8178b9eb7ff0735d6fd  ./financial-after-A.txt
+  2dc1f386afa71856b61598be00a06f13ab3ac8c902d10fdfaaee1edd4823c9ca  ./financial-after-B.txt
+  6cd60a8f02f7f5451c12796be29ce21edf89bf1738b21a7ed31f64165abdca54  ./financial-before-A.txt
+  bc37c950410be2e95ccbf4f293c645644e53baba15ed2a49b7d6568254f298f8  ./financial-before-B.txt
+  5f60dba6bb703602b2695cffc4c880a183a34e2a00b48cd2faee8bad694cbca8  ./formal-results-A.xml
+  e43cb1feffc6a2649e8e1fd67ca430890a728094f9743c0b8f03db18cc145cfa  ./formal-results-B.xml
+  2a1521c8b374c973003e204f78bf897ab36ab17fe43b517001acd99963f4ed89  ./frozen-collection-A.txt
+  69ad15934b07a5d461f1e8a37dfb6f52eea6d6290485a289b9fb5fd3d10b3b08  ./frozen-collection-B.txt
+  5aa70511b8889b9ceb8065ce472b41049f595249aeaa90bf5ba52ed0f6012c98  ./git-identity-kilo.txt
+  afa1078735b4e48a4946c8f4c543b1e949067b51a6f1e12ee2323dcb11d84bdb  ./invocations-and-sentinels-kilo.txt
+  7e4f8dff0c7851015e72776fe92f5de24153a8ed8d92d1c161526d9b07cf2fc3  ./node-reconciliation-A.json
+  8692927828704adebd9ca8221d28950f08c4ebb20c63cea8c796addd4737376d  ./node-reconciliation-B.json
+  86d0a522d8ce6c62eedf5c1b4cf67d58848bce37d17361b15a1451058c55ccc8  ./pg-server-version-A.txt
+  86d0a522d8ce6c62eedf5c1b4cf67d58848bce37d17361b15a1451058c55ccc8  ./pg-server-version-B.txt
+  528adbf1ccb3b6ca70b16194afd79f39718dfedfd3da60a31d5f1921873befc3  ./pip-freeze-kilo-v3.txt
+  40ed8d37852971fa1a5a2ed9102063b2ae20ff5d6603c3d65f31576528561227  ./preflight-A.json
+  8f33f73378670d528e4fe4489e1438f3b008ab4761bc79327f112c6043c8c5e8  ./preflight-B.json
+  18f24400c30c512cf5c405735ca02763695db364b67ebd5a6d89c7181f4d5399  ./role-attributes-A.txt
+  04ec8c7573bf9e9cce8edff4574fdec041956587be5fabfaba807494f0633e43  ./role-attributes-B.txt
+  79fb5edf11edaa8e0083e2d02d8f613bc72b65ed5a76a19a268b09b9f6c09319  ./secrets-baseline-digest-kilo.txt
+  25e387e6a12ae2f0f0e3b67e16f0264b17abad3184674a7e0f33ee3e39205b50  ./secrets-scan-summary-kilo.txt
+  189f48b222595655860a55f33c48d10d235061aec16139d54199c0ae28c392c8  ./selected-nodes-A.txt
+  69ad15934b07a5d461f1e8a37dfb6f52eea6d6290485a289b9fb5fd3d10b3b08  ./selected-nodes-B.txt
+  d2a2e2c76a631c40ea22672afe219b603925feb8a47b8864ac32a90213ce799c  ./temp-db-absence-B.txt
+
+## results/ (sha256, recursive)
+  c873333ae3fc5f183725418cd4275ac64689f57bbdb5a66a8dfdeeb0f7cbbbf0  ./alembic-upgrade-A.txt
+  c873333ae3fc5f183725418cd4275ac64689f57bbdb5a66a8dfdeeb0f7cbbbf0  ./alembic-upgrade-smoke-A.txt
+  34dab48c19594d3cd588a73760db780f1eadedc50dc4e6e8cbd1c9016e2f330b  ./collect-raw-A.txt
+  ac5d7f301e7d129b177f37b0cb5dd79af5634fb1fc3167a4f557c49999d96440  ./collect-raw-B.txt
+  42c9c2367ad15f39bc3fbcf0e19c58260d055141991696c33769becf69f156d1  ./emission-A.log
+  67d0ac05bbe1fd5018bc2064f4acfb6f9b5845d793c2efe945a1f553fdd43e83  ./emission-B.log
+  8b7a6e9ffa5119f22084b5763652f4a8ced982ef844f001be25b6ff0f83cbdc8  ./pytest-output-A.txt
+  bd7cd6f6d25b0946b8d1fc6c911845a5af615287921ffb42973e0ebe76b374f3  ./pytest-output-B.txt
+  e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./pytest-stderr-A.txt
+  e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./pytest-stderr-B.txt
+  e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./secrets-scan-kilo/positive-control.err
+  ef19be7d8bad071a40d9b468600a1acc4943c839cd9acaf131b95dbbf76a31d5  ./secrets-scan-kilo/positive-control.out
+  bdd78d49131fabed44cd044868e118159927e442b9d101646d4fe7a71deeea47  ./secrets-scan-kilo/repo-root/backend/scripts/bootstrap_tenant_schema.py
+  beb6d603d5432d1c60b4e437a29a01c5fb0e15c10f1363018a8bd6811e5be7cd  ./secrets-scan-kilo/repo-root/backend/services/canonical_payment_service.py
+  7ab42bf27e4f26fbfafaa98ef09bb35ee691a755a31872a67bd9f3b4727f5cde  ./secrets-scan-kilo/repo-root/backend/tests/order_state_r2/test_e1_source_revision_gates.py
+  5b1ad611b306d9f0c64526779440ba83c39e544f20a2254aa5218084454db01f  ./secrets-scan-kilo/repo-root/backend/tests/order_state_r2/test_sr1_closure_gates.py
+  99975064aef4ddaabe0a94037b95e7a8a2ad7d56077182b5aac9c6487267bdae  ./secrets-scan-kilo/repo-root/harness-governance/inventory/inventory.json
+  705ffd03f1aea657b8251deca095b641bf9045ff24bcf8ebfc3fdaf54f6dca9a  ./secrets-scan-kilo/repo-root/positive_control.txt
+  5401aca4042522d4ec984ac2a2d3a8d4e08d2444a94a4019417c30274dfbb115  ./secrets-scan-kilo/repo-root/.secrets.baseline
+  e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./secrets-scan-kilo/scan-five-paths.err
+  e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./secrets-scan-kilo/scan-five-paths.out
+  996e438c10789427364190f1aa0059e888fe1ed72e2e1a361ffd974ece35be81  ./smoke-node-A.txt
+  fbe7f5828b345e26906f972b72f78fa5a2b68cf8d3189ec07f8eaa0c1dddafa6  ./smoke-node-B.txt
+
+## prep/ (sha256)
+  f954eca2c551d026bc5a2c77eb06a60bd26fb97e71f3566007b73906c2176cb9  ./preparation-log-A.md
+  15bd70fdd6bce873493c40e43d3520fc985fd7adef3258b9a97b6f0a80228b34  ./preparation-log-B.md

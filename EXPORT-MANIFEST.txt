@@ -1,0 +1,27 @@
+Kilo V3 evidence export — lossless
+AUTHORIZATION_ID: CTO-AUTH-ORDER-R2-E1-F1-F3-KILO-V3-2026-09-19
+exported_utc: 2026-09-19T03:56:45Z
+executor: Fresh Kilo context (Kilo V3)
+source_task_root: /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919
+disposition_in_report: PASS_FOR_CTO_ORDER_R2_E1_F1_F3_KILO_V3_TARGETED
+
+Contents of this evidence branch (root commit + export-receipt commit, no product history):
+  REPORT-KILO-V3.md          formal report (disposition, evidence mapping, disclosures)
+  EXPORT-MANIFEST.txt        this manifest
+  evidence/                  all preflight, reconciliation, snapshot, identity, gate artifacts (56 files incl. results/ prep/)
+  results/                   pytest stdout/stderr, emission records, secrets-scan working set
+  prep/                      preparation logs (append-only, includes all pre-sentinel failures)
+  FORMAL_SENTINEL_A          atomic noclobber sentinel, partition A (created 2026-09-19T03:15:44Z)
+  FORMAL_SENTINEL_B          atomic noclobber sentinel, partition B (created 2026-09-19T03:20:16Z)
+
+Lossless mapping of the source task root:
+  - every byte under evidence/, results/, prep/ plus sentinels and report: committed HERE verbatim
+  - the clean detached worktree at candidate 2df6a3bfe8a7975b05f882cda19a6ac390b7a978:
+    reproducible byte-for-byte from the candidate commit carried in the same bundle
+  - venv/: derived environment only; exact contents recorded in evidence/pip-freeze-kilo-v3.txt
+  - credentials/env files: destroyed at cleanup; values never persisted (evidence/cleanup-proof-kilo.txt)
+
+Integrity: evidence/INDEX.txt carries sha256 of all evidence/results/prep files (INDEX hashes
+everything except itself). The bundle sha256 is recorded ONLY in the external transfer receipt
+(the receipt travels inside the bundle, so it cannot contain the bundle's own hash).
+No Order E1 rerun occurred; combined-candidate work awaits separate CTO authorization.

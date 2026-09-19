@@ -1,0 +1,13 @@
+captured_utc: 2026-09-19T03:22:24Z
+container: kilo-order-e1-f1f3-pg-a
+  image=postgres:16 imageID=sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94
+  ports=map[5432/tcp:[{127.0.0.1 15441}]]
+  labels={"authorization":"CTO-AUTH-ORDER-R2-E1-F1-F3-KILO-V3-2026-09-19","owner":"kilo-order-e1-f1f3-v3","partition":"A","task":"order-e1-f1f3-kilo-v3-20260919"}
+  status=running started=2026-09-19T03:02:04.430691642Z
+container: kilo-order-e1-f1f3-pg-b
+  image=postgres:16 imageID=sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94
+  ports=map[5432/tcp:[{127.0.0.1 15442}]]
+  labels={"authorization":"CTO-AUTH-ORDER-R2-E1-F1-F3-KILO-V3-2026-09-19","owner":"kilo-order-e1-f1f3-v3","partition":"B","task":"order-e1-f1f3-kilo-v3-20260919"}
+  status=running started=2026-09-19T03:19:09.597356071Z
+smoke_databases_created_and_dropped: order_e1_f1f3_kilo_a_smoke (A), test_kilo_b_smoke (B)
+disposable_databases_created_and_dropped_by_committed_test: test_r2sr1f4_<hex> (B; absence proven at cluster level pre-removal)

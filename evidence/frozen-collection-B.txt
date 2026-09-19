@@ -1,0 +1,1 @@
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f4_039_preflight_rejects_non_finite_amounts

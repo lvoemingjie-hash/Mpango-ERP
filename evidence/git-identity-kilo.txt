@@ -1,0 +1,25 @@
+remote: https://github.com/lvoemingjie-hash/Mpango-ERP.git
+branch: codex/order-state-r2-e1-source-revision-f1-f3-20260919
+candidate: 2df6a3bfe8a7975b05f882cda19a6ac390b7a978
+ls_remote_tip_vps_session_earlier_success: 2df6a3bfe8a7975b05f882cda19a6ac390b7a978 (successful real-time VPS-side verification earlier in this preparation session, before GitHub connectivity degraded)
+ls_remote_tip_vps_this_attempt: UNAVAILABLE_THIS_ATTEMPT
+ls_remote_tip_executor_control_plane: 2df6a3bfe8a7975b05f882cda19a6ac390b7a978 (executed from the Kilo executor's Windows control machine at 2026-09-19T03:14:42Z; real-time query against the same remote)
+ls_remote_tip_equals_candidate: true
+candidate_tree: 39b3c2c43d2c84db0497a34f1030824e70bd79e4
+base_tree: ef8d9e159bd016653662dae416681df9be60aa5d
+base_is_ancestor: true
+successor_commit_count: 4
+merge_commit_count: 0
+parent_chain:
+  2df6a3bfe8a7975b05f882cda19a6ac390b7a978 76776c5cb91d3c3b241e0f61961d320d2002d72a
+  76776c5cb91d3c3b241e0f61961d320d2002d72a 53e191b7257b4eada70c4c65e6614d469518619b
+  53e191b7257b4eada70c4c65e6614d469518619b 11ecbe8546265d5d6e726d981178ad24449a84b0
+  11ecbe8546265d5d6e726d981178ad24449a84b0 f734e7b03e6905b9ce1a5abefdb4e2c782f22723
+delta_paths:
+  backend/scripts/bootstrap_tenant_schema.py
+  backend/services/canonical_payment_service.py
+  backend/tests/order_state_r2/test_e1_source_revision_gates.py
+  backend/tests/order_state_r2/test_sr1_closure_gates.py
+  harness-governance/inventory/inventory.json
+delta_path_count: 5
+diff_check: CLEAN

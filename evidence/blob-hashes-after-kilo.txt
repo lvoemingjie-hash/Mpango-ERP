@@ -1,0 +1,17 @@
+computed_utc: 2026-09-19T03:22:24Z (AFTER both formal partitions)
+path: backend/scripts/bootstrap_tenant_schema.py
+  candidate_blob_sha256: bdd78d49131fabed44cd044868e118159927e442b9d101646d4fe7a71deeea47
+  worktree_file_sha256:  bdd78d49131fabed44cd044868e118159927e442b9d101646d4fe7a71deeea47
+path: backend/services/canonical_payment_service.py
+  candidate_blob_sha256: beb6d603d5432d1c60b4e437a29a01c5fb0e15c10f1363018a8bd6811e5be7cd
+  worktree_file_sha256:  beb6d603d5432d1c60b4e437a29a01c5fb0e15c10f1363018a8bd6811e5be7cd
+path: backend/tests/order_state_r2/test_e1_source_revision_gates.py
+  candidate_blob_sha256: 7ab42bf27e4f26fbfafaa98ef09bb35ee691a755a31872a67bd9f3b4727f5cde
+  worktree_file_sha256:  7ab42bf27e4f26fbfafaa98ef09bb35ee691a755a31872a67bd9f3b4727f5cde
+path: backend/tests/order_state_r2/test_sr1_closure_gates.py
+  candidate_blob_sha256: 5b1ad611b306d9f0c64526779440ba83c39e544f20a2254aa5218084454db01f
+  worktree_file_sha256:  5b1ad611b306d9f0c64526779440ba83c39e544f20a2254aa5218084454db01f
+path: harness-governance/inventory/inventory.json
+  candidate_blob_sha256: 99975064aef4ddaabe0a94037b95e7a8a2ad7d56077182b5aac9c6487267bdae
+  worktree_file_sha256:  99975064aef4ddaabe0a94037b95e7a8a2ad7d56077182b5aac9c6487267bdae
+BLOB_HASHES_UNCHANGED_AFTER

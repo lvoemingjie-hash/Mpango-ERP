@@ -1,0 +1,7 @@
+cleanup_utc: 2026-09-19T03:22:25Z
+task_labeled_containers_remaining: 0 (expected 0)
+credential_files_destroyed: .pg16-credentials-kilo-a, .pg16-credentials-kilo-b (shred; values never entered any evidence artifact)
+env_files_destroyed: env-partition-a.sh, env-partition-b.sh
+ports_released: 127.0.0.1:15441, 127.0.0.1:15442
+retained: task root with evidence/, results/, prep/, sentinels, repo clone, clean detached worktree, venv
+databases_destroyed_with_containers: order_e1_f1f3_kilo_a, test_kilo_b_formal (+ all per-container objects)

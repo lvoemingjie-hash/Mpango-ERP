@@ -1,0 +1,18 @@
+{
+  "partition": "A",
+  "formal_junitxml": "evidence/formal-results-A.xml",
+  "selected_frozen_count": 27,
+  "junit_testcase_count": 27,
+  "junit_unique_nodes": 27,
+  "duplicate_nodes_in_junit": [],
+  "sets_identical": true,
+  "missing_from_junit": [],
+  "extra_in_junit": [],
+  "stats": {
+    "tests": 27,
+    "passed": 27,
+    "failed": 0,
+    "error": 0,
+    "skipped": 0
+  }
+}

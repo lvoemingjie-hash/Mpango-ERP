@@ -1,0 +1,15 @@
+authorization: CTO-AUTH-ORDER-R2-E1-F1-F3-KILO-V3-2026-09-19
+partition: B
+formal_invocation_count: 1 (this launch; no prior, no retry, no follow-up without new CTO authorization)
+sentinel: FORMAL_SENTINEL_B
+start_utc: 2026-09-19T03:20:16Z
+end_utc: 2026-09-19T03:20:21Z
+duration_seconds: 5
+launcher_pid: 3857243
+pytest_rc: 0
+junitxml: evidence/formal-results-B.xml
+stdout: results/pytest-output-B.txt
+stderr: results/pytest-stderr-B.txt
+command: timeout 1800 venv/bin/python -m pytest -v -o addopts= tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f4_039_preflight_rejects_non_finite_amounts --junitxml=/home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/evidence/formal-results-B.xml
+env_opt_in: MPANGO_ALLOW_TEMP_DB_CREATE=1, MPANGO_TEMP_DB_ALLOWED_PORTS=15442 (partition B only)
+executor: Fresh Kilo context (Kilo V3)

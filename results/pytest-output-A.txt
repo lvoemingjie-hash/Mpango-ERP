@@ -1,0 +1,118 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-8.4.2, pluggy-1.6.0 -- /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree/backend
+configfile: pytest.ini
+plugins: anyio-4.12.1, hypothesis-6.150.2, asyncio-0.26.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 28 items / 1 deselected / 27 selected
+
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f1_retailer_mismatched_payment_with_consistent_totals_rejected PASSED [  3%]
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f1_hold_snapshot_inconsistent_with_lifecycle_rejected PASSED [  7%]
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f1_legal_history_reconcile_positive_controls PASSED [ 11%]
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1r1_cross_wholesaler_data_rejected_via_registration PASSED [ 14%]
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1r1_missing_binding_row_is_not_zero_drift PASSED [ 18%]
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1r1_populated_schema_missing_hold_table_refused_zero_ddl PASSED [ 22%]
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1r2_non_canonical_schema_mapping_rejected PASSED [ 25%]
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1r2_soft_deleted_only_history_requires_registration PASSED [ 29%]
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_split_credit_rejected_on_direct_collection PASSED [ 33%]
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_split_credit_rejected_on_declaration_confirm PASSED [ 37%]
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_soft_deleted_duplicate_credit_is_legal PASSED [ 40%]
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f3_settlement_binding_write_is_last_real_sql_order PASSED [ 44%]
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f3_fault_at_binding_step_rolls_back_whole_settlement PASSED [ 48%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f1_route_unrelated_integrity_error_never_becomes_replay PASSED [ 51%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f1_canonical_classifies_only_the_two_unique_constraints PASSED [ 55%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f1_concurrent_same_key_same_order_single_economic_effect PASSED [ 59%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f1_concurrent_cross_order_same_key_conflict_classified PASSED [ 62%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f2_exact_order_lock_counts_declaration_and_public_pay PASSED [ 66%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f3_confirmed_declaration_replay_binds_every_element PASSED [ 70%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f4_unknown_method_named_red_all_paths PASSED [ 74%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f4_unknown_status_named_red_all_paths PASSED [ 77%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f4_non_positive_amount_named_red_all_paths PASSED [ 81%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f4_non_finite_amount_named_red_all_paths PASSED [ 85%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f4_retailer_mismatch_named_red_all_paths PASSED [ 88%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f4_soft_deleted_invalid_row_is_not_history PASSED [ 92%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f5_extra_constraint_on_hold_table_rejected PASSED [ 96%]
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f5_extra_index_on_hold_table_rejected PASSED [100%]
+
+=============================== warnings summary ===============================
+../../venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+database/base.py:7
+  /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree/backend/database/base.py:7: MovedIn20Warning: The ``declarative_base()`` function is now available as sqlalchemy.orm.declarative_base(). (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+    Base = declarative_base()
+
+tests/order_state_r2/test_e1_source_revision_gates.py: 10 warnings
+tests/order_state_r2/test_sr1_closure_gates.py: 28 warnings
+  /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree/backend/core/security.py:108: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/order_state_r2/test_e1_source_revision_gates.py: 5 warnings
+tests/order_state_r2/test_sr1_closure_gates.py: 14 warnings
+  /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree/backend/api/v1/auth.py:325: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/order_state_r2/test_e1_source_revision_gates.py: 10 warnings
+tests/order_state_r2/test_sr1_closure_gates.py: 28 warnings
+  /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree/backend/core/security.py:150: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expire = datetime.utcnow() + expires_delta
+
+tests/order_state_r2/test_e1_source_revision_gates.py: 5 warnings
+tests/order_state_r2/test_sr1_closure_gates.py: 14 warnings
+  /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree/backend/api/v1/auth.py:441: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/order_state_r2/test_e1_source_revision_gates.py: 5 warnings
+tests/order_state_r2/test_sr1_closure_gates.py: 22 warnings
+  /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree/backend/api/v1/orders.py:448: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/order_state_r2/test_e1_source_revision_gates.py: 5 warnings
+tests/order_state_r2/test_sr1_closure_gates.py: 22 warnings
+  /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree/backend/api/v1/orders.py:596: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow()
+
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_split_credit_rejected_on_direct_collection
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_split_credit_rejected_on_declaration_confirm
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_soft_deleted_duplicate_credit_is_legal
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_soft_deleted_duplicate_credit_is_legal
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f1_route_unrelated_integrity_error_never_becomes_replay
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f1_canonical_classifies_only_the_two_unique_constraints
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f1_canonical_classifies_only_the_two_unique_constraints
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f4_soft_deleted_invalid_row_is_not_history
+  /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree/backend/api/middleware/idempotency.py:218: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "expires_at": datetime.utcnow() + timedelta(minutes=5)
+
+tests/order_state_r2/test_e1_source_revision_gates.py: 6 warnings
+tests/order_state_r2/test_sr1_closure_gates.py: 17 warnings
+  /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree/backend/repositories/payment_repository.py:310: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_split_credit_rejected_on_direct_collection
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_split_credit_rejected_on_declaration_confirm
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_soft_deleted_duplicate_credit_is_legal
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_soft_deleted_duplicate_credit_is_legal
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f1_route_unrelated_integrity_error_never_becomes_replay
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f1_canonical_classifies_only_the_two_unique_constraints
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f1_canonical_classifies_only_the_two_unique_constraints
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f4_soft_deleted_invalid_row_is_not_history
+  /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree/backend/api/v1/orders.py:688: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    timestamp=datetime.utcnow(),
+
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_split_credit_rejected_on_direct_collection
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_split_credit_rejected_on_declaration_confirm
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_soft_deleted_duplicate_credit_is_legal
+tests/order_state_r2/test_e1_source_revision_gates.py::test_e1f2_soft_deleted_duplicate_credit_is_legal
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f1_route_unrelated_integrity_error_never_becomes_replay
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f1_canonical_classifies_only_the_two_unique_constraints
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f1_canonical_classifies_only_the_two_unique_constraints
+tests/order_state_r2/test_sr1_closure_gates.py::test_sr1_f4_soft_deleted_invalid_row_is_not_history
+  /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/worktree/backend/api/middleware/idempotency.py:231: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "expires_at": datetime.utcnow() + self._ttl,
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/ubuntu/order-e1-verify/order-e1-f1f3-kilo-v3-20260919/evidence/formal-results-A.xml -
+=============== 27 passed, 1 deselected, 217 warnings in 42.20s ================

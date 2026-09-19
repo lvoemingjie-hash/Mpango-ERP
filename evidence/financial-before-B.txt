@@ -1,0 +1,8 @@
+snapshot_utc: 2026-09-19T03:19:47Z
+database: test_kilo_b_formal
+note: source database is identity-only for this node; alembic is intentionally NOT applied here; the node's disposable databases are created and destroyed by the committed test itself
+alembic_version_table_present=0
+expected=0 (identity-only source DB)
+tenant_schemas=0
+databases=postgres,test_kilo_b_formal
+disposable_databases_present=0

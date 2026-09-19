@@ -1,0 +1,10 @@
+snapshot_utc: 2026-09-19T03:02:22Z
+database: order_e1_f1f3_kilo_a
+alembic_version=039_order_credit_holds
+tenants=0
+wholesalers=0
+retailers=0
+bindings=0
+owner_tokens=0
+tenant_schemas=0
+databases=order_e1_f1f3_kilo_a,postgres

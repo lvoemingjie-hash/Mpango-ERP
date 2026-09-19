@@ -1,0 +1,6 @@
+snapshot_utc: 2026-09-19T03:21:31Z
+database: test_kilo_b_formal
+alembic_version_table_present=0
+expected=0 (source DB untouched by the node, as designed)
+tenant_schemas=0
+databases=postgres,test_kilo_b_formal

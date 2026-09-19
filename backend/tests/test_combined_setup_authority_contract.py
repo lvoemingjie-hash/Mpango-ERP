@@ -105,11 +105,13 @@ def test_provisioner_still_requires_at_least_one_phase():
 # ---------------------------------------------------------------------------
 GOOD_ENV = {
     "DATABASE_URL": "postgresql://mpango_app:app_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
+    "DATABASE_URL_CONTAINER": "postgresql://mpango_app:app_pw@postgres:5432/mpango_erp",  # pragma: allowlist secret
     "MPANGO_DB_ADMIN_URL": "postgresql://postgres:admin_pw@localhost:5432/postgres",  # pragma: allowlist secret
     "MPANGO_DB_MIGRATE_URL": "postgresql://mpango_migrate:mig_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
     "MPANGO_DB_APP_PASSWORD": "app_pw",
     "MPANGO_DB_MIGRATE_PASSWORD": "mig_pw",
     "REDIS_URL": "redis://localhost:6379/0",
+    "REDIS_URL_CONTAINER": "redis://redis:6379/0",
     "REPORTING_USER_PASSWORD": "rup_pw",
 }
 
@@ -132,7 +134,10 @@ def _compose_json() -> dict:
             },
         },
         "redis": {"ports": [_port_entry(6379)]},
-        "backend": {"environment": {"DATABASE_URL": GOOD_ENV["DATABASE_URL"]}},
+        "backend": {"environment": {
+            "DATABASE_URL": GOOD_ENV["DATABASE_URL_CONTAINER"],
+            "REDIS_URL": GOOD_ENV["REDIS_URL_CONTAINER"],
+        }},
     }}
 
 
@@ -148,7 +153,8 @@ def _run_preflight(monkeypatch, tmp_path, env_overrides: dict[str, str],
     # process-env conflicts: preflight reads os.environ — keep it consistent
     # with the file for the keys it checks.
     for key in ("DATABASE_URL", "REDIS_URL", "REPORTING_USER_PASSWORD",
-                "MPANGO_DB_ADMIN_URL", "MPANGO_DB_MIGRATE_URL"):
+                "MPANGO_DB_ADMIN_URL", "MPANGO_DB_MIGRATE_URL",
+                "DATABASE_URL_CONTAINER", "REDIS_URL_CONTAINER"):
         monkeypatch.delenv(key, raising=False)
     compose = compose_override if compose_override is not None else _compose_json()
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(compose)))
@@ -173,7 +179,8 @@ def _preflight_err(monkeypatch, tmp_path, overrides: dict[str, str],
     env_path = tmp_path / "backend.env"
     env_path.write_text("\n".join(f"{k}={v}" for k, v in env.items()) + "\n")
     for key in ("DATABASE_URL", "REDIS_URL", "REPORTING_USER_PASSWORD",
-                "MPANGO_DB_ADMIN_URL", "MPANGO_DB_MIGRATE_URL"):
+                "MPANGO_DB_ADMIN_URL", "MPANGO_DB_MIGRATE_URL",
+                "DATABASE_URL_CONTAINER", "REDIS_URL_CONTAINER"):
         monkeypatch.delenv(key, raising=False)
     compose = compose_override if compose_override is not None else _compose_json()
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(compose)))
@@ -195,9 +202,10 @@ def test_preflight_accepts_conforming_two_role_config(monkeypatch, tmp_path):
 def test_preflight_rejects_backend_service_with_runtime_url_mismatch(monkeypatch, tmp_path):
     compose = _compose_json()
     compose["services"]["backend"]["environment"]["DATABASE_URL"] = \
-        "postgresql://mpango_app:other_pw@localhost:5432/mpango_erp"  # pragma: allowlist secret
+        "postgresql://mpango_app:app_pw@postgres:5432/other_db"  # pragma: allowlist secret
     err = _preflight_err(monkeypatch, tmp_path, {}, compose)
-    assert "backend service DATABASE_URL differs from backend/.env" in err
+    assert ("backend service DATABASE_URL does not match the container "
+            "runtime context in backend/.env (DATABASE_URL_CONTAINER)") in err
 
 
 @pytest.mark.parametrize("setup_key", [
@@ -211,16 +219,70 @@ def test_preflight_rejects_every_setup_only_credential_in_backend_service(
     monkeypatch, tmp_path, setup_key,
 ):
     compose = _compose_json()
-    compose["services"]["backend"]["environment"][setup_key] = "setup_only_value"
+    # a minimal backend env: only the offending key, so the BY-KEY refusal is
+    # the first failure (the carry checks would otherwise mask it)
+    compose["services"]["backend"]["environment"] = {setup_key: "setup_only_value"}
     err = _preflight_err(monkeypatch, tmp_path, {}, compose)
     assert f"backend service environment must not contain {setup_key}" in err
 
 
-def test_preflight_rejects_backend_service_without_runtime_url(monkeypatch, tmp_path):
+def test_preflight_rejects_backend_service_without_container_runtime_url(monkeypatch, tmp_path):
     compose = _compose_json()
     compose["services"]["backend"]["environment"] = {"MPANGO_ENV": "production"}
     err = _preflight_err(monkeypatch, tmp_path, {}, compose)
     assert "backend service must carry the runtime DATABASE_URL" in err
+
+
+@pytest.mark.parametrize("container_field,value,fragment", [
+    # host/container URL conflation: the container context must never use a
+    # loopback host (the backend container cannot reach the host loopback)
+    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:app_pw@127.0.0.1:5432/mpango_erp",
+     "must be the Compose service name"),
+    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:app_pw@localhost:5432/mpango_erp",
+     "must be the Compose service name"),
+    # wrong service host
+    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:app_pw@dbhost:5432/mpango_erp",
+     "must be the Compose postgres"),
+    # wrong container target port
+    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:app_pw@postgres:5433/mpango_erp",
+     "container target port"),
+    # cross-database
+    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:app_pw@postgres:5432/other_db",
+     "same role, password"),
+    # cross-role
+    ("DATABASE_URL_CONTAINER", "postgresql://other_role:app_pw@postgres:5432/mpango_erp",
+     "same role, password"),
+    # cross-password
+    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:other_pw@postgres:5432/mpango_erp",
+     "same role, password"),
+])
+def test_preflight_rejects_container_context_drift(monkeypatch, tmp_path, container_field, value, fragment):
+    err = _preflight_err(monkeypatch, tmp_path, {container_field: value})
+    assert fragment in err
+
+
+def test_preflight_rejects_container_redis_drift(monkeypatch, tmp_path):
+    err = _preflight_err(monkeypatch, tmp_path, {"REDIS_URL_CONTAINER": "redis://cache:6379/0"})
+    assert "REDIS_URL_CONTAINER host must be the Compose redis service" in err
+
+
+def test_preflight_rejects_backend_service_with_host_loopback_url(monkeypatch, tmp_path):
+    """Conflation rejection: a backend DATABASE_URL carrying the HOST-context
+    loopback address differs from the container context and is refused."""
+    compose = _compose_json()
+    compose["services"]["backend"]["environment"]["DATABASE_URL"] = \
+        "postgresql://mpango_app:app_pw@localhost:5432/mpango_erp"  # pragma: allowlist secret
+    err = _preflight_err(monkeypatch, tmp_path, {}, compose)
+    assert ("backend service DATABASE_URL does not match the container "
+            "runtime context in backend/.env (DATABASE_URL_CONTAINER)") in err
+
+
+def test_preflight_rejects_backend_service_with_host_context_redis(monkeypatch, tmp_path):
+    compose = _compose_json()
+    compose["services"]["backend"]["environment"]["REDIS_URL"] = "redis://localhost:6379/0"
+    err = _preflight_err(monkeypatch, tmp_path, {}, compose)
+    assert ("backend service REDIS_URL does not match the container "
+            "runtime context in backend/.env (REDIS_URL_CONTAINER)") in err
 
 
 @pytest.mark.parametrize("field,value,fragment", [

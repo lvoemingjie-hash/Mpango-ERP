@@ -53,11 +53,13 @@ SENTINEL_TOKEN = "h7r7sentinel_pw"
 
 GOOD_ENV = (
     "DATABASE_URL=postgresql://pgapp:pgapppass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+    "DATABASE_URL_CONTAINER=postgresql://pgapp:pgapppass@postgres:5432/pgdb\n"  # pragma: allowlist secret
     "MPANGO_DB_ADMIN_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
     "MPANGO_DB_MIGRATE_URL=postgresql://pgmigrate:pgmigpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
     "MPANGO_DB_APP_PASSWORD=pgapppass\n"
     "MPANGO_DB_MIGRATE_PASSWORD=pgmigpass\n"
     "REDIS_URL=redis://localhost:6379/0\n"
+    "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
     "POSTGRES_USER=pguser\n"
     "POSTGRES_PASSWORD=pgpass\n"
     "POSTGRES_DB=pgdb\n"
@@ -95,7 +97,10 @@ PG_SVC = {"environment": dict(PG_ENV_GOOD), "ports": [_port_entry()]}
 REDIS_SVC = {"ports": [_port_entry_redis()]}
 
 
-BACKEND_SVC = {"environment": {"DATABASE_URL": GOOD_DB_URL}}  # pragma: allowlist secret
+BACKEND_SVC = {"environment": {
+    "DATABASE_URL": "postgresql://pgapp:pgapppass@postgres:5432/pgdb",  # pragma: allowlist secret
+    "REDIS_URL": "redis://redis:6379/0",
+}}
 
 
 def _compose(pg=None, redis=None, backend=None) -> str:
@@ -355,10 +360,14 @@ class TestRunInitial:
             "MPANGO_DB_MIGRATE_URL=postgresql://pgmigrate:pgmigpass@127.0.0.1:5432/pgdb\n"  # pragma: allowlist secret
             "MPANGO_DB_APP_PASSWORD=pgapppass\n"
             "MPANGO_DB_MIGRATE_PASSWORD=pgmigpass\n"
+            "DATABASE_URL_CONTAINER=postgresql://pgapp:pgapppass@postgres:5432/pgdb\n"  # pragma: allowlist secret
+            "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://127.0.0.1:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
         )
-        backend = {"environment": {"DATABASE_URL": "postgresql://pgapp:pgapppass@127.0.0.1:5432/pgdb"}}  # pragma: allowlist secret
+        backend = {"environment": {
+            "DATABASE_URL": "postgresql://pgapp:pgapppass@postgres:5432/pgdb",  # pragma: allowlist secret
+            "REDIS_URL": "redis://redis:6379/0"}}
         self._ok(capsys, pf.run_initial, self._env(tmp_path, content),
                  stdin_text=_compose(backend=backend))
 
@@ -369,10 +378,14 @@ class TestRunInitial:
             "MPANGO_DB_MIGRATE_URL=postgresql://pgmigrate:pgmigpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
             "MPANGO_DB_APP_PASSWORD=pgapppass\n"
             "MPANGO_DB_MIGRATE_PASSWORD=pgmigpass\n"
+            "DATABASE_URL_CONTAINER=postgresql://pgapp:pgapppass@postgres:5432/pgdb\n"  # pragma: allowlist secret
+            "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://localhost:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
         )
-        backend = {"environment": {"DATABASE_URL": "postgresql+asyncpg://pgapp:pgapppass@localhost:5432/pgdb"}}  # pragma: allowlist secret
+        backend = {"environment": {
+            "DATABASE_URL": "postgresql://pgapp:pgapppass@postgres:5432/pgdb",  # pragma: allowlist secret
+            "REDIS_URL": "redis://redis:6379/0"}}
         self._ok(capsys, pf.run_initial, self._env(tmp_path, content),
                  stdin_text=_compose(backend=backend))
 
@@ -385,13 +398,17 @@ class TestRunInitial:
             "MPANGO_DB_MIGRATE_URL=postgresql://mig%40user:mig%40ss@localhost:5432/pgdb\n"  # pragma: allowlist secret
             "MPANGO_DB_APP_PASSWORD=app@ss\n"
             "MPANGO_DB_MIGRATE_PASSWORD=mig@ss\n"
+            "DATABASE_URL_CONTAINER=postgresql://app%40user:app%40ss@postgres:5432/pgdb\n"  # pragma: allowlist secret
+            "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://localhost:6379/0\n"
         )
         pg = {
             "environment": {"POSTGRES_USER": "pg@user", "POSTGRES_PASSWORD": "pa@ss", "POSTGRES_DB": "pgdb"},  # pragma: allowlist secret
             "ports": [_port_entry()],
         }
-        backend = {"environment": {"DATABASE_URL": "postgresql://app%40user:app%40ss@localhost:5432/pgdb"}}  # pragma: allowlist secret
+        backend = {"environment": {
+            "DATABASE_URL": "postgresql://app%40user:app%40ss@postgres:5432/pgdb",  # pragma: allowlist secret
+            "REDIS_URL": "redis://redis:6379/0"}}
         self._ok(capsys, pf.run_initial, self._env(tmp_path, content),
                  stdin_text=_compose(pg=pg, backend=backend))
 
@@ -671,6 +688,8 @@ class TestRunInitial:
             "MPANGO_DB_MIGRATE_URL=postgresql://pgmigrate:pgmigpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
             "MPANGO_DB_APP_PASSWORD=pgapppass\n"
             "MPANGO_DB_MIGRATE_PASSWORD=pgmigpass\n"
+            "DATABASE_URL_CONTAINER=postgresql://pgapp:pgapppass@postgres:5432/pgdb\n"  # pragma: allowlist secret
+            "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://localhost:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n",
             encoding="utf-8",

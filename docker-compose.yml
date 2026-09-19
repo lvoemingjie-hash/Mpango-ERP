@@ -2,9 +2,15 @@
 # Mpango ERP — Staging Docker Compose
 # Version: v0.1.9-contract-polish
 #
-# Usage:
-#   cp .env.example .env   # then fill in secrets
-#   docker compose up -d --build
+# Usage (ORDER — the five-stage database setup runs FIRST):
+#   cp .env.example .env                          # compose-level secrets
+#   cp backend/.env.example backend/.env          # two-role URLs (both
+#                                                 # contexts) + secrets
+#   backend/scripts/setup.sh                       # 1 provision (admin)
+#                                                 # 2 alembic 001..039 (authority)
+#                                                 # 3 grants  4 verify
+#                                                 # 5 runtime bootstrap
+#   docker compose --env-file backend/.env up -d --build   # THEN the runtime
 #   docker compose logs -f
 #
 # Architecture:
@@ -27,7 +33,7 @@
 # ---------------------------------------------------------------------------
 services:
   # ---------------------------------------------------------------------------
-  # PostgreSQL 15
+  # PostgreSQL 16 (MAINTENANCE database only — see the USAGE CONTRACT below)
   # ---------------------------------------------------------------------------
   postgres:
     image: postgres:16
@@ -77,12 +83,13 @@ services:
     environment:
       # Environment
       - MPANGO_ENV=production
-      # Database (REQUIRED, RUNTIME ROLE ONLY — no single-role fallback; must
-      # target the application database, never the administrator account)
-      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set explicitly to the runtime-role connection}
+      # Database (REQUIRED, RUNTIME ROLE ONLY, CONTAINER CONTEXT — the Compose
+      # service DNS name; the host-side loopback translation lives in
+      # backend/.env and is proven equivalent by setup_preflight)
+      - DATABASE_URL=${DATABASE_URL_CONTAINER:?DATABASE_URL_CONTAINER must be set to the container-context runtime connection}
       - DATABASE_ECHO=${DATABASE_ECHO:-false}
-      # Redis (REQUIRED)
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      # Redis (REQUIRED, CONTAINER CONTEXT)
+      - REDIS_URL=${REDIS_URL_CONTAINER:?REDIS_URL_CONTAINER must be set to the container-context Redis connection}
       # Security (REQUIRED)
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set}
       - ALGORITHM=${ALGORITHM:-HS256}
@@ -114,6 +121,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # /health/live is a LIVENESS probe (process restart decisions only): it
+    # performs no dependency checks and is NOT proof that the five-stage
+    # setup completed.  Setup completion is enforced once, at container
+    # start, by the entrypoint's read-only readiness gate.
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/live"]
       interval: 30s

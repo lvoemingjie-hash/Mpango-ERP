@@ -237,7 +237,6 @@ def run_initial(env_path: str) -> None:
         _fail("DATABASE_URL host must be local")
     if not _is_loopback(rd_host):
         _fail("REDIS_URL host must be local")
-
     try:
         cfg = json.load(sys.stdin)
     except Exception:
@@ -258,10 +257,55 @@ def run_initial(env_path: str) -> None:
     pg_env = _validate_port_entry(services, "postgres", 5432, db_port)
     _validate_port_entry(services, "redis", 6379, rd_port, require_env=False)
 
-    if db_user != pg_env.get("POSTGRES_USER", ""):
-        _fail("DATABASE_URL username does not match Compose POSTGRES_USER")
-    if db_pass != pg_env.get("POSTGRES_PASSWORD", ""):
-        _fail("DATABASE_URL password does not match Compose POSTGRES_PASSWORD")
+    # ------------------------------------------------------------------
+    # Two-role DB authority (MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY R1):
+    # DATABASE_URL binds the RUNTIME role; MPANGO_DB_ADMIN_URL binds the
+    # cluster administrator (the Compose postgres account) and is setup-time
+    # only; MPANGO_DB_MIGRATE_URL binds the migration authority.  The three
+    # roles must be pairwise distinct (a single-role configuration is
+    # rejected here, before any side effect), all three must target one
+    # endpoint/database, and the provisioning passwords must equal the
+    # passwords embedded in the runtime/migration URLs so the provisioned
+    # roles are exactly the roles those URLs will use.
+    admin_url = env.get("MPANGO_DB_ADMIN_URL", "")
+    migrate_url = env.get("MPANGO_DB_MIGRATE_URL", "")
+    app_password = env.get("MPANGO_DB_APP_PASSWORD", "")
+    migrate_password = env.get("MPANGO_DB_MIGRATE_PASSWORD", "")
+    if not admin_url:
+        _fail("MPANGO_DB_ADMIN_URL not found in backend/.env")
+    if not migrate_url:
+        _fail("MPANGO_DB_MIGRATE_URL not found in backend/.env")
+    if not app_password:
+        _fail("MPANGO_DB_APP_PASSWORD not found in backend/.env")
+    if not migrate_password:
+        _fail("MPANGO_DB_MIGRATE_PASSWORD not found in backend/.env")
+    admin_user, admin_pass, admin_host, admin_port, admin_db = parse_db_url(admin_url)
+    mig_user, mig_pass, mig_host, mig_port, mig_db = parse_db_url(migrate_url)
+    if not _is_loopback(admin_host):
+        _fail("MPANGO_DB_ADMIN_URL host must be local")
+    if not _is_loopback(mig_host):
+        _fail("MPANGO_DB_MIGRATE_URL host must be local")
+    if admin_user == db_user or mig_user == db_user or admin_user == mig_user:
+        _fail("single-role configuration rejected: admin, migration and "
+              "runtime URLs must bind three distinct roles")
+    if (admin_host, admin_port) != (db_host, db_port) or             (mig_host, mig_port) != (db_host, db_port):
+        _fail("admin, migration and runtime URLs must target one endpoint")
+    if admin_db != db_name or mig_db != db_name:
+        _fail("admin, migration and runtime URLs must target one database")
+    if app_password != db_pass:
+        _fail("MPANGO_DB_APP_PASSWORD does not match the runtime DATABASE_URL "
+              "password")
+    if migrate_password != mig_pass:
+        _fail("MPANGO_DB_MIGRATE_PASSWORD does not match the migration URL "
+              "password")
+    # The Compose postgres account is the ADMIN of the two-role contract, not
+    # the application identity: the runtime DATABASE_URL must NOT name it.
+    if admin_user != pg_env.get("POSTGRES_USER", ""):
+        _fail("MPANGO_DB_ADMIN_URL username does not match Compose POSTGRES_USER")
+    if admin_pass != pg_env.get("POSTGRES_PASSWORD", ""):
+        _fail("MPANGO_DB_ADMIN_URL password does not match Compose POSTGRES_PASSWORD")
+    if admin_db != pg_env.get("POSTGRES_DB", ""):
+        _fail("MPANGO_DB_ADMIN_URL database does not match Compose POSTGRES_DB")
     if db_name != pg_env.get("POSTGRES_DB", ""):
         _fail("DATABASE_URL database does not match Compose POSTGRES_DB")
 

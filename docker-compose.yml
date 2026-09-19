@@ -14,12 +14,23 @@
 #              backend depends on postgres + redis
 # =============================================================================
 
+# ---------------------------------------------------------------------------
+# USAGE CONTRACT (R1-R2): `docker compose up` is NOT a fresh-database
+# bootstrap.  The five-stage database setup (backend/scripts/setup.sh:
+# provision -> alembic through 039 -> grants -> verify -> runtime bootstrap)
+# must complete BEFORE the backend runtime starts.  The postgres service
+# below provides the MAINTENANCE database (administrator only); the
+# application database is created by provisioning phase 1 and is never
+# pre-created or application-schema-initialized here.
+# PostgreSQL line: 16 (the identity pinned by the accepted integration
+# contract; image digest pinning remains an open hardening item).
+# ---------------------------------------------------------------------------
 services:
   # ---------------------------------------------------------------------------
   # PostgreSQL 15
   # ---------------------------------------------------------------------------
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16
     restart: unless-stopped
     environment:
       # MAINTENANCE database (administrator only).  The application database
@@ -36,7 +47,6 @@ services:
       retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - mpango_network
 

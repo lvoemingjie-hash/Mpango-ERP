@@ -1,15 +1,19 @@
-exported_utc: 2026-09-19T03:57:31Z (export iteration 2 — final)
+exported_utc: 2026-09-19T04:00:11Z (export iteration 3 — final)
 evidence_branch: refs/heads/evidence/order-r2-e1-f1f3-kilo-v3-20260919
-evidence_body_commit: dfc90b22f1ad4ba4152401ebf2731e2b20b1ee57 (evidence bytes unchanged across export iterations)
-superseded_iterations: iteration 1 bundle (tip 9d8df0d1) superseded by this receipt commit; its bundle artifact is deleted
+evidence_body_commit: dfc90b22f1ad4ba4152401ebf2731e2b20b1ee57 (evidence bytes unchanged across all export iterations; INDEX.txt unchanged)
 
-push attempts (honest record):
-  attempt 1 rc=1 — executor ordering error: push was invoked before the branch ref existed
-                   ("src refspec does not match any"); NOT a network failure; receipt of
-                   iteration 1 recorded this imprecisely and is corrected here
-  attempt 2 rc=128 — origin confirmation: CONFIRMATION_UNAVAILABLE
+push record (honest, complete):
+  attempt 1 rc=1  — executor ordering error: push invoked before the branch ref existed
+                    ("src refspec does not match any"); NOT a network failure
+  attempt 2 rc=128 — VPS has no GitHub push credentials (anonymous fetch works; push auth absent)
+  attempt 3 rc=0  — PUSHED from the executor control plane (Windows, SSH key auth) to
+                    origin refs/heads/evidence/order-r2-e1-f1f3-kilo-v3-20260919
+                    confirmation via control-plane ls-remote recorded in the transfer receipt;
+                    GitHub PR creation URL offered: https://github.com/lvoemingjie-hash/Mpango-ERP/pull/new/evidence/order-r2-e1-f1f3-kilo-v3-20260919
+  note: attempts 1-2 were made against tips 9d8df0d1 (superseded) / 7a5a33ab (superseded);
+        attempt 3 pushed tip 7a5a33ab then this receipt commit becomes the pushed tip.
 
-note: the bundle sha256 is recorded only in the external transfer receipt on the executor
-control plane and in the transfer target directory; this receipt travels inside the bundle
-and therefore cannot contain the bundle hash. Evidence body bytes are identical across all
-export iterations (verified by unchanged INDEX.txt content).
+bundle lineage: iteration-1 bundle (tip 9d8df0d1) and iteration-2 bundle (tip 7a5a33ab) are
+SUPERSEDED and deleted; the final bundle carries this tip. The bundle sha256 is recorded only
+in the external transfer receipt (this receipt travels inside the bundle).
+No Order E1 rerun occurred. Combined-candidate work awaits separate CTO authorization.

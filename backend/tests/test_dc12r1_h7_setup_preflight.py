@@ -41,14 +41,22 @@ _spec.loader.exec_module(pf)
 # ---------------------------------------------------------------------------
 # fixtures
 # ---------------------------------------------------------------------------
-GOOD_DB_URL = "postgresql://pguser:pgpass@localhost:5432/pgdb"  # pragma: allowlist secret
+GOOD_DB_URL = "postgresql://pgapp:pgapppass@localhost:5432/pgdb"  # pragma: allowlist secret
+GOOD_ADMIN_URL = "postgresql://pguser:pgpass@localhost:5432/pgdb"  # pragma: allowlist secret
+GOOD_MIGRATE_URL = "postgresql://pgmigrate:pgmigpass@localhost:5432/pgdb"  # pragma: allowlist secret
+GOOD_APP_PASSWORD = "pgapppass"
+GOOD_MIGRATE_PASSWORD = "pgmigpass"
 GOOD_REDIS_URL = "redis://localhost:6379/0"
 # unique sentinel used to prove secrets never reach argv / logs / output
 SENTINEL_URL = "postgresql://sentinel:h7r7sentinel_pw@localhost:5432/sentinel"  # pragma: allowlist secret
 SENTINEL_TOKEN = "h7r7sentinel_pw"
 
 GOOD_ENV = (
-    "DATABASE_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+    "DATABASE_URL=postgresql://pgapp:pgapppass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+    "MPANGO_DB_ADMIN_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+    "MPANGO_DB_MIGRATE_URL=postgresql://pgmigrate:pgmigpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+    "MPANGO_DB_APP_PASSWORD=pgapppass\n"
+    "MPANGO_DB_MIGRATE_PASSWORD=pgmigpass\n"
     "REDIS_URL=redis://localhost:6379/0\n"
     "POSTGRES_USER=pguser\n"
     "POSTGRES_PASSWORD=pgpass\n"
@@ -342,7 +350,11 @@ class TestRunInitial:
 
     def test_ok_loopback_127_0_0_1(self, capsys, tmp_path: Path) -> None:
         content = (
-            "DATABASE_URL=postgresql://pguser:pgpass@127.0.0.1:5432/pgdb\n"  # pragma: allowlist secret
+            "DATABASE_URL=postgresql://pgapp:pgapppass@127.0.0.1:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_ADMIN_URL=postgresql://pguser:pgpass@127.0.0.1:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_MIGRATE_URL=postgresql://pgmigrate:pgmigpass@127.0.0.1:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_APP_PASSWORD=pgapppass\n"
+            "MPANGO_DB_MIGRATE_PASSWORD=pgmigpass\n"
             "REDIS_URL=redis://127.0.0.1:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
         )
@@ -350,15 +362,25 @@ class TestRunInitial:
 
     def test_ok_asyncpg_scheme(self, capsys, tmp_path: Path) -> None:
         content = (
-            "DATABASE_URL=postgresql+asyncpg://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "DATABASE_URL=postgresql+asyncpg://pgapp:pgapppass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_ADMIN_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_MIGRATE_URL=postgresql://pgmigrate:pgmigpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_APP_PASSWORD=pgapppass\n"
+            "MPANGO_DB_MIGRATE_PASSWORD=pgmigpass\n"
             "REDIS_URL=redis://localhost:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
         )
         self._ok(capsys, pf.run_initial, self._env(tmp_path, content))
 
     def test_ok_url_encoded_credentials_match_compose(self, capsys, tmp_path: Path) -> None:
+        # admin identity is the Compose postgres account; runtime and migration
+        # roles stay distinct; all three carry URL-encoded credentials
         content = (
-            "DATABASE_URL=postgresql://pg%40user:pa%40ss@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "DATABASE_URL=postgresql://app%40user:app%40ss@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_ADMIN_URL=postgresql://pg%40user:pa%40ss@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_MIGRATE_URL=postgresql://mig%40user:mig%40ss@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_APP_PASSWORD=app@ss\n"
+            "MPANGO_DB_MIGRATE_PASSWORD=mig@ss\n"
             "REDIS_URL=redis://localhost:6379/0\n"
         )
         pg = {
@@ -551,11 +573,11 @@ class TestRunInitial:
             ({"services": {"postgres": {"ports": [_port_entry()]}, "redis": {}}},
              "postgres environment must be a dict"),
             ({"services": {"postgres": {"ports": [_port_entry()], "environment": {"POSTGRES_USER": "pguser", "POSTGRES_PASSWORD": "pgpass", "POSTGRES_DB": "other"}}, "redis": dict(REDIS_SVC)}},
-             "DATABASE_URL database does not match Compose POSTGRES_DB"),
+             "MPANGO_DB_ADMIN_URL database does not match Compose POSTGRES_DB"),
             ({"services": {"postgres": {"ports": [_port_entry()], "environment": {"POSTGRES_USER": "someone", "POSTGRES_PASSWORD": "pgpass", "POSTGRES_DB": "pgdb"}}, "redis": dict(REDIS_SVC)}},
-             "DATABASE_URL username does not match Compose POSTGRES_USER"),
+             "MPANGO_DB_ADMIN_URL username does not match Compose POSTGRES_USER"),
             ({"services": {"postgres": {"ports": [_port_entry()], "environment": {"POSTGRES_USER": "pguser", "POSTGRES_PASSWORD": "different", "POSTGRES_DB": "pgdb"}}, "redis": dict(REDIS_SVC)}},
-             "DATABASE_URL password does not match Compose POSTGRES_PASSWORD"),
+             "MPANGO_DB_ADMIN_URL password does not match Compose POSTGRES_PASSWORD"),
             ({"services": {"postgres": dict(PG_SVC), "redis": {"ports": ["6379:6379"]}}},
              "redis port entry must be an object (string form rejected)"),
             ({"services": {"postgres": dict(PG_SVC), "redis": {"ports": [_port_entry_redis(host_ip="0.0.0.0")]}}},
@@ -638,7 +660,11 @@ class TestRunInitial:
         side effect."""
         p = tmp_path / ".env"
         p.write_text(
-            "DATABASE_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "DATABASE_URL=postgresql://pgapp:pgapppass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_ADMIN_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_MIGRATE_URL=postgresql://pgmigrate:pgmigpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_APP_PASSWORD=pgapppass\n"
+            "MPANGO_DB_MIGRATE_PASSWORD=pgmigpass\n"
             "REDIS_URL=redis://localhost:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n",
             encoding="utf-8",

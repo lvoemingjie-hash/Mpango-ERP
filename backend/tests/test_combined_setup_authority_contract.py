@@ -199,9 +199,7 @@ def test_preflight_rejects_runtime_naming_compose_admin(monkeypatch, tmp_path):
     err = pytest_err(monkeypatch, tmp_path, {
         "DATABASE_URL": "postgresql://postgres:app_pw@localhost:5432/mpango_erp",
     })
-    # the runtime URL naming the admin role is, before anything else, a
-    # single-role configuration (runtime must be a distinct third role)
-    assert "single-role configuration rejected" in err
+    assert "MPANGO_DB_ADMIN_URL username does not match Compose POSTGRES_USER" in err
 
 
 def test_preflight_rejects_missing_admin_url(monkeypatch, tmp_path):
@@ -328,6 +326,49 @@ def test_two_role_lifecycle_and_public_contract_refusals():
                             "WHERE datname = %s", (sandbox_db,))
                 assert cur.fetchone()[0] == mig_role, \
                     "product provision must own the fresh database by the migration authority"
+            admin_role = parsed.username or "postgres"
+
+            # --- guard authority negatives on the PRISTINE sandbox (no
+            # tenant triggers yet, so the guard can be removed/restored
+            # cleanly); every refusal leaves ZERO tenant schemas ------------
+            with admin.cursor() as cur:
+                cur.execute(
+                    "SELECT pg_get_functiondef("
+                    "'public.prevent_ledger_modification()'::regprocedure)")
+                guard_def = cur.fetchone()[0]
+
+            async def _boot_refuses():
+                await bts.bootstrap(f"t_{uuid.uuid4().hex}", app_url)
+
+            with admin.cursor() as cur:
+                cur.execute("DROP FUNCTION public.prevent_ledger_modification()")
+            with pytest.raises(bts.LedgerGuardAuthorityError):
+                asyncio.run(_boot_refuses())
+            assert _tenant_schema_count(admin) == 0
+            with admin.cursor() as cur:
+                cur.execute(guard_def)
+            with admin.cursor() as cur:
+                cur.execute(f"ALTER FUNCTION public.prevent_ledger_modification() "
+                            f"OWNER TO {admin_role}")
+            with pytest.raises(bts.LedgerGuardAuthorityError):
+                asyncio.run(_boot_refuses())
+            assert _tenant_schema_count(admin) == 0
+            with admin.cursor() as cur:
+                cur.execute(f"ALTER FUNCTION public.prevent_ledger_modification() "
+                            f"OWNER TO {mig_role}")
+
+            # --- wrong migration head: simulate drift on alembic_version and
+            # require the named refusal --------------------------------------
+            with admin.cursor() as cur:
+                cur.execute("UPDATE alembic_version SET version_num = "
+                            "'038_catalog_identity_vertical_slice'")
+            with pytest.raises(RuntimeError) as excinfo:
+                asyncio.run(_boot_refuses())
+            assert "039_order_credit_holds" in str(excinfo.value)
+            assert _tenant_schema_count(admin) == 0
+            with admin.cursor() as cur:
+                cur.execute("UPDATE alembic_version SET version_num = "
+                            "'039_order_credit_holds'")
 
             guard0 = _guard_snapshot(admin)
 

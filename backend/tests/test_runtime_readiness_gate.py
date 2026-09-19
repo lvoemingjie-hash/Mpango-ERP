@@ -105,6 +105,8 @@ def five_stage_database():
     suffix = uuid.uuid4().hex[:8]
     mig_role, app_role = "mpango_migrate_" + suffix, "mpango_app_" + suffix
     mig_pw, app_pw = "pw_" + suffix + "_m", "pw_" + suffix + "_a"
+    ctx_reporting = "reporting-" + suffix
+    ctx_gate = "gate-fixture-" + suffix
     sandbox_db = "test_readiness_" + suffix
     env = _scenario_env(server, sandbox_db, mig_role, app_role, mig_pw, app_pw)
     result = _run_provisioner(["--provision"], env)
@@ -124,7 +126,8 @@ def five_stage_database():
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=BACKEND_DIR, capture_output=True, text=True, timeout=600,
         env={**os.environ, "DATABASE_URL": mig_url,
-             "REPORTING_USER_PASSWORD": "rup_" + suffix, "MPANGO_ENV": "test"})  # pragma: allowlist secret
+             "REPORTING_USER_PASSWORD": ctx_reporting,
+             "MPANGO_ENV": "test"})
     assert result.returncode == 0, result.stderr[-2000:]
     result = _run_provisioner(["--apply-grants"], env)
     assert result.returncode == 0, result.stderr
@@ -135,7 +138,7 @@ def five_stage_database():
         [sys.executable, "scripts/bootstrap_tenant_schema.py", "t_dev"],
         cwd=BACKEND_DIR, capture_output=True, text=True, timeout=300,
         env={**os.environ, "DATABASE_URL": app_url, "MPANGO_ENV": "test",
-             "SECRET_KEY": "gate_fixture_secret_key_value"})  # pragma: allowlist secret
+             "SECRET_KEY": ctx_gate})
     assert result.returncode == 0, result.stderr[-2000:]
     yield {"app_url": app_url, "mig_url": mig_url, "db": sandbox_db,
            "server": server}
@@ -160,6 +163,7 @@ def test_gate_refuses_missing_tenant_bootstrap_state(five_stage_database):
     helper = _load_helper()
     suffix = uuid.uuid4().hex[:8]
     own_tenant = "t_r5" + suffix  # unique task-scoped tenant schema
+    ctx_gate_destructive = "gate-fixture-" + suffix
     admin = _admin_connect(server.admin_db_url(five_stage_database["db"]))
     try:
         # phase-5-equivalent: bootstrap the UNIQUE tenant via the product
@@ -169,7 +173,7 @@ def test_gate_refuses_missing_tenant_bootstrap_state(five_stage_database):
             cwd=BACKEND_DIR, capture_output=True, text=True, timeout=300,
             env={**os.environ, "DATABASE_URL": five_stage_database["app_url"],
                  "MPANGO_ENV": "test",
-                 "SECRET_KEY": "gate_fixture_secret_key_value"})  # pragma: allowlist secret
+                 "SECRET_KEY": ctx_gate_destructive})
         assert result.returncode == 0, result.stderr[-2000:]
         # damage ONLY the isolated tenant
         with admin.cursor() as cur:

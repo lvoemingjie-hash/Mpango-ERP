@@ -44,8 +44,8 @@ _spec.loader.exec_module(pf)
 GOOD_DB_URL = "postgresql://pgapp:pgapppass@localhost:5432/pgdb"  # pragma: allowlist secret
 GOOD_ADMIN_URL = "postgresql://pguser:pgpass@localhost:5432/pgdb"  # pragma: allowlist secret
 GOOD_MIGRATE_URL = "postgresql://pgmigrate:pgmigpass@localhost:5432/pgdb"  # pragma: allowlist secret
-GOOD_APP_PASSWORD = "pgapppass"
-GOOD_MIGRATE_PASSWORD = "pgmigpass"
+GOOD_APP_PASSWORD = "pgapppass"  # pragma: allowlist secret
+GOOD_MIGRATE_PASSWORD = "pgmigpass"  # pragma: allowlist secret
 GOOD_REDIS_URL = "redis://localhost:6379/0"
 # unique sentinel used to prove secrets never reach argv / logs / output
 SENTINEL_URL = "postgresql://sentinel:h7r7sentinel_pw@localhost:5432/sentinel"  # pragma: allowlist secret

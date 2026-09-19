@@ -63,9 +63,9 @@ def _run_provisioner(args: list[str], extra_env: dict[str, str]):
 # 1. provisioner CLI phase contract
 # ---------------------------------------------------------------------------
 BOGUS_URLS = {
-    "MPANGO_DB_ADMIN_URL": "postgresql://postgres:pw@127.0.0.1:1/postgres",
-    "MPANGO_DB_MIGRATE_URL": "postgresql://m:pw@127.0.0.1:1/appdb",
-    "MPANGO_DB_APP_URL": "postgresql://a:pw@127.0.0.1:1/appdb",
+    "MPANGO_DB_ADMIN_URL": "postgresql://postgres:pw@127.0.0.1:1/postgres",  # pragma: allowlist secret
+    "MPANGO_DB_MIGRATE_URL": "postgresql://m:pw@127.0.0.1:1/appdb",  # pragma: allowlist secret
+    "MPANGO_DB_APP_URL": "postgresql://a:pw@127.0.0.1:1/appdb",  # pragma: allowlist secret
 }
 
 
@@ -99,13 +99,13 @@ def test_provisioner_still_requires_at_least_one_phase():
 # 2. setup preflight two-role contract
 # ---------------------------------------------------------------------------
 GOOD_ENV = {
-    "DATABASE_URL": "postgresql://mpango_app:app_pw@localhost:5432/mpango_erp",
-    "MPANGO_DB_ADMIN_URL": "postgresql://postgres:admin_pw@localhost:5432/mpango_erp",
-    "MPANGO_DB_MIGRATE_URL": "postgresql://mpango_migrate:mig_pw@localhost:5432/mpango_erp",
-    "MPANGO_DB_APP_PASSWORD": "app_pw",
-    "MPANGO_DB_MIGRATE_PASSWORD": "mig_pw",
+    "DATABASE_URL": "postgresql://mpango_app:app_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
+    "MPANGO_DB_ADMIN_URL": "postgresql://postgres:admin_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
+    "MPANGO_DB_MIGRATE_URL": "postgresql://mpango_migrate:mig_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
+    "MPANGO_DB_APP_PASSWORD": "app_pw",  # pragma: allowlist secret
+    "MPANGO_DB_MIGRATE_PASSWORD": "mig_pw",  # pragma: allowlist secret
     "REDIS_URL": "redis://localhost:6379/0",
-    "REPORTING_USER_PASSWORD": "rup_pw",
+    "REPORTING_USER_PASSWORD": "rup_pw",  # pragma: allowlist secret
 }
 
 
@@ -122,12 +122,12 @@ def _compose_json() -> dict:
             "ports": [_port_entry(5432)],
             "environment": {
                 "POSTGRES_USER": "postgres",
-                "POSTGRES_PASSWORD": "admin_pw",
+                "POSTGRES_PASSWORD": "admin_pw",  # pragma: allowlist secret
                 "POSTGRES_DB": "mpango_erp",
             },
         },
         "redis": {"ports": [_port_entry(6379)]},
-        "backend": {"environment": {"REPORTING_USER_PASSWORD": "rup_pw"}},
+        "backend": {"environment": {"REPORTING_USER_PASSWORD": "rup_pw"}},  # pragma: allowlist secret
     }}
 
 
@@ -162,15 +162,15 @@ def test_preflight_accepts_conforming_two_role_config(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("field,value,fragment", [
-    ("MPANGO_DB_ADMIN_URL", "postgresql://postgres:admin_pw@localhost:5432/other_db",
+    ("MPANGO_DB_ADMIN_URL", "postgresql://postgres:admin_pw@localhost:5432/other_db",  # pragma: allowlist secret
      "must target one database"),
-    ("MPANGO_DB_MIGRATE_URL", "postgresql://mpango_migrate:mig_pw@localhost:5433/mpango_erp",
+    ("MPANGO_DB_MIGRATE_URL", "postgresql://mpango_migrate:mig_pw@localhost:5433/mpango_erp",  # pragma: allowlist secret
      "must target one endpoint"),
     ("MPANGO_DB_ADMIN_URL",
-     "postgresql://mpango_app:admin_pw@localhost:5432/mpango_erp",
+     "postgresql://mpango_app:admin_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
      "three distinct roles"),
     ("MPANGO_DB_MIGRATE_URL",
-     "postgresql://postgres:mig_pw@localhost:5432/mpango_erp",
+     "postgresql://postgres:mig_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
      "three distinct roles"),
 ])
 def test_preflight_rejects_role_and_endpoint_drift(monkeypatch, tmp_path, field, value, fragment):
@@ -197,7 +197,7 @@ def pytest_err(monkeypatch, tmp_path, overrides):  # helper capturing stderr
 
 def test_preflight_rejects_runtime_naming_compose_admin(monkeypatch, tmp_path):
     err = pytest_err(monkeypatch, tmp_path, {
-        "DATABASE_URL": "postgresql://postgres:app_pw@localhost:5432/mpango_erp",
+        "DATABASE_URL": "postgresql://postgres:app_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
     })
     # the runtime URL naming the admin role is, before anything else, a
     # single-role configuration (runtime must be a distinct third role)

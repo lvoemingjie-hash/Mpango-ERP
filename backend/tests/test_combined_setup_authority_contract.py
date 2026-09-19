@@ -1,18 +1,22 @@
 """Focused permanent tests for the combined Order R2 + tenant DB-authority
-setup contract (CTO-AUTH-ORDER-R2-DB-AUTHORITY-INTEGRATION-R1-2026-09-19).
+setup contract (CTO-AUTH-ORDER-R2-DB-AUTHORITY-INTEGRATION-R1-R1-SOURCE-CORRECTION-2026-09-19).
 
 Three bounded groups, all exercising PRODUCT entry points only:
 
   1. the provisioner CLI rejects the invalid ``--provision --apply-grants``
      phase combination BEFORE any connection, role, database or grant write;
-  2. the setup preflight rejects single-role configurations, endpoint or
-     database mismatches and provisioning-password inconsistencies before any
-     side effect, and accepts a conforming three-URL two-role configuration;
-  3. (opt-in, disposable database) the full two-role lifecycle using the
-     product-supported operator sequence — provision, migrate 001..039 as the
-     migration authority, minimum grants, read-only verify, runtime bootstrap,
-     tenant lifecycle — plus the read-only public-contract refusal matrix with
-     zero-tenant-DDL and ledger-guard invariance proofs.
+  2. the setup preflight rejects single-role configurations, endpoint
+     mismatches, provisioning-password inconsistencies, and any setup-only
+     credential inside the rendered backend service environment; the admin
+     URL targets the MAINTENANCE database while migration/runtime URLs target
+     the application database (the sanctioned maintenance-vs-application
+     shape);
+  3. (opt-in, disposable databases) the ownership contract: an absent target
+     database is created owned by the migration authority; an existing
+     correct-owner database is accepted idempotently; any existing
+     wrong-owner database - empty, carrying sentinel business data, or with
+     fully connectable roles - is refused BEFORE any role/owner/grant write,
+     and its contents remain untouched.
 
 The historical mutation-runner / source-reader governance artifacts are
 deliberately NOT prerequisites: nothing here imports them.
@@ -28,6 +32,7 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -100,12 +105,12 @@ def test_provisioner_still_requires_at_least_one_phase():
 # ---------------------------------------------------------------------------
 GOOD_ENV = {
     "DATABASE_URL": "postgresql://mpango_app:app_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
-    "MPANGO_DB_ADMIN_URL": "postgresql://postgres:admin_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
+    "MPANGO_DB_ADMIN_URL": "postgresql://postgres:admin_pw@localhost:5432/postgres",  # pragma: allowlist secret
     "MPANGO_DB_MIGRATE_URL": "postgresql://mpango_migrate:mig_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
-    "MPANGO_DB_APP_PASSWORD": "app_pw",  # pragma: allowlist secret
-    "MPANGO_DB_MIGRATE_PASSWORD": "mig_pw",  # pragma: allowlist secret
+    "MPANGO_DB_APP_PASSWORD": "app_pw",
+    "MPANGO_DB_MIGRATE_PASSWORD": "mig_pw",
     "REDIS_URL": "redis://localhost:6379/0",
-    "REPORTING_USER_PASSWORD": "rup_pw",  # pragma: allowlist secret
+    "REPORTING_USER_PASSWORD": "rup_pw",
 }
 
 
@@ -122,16 +127,17 @@ def _compose_json() -> dict:
             "ports": [_port_entry(5432)],
             "environment": {
                 "POSTGRES_USER": "postgres",
-                "POSTGRES_PASSWORD": "admin_pw",  # pragma: allowlist secret
-                "POSTGRES_DB": "mpango_erp",
+                "POSTGRES_PASSWORD": "admin_pw",
+                "POSTGRES_DB": "postgres",
             },
         },
         "redis": {"ports": [_port_entry(6379)]},
-        "backend": {"environment": {"REPORTING_USER_PASSWORD": "rup_pw"}},  # pragma: allowlist secret
+        "backend": {"environment": {"DATABASE_URL": GOOD_ENV["DATABASE_URL"]}},
     }}
 
 
-def _run_preflight(monkeypatch, tmp_path, env_overrides: dict[str, str]) -> tuple[int, str]:
+def _run_preflight(monkeypatch, tmp_path, env_overrides: dict[str, str],
+                   compose_override: dict | None = None):
     env = dict(GOOD_ENV)
     env.update(env_overrides)
     for key, value in list(env_overrides.items()):
@@ -144,7 +150,8 @@ def _run_preflight(monkeypatch, tmp_path, env_overrides: dict[str, str]) -> tupl
     for key in ("DATABASE_URL", "REDIS_URL", "REPORTING_USER_PASSWORD",
                 "MPANGO_DB_ADMIN_URL", "MPANGO_DB_MIGRATE_URL"):
         monkeypatch.delenv(key, raising=False)
-    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(_compose_json())))
+    compose = compose_override if compose_override is not None else _compose_json()
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(compose)))
     import contextlib
     stdout = io.StringIO()
     try:
@@ -155,49 +162,87 @@ def _run_preflight(monkeypatch, tmp_path, env_overrides: dict[str, str]) -> tupl
     return 0, stdout.getvalue()
 
 
-def test_preflight_accepts_conforming_two_role_config(monkeypatch, tmp_path):
-    code, out = _run_preflight(monkeypatch, tmp_path, {})
-    assert code == 0
-    assert out.strip() == "OK"
-
-
-@pytest.mark.parametrize("field,value,fragment", [
-    ("MPANGO_DB_ADMIN_URL", "postgresql://postgres:admin_pw@localhost:5432/other_db",  # pragma: allowlist secret
-     "must target one database"),
-    ("MPANGO_DB_MIGRATE_URL", "postgresql://mpango_migrate:mig_pw@localhost:5433/mpango_erp",  # pragma: allowlist secret
-     "must target one endpoint"),
-    ("MPANGO_DB_ADMIN_URL",
-     "postgresql://mpango_app:admin_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
-     "three distinct roles"),
-    ("MPANGO_DB_MIGRATE_URL",
-     "postgresql://postgres:mig_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
-     "three distinct roles"),
-])
-def test_preflight_rejects_role_and_endpoint_drift(monkeypatch, tmp_path, field, value, fragment):
-    code, _ = _run_preflight(monkeypatch, tmp_path, {field: value})
-    assert code != 0
-    assert fragment in pytest_err(monkeypatch, tmp_path, {field: value})
-
-
-def pytest_err(monkeypatch, tmp_path, overrides):  # helper capturing stderr
+def _preflight_err(monkeypatch, tmp_path, overrides: dict[str, str],
+                   compose_override: dict | None = None) -> str:
     import contextlib
     env = dict(GOOD_ENV)
     env.update(overrides)
+    for key, value in list(overrides.items()):
+        if value == "":
+            env.pop(key, None)
     env_path = tmp_path / "backend.env"
     env_path.write_text("\n".join(f"{k}={v}" for k, v in env.items()) + "\n")
     for key in ("DATABASE_URL", "REDIS_URL", "REPORTING_USER_PASSWORD",
                 "MPANGO_DB_ADMIN_URL", "MPANGO_DB_MIGRATE_URL"):
         monkeypatch.delenv(key, raising=False)
-    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(_compose_json())))
+    compose = compose_override if compose_override is not None else _compose_json()
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(compose)))
     err = io.StringIO()
     with contextlib.redirect_stderr(err), pytest.raises(SystemExit):
         pf.run_initial(str(env_path))
     return err.getvalue()
 
 
+def test_preflight_accepts_conforming_two_role_config(monkeypatch, tmp_path):
+    """The admin URL targets the MAINTENANCE database (postgres) while
+    migration/runtime URLs target the application database (mpango_erp) —
+    the sanctioned maintenance-vs-application shape."""
+    code, out = _run_preflight(monkeypatch, tmp_path, {})
+    assert code == 0
+    assert out.strip() == "OK"
+
+
+def test_preflight_rejects_backend_service_with_runtime_url_mismatch(monkeypatch, tmp_path):
+    compose = _compose_json()
+    compose["services"]["backend"]["environment"]["DATABASE_URL"] = \
+        "postgresql://mpango_app:other_pw@localhost:5432/mpango_erp"  # pragma: allowlist secret
+    err = _preflight_err(monkeypatch, tmp_path, {}, compose)
+    assert "backend service DATABASE_URL differs from backend/.env" in err
+
+
+@pytest.mark.parametrize("setup_key", [
+    "MPANGO_DB_ADMIN_URL",
+    "MPANGO_DB_MIGRATE_URL",
+    "MPANGO_DB_MIGRATE_PASSWORD",
+    "MPANGO_DB_APP_PASSWORD",
+    "REPORTING_USER_PASSWORD",
+])
+def test_preflight_rejects_every_setup_only_credential_in_backend_service(
+    monkeypatch, tmp_path, setup_key,
+):
+    compose = _compose_json()
+    compose["services"]["backend"]["environment"][setup_key] = "setup_only_value"
+    err = _preflight_err(monkeypatch, tmp_path, {}, compose)
+    assert f"backend service environment must not contain {setup_key}" in err
+
+
+def test_preflight_rejects_backend_service_without_runtime_url(monkeypatch, tmp_path):
+    compose = _compose_json()
+    compose["services"]["backend"]["environment"] = {"MPANGO_ENV": "production"}
+    err = _preflight_err(monkeypatch, tmp_path, {}, compose)
+    assert "backend service must carry the runtime DATABASE_URL" in err
+
+
+@pytest.mark.parametrize("field,value,fragment", [
+    ("MPANGO_DB_ADMIN_URL", "postgresql://postgres:admin_pw@localhost:5432/other_db",
+     "MPANGO_DB_ADMIN_URL database does not match Compose POSTGRES_DB"),
+    ("MPANGO_DB_MIGRATE_URL", "postgresql://mpango_migrate:mig_pw@localhost:5433/mpango_erp",
+     "must target one endpoint"),
+    ("MPANGO_DB_ADMIN_URL",
+     "postgresql://mpango_app:admin_pw@localhost:5432/mpango_erp",
+     "three distinct roles"),
+    ("MPANGO_DB_MIGRATE_URL",
+     "postgresql://postgres:mig_pw@localhost:5432/mpango_erp",
+     "three distinct roles"),
+])
+def test_preflight_rejects_role_and_endpoint_drift(monkeypatch, tmp_path, field, value, fragment):
+    err = _preflight_err(monkeypatch, tmp_path, {field: value})
+    assert fragment in err
+
+
 def test_preflight_rejects_runtime_naming_compose_admin(monkeypatch, tmp_path):
-    err = pytest_err(monkeypatch, tmp_path, {
-        "DATABASE_URL": "postgresql://postgres:app_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
+    err = _preflight_err(monkeypatch, tmp_path, {
+        "DATABASE_URL": "postgresql://postgres:app_pw@localhost:5432/mpango_erp",
     })
     # the runtime URL naming the admin role is, before anything else, a
     # single-role configuration (runtime must be a distinct third role)
@@ -205,22 +250,22 @@ def test_preflight_rejects_runtime_naming_compose_admin(monkeypatch, tmp_path):
 
 
 def test_preflight_rejects_missing_admin_url(monkeypatch, tmp_path):
-    err = pytest_err(monkeypatch, tmp_path, {"MPANGO_DB_ADMIN_URL": ""})
+    err = _preflight_err(monkeypatch, tmp_path, {"MPANGO_DB_ADMIN_URL": ""})
     assert "MPANGO_DB_ADMIN_URL not found in backend/.env" in err
 
 
 def test_preflight_rejects_app_password_mismatch(monkeypatch, tmp_path):
-    err = pytest_err(monkeypatch, tmp_path, {"MPANGO_DB_APP_PASSWORD": "wrong"})
+    err = _preflight_err(monkeypatch, tmp_path, {"MPANGO_DB_APP_PASSWORD": "wrong"})
     assert "MPANGO_DB_APP_PASSWORD does not match" in err
 
 
 def test_preflight_rejects_migrate_password_mismatch(monkeypatch, tmp_path):
-    err = pytest_err(monkeypatch, tmp_path, {"MPANGO_DB_MIGRATE_PASSWORD": "wrong"})
+    err = _preflight_err(monkeypatch, tmp_path, {"MPANGO_DB_MIGRATE_PASSWORD": "wrong"})
     assert "MPANGO_DB_MIGRATE_PASSWORD does not match" in err
 
 
 # ---------------------------------------------------------------------------
-# 3. two-role lifecycle + public-contract refusal matrix (opt-in, real PG16)
+# 3. ownership contract + two-role lifecycle (opt-in, disposable databases)
 # ---------------------------------------------------------------------------
 _requires_temp_db = pytest.mark.skipif(
     os.environ.get("MPANGO_ALLOW_TEMP_DB_CREATE") != "1",
@@ -265,78 +310,223 @@ def _constraint_names(conn) -> list[str]:
         return [r[0] for r in cur.fetchall()]
 
 
-@_requires_temp_db
-def test_provisioner_assigns_preexisting_database_ownership():
-    """Compose-style deployments: the application database already exists at
-    provision time, owned by the container administrator.  Phase 1 must
-    assign ownership to the migration authority through the sanctioned exact
-    statement, so the rest of the contract holds without manual repair."""
-    import psycopg2
-    from urllib.parse import urlsplit
+class _SandboxServer:
+    """Borrows the test server behind TEST_DATABASE_URL for ownership
+    scenarios: unique databases/roles per scenario with guaranteed cleanup."""
 
-    source = os.environ["TEST_DATABASE_URL"]
-    parsed = urlsplit(source)
-    admin_url = parsed._replace(path="/postgres").geturl()
-    suffix = uuid.uuid4().hex[:8]
-    mig_role = f"mpango_migrate_{suffix}"
-    app_role = f"mpango_app_{suffix}"
-    mig_pw = f"pw_{suffix}_m"
-    app_pw = f"pw_{suffix}_a"
-    sandbox_db = f"test_combinedown_{suffix}"
+    def __init__(self):
+        self.source = os.environ["TEST_DATABASE_URL"]
+        self.parsed = urlsplit(self.source)
+        self.admin_url = self.parsed._replace(path="/postgres").geturl()
+        self.admin_role = self.parsed.username or "postgres"
+        self._conn = None
 
-    def _url(user: str, password: str) -> str:
-        return parsed._replace(
-            netloc=f"{user}:{password}@{parsed.hostname}:{parsed.port or 5432}",
-            path=f"/{sandbox_db}").geturl()
+    def conn(self):
+        if self._conn is None:
+            self._conn = _admin_connect(self.admin_url)
+        return self._conn
 
-    prov_env = {
-        "MPANGO_DB_ADMIN_URL": admin_url,
-        "MPANGO_DB_MIGRATE_URL": _url(mig_role, mig_pw),
-        "MPANGO_DB_APP_URL": _url(app_role, app_pw),
+    def url_for(self, db: str, user: str = "", password: str = ""):
+        netloc = f"{self.parsed.hostname}:{self.parsed.port or 5432}"
+        if user:
+            netloc = f"{user}:{password}@{netloc}"
+        return self.parsed._replace(netloc=netloc, path=f"/{db}").geturl()
+
+    def admin_db_url(self, db: str):
+        """A URL to the given database carrying the test administrator's
+        credentials (from TEST_DATABASE_URL)."""
+        return self.parsed._replace(path=f"/{db}").geturl()
+
+    def sql(self, statement: str, db: str | None = None):
+        conn = self.conn()
+        with conn.cursor() as cur:
+            cur.execute(statement)
+
+    def db_exists(self, db: str) -> bool:
+        with self.conn().cursor() as cur:
+            cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db,))
+            return cur.fetchone() is not None
+
+    def db_owner(self, db: str) -> str:
+        with self.conn().cursor() as cur:
+            cur.execute("SELECT pg_get_userbyid(datdba) FROM pg_database "
+                        "WHERE datname = %s", (db,))
+            return cur.fetchone()[0]
+
+    def role_exists(self, role: str) -> bool:
+        with self.conn().cursor() as cur:
+            cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
+            return cur.fetchone() is not None
+
+    def drop_db(self, db: str):
+        c = self.conn()
+        with c.cursor() as cur:
+            cur.execute(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname = %s AND pid <> pg_backend_pid()", (db,))
+            cur.execute(f'DROP DATABASE IF EXISTS "{db}"')
+
+    def drop_role(self, role: str):
+        with self.conn().cursor() as cur:
+            cur.execute(f'DROP ROLE IF EXISTS "{role}"')
+
+
+def _scenario_env(server: _SandboxServer, db: str, mig_role: str, app_role: str,
+                  mig_pw: str, app_pw: str) -> dict:
+    return {
+        "MPANGO_DB_ADMIN_URL": server.admin_url,
+        "MPANGO_DB_MIGRATE_URL": server.url_for(db, mig_role, mig_pw),
+        "MPANGO_DB_APP_URL": server.url_for(db, app_role, app_pw),
         "MPANGO_DB_MIGRATE_ROLE": mig_role,
         "MPANGO_DB_APP_ROLE": app_role,
         "MPANGO_DB_MIGRATE_PASSWORD": mig_pw,
         "MPANGO_DB_APP_PASSWORD": app_pw,
     }
-    conn = _admin_connect(admin_url)
+
+
+@_requires_temp_db
+def test_provisioner_creates_absent_database_owned_by_migrate():
+    server = _SandboxServer()
+    suffix = uuid.uuid4().hex[:8]
+    db = f"test_own_absent_{suffix}"
+    mig_role, app_role = f"mpango_migrate_{suffix}", f"mpango_app_{suffix}"
+    env = _scenario_env(server, db, mig_role, app_role,
+                        f"pw_{suffix}_m", f"pw_{suffix}_a")
     try:
-        # simulate the Compose postgres init: the database pre-exists, owned
-        # by the container administrator
-        with conn.cursor() as cur:
-            cur.execute(f'CREATE DATABASE "{sandbox_db}"')
-        result = _run_provisioner(["--provision"], prov_env)
+        assert not server.db_exists(db)
+        result = _run_provisioner(["--provision"], env)
         assert result.returncode == 0, result.stderr
-        assert "ownership assigned to the migration authority" in result.stdout
-        with conn.cursor() as cur:
-            cur.execute("SELECT pg_get_userbyid(datdba) FROM pg_database "
-                        "WHERE datname = %s", (sandbox_db,))
-            assert cur.fetchone()[0] == mig_role
-        # a second provision run is idempotent on ownership
-        result = _run_provisioner(["--provision"], prov_env)
+        assert server.db_exists(db)
+        assert server.db_owner(db) == mig_role
+    finally:
+        server.drop_db(db)
+        server.drop_role(app_role)
+        server.drop_role(mig_role)
+
+
+@_requires_temp_db
+def test_provisioner_accepts_existing_correct_owner_idempotently():
+    server = _SandboxServer()
+    suffix = uuid.uuid4().hex[:8]
+    db = f"test_own_correct_{suffix}"
+    mig_role, app_role = f"mpango_migrate_{suffix}", f"mpango_app_{suffix}"
+    mig_pw, app_pw = f"pw_{suffix}_m", f"pw_{suffix}_a"
+    env = _scenario_env(server, db, mig_role, app_role, mig_pw, app_pw)
+    try:
+        # pre-create roles and an existing database ALREADY owned by the
+        # migration authority (operator-established deployment)
+        server.sql(f'CREATE ROLE "{mig_role}" LOGIN PASSWORD \'{mig_pw}\' '
+                   "NOSUPERUSER NOCREATEDB CREATEROLE NOINHERIT NOREPLICATION")
+        server.sql(f'CREATE ROLE "{app_role}" LOGIN PASSWORD \'{app_pw}\' '
+                   "NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION")
+        server.sql(f'CREATE DATABASE "{db}" OWNER "{mig_role}"')
+        result = _run_provisioner(["--provision"], env)
         assert result.returncode == 0, result.stderr
         assert "already exists" in result.stdout
+        assert "owned by the migration authority" in result.stdout
+        assert server.db_owner(db) == mig_role
     finally:
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                    "WHERE datname = %s AND pid <> pg_backend_pid()", (sandbox_db,))
-                cur.execute(f'DROP DATABASE IF EXISTS "{sandbox_db}"')
-                cur.execute(f'DROP ROLE IF EXISTS "{app_role}"')
-                cur.execute(f'DROP ROLE IF EXISTS "{mig_role}"')
-        finally:
-            conn.close()
+        server.drop_db(db)
+        server.drop_role(app_role)
+        server.drop_role(mig_role)
+
+
+@_requires_temp_db
+def test_provisioner_refuses_wrong_owner_empty_database_zero_writes():
+    server = _SandboxServer()
+    suffix = uuid.uuid4().hex[:8]
+    db = f"test_own_wrong_{suffix}"
+    mig_role, app_role = f"mpango_migrate_{suffix}", f"mpango_app_{suffix}"
+    env = _scenario_env(server, db, mig_role, app_role,
+                        f"pw_{suffix}_m", f"pw_{suffix}_a")
+    try:
+        # compose-style container init: the database exists, owned by the
+        # container administrator; the roles do not exist
+        server.sql(f'CREATE DATABASE "{db}"')
+        owner0 = server.db_owner(db)
+        result = _run_provisioner(["--provision"], env)
+        assert result.returncode != 0
+        assert "zero writes performed" in result.stderr
+        # zero writes proven: no roles created, owner untouched
+        assert not server.role_exists(mig_role)
+        assert not server.role_exists(app_role)
+        assert server.db_owner(db) == owner0
+    finally:
+        server.drop_db(db)
+
+
+@_requires_temp_db
+def test_provisioner_refuses_wrong_owner_database_with_sentinel_data():
+    server = _SandboxServer()
+    suffix = uuid.uuid4().hex[:8]
+    db = f"test_own_sentinel_{suffix}"
+    mig_role, app_role = f"mpango_migrate_{suffix}", f"mpango_app_{suffix}"
+    env = _scenario_env(server, db, mig_role, app_role,
+                        f"pw_{suffix}_m", f"pw_{suffix}_a")
+    try:
+        server.sql(f'CREATE DATABASE "{db}"')
+        sentinel_conn = _admin_connect(server.admin_db_url(db))
+        with sentinel_conn.cursor() as cur:
+            cur.execute("CREATE SCHEMA business")
+            cur.execute("CREATE TABLE business.ledger (id int primary key, "
+                        "amount numeric)")
+            cur.execute("INSERT INTO business.ledger VALUES (1, 42.00)")
+        sentinel_conn.close()
+        owner0 = server.db_owner(db)
+        result = _run_provisioner(["--provision"], env)
+        assert result.returncode != 0
+        assert "zero writes performed" in result.stderr
+        # the database remains byte/semantically unchanged
+        assert server.db_owner(db) == owner0
+        assert not server.role_exists(mig_role)
+        assert not server.role_exists(app_role)
+        probe = _admin_connect(server.admin_db_url(db))
+        with probe.cursor() as cur:
+            cur.execute("SELECT amount FROM business.ledger WHERE id = 1")
+            assert cur.fetchone()[0] == 42.00
+        probe.close()
+    finally:
+        server.drop_db(db)
+
+
+@_requires_temp_db
+def test_provisioner_refuses_connectable_roles_wrong_owner_before_writes():
+    """Fully connectable migrate/app roles against an existing wrong-owner
+    database: the live binding succeeds, then the ownership gate refuses
+    BEFORE any role/owner/grant write."""
+    server = _SandboxServer()
+    suffix = uuid.uuid4().hex[:8]
+    db = f"test_own_live_{suffix}"
+    mig_role, app_role = f"mpango_migrate_{suffix}", f"mpango_app_{suffix}"
+    mig_pw, app_pw = f"pw_{suffix}_m", f"pw_{suffix}_a"
+    env = _scenario_env(server, db, mig_role, app_role, mig_pw, app_pw)
+    try:
+        server.sql(f'CREATE ROLE "{mig_role}" LOGIN PASSWORD \'{mig_pw}\' '
+                   "NOSUPERUSER NOCREATEDB CREATEROLE NOINHERIT NOREPLICATION")
+        server.sql(f'CREATE ROLE "{app_role}" LOGIN PASSWORD \'{app_pw}\' '
+                   "NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION")
+        server.sql(f'CREATE DATABASE "{db}"')  # owned by the admin (wrong)
+        owner0 = server.db_owner(db)
+        result = _run_provisioner(["--provision"], env)
+        assert result.returncode != 0
+        assert "provisioning refused with zero writes" in result.stderr
+        assert "never adopts or re-owns" in result.stderr
+        assert server.db_owner(db) == owner0
+        # grants were not applied either (phase 3 untouched)
+        grants = _run_provisioner(["--apply-grants"], env)
+        assert grants.returncode != 0
+    finally:
+        server.drop_db(db)
+        server.drop_role(app_role)
+        server.drop_role(mig_role)
 
 
 @_requires_temp_db
 def test_two_role_lifecycle_and_public_contract_refusals():
     import psycopg2
-    from urllib.parse import urlsplit
 
     bts = _load_module("combined_contract_bts", BOOTSTRAP)
-    source = os.environ["TEST_DATABASE_URL"]
-    parsed = urlsplit(source)
-    admin_url = parsed._replace(path="/postgres").geturl()
+    server = _SandboxServer()
     suffix = uuid.uuid4().hex[:8]
     mig_role = f"mpango_migrate_{suffix}"
     app_role = f"mpango_app_{suffix}"
@@ -346,14 +536,12 @@ def test_two_role_lifecycle_and_public_contract_refusals():
     tenant = f"t_{uuid.uuid4().hex}"
 
     def _url(user: str, password: str) -> str:
-        return parsed._replace(
-            netloc=f"{user}:{password}@{parsed.hostname}:{parsed.port or 5432}",
-            path=f"/{sandbox_db}").geturl()
+        return server.url_for(db=sandbox_db, user=user, password=password)
 
     mig_url = _url(mig_role, mig_pw)
     app_url = _url(app_role, app_pw)
     prov_env = {
-        "MPANGO_DB_ADMIN_URL": admin_url,
+        "MPANGO_DB_ADMIN_URL": server.admin_url,
         "MPANGO_DB_MIGRATE_URL": mig_url,
         "MPANGO_DB_APP_URL": app_url,
         "MPANGO_DB_MIGRATE_ROLE": mig_role,
@@ -372,7 +560,7 @@ def test_two_role_lifecycle_and_public_contract_refusals():
         # when another migration authority's run on this cluster created them
         # first, confer ADMIN to the sandbox authority so migration 011 can
         # ALTER/GRANT them.  No product objects are touched.
-        admin_conn0 = _admin_connect(admin_url)
+        admin_conn0 = _admin_connect(server.admin_url)
         try:
             with admin_conn0.cursor() as cur:
                 for role in ("reporting_role", "reporting_user"):
@@ -397,11 +585,11 @@ def test_two_role_lifecycle_and_public_contract_refusals():
         assert result.returncode == 0, (result.stdout, result.stderr)
         assert '"ok": true' in result.stdout
 
-        cluster_admin = _admin_connect(admin_url)
+        cluster_admin = _admin_connect(server.admin_url)
         # schema-level objects (guard function, public constraints, tenant
         # schemas, alembic_version) live in the sandbox database — inspect
         # them through a connection TO the sandbox, not the maintenance db
-        sandbox_admin_url = parsed._replace(path=f"/{sandbox_db}").geturl()
+        sandbox_admin_url = server.admin_db_url(sandbox_db)
         admin = _admin_connect(sandbox_admin_url)
         try:
             with cluster_admin.cursor() as cur:
@@ -411,7 +599,7 @@ def test_two_role_lifecycle_and_public_contract_refusals():
                             "WHERE datname = %s", (sandbox_db,))
                 assert cur.fetchone()[0] == mig_role, \
                     "product provision must own the fresh database by the migration authority"
-            admin_role = parsed.username or "postgres"
+            admin_role = server.admin_role
 
             # --- guard authority negatives on the PRISTINE sandbox (no
             # tenant triggers yet, so the guard can be removed/restored
@@ -566,7 +754,7 @@ def test_two_role_lifecycle_and_public_contract_refusals():
     finally:
         # cleanup: drop the product-created database and roles
         try:
-            cluster_admin = _admin_connect(admin_url)
+            cluster_admin = _admin_connect(server.admin_url)
             try:
                 with cluster_admin.cursor() as cur:
                     cur.execute(

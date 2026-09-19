@@ -149,16 +149,70 @@ def five_stage_database():
 
 @_requires_temp_db
 def test_gate_refuses_missing_tenant_bootstrap_state(five_stage_database):
+    """F1 (R1-R5) — isolated by identity, NOT by test ordering: the negative
+    bootstraps its OWN unique tenant schema inside the shared disposable
+    database, damages only that schema, evaluates the real readiness
+    contract against the isolated target, and removes the schema in an
+    exception-safe finally.  The completed t_dev fixture state used by the
+    other tests in this module is never touched, so this test is green in
+    BOTH execution orders."""
     server = five_stage_database["server"]
     helper = _load_helper()
+    suffix = uuid.uuid4().hex[:8]
+    own_tenant = "t_r5" + suffix  # unique task-scoped tenant schema
     admin = _admin_connect(server.admin_db_url(five_stage_database["db"]))
     try:
+        # phase-5-equivalent: bootstrap the UNIQUE tenant via the product
+        # script against the runtime-role URL
+        result = subprocess.run(
+            [sys.executable, "scripts/bootstrap_tenant_schema.py", own_tenant],
+            cwd=BACKEND_DIR, capture_output=True, text=True, timeout=300,
+            env={**os.environ, "DATABASE_URL": five_stage_database["app_url"],
+                 "MPANGO_ENV": "test",
+                 "SECRET_KEY": "gate_fixture_secret_key_value"})
+        assert result.returncode == 0, result.stderr[-2000:]
+        # damage ONLY the isolated tenant
         with admin.cursor() as cur:
-            cur.execute('DROP TABLE IF EXISTS "t_dev".order_credit_holds')
+            cur.execute('DROP TABLE "' + own_tenant + '".order_credit_holds')
+        # the REAL readiness evaluator, pointed at the isolated target
+        reasons = helper.evaluate_contract(five_stage_database["app_url"],
+                                           own_tenant)
+        assert any("default tenant bootstrap state missing" in r
+                   for r in reasons), reasons
     finally:
-        admin.close()
-    reasons = helper.evaluate_contract(five_stage_database["app_url"])
-    assert any("default tenant bootstrap state missing" in r for r in reasons), reasons
+        try:
+            with admin.cursor() as cur:
+                cur.execute('DROP SCHEMA IF EXISTS "' + own_tenant + '" CASCADE')
+        finally:
+            admin.close()
+
+
+@_requires_temp_db
+def test_real_evaluator_freshness_incomplete_then_completed(five_stage_database):
+    """F3 (R1-R5) — direct test of the REAL evaluate_contract (no fake): an
+    isolated incomplete state must yield a non-empty named refusal set, and
+    the SAME imported evaluator against the intact completed state must then
+    yield an EMPTY set.  The final emptiness proves no reason was retained
+    from the first call, killing any evaluator-internal shared/module-level
+    reason accumulator."""
+    server = five_stage_database["server"]
+    helper = _load_helper()
+    suffix = uuid.uuid4().hex[:8]
+    db = "test_freshness_" + suffix
+    try:
+        # (1) isolated incomplete state: fresh database, nothing provisioned
+        server.sql('CREATE DATABASE "' + db + '"')
+        reasons_incomplete = helper.evaluate_contract(server.admin_db_url(db))
+        assert reasons_incomplete, (
+            "expected a non-empty named refusal set on the incomplete state")
+        assert any("alembic_version" in r for r in reasons_incomplete), \
+            reasons_incomplete
+    finally:
+        server.drop_db(db)
+    # (2) the SAME evaluator object against the intact completed state
+    reasons_completed = helper.evaluate_contract(five_stage_database["app_url"])
+    # (3) freshness: nothing retained from the first call
+    assert reasons_completed == [], reasons_completed
 
 
 def test_run_gate_succeeds_after_transient_first_failure(monkeypatch):

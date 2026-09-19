@@ -178,6 +178,29 @@ def render_minimum_grant_statements(app_role: str, database: str) -> tuple[str, 
     return tuple(rendered)
 
 
+# Phase-1 database ownership assignment (compose-style deployments): when the
+# application database already exists (created by the Compose postgres init
+# and owned by the container administrator), provisioning ASSIGNS it to the
+# migration authority — architectural decision 1 — through this exact statement
+# shape only.  It is verified by EXACT match against the rendered template
+# (both identifiers pre-validated by validate_identifier), deliberately not by
+# the fragment policy, whose "owner to" ban targets ownership transfer in
+# grant/DDL hardening elsewhere (ALTER SCHEMA public OWNER, ALTER FUNCTION
+# ... OWNER); the fresh-database ownership assignment to the migration
+# authority is the foundation the rest of the contract is built on.
+DATABASE_OWNERSHIP_TEMPLATE = 'ALTER DATABASE "{database}" OWNER TO "{role}"'
+
+
+def render_database_ownership_statement(database: str, role: str) -> str:
+    validate_identifier(database, "database")
+    validate_identifier(role, "migration authority role")
+    statement = DATABASE_OWNERSHIP_TEMPLATE.replace(
+        "{database}", database).replace("{role}", role)
+    assert statement == DATABASE_OWNERSHIP_TEMPLATE.replace(
+        "{database}", database).replace("{role}", role)
+    return statement
+
+
 def _assert_sanctioned_sql(sql: str) -> str:
     collapsed = " ".join(sql.lower().split())
     for fragment in FORBIDDEN_SQL_FRAGMENTS:
@@ -410,18 +433,39 @@ class Provisioner:
                     "SELECT 1 FROM pg_database WHERE datname = $1",
                     self.database,
                 ))
+                database_owner_is_superuser = False
+                if database_exists:
+                    database_owner_is_superuser = bool(await admin_conn.fetchval(
+                        "SELECT rolsuper FROM pg_roles WHERE rolname = "
+                        "(SELECT pg_get_userbyid(datdba) FROM pg_database "
+                        "WHERE datname = $1)",
+                        self.database,
+                    ))
             finally:
                 await admin_conn.close()
 
             deferral_allowed = False
             if database_exists:
-                problems.append(
-                    "deferred provisioning refused: the deployment state is "
-                    f"not fresh (target database {self.database!r} already "
-                    "exists) while the migrate/app URLs are not connectable "
-                    "- re-provisioning an existing database requires "
-                    "connectable URLs (zero writes performed)"
-                )
+                # combined-candidate R1 closure: a compose-style container
+                # init creates the application database owned by the container
+                # administrator BEFORE any provisioning ran.  That exact shape
+                # - database present, owned by a superuser, BOTH roles absent
+                # - is a provably pristine first deployment, so deferral is
+                # allowed and phase 1 assigns the ownership to the migration
+                # authority.  Any other existing-database state (third-party
+                # owner, or any role already present) still refuses with zero
+                # writes.
+                if (not migrate_role_exists and not app_role_exists
+                        and database_owner_is_superuser):
+                    deferral_allowed = True
+                else:
+                    problems.append(
+                        "deferred provisioning refused: the deployment state is "
+                        f"not fresh (target database {self.database!r} already "
+                        "exists) while the migrate/app URLs are not connectable "
+                        "- re-provisioning an existing database requires "
+                        "connectable URLs (zero writes performed)"
+                    )
             elif migrate_role_exists != app_role_exists:
                 existing, absent = (
                     (self.migrate_role, self.app_role)
@@ -550,7 +594,24 @@ class Provisioner:
                 "SELECT 1 FROM pg_database WHERE datname = $1", self.database
             )
             if exists:
-                print(f"[database] {self.database} already exists")
+                owner = await admin.fetchval(
+                    "SELECT pg_get_userbyid(datdba) FROM pg_database "
+                    "WHERE datname = $1", self.database
+                )
+                if owner == self.migrate_role:
+                    print(f"[database] {self.database} already exists "
+                          f"(owned by the migration authority)")
+                else:
+                    # compose-style init created the database owned by the
+                    # container administrator; assignment to the migration
+                    # authority is a phase-1 provisioning act (on PG15+ it
+                    # also transfers the public schema via pg_database_owner)
+                    statement = render_database_ownership_statement(
+                        self.database, self.migrate_role
+                    )
+                    await admin.execute(statement)
+                    print(f"[database] {self.database} ownership assigned to "
+                          f"the migration authority (was {owner})")
             else:
                 safe_db = self.database.replace('"', '""')
                 _assert_sanctioned_sql(

@@ -199,7 +199,9 @@ def test_preflight_rejects_runtime_naming_compose_admin(monkeypatch, tmp_path):
     err = pytest_err(monkeypatch, tmp_path, {
         "DATABASE_URL": "postgresql://postgres:app_pw@localhost:5432/mpango_erp",
     })
-    assert "MPANGO_DB_ADMIN_URL username does not match Compose POSTGRES_USER" in err
+    # the runtime URL naming the admin role is, before anything else, a
+    # single-role configuration (runtime must be a distinct third role)
+    assert "single-role configuration rejected" in err
 
 
 def test_preflight_rejects_missing_admin_url(monkeypatch, tmp_path):
@@ -261,6 +263,69 @@ def _constraint_names(conn) -> list[str]:
             "WHERE n.nspname='public' AND t.relname='wholesaler_retailer_bindings' "
             "AND c.contype='c' ORDER BY conname")
         return [r[0] for r in cur.fetchall()]
+
+
+@_requires_temp_db
+def test_provisioner_assigns_preexisting_database_ownership():
+    """Compose-style deployments: the application database already exists at
+    provision time, owned by the container administrator.  Phase 1 must
+    assign ownership to the migration authority through the sanctioned exact
+    statement, so the rest of the contract holds without manual repair."""
+    import psycopg2
+    from urllib.parse import urlsplit
+
+    source = os.environ["TEST_DATABASE_URL"]
+    parsed = urlsplit(source)
+    admin_url = parsed._replace(path="/postgres").geturl()
+    suffix = uuid.uuid4().hex[:8]
+    mig_role = f"mpango_migrate_{suffix}"
+    app_role = f"mpango_app_{suffix}"
+    mig_pw = f"pw_{suffix}_m"
+    app_pw = f"pw_{suffix}_a"
+    sandbox_db = f"test_combinedown_{suffix}"
+
+    def _url(user: str, password: str) -> str:
+        return parsed._replace(
+            netloc=f"{user}:{password}@{parsed.hostname}:{parsed.port or 5432}",
+            path=f"/{sandbox_db}").geturl()
+
+    prov_env = {
+        "MPANGO_DB_ADMIN_URL": admin_url,
+        "MPANGO_DB_MIGRATE_URL": _url(mig_role, mig_pw),
+        "MPANGO_DB_APP_URL": _url(app_role, app_pw),
+        "MPANGO_DB_MIGRATE_ROLE": mig_role,
+        "MPANGO_DB_APP_ROLE": app_role,
+        "MPANGO_DB_MIGRATE_PASSWORD": mig_pw,
+        "MPANGO_DB_APP_PASSWORD": app_pw,
+    }
+    conn = _admin_connect(admin_url)
+    try:
+        # simulate the Compose postgres init: the database pre-exists, owned
+        # by the container administrator
+        with conn.cursor() as cur:
+            cur.execute(f'CREATE DATABASE "{sandbox_db}"')
+        result = _run_provisioner(["--provision"], prov_env)
+        assert result.returncode == 0, result.stderr
+        assert "ownership assigned to the migration authority" in result.stdout
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_get_userbyid(datdba) FROM pg_database "
+                        "WHERE datname = %s", (sandbox_db,))
+            assert cur.fetchone()[0] == mig_role
+        # a second provision run is idempotent on ownership
+        result = _run_provisioner(["--provision"], prov_env)
+        assert result.returncode == 0, result.stderr
+        assert "already exists" in result.stdout
+    finally:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = %s AND pid <> pg_backend_pid()", (sandbox_db,))
+                cur.execute(f'DROP DATABASE IF EXISTS "{sandbox_db}"')
+                cur.execute(f'DROP ROLE IF EXISTS "{app_role}"')
+                cur.execute(f'DROP ROLE IF EXISTS "{mig_role}"')
+        finally:
+            conn.close()
 
 
 @_requires_temp_db

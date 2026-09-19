@@ -22,11 +22,15 @@ services:
     image: postgres:15-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-mpango_erp}
-      POSTGRES_USER: ${POSTGRES_USER:-mpango}
+      # MAINTENANCE database (administrator only).  The application database
+      # is a DIFFERENT database (normally mpango_erp): it is NOT pre-created
+      # here — provisioning phase 1 creates it owned by the migration
+      # authority (an existing wrong-owner database refuses).
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mpango} -d ${POSTGRES_DB:-mpango_erp}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -63,8 +67,9 @@ services:
     environment:
       # Environment
       - MPANGO_ENV=production
-      # Database (REQUIRED)
-      - DATABASE_URL=${DATABASE_URL:-postgresql://mpango:${POSTGRES_PASSWORD}@postgres:5432/mpango_erp}
+      # Database (REQUIRED, RUNTIME ROLE ONLY — no single-role fallback; must
+      # target the application database, never the administrator account)
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set explicitly to the runtime-role connection}
       - DATABASE_ECHO=${DATABASE_ECHO:-false}
       # Redis (REQUIRED)
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
@@ -85,8 +90,10 @@ services:
       - ENABLE_REQUEST_LOGGING=${ENABLE_REQUEST_LOGGING:-true}
       - ENABLE_SQL_PROFILING=${ENABLE_SQL_PROFILING:-false}
       - SLOW_QUERY_THRESHOLD_MS=${SLOW_QUERY_THRESHOLD_MS:-100}
-      # Reporting (required by migration 011_s6_p_reporting_role)
-      - REPORTING_USER_PASSWORD=${REPORTING_USER_PASSWORD:-ReportingPass_staging_2026}
+      # NOTE: no setup-only credentials here (MPANGO_DB_ADMIN_URL,
+      # MPANGO_DB_MIGRATE_URL, role passwords, REPORTING_USER_PASSWORD).
+      # The reporting password is a setup-time secret consumed by Alembic
+      # migration 011 only; setup_preflight refuses it in this environment.
       # Pool & Timeout
       - REQUEST_TIMEOUT_SECONDS=${REQUEST_TIMEOUT_SECONDS:-30}
       - DB_POOL_SIZE=${DB_POOL_SIZE:-5}

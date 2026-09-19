@@ -290,8 +290,8 @@ def run_initial(env_path: str) -> None:
               "runtime URLs must bind three distinct roles")
     if (admin_host, admin_port) != (db_host, db_port) or             (mig_host, mig_port) != (db_host, db_port):
         _fail("admin, migration and runtime URLs must target one endpoint")
-    if admin_db != db_name or mig_db != db_name:
-        _fail("admin, migration and runtime URLs must target one database")
+    if mig_db != db_name:
+        _fail("migration and runtime URLs must target the application database")
     if app_password != db_pass:
         _fail("MPANGO_DB_APP_PASSWORD does not match the runtime DATABASE_URL "
               "password")
@@ -306,8 +306,6 @@ def run_initial(env_path: str) -> None:
         _fail("MPANGO_DB_ADMIN_URL password does not match Compose POSTGRES_PASSWORD")
     if admin_db != pg_env.get("POSTGRES_DB", ""):
         _fail("MPANGO_DB_ADMIN_URL database does not match Compose POSTGRES_DB")
-    if db_name != pg_env.get("POSTGRES_DB", ""):
-        _fail("DATABASE_URL database does not match Compose POSTGRES_DB")
 
     # R15-R1: the rendered backend service MUST exist and carry a string
     # REPORTING_USER_PASSWORD that exactly matches .env. Missing service,
@@ -319,14 +317,25 @@ def run_initial(env_path: str) -> None:
     _backend_env = _backend.get("environment")
     if not isinstance(_backend_env, dict):
         _fail("backend environment must be a dict")
-    _backend_rup = _backend_env.get("REPORTING_USER_PASSWORD")
-    if not isinstance(_backend_rup, str):
-        _fail("backend REPORTING_USER_PASSWORD must be a string")
-    if _backend_rup != file_rup:
-        _fail(
-            "REPORTING_USER_PASSWORD conflict: "
-            "Compose backend differs from backend/.env"
-        )
+    # The rendered backend service receives ONLY the runtime DATABASE_URL.
+    # Every setup-only credential (admin/migration URLs, role passwords,
+    # reporting-user password) is refused here: those are consumed by the
+    # setup phases from backend/.env and must never reach the runtime
+    # environment.
+    for _setup_key in (
+        "MPANGO_DB_ADMIN_URL",
+        "MPANGO_DB_MIGRATE_URL",
+        "MPANGO_DB_MIGRATE_PASSWORD",
+        "MPANGO_DB_APP_PASSWORD",
+        "REPORTING_USER_PASSWORD",
+    ):
+        if _setup_key in _backend_env:
+            _fail(f"backend service environment must not contain {_setup_key}")
+    _backend_url = _backend_env.get("DATABASE_URL")
+    if not isinstance(_backend_url, str):
+        _fail("backend service must carry the runtime DATABASE_URL")
+    if _backend_url != file_db:
+        _fail("backend service DATABASE_URL differs from backend/.env")
 
     print("OK")
 

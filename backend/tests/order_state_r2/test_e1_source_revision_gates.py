@@ -80,7 +80,7 @@ async def _paid_credit_order(r1_client, token, db, pool, reg, total="60.00"):
 
 
 async def _dedicated_tenant(db, reg, label, *, retailers=1,
-                             bindings=True, register=True):
+                             bindings=True, register=True, canonical=True):
     """Bootstrap a fresh empty tenant schema; the bootstrap itself runs
     the reconcile (the empty-history positive control). Each tenant gets
     its OWN wholesaler (registrations are unique per wholesaler), a live
@@ -96,12 +96,16 @@ async def _dedicated_tenant(db, reg, label, *, retailers=1,
     )
 
     bts = await _load_bts()
-    schema = f"t_e1f1_{label}_{uuid.uuid4().hex[:10]}"
+    ws_id = uuid.uuid4()
+    # canonical wholesaler-derived name (t_ + UUID hex, no dashes) — the
+    # identity the registration attribution enforces, mirroring 039;
+    # canonical=False deliberately registers a NON-derived mapping (the
+    # non-canonical schema counterexample)
+    schema = (f"t_{ws_id.hex}" if canonical
+              else f"t_e1nc_{uuid.uuid4().hex[:10]}")
     url = _os.environ["DATABASE_URL"].replace(
         "postgresql://", "postgresql+asyncpg://", 1)
     await bts.bootstrap(schema, url)
-
-    ws_id = uuid.uuid4()
     await db.execute(text(
         "INSERT INTO public.wholesalers (id, name, code, status) "
         "VALUES (:w, :n, :c, 'active')"),
@@ -351,6 +355,58 @@ async def test_e1r1_populated_schema_missing_hold_table_refused_zero_ddl(
         assert still_missing, (
             "E1R1/F1-c: the refusal path created the lifecycle table "
             "(zero-DDL violated)")
+    finally:
+        await _drop_dedicated_tenant(db, schema, ws_id)
+
+
+async def test_e1r2_non_canonical_schema_mapping_rejected(
+    r1_client, s2_clean_db, provisioned_pool, cashier_identity
+):
+    """E1R2: the live registration binds the schema to its wholesaler,
+    but the schema name is NOT the wholesaler-derived t_<UUID-hex> name
+    039 enforces — a non-canonical mapping is refused even when the
+    history itself is perfectly legal."""
+    db, reg = s2_clean_db
+    bts, schema, (ret_a,), ws_id = await _dedicated_tenant(
+        db, reg, "noncanon", canonical=False)
+    try:
+        await _seed_order(db, schema, ws_id, ret_a, "confirmed", "60.00",
+                          hold=("60.00", "60.00", "active"))
+        await _set_binding_balance(db, ws_id, ret_a, "60.00")
+        await db.commit()
+
+        with pytest.raises(RuntimeError) as excinfo:
+            await bts._reconcile_credit_holds(db, schema)
+        assert "not the wholesaler-derived schema name" in str(excinfo.value), (
+            excinfo.value)
+        await db.rollback()
+    finally:
+        await _drop_dedicated_tenant(db, schema, ws_id)
+
+
+async def test_e1r2_soft_deleted_only_history_requires_registration(
+    r1_client, s2_clean_db, provisioned_pool, cashier_identity
+):
+    """E1R2: retained accounting history includes soft-deleted orders —
+    a schema whose ONLY order is soft-deleted still requires the
+    authoritative live registration; no-registration retained history is
+    refused (a live-order count alone must not gate attribution)."""
+    db, reg = s2_clean_db
+    bts, schema, (ret_a,), ws_id = await _dedicated_tenant(
+        db, reg, "softdel", register=False)
+    try:
+        oid = await _seed_order(db, schema, ws_id, ret_a, "confirmed",
+                                "60.00", hold=("60.00", "60.00", "active"))
+        await db.execute(text(
+            f'UPDATE "{schema}".orders SET is_deleted = TRUE, '
+            "deleted_at = now() WHERE id = :o"), {"o": oid})
+        await db.commit()
+
+        with pytest.raises(RuntimeError) as excinfo:
+            await bts._reconcile_credit_holds(db, schema)
+        assert "no live tenant registration" in str(excinfo.value), (
+            excinfo.value)
+        await db.rollback()
     finally:
         await _drop_dedicated_tenant(db, schema, ws_id)
 

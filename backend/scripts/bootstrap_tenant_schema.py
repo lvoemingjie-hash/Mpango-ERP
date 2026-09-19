@@ -1855,15 +1855,19 @@ async def _reconcile_credit_holds(db, ts: str) -> None:
 
     # E1R1/F1: bind the schema to its AUTHORITATIVE wholesaler. The trust
     # anchor is the live tenant registration — the same one migration 039
-    # resolves — and every order in a populated schema must belong to THAT
-    # wholesaler. Cross-wholesaler orders, payments and bindings that are
-    # self-consistent must not slide through on totals alone. An empty
-    # schema needs no attribution.
+    # resolves — and the registered schema name MUST equal the
+    # wholesaler-derived name (t_ + wholesaler UUID hex, no dashes), the
+    # identity 039 enforces. Attribution is required whenever the schema
+    # retains ANY business history — soft-deleted orders and their
+    # payments remain retained accounting history, so a live-order count
+    # alone must not gate this. Cross-wholesaler orders, payments and
+    # bindings that are self-consistent must not slide through on totals
+    # alone. An entirely empty schema needs no attribution.
     ws: str | None = None
-    live_orders = int((await db.execute(text(
-        f'SELECT COUNT(*) FROM "{ts}".orders '
-        "WHERE is_deleted IS FALSE"))).scalar() or 0)
-    if live_orders:
+    retained_history = int((await db.execute(text(
+        f'SELECT (SELECT COUNT(*) FROM "{ts}".orders) + '
+        f'(SELECT COUNT(*) FROM "{ts}".payments)'))).scalar() or 0)
+    if retained_history:
         ws = (await db.execute(text(
             "SELECT w.id::text "
             "FROM public.tenant_registrations tr "
@@ -1877,13 +1881,19 @@ async def _reconcile_credit_holds(db, ts: str) -> None:
             "LIMIT 1"), {"s": ts})).scalar()
         if ws is None:
             raise RuntimeError(
-                f"Bootstrap reconcile: {ts} carries business history but "
-                "has no live tenant registration to attribute a "
-                "wholesaler — unattributable data is rejected, never "
+                f"Bootstrap reconcile: {ts} carries retained business "
+                "history but has no live tenant registration to attribute "
+                "a wholesaler — unattributable data is rejected, never "
                 "aggregated")
+        if ts != f"t_{ws.replace('-', '')}":
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts} is registered to wholesaler "
+                f"{ws} but is not the wholesaler-derived schema name "
+                f"(t_ + wholesaler UUID hex, no dashes) — a non-canonical "
+                "schema mapping is rejected, never aggregated")
         foreign_order = (await db.execute(text(
             f'SELECT id::text FROM "{ts}".orders '
-            "WHERE is_deleted IS FALSE AND wholesaler_id::text <> :ws "
+            "WHERE wholesaler_id::text <> :ws "
             "LIMIT 1"), {"ws": ws})).scalar()
         if foreign_order is not None:
             raise RuntimeError(

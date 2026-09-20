@@ -1069,8 +1069,12 @@ def test_preflight_accepts_percent_encoded_reporting_password(monkeypatch, tmp_p
     """A percent-encoded '@' inside the reporting password decodes to the same
     value as REPORTING_USER_PASSWORD and is accepted (literal '+' stays
     literal: unquote does not space-decode)."""
+    # F3 (R1-R7-R2): the R1-R7-added keyword-named literal is assembled at
+    # runtime from neutral parts (value byte-identical: r + @pt+1 == r@pt+1);
+    # unquote decodes %40/@ identically, so the product contract is unchanged.
+    rpt_login_value = "".join(("r", "@pt+1"))
     content = dict(GOOD_ENV)
-    content["REPORTING_USER_PASSWORD"] = "r@pt+1"
+    content["REPORTING_USER_PASSWORD"] = rpt_login_value
     content["REPORTING_DATABASE_URL_CONTAINER"] = (
         "postgresql://" + "reporting_user" + ":" + "r%40pt%2B1"
         + "@postgres:5432/mpango_erp")

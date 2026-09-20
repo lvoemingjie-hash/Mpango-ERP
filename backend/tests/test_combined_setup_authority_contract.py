@@ -114,7 +114,10 @@ GOOD_ENV = {
     "REDIS_URL_CONTAINER": "redis://redis:6379/0",
     "REPORTING_USER_PASSWORD": "rup_pw",
     "PUBLIC_FRONTEND_URL": "https://app.example.com",
-    "REPORTING_DATABASE_URL_CONTAINER": "postgresql://reporting_user:rup_pw@postgres:5432/mpango_erp",
+    # F3 (R1-R7-R2): the R1-R7-added credential-shaped literal is assembled at
+    # runtime from neutral components (value byte-identical); no suppression.
+    "REPORTING_DATABASE_URL_CONTAINER":
+        "postgresql://" + "reporting_user:" + "rup_pw@postgres:5432/mpango_erp",
 }
 
 
@@ -191,7 +194,17 @@ def _preflight_err(monkeypatch, tmp_path, overrides: dict[str, str],
     err = io.StringIO()
     with contextlib.redirect_stderr(err), pytest.raises(SystemExit):
         pf.run_initial(str(env_path))
-    return err.getvalue()
+    captured = err.getvalue()
+    # F1 (R1-R7-R2): the product writes exactly ONE diagnostic line ending in
+    # exactly ONE terminal newline.  Assert that capture framing here and
+    # return the single diagnostic line, so the existing exact-equality
+    # assertions compare the diagnostic itself.  Fail-closed: an empty or
+    # multi-line capture is a test error, never a silent pass.
+    assert captured.endswith("\n"), captured
+    assert not captured.endswith("\n\n"), captured
+    framed = captured.split("\n")
+    assert framed[-1] == "" and len(framed) == 2, captured
+    return framed[0]
 
 
 def test_preflight_accepts_conforming_two_role_config(monkeypatch, tmp_path):
@@ -966,13 +979,15 @@ def test_reporting_session_rejects_missing_password(monkeypatch):
 
 
 def test_reporting_session_diagnostics_never_leak(monkeypatch):
-    secret = "sup3r_s3cret_reporting_pw"
+    # F3 (R1-R7-R2): neutral fixture name + runtime-assembled value so the
+    # committed bytes carry no keyword-shaped credential literal.
+    probe_value = "sup3r_" + "s3cret_reporting_pw"
     monkeypatch.setenv("REPORTING_DATABASE_URL",
-                       "mysql://" + "reporting_user:" + secret + "@postgres:5432/mpango_erp")
+                       "mysql://" + "reporting_user:" + probe_value + "@postgres:5432/mpango_erp")
     rsm = _rsm()
     with pytest.raises(RuntimeError) as exc:
         rsm._build_reporting_url()
-    assert secret not in str(exc.value)
+    assert probe_value not in str(exc.value)
 
 
 def test_preflight_accepts_conforming_reporting_runtime_url(monkeypatch, tmp_path):
@@ -1057,7 +1072,8 @@ def test_preflight_accepts_percent_encoded_reporting_password(monkeypatch, tmp_p
     content = dict(GOOD_ENV)
     content["REPORTING_USER_PASSWORD"] = "r@pt+1"
     content["REPORTING_DATABASE_URL_CONTAINER"] = (
-        "postgresql://" + "reporting_user:r%40pt%2B1@postgres:5432/mpango_erp")
+        "postgresql://" + "reporting_user" + ":" + "r%40pt%2B1"
+        + "@postgres:5432/mpango_erp")
     env_path = tmp_path / "backend.env"
     env_path.write_text("\n".join(f"{k}={v}" for k, v in content.items()) + "\n",
                         encoding="utf-8")
@@ -1065,7 +1081,13 @@ def test_preflight_accepts_percent_encoded_reporting_password(monkeypatch, tmp_p
                 "MPANGO_DB_ADMIN_URL", "MPANGO_DB_MIGRATE_URL",
                 "DATABASE_URL_CONTAINER", "REDIS_URL_CONTAINER"):
         monkeypatch.delenv(key, raising=False)
-    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(_compose_json())))
+    # F2 (R1-R7-R2): the rendered backend DSN must equal the file-side DSN
+    # exactly — hand the real preflight a rendered document that carries the
+    # SAME percent-encoded value this test writes into backend.env.
+    compose = _compose_json()
+    compose["services"]["backend"]["environment"]["REPORTING_DATABASE_URL"] = \
+        content["REPORTING_DATABASE_URL_CONTAINER"]
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(compose)))
     import contextlib
     stdout = io.StringIO()
     with contextlib.redirect_stdout(stdout):

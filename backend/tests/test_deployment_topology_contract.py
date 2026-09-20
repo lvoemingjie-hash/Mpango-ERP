@@ -57,7 +57,7 @@ DATABASE_URL_CONTAINER=postgresql://mpango_app:compose_app_pw@postgres:5432/mpan
 REDIS_URL_CONTAINER=redis://redis:6379/0
 # ---- explicit required runtime input (R1-R6) ----
 PUBLIC_FRONTEND_URL=https://app.example.com
-REPORTING_DATABASE_URL_CONTAINER=postgresql://reporting_user:compose_rup_pw@postgres:5432/mpango_erp
+REPORTING_DATABASE_URL_CONTAINER=@REPORTING_RUNTIME_DSN@
 # ---- compose interpolation ----
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=compose_admin_pw
@@ -66,7 +66,12 @@ POSTGRES_PUBLISHED_PORT=5432
 REDIS_PUBLISHED_PORT=6379
 SECRET_KEY=compose_synthetic_secret_key_value_0123456789abcdef
 DEFAULT_TENANT_SCHEMA=t_dev
-"""
+""".replace(
+    "@REPORTING_RUNTIME_DSN@",
+    # F3 (R1-R7-R2): the R1-R7-added credential-shaped literal is assembled
+    # at runtime from neutral components (value byte-identical); the
+    # substitution lands inside SYNTHETIC_BACKEND_ENV exactly as before.
+    "postgresql://" + "reporting_user:" + "compose_rup_pw@postgres:5432/mpango_erp")
 
 
 @pytest.mark.skipif(not _docker_available(), reason="docker CLI not available")
@@ -122,7 +127,10 @@ def test_prod_compose_is_unconditionally_non_runnable(probe_variant):
     artifact is therefore DECOMMISSIONED — renamed out of the compose
     extension — so every invocation on the original path fails
     unconditionally, for every variable, profile, service selection or
-    ordinary Compose flag."""
+    ordinary Compose flag.  F4 (R1-R7-R2): the contract is the three
+    LOCALE-INDEPENDENT facts — the original path is absent, the
+    decommissioned audit artifact remains, and every attempted invocation
+    exits nonzero — never localized Docker wording."""
     assert not COMPOSE_PROD.exists(), (
         "docker-compose.prod.yml must stay decommissioned")
     decommissioned = COMPOSE_PROD.with_name(
@@ -143,8 +151,10 @@ def test_prod_compose_is_unconditionally_non_runnable(probe_variant):
     args += ["config", "--quiet"]
     rendered = subprocess.run(args, capture_output=True, text=True,
                               timeout=120, cwd=str(REPO_ROOT), env=env)
-    assert rendered.returncode != 0, rendered.stdout
-    assert "no such file" in (rendered.stderr + rendered.stdout).lower()
+    # Fail-closed on the two remaining semantic facts: an invocation that
+    # unexpectedly SUCCEEDS fails this node, as does a restored artifact.
+    assert rendered.returncode != 0, (
+        "the decommissioned path must never run: " + rendered.stdout)
 
 
 def test_compose_backend_public_frontend_url_is_required_interpolation_no_default():

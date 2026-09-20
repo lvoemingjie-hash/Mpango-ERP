@@ -60,10 +60,12 @@ def test_entrypoint_delegates_to_the_gate_helper():
 @_requires_temp_db
 @pytest.mark.parametrize("scheme", ["postgresql", "postgresql+asyncpg"])
 def test_gate_accepts_completed_five_stage_state_in_both_schemes(
-    five_stage_database, scheme,
+    five_stage_database, scheme, monkeypatch,
 ):
     url = five_stage_database["app_url"]
     scheme_url = scheme + "://" + url.split("://", 1)[1]
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       five_stage_database["reporting_url"])
     helper = _load_helper()
     reasons = helper.evaluate_contract(scheme_url, "t_dev")
     assert reasons == [], reasons
@@ -133,6 +135,16 @@ def five_stage_database():
     assert result.returncode == 0, result.stderr
     result = _run_provisioner(["--verify"], env)
     assert result.returncode == 0, result.stderr
+    # R1-R7 cluster-global reporting_user password accommodation (test-env
+    # only, same documented pattern as the migrate/app role grants): align
+    # the shared login with THIS sandbox's migration-time secret so the
+    # readiness reporting probe is deterministic across module runs.
+    with conn.cursor() as cur:
+        cur.execute("ALTER ROLE reporting_user WITH PASSWORD %s",
+                    (ctx_reporting,))
+        conn.commit()
+    reporting_url = server.url_for(db=sandbox_db, user="reporting_user",
+                                   password=ctx_reporting)
     # phase 5: runtime bootstrap of the default tenant
     result = subprocess.run(
         [sys.executable, "scripts/bootstrap_tenant_schema.py", "t_dev"],
@@ -141,7 +153,7 @@ def five_stage_database():
              "SECRET_KEY": ctx_gate})
     assert result.returncode == 0, result.stderr[-2000:]
     yield {"app_url": app_url, "mig_url": mig_url, "db": sandbox_db,
-           "server": server}
+           "server": server, "reporting_url": reporting_url}
     try:
         server.drop_db(sandbox_db)
         server.drop_role(app_role)
@@ -192,7 +204,11 @@ def test_gate_refuses_missing_tenant_bootstrap_state(five_stage_database):
 
 
 @_requires_temp_db
-def test_real_evaluator_freshness_incomplete_then_completed(five_stage_database):
+def test_real_evaluator_freshness_incomplete_then_completed(
+    five_stage_database, monkeypatch,
+):
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       five_stage_database["reporting_url"])
     """F3 (R1-R5) — direct test of the REAL evaluate_contract (no fake): an
     isolated incomplete state must yield a non-empty named refusal set, and
     the SAME imported evaluator against the intact completed state must then
@@ -271,7 +287,7 @@ def test_run_gate_permanent_failure_exhausts_retry_and_returns_nonzero(monkeypat
 
 @_requires_temp_db
 def test_entrypoint_gate_subprocess_matches_helper_on_completed_state(
-    five_stage_database,
+    five_stage_database, monkeypatch,
 ):
     """The committed entrypoint executes the gate exactly as shipped (heredoc
     extraction, runtime URL only) and accepts the completed state."""
@@ -280,12 +296,208 @@ def test_entrypoint_gate_subprocess_matches_helper_on_completed_state(
     match = re.search(r"python - <<'PYEOF'\n(.*?)\nPYEOF", text, re.DOTALL)
     assert match is not None
     app_url = five_stage_database["app_url"]
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       five_stage_database["reporting_url"])
     result = subprocess.run(
         [sys.executable, "-"], input=match.group(1),
         env={**os.environ, "DATABASE_URL": app_url,
+             "REPORTING_DATABASE_URL":
+                 five_stage_database["reporting_url"],
              "DEFAULT_TENANT_SCHEMA": "t_dev", "MPANGO_ENV": "test"},
         capture_output=True, text=True, timeout=300, cwd=str(BACKEND_DIR),
     )
     assert result.returncode == 0, (result.stdout, result.stderr)
     combined = result.stdout + result.stderr
     assert "five-stage setup contract verified" in combined
+
+
+# ---------------------------------------------------------------------------
+# R1-R7: read-only reporting runtime readiness contract
+# ---------------------------------------------------------------------------
+def test_gate_reporting_probes_are_statically_read_only():
+    helper = _load_helper()
+    for name, sql in helper._REPORTING_PROBE_SQL:
+        upper = " ".join(sql.upper().split())
+        assert upper.startswith("SELECT "), name
+        for forbidden in ("INSERT INTO", "UPDATE ", "DELETE FROM",
+                          "CREATE ", "ALTER ", "DROP ", "GRANT ", "REVOKE "):
+            assert forbidden not in upper, (name, forbidden)
+
+
+@_requires_temp_db
+def test_reporting_readiness_positive_on_real_pg16(
+        five_stage_database, monkeypatch):
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       five_stage_database["reporting_url"])
+    helper = _load_helper()
+    reasons = helper.evaluate_contract(five_stage_database["app_url"], "t_dev")
+    assert reasons == [], reasons
+
+
+@_requires_temp_db
+def test_gate_refuses_missing_reporting_dsn(five_stage_database, monkeypatch):
+    monkeypatch.delenv("REPORTING_DATABASE_URL", raising=False)
+    helper = _load_helper()
+    reasons = helper.evaluate_contract(five_stage_database["app_url"], "t_dev")
+    assert reasons and ("reporting runtime DSN missing" in reasons[-1]), reasons
+    assert helper.run_gate(five_stage_database["app_url"], "t_dev",
+                           deadline_seconds=1.0) == 1
+
+
+@_requires_temp_db
+def test_gate_refuses_wrong_reporting_password(five_stage_database, monkeypatch):
+    bad = (five_stage_database["reporting_url"]
+           .replace("reporting_user:", "reporting_user:wrong"))  # pragma: allowlist secret
+    monkeypatch.setenv("REPORTING_DATABASE_URL", bad)
+    helper = _load_helper()
+    reasons = helper.evaluate_contract(five_stage_database["app_url"], "t_dev")
+    assert reasons and "InvalidPasswordError" in reasons[-1], reasons
+
+
+@_requires_temp_db
+def test_gate_refuses_wrong_reporting_database(five_stage_database, monkeypatch):
+    url = (five_stage_database["reporting_url"]
+           .replace("/" + five_stage_database["db"], "/postgres"))  # pragma: allowlist secret
+    monkeypatch.setenv("REPORTING_DATABASE_URL", url)
+    helper = _load_helper()
+    reasons = helper.evaluate_contract(five_stage_database["app_url"], "t_dev")
+    assert reasons and ("reporting connection refused or unusable" in reasons[-1]
+                        or "different database" in reasons[-1]), reasons
+
+
+@_requires_temp_db
+def test_gate_refuses_missing_reporting_role_membership(
+        five_stage_database, monkeypatch):
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       five_stage_database["reporting_url"])
+    admin = _admin_connect(five_stage_database["server"]
+                           .admin_db_url(five_stage_database["db"]))
+    try:
+        with admin.cursor() as cur:
+            cur.execute("REVOKE reporting_role FROM reporting_user")
+        admin.commit()
+    finally:
+        admin.close()
+    helper = _load_helper()
+    reasons = helper.evaluate_contract(five_stage_database["app_url"], "t_dev")
+    admin = _admin_connect(five_stage_database["server"]
+                           .admin_db_url(five_stage_database["db"]))
+    try:
+        with admin.cursor() as cur:
+            cur.execute("GRANT reporting_role TO reporting_user")
+        admin.commit()
+    finally:
+        admin.close()
+    assert reasons and "lacks reporting_role membership" in reasons[-1], reasons
+
+
+@_requires_temp_db
+def test_gate_refuses_read_only_off(five_stage_database, monkeypatch):
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       five_stage_database["reporting_url"])
+    admin = _admin_connect(five_stage_database["server"]
+                           .admin_db_url(five_stage_database["db"]))
+    try:
+        with admin.cursor() as cur:
+            cur.execute("ALTER ROLE reporting_user SET "
+                        "default_transaction_read_only = off")
+        admin.commit()
+    finally:
+        admin.close()
+    helper = _load_helper()
+    reasons = helper.evaluate_contract(five_stage_database["app_url"], "t_dev")
+    admin = _admin_connect(five_stage_database["server"]
+                           .admin_db_url(five_stage_database["db"]))
+    try:
+        with admin.cursor() as cur:
+            cur.execute("ALTER ROLE reporting_user SET "
+                        "default_transaction_read_only = on")
+        admin.commit()
+    finally:
+        admin.close()
+    assert reasons and "read-only" in reasons[-1], reasons
+
+
+@_requires_temp_db
+def test_gate_refuses_excessive_privileges(five_stage_database, monkeypatch):
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       five_stage_database["reporting_url"])
+    admin = _admin_connect(five_stage_database["server"]
+                           .admin_db_url(five_stage_database["db"]))
+    try:
+        with admin.cursor() as cur:
+            cur.execute("GRANT INSERT ON public.wholesalers TO reporting_user")
+        admin.commit()
+    finally:
+        admin.close()
+    helper = _load_helper()
+    reasons = helper.evaluate_contract(five_stage_database["app_url"], "t_dev")
+    admin = _admin_connect(five_stage_database["server"]
+                           .admin_db_url(five_stage_database["db"]))
+    try:
+        with admin.cursor() as cur:
+            cur.execute("REVOKE INSERT ON public.wholesalers FROM reporting_user")
+        admin.commit()
+    finally:
+        admin.close()
+    assert reasons and ("privilege surface mismatch: "
+                        "public_insert_wholesalers expected False") in reasons[-1], reasons
+
+
+@_requires_temp_db
+def test_gate_refuses_missing_select(five_stage_database, monkeypatch):
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       five_stage_database["reporting_url"])
+    admin = _admin_connect(five_stage_database["server"]
+                           .admin_db_url(five_stage_database["db"]))
+    try:
+        with admin.cursor() as cur:
+            cur.execute("REVOKE SELECT ON public.wholesalers FROM reporting_role")
+        admin.commit()
+    finally:
+        admin.close()
+    helper = _load_helper()
+    reasons = helper.evaluate_contract(five_stage_database["app_url"], "t_dev")
+    admin = _admin_connect(five_stage_database["server"]
+                           .admin_db_url(five_stage_database["db"]))
+    try:
+        with admin.cursor() as cur:
+            cur.execute("GRANT SELECT ON public.wholesalers TO reporting_role")
+        admin.commit()
+    finally:
+        admin.close()
+    assert reasons and ("privilege surface mismatch: "
+                        "public_select_wholesalers expected True") in reasons[-1], reasons
+
+
+@_requires_temp_db
+def test_readiness_probes_are_behaviorally_read_only(
+        five_stage_database, monkeypatch):
+    """DML counters on the probed public tables must be unchanged by a full
+    readiness evaluation (the probe never writes)."""
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       five_stage_database["reporting_url"])
+    admin = _admin_connect(five_stage_database["server"]
+                           .admin_db_url(five_stage_database["db"]))
+    try:
+        with admin.cursor() as cur:
+            cur.execute("SELECT schemaname, relname, n_tup_ins, n_tup_upd, "
+                        "n_tup_del FROM pg_stat_user_tables "
+                        "WHERE schemaname = 'public' ORDER BY relname")
+            before = cur.fetchall()
+    finally:
+        admin.close()
+    helper = _load_helper()
+    assert helper.evaluate_contract(five_stage_database["app_url"],
+                                    "t_dev") == []
+    admin = _admin_connect(five_stage_database["server"]
+                           .admin_db_url(five_stage_database["db"]))
+    try:
+        with admin.cursor() as cur:
+            cur.execute("SELECT schemaname, relname, n_tup_ins, n_tup_upd, "
+                        "n_tup_del FROM pg_stat_user_tables "
+                        "WHERE schemaname = 'public' ORDER BY relname")
+            after = cur.fetchall()
+    finally:
+        admin.close()
+    assert before == after

@@ -57,6 +57,7 @@ DATABASE_URL_CONTAINER=postgresql://mpango_app:compose_app_pw@postgres:5432/mpan
 REDIS_URL_CONTAINER=redis://redis:6379/0
 # ---- explicit required runtime input (R1-R6) ----
 PUBLIC_FRONTEND_URL=https://app.example.com
+REPORTING_DATABASE_URL_CONTAINER=postgresql://reporting_user:compose_rup_pw@postgres:5432/mpango_erp
 # ---- compose interpolation ----
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=compose_admin_pw
@@ -180,3 +181,19 @@ def test_compose_backend_mpango_env_stays_production():
     text = COMPOSE.read_text(encoding="utf-8")
     backend_block = text.split("  backend:", 1)[1]
     assert "- MPANGO_ENV=production" in backend_block
+
+
+def test_compose_backend_reporting_database_url_required_interpolation_no_default():
+    """R1-R7: the backend service must receive REPORTING_DATABASE_URL through
+    REQUIRED interpolation of the container-context operator input, with no
+    default; REPORTING_USER_PASSWORD must never be wired as a backend
+    environment mapping."""
+    text = COMPOSE.read_text(encoding="utf-8")
+    required = ("- REPORTING_DATABASE_URL=${REPORTING_DATABASE_URL_CONTAINER:?"
+                "REPORTING_DATABASE_URL_CONTAINER must be set to the "
+                "container-context reporting connection}")
+    assert required in text
+    assert "REPORTING_DATABASE_URL:-" not in text
+    backend_block = text.split("  backend:", 1)[1]
+    assert required in backend_block
+    assert "- REPORTING_USER_PASSWORD=" not in backend_block

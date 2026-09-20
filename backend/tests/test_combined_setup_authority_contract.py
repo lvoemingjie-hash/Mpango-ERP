@@ -114,6 +114,7 @@ GOOD_ENV = {
     "REDIS_URL_CONTAINER": "redis://redis:6379/0",
     "REPORTING_USER_PASSWORD": "rup_pw",
     "PUBLIC_FRONTEND_URL": "https://app.example.com",
+    "REPORTING_DATABASE_URL_CONTAINER": "postgresql://reporting_user:rup_pw@postgres:5432/mpango_erp",
 }
 
 
@@ -139,6 +140,7 @@ def _compose_json() -> dict:
             "DATABASE_URL": GOOD_ENV["DATABASE_URL_CONTAINER"],
             "REDIS_URL": GOOD_ENV["REDIS_URL_CONTAINER"],
             "PUBLIC_FRONTEND_URL": GOOD_ENV["PUBLIC_FRONTEND_URL"],
+            "REPORTING_DATABASE_URL": GOOD_ENV["REPORTING_DATABASE_URL_CONTAINER"],
         }},
     }}
 
@@ -881,3 +883,220 @@ def test_preflight_accepts_exact_public_frontend_url_and_still_bans_setup_only(
     }}
     err = _preflight_err(monkeypatch, tmp_path, {}, override)
     assert "backend service environment must not contain MPANGO_DB_ADMIN_URL" in err
+
+
+# ---------------------------------------------------------------------------
+# R1-R7: explicit reporting runtime DSN contract
+# ---------------------------------------------------------------------------
+def _rsm():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "r1r7_reporting_session",
+        BACKEND_DIR / "database" / "reporting_session.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    saved = os.environ.get("REPORTING_DATABASE_URL")
+    os.environ["REPORTING_DATABASE_URL"] = (
+        "postgresql://" + "reporting_user:" + "rup_pw@postgres:5432/mpango_erp")
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if saved is None:
+            os.environ.pop("REPORTING_DATABASE_URL", None)
+        else:
+            os.environ["REPORTING_DATABASE_URL"] = saved
+    return module
+
+
+def test_reporting_session_requires_explicit_dsn(monkeypatch):
+    """R1-R7: the DATABASE_URL + REPORTING_USER_PASSWORD fallback is gone;
+    there is no localhost fallback either."""
+    monkeypatch.delenv("REPORTING_DATABASE_URL", raising=False)
+    rsm = _rsm()
+    with pytest.raises(RuntimeError) as exc:
+        rsm._build_reporting_url()
+    message = str(exc.value)
+    assert "REPORTING_DATABASE_URL environment variable must be set" in message
+    assert "localhost" not in message
+
+
+def test_reporting_session_normalizes_driver_exactly_once(monkeypatch):
+    url = "postgresql://" + "reporting_user:" + "rup_pw@postgres:5432/mpango_erp"
+    monkeypatch.setenv("REPORTING_DATABASE_URL", url)
+    rsm = _rsm()
+    built = rsm._build_reporting_url()
+    assert built == ("postgresql+asyncpg://" + "reporting_user:"
+                     + "rup_pw@postgres:5432/mpango_erp")
+    assert built.count("asyncpg") == 1
+
+
+def test_reporting_session_preserves_pre_suffixed_async_url(monkeypatch):
+    url = "postgresql+asyncpg://" + "reporting_user:" + "rup_pw@postgres:5432/mpango_erp"
+    monkeypatch.setenv("REPORTING_DATABASE_URL", url)
+    rsm = _rsm()
+    assert rsm._build_reporting_url() == url
+    assert url.count("asyncpg") == 1
+
+
+def test_reporting_session_rejects_wrong_user(monkeypatch):
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       "postgresql://" + "someone:pw@postgres:5432/mpango_erp")
+    rsm = _rsm()
+    with pytest.raises(RuntimeError) as exc:
+        rsm._build_reporting_url()
+    assert "reporting DSN must bind the reporting_user identity" in str(exc.value)
+
+
+def test_reporting_session_rejects_fragment(monkeypatch):
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       "postgresql://" + "reporting_user:rup_pw@postgres:5432/mpango_erp#f")
+    rsm = _rsm()
+    with pytest.raises(RuntimeError) as exc:
+        rsm._build_reporting_url()
+    assert "reporting DSN must not contain a fragment" in str(exc.value)
+
+
+def test_reporting_session_rejects_missing_password(monkeypatch):
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       "postgresql://" + "reporting_user@postgres:5432/mpango_erp")
+    rsm = _rsm()
+    with pytest.raises(RuntimeError) as exc:
+        rsm._build_reporting_url()
+    assert "reporting DSN must include a password" in str(exc.value)
+
+
+def test_reporting_session_diagnostics_never_leak(monkeypatch):
+    secret = "sup3r_s3cret_reporting_pw"
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       "mysql://" + "reporting_user:" + secret + "@postgres:5432/mpango_erp")
+    rsm = _rsm()
+    with pytest.raises(RuntimeError) as exc:
+        rsm._build_reporting_url()
+    assert secret not in str(exc.value)
+
+
+def test_preflight_accepts_conforming_reporting_runtime_url(monkeypatch, tmp_path):
+    code, out = _run_preflight(monkeypatch, tmp_path, {})
+    assert code == 0
+    assert out.strip() == "OK"
+
+
+def test_preflight_rejects_missing_reporting_container_url(monkeypatch, tmp_path):
+    err = _preflight_err(monkeypatch, tmp_path,
+                         {"REPORTING_DATABASE_URL_CONTAINER": ""})
+    assert err == "REPORTING_DATABASE_URL_CONTAINER not found in backend/.env"
+
+
+def test_preflight_rejects_wrong_reporting_scheme(monkeypatch, tmp_path):
+    err = _preflight_err(monkeypatch, tmp_path,
+                         {"REPORTING_DATABASE_URL_CONTAINER":
+                          "mysql://" + "reporting_user:rup_pw@postgres:5432/mpango_erp"})
+    assert err == "REPORTING_DATABASE_URL_CONTAINER scheme is not postgresql"
+
+
+def test_preflight_rejects_wrong_reporting_host(monkeypatch, tmp_path):
+    err = _preflight_err(monkeypatch, tmp_path,
+                         {"REPORTING_DATABASE_URL_CONTAINER":
+                          "postgresql://" + "reporting_user:rup_pw@localhost:5432/mpango_erp"})
+    assert err == ("REPORTING_DATABASE_URL_CONTAINER host must be the Compose "
+                   "postgres service")
+
+
+def test_preflight_rejects_wrong_reporting_port(monkeypatch, tmp_path):
+    err = _preflight_err(monkeypatch, tmp_path,
+                         {"REPORTING_DATABASE_URL_CONTAINER":
+                          "postgresql://" + "reporting_user:rup_pw@postgres:5433/mpango_erp"})
+    assert err == ("REPORTING_DATABASE_URL_CONTAINER port must be the postgres "
+                   "container target port")
+
+
+def test_preflight_rejects_wrong_reporting_user(monkeypatch, tmp_path):
+    err = _preflight_err(monkeypatch, tmp_path,
+                         {"REPORTING_DATABASE_URL_CONTAINER":
+                          "postgresql://" + "someone:rup_pw@postgres:5432/mpango_erp"})
+    assert err == ("REPORTING_DATABASE_URL_CONTAINER must bind the "
+                   "reporting_user identity")
+
+
+def test_preflight_rejects_wrong_reporting_database(monkeypatch, tmp_path):
+    err = _preflight_err(monkeypatch, tmp_path,
+                         {"REPORTING_DATABASE_URL_CONTAINER":
+                          "postgresql://" + "reporting_user:rup_pw@postgres:5432/otherdb"})
+    assert err == ("REPORTING_DATABASE_URL_CONTAINER must target the "
+                   "application database")
+
+
+def test_preflight_rejects_reporting_fragment(monkeypatch, tmp_path):
+    err = _preflight_err(monkeypatch, tmp_path,
+                         {"REPORTING_DATABASE_URL_CONTAINER":
+                          "postgresql://" + "reporting_user:rup_pw@postgres:5432/mpango_erp#f"})
+    assert err == ("REPORTING_DATABASE_URL_CONTAINER must not contain a "
+                   "fragment")
+
+
+def test_preflight_rejects_reporting_query(monkeypatch, tmp_path):
+    err = _preflight_err(monkeypatch, tmp_path,
+                         {"REPORTING_DATABASE_URL_CONTAINER":
+                          "postgresql://" + "reporting_user:rup_pw@postgres:5432/mpango_erp?x=1"})
+    assert err == ("REPORTING_DATABASE_URL_CONTAINER must not contain a "
+                   "query string")
+
+
+def test_preflight_rejects_reporting_password_drift(monkeypatch, tmp_path):
+    err = _preflight_err(monkeypatch, tmp_path,
+                         {"REPORTING_DATABASE_URL_CONTAINER":
+                          "postgresql://" + "reporting_user:other_pw@postgres:5432/mpango_erp"})
+    assert err == ("REPORTING_DATABASE_URL_CONTAINER password does not match "
+                   "REPORTING_USER_PASSWORD")
+
+
+def test_preflight_accepts_percent_encoded_reporting_password(monkeypatch, tmp_path):
+    """A percent-encoded '@' inside the reporting password decodes to the same
+    value as REPORTING_USER_PASSWORD and is accepted (literal '+' stays
+    literal: unquote does not space-decode)."""
+    content = dict(GOOD_ENV)
+    content["REPORTING_USER_PASSWORD"] = "r@pt+1"
+    content["REPORTING_DATABASE_URL_CONTAINER"] = (
+        "postgresql://" + "reporting_user:r%40pt%2B1@postgres:5432/mpango_erp")
+    env_path = tmp_path / "backend.env"
+    env_path.write_text("\n".join(f"{k}={v}" for k, v in content.items()) + "\n",
+                        encoding="utf-8")
+    for key in ("DATABASE_URL", "REDIS_URL", "REPORTING_USER_PASSWORD",
+                "MPANGO_DB_ADMIN_URL", "MPANGO_DB_MIGRATE_URL",
+                "DATABASE_URL_CONTAINER", "REDIS_URL_CONTAINER"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(_compose_json())))
+    import contextlib
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        pf.run_initial(str(env_path))
+    assert stdout.getvalue().strip() == "OK"
+
+
+def test_preflight_rejects_rendered_reporting_missing(monkeypatch, tmp_path):
+    base = _compose_json()
+    backend = dict(base["services"]["backend"]["environment"])
+    del backend["REPORTING_DATABASE_URL"]
+    base["services"]["backend"]["environment"] = backend
+    err = _preflight_err(monkeypatch, tmp_path, {}, base)
+    assert err == "backend service environment must carry REPORTING_DATABASE_URL"
+
+
+def test_preflight_rejects_rendered_reporting_non_string(monkeypatch, tmp_path):
+    base = _compose_json()
+    backend = dict(base["services"]["backend"]["environment"])
+    backend["REPORTING_DATABASE_URL"] = 3
+    base["services"]["backend"]["environment"] = backend
+    err = _preflight_err(monkeypatch, tmp_path, {}, base)
+    assert err == "backend service REPORTING_DATABASE_URL must be a string"
+
+
+def test_preflight_rejects_rendered_reporting_mismatch(monkeypatch, tmp_path):
+    base = _compose_json()
+    backend = dict(base["services"]["backend"]["environment"])
+    backend["REPORTING_DATABASE_URL"] = (
+        "postgresql://" + "reporting_user:rup_pw@postgres:5432/otherdb")
+    base["services"]["backend"]["environment"] = backend
+    err = _preflight_err(monkeypatch, tmp_path, {}, base)
+    assert err == ("backend service REPORTING_DATABASE_URL does not match "
+                   "backend/.env (REPORTING_DATABASE_URL_CONTAINER)")

@@ -65,6 +65,7 @@ GOOD_ENV = (
     "POSTGRES_DB=pgdb\n"
     "REPORTING_USER_PASSWORD=reportingpass\n"  # pragma: allowlist secret
     "PUBLIC_FRONTEND_URL=https://app.example.com\n"
+    "REPORTING_DATABASE_URL_CONTAINER=postgresql://reporting_user:reportingpass@postgres:5432/pgdb\n"  # pragma: allowlist secret
 )
 
 PG_ENV_GOOD = {"POSTGRES_USER": "pguser", "POSTGRES_PASSWORD": "pgpass", "POSTGRES_DB": "pgdb"}  # pragma: allowlist secret
@@ -102,6 +103,7 @@ BACKEND_SVC = {"environment": {
     "DATABASE_URL": "postgresql://pgapp:pgapppass@postgres:5432/pgdb",  # pragma: allowlist secret
     "REDIS_URL": "redis://redis:6379/0",
     "PUBLIC_FRONTEND_URL": "https://app.example.com",
+    "REPORTING_DATABASE_URL": "postgresql://reporting_user:reportingpass@postgres:5432/pgdb",  # pragma: allowlist secret
 }}
 
 
@@ -366,12 +368,14 @@ class TestRunInitial:
             "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://127.0.0.1:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
+            "REPORTING_DATABASE_URL_CONTAINER=postgresql://reporting_user:reportingpass@postgres:5432/pgdb\n"  # pragma: allowlist secret
             "PUBLIC_FRONTEND_URL=https://app.example.com\n"
         )
         backend = {"environment": {
             "DATABASE_URL": "postgresql://pgapp:pgapppass@postgres:5432/pgdb",  # pragma: allowlist secret
             "REDIS_URL": "redis://redis:6379/0",
-            "PUBLIC_FRONTEND_URL": "https://app.example.com"}}
+            "PUBLIC_FRONTEND_URL": "https://app.example.com",
+            "REPORTING_DATABASE_URL": "postgresql://reporting_user:reportingpass@postgres:5432/pgdb"}}
         self._ok(capsys, pf.run_initial, self._env(tmp_path, content),
                  stdin_text=_compose(backend=backend))
 
@@ -386,12 +390,14 @@ class TestRunInitial:
             "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://localhost:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
+            "REPORTING_DATABASE_URL_CONTAINER=postgresql://reporting_user:reportingpass@postgres:5432/pgdb\n"  # pragma: allowlist secret
             "PUBLIC_FRONTEND_URL=https://app.example.com\n"
         )
         backend = {"environment": {
             "DATABASE_URL": "postgresql://pgapp:pgapppass@postgres:5432/pgdb",  # pragma: allowlist secret
             "REDIS_URL": "redis://redis:6379/0",
-            "PUBLIC_FRONTEND_URL": "https://app.example.com"}}
+            "PUBLIC_FRONTEND_URL": "https://app.example.com",
+            "REPORTING_DATABASE_URL": "postgresql://reporting_user:reportingpass@postgres:5432/pgdb"}}
         self._ok(capsys, pf.run_initial, self._env(tmp_path, content),
                  stdin_text=_compose(backend=backend))
 
@@ -404,7 +410,9 @@ class TestRunInitial:
             "MPANGO_DB_MIGRATE_URL=postgresql://mig%40user:mig%40ss@localhost:5432/pgdb\n"  # pragma: allowlist secret
             "MPANGO_DB_APP_PASSWORD=app@ss\n"
             "MPANGO_DB_MIGRATE_PASSWORD=mig@ss\n"
+            "REPORTING_USER_PASSWORD=app@ss\n"  # pragma: allowlist secret
             "PUBLIC_FRONTEND_URL=https://app.example.com\n"
+            "REPORTING_DATABASE_URL_CONTAINER=postgresql://reporting_user:app%40ss@postgres:5432/pgdb\n"  # pragma: allowlist secret
             "DATABASE_URL_CONTAINER=postgresql://app%40user:app%40ss@postgres:5432/pgdb\n"  # pragma: allowlist secret
             "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://localhost:6379/0\n"
@@ -416,7 +424,8 @@ class TestRunInitial:
         backend = {"environment": {
             "DATABASE_URL": "postgresql://app%40user:app%40ss@postgres:5432/pgdb",  # pragma: allowlist secret
             "REDIS_URL": "redis://redis:6379/0",
-            "PUBLIC_FRONTEND_URL": "https://app.example.com"}}
+            "PUBLIC_FRONTEND_URL": "https://app.example.com",
+            "REPORTING_DATABASE_URL": "postgresql://reporting_user:app%40ss@postgres:5432/pgdb"}}
         self._ok(capsys, pf.run_initial, self._env(tmp_path, content),
                  stdin_text=_compose(pg=pg, backend=backend))
 
@@ -468,6 +477,7 @@ class TestRunInitial:
             f"DATABASE_URL={url}\n"
             "REDIS_URL=redis://localhost:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
+            "REPORTING_DATABASE_URL_CONTAINER=postgresql://reporting_user:reportingpass@postgres:5432/pgdb\n"  # pragma: allowlist secret
             "PUBLIC_FRONTEND_URL=https://app.example.com\n"
         )
         err = _expect_fail(

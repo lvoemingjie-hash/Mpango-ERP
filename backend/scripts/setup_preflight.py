@@ -453,6 +453,57 @@ def run_initial(env_path: str) -> None:
     if _rendered_pfu != _pfu_value:
         _fail("backend service PUBLIC_FRONTEND_URL does not match backend/.env")
 
+    # R1-R7: explicit reporting runtime DSN (container context).  The
+    # reporting engine binds reporting_user; the DECODED password must equal
+    # the setup-only REPORTING_USER_PASSWORD so the migration-created login
+    # and the runtime reporting connection cannot drift.  REPORTING_USER_PASSWORD
+    # itself remains setup-only and must never reach the rendered environment.
+    _rep_container = env.get("REPORTING_DATABASE_URL_CONTAINER", "")
+    if not _rep_container:
+        _fail("REPORTING_DATABASE_URL_CONTAINER not found in backend/.env")
+    try:
+        _rp = urlparse(_rep_container)
+    except Exception:
+        _fail("REPORTING_DATABASE_URL_CONTAINER is malformed")
+    if _rp.scheme not in _DB_SCHEMES:
+        _fail("REPORTING_DATABASE_URL_CONTAINER scheme is not postgresql")
+    if _rp.fragment:
+        _fail("REPORTING_DATABASE_URL_CONTAINER must not contain a fragment")
+    if _rp.query:
+        _fail("REPORTING_DATABASE_URL_CONTAINER must not contain a query string")
+    _rep_user = unquote(_rp.username) if _rp.username else ""
+    if _rep_user != "reporting_user":
+        _fail("REPORTING_DATABASE_URL_CONTAINER must bind the reporting_user identity")
+    _rep_pass = unquote(_rp.password) if _rp.password else ""
+    if not _rep_pass:
+        _fail("REPORTING_DATABASE_URL_CONTAINER must contain a password")
+    _rup = env.get("REPORTING_USER_PASSWORD", "")
+    if not _rup or _rep_pass != _rup:
+        _fail("REPORTING_DATABASE_URL_CONTAINER password does not match "
+              "REPORTING_USER_PASSWORD")
+    if (_rp.hostname or "") != "postgres":
+        _fail("REPORTING_DATABASE_URL_CONTAINER host must be the Compose "
+              "postgres service")
+    try:
+        _rep_port = _rp.port if _rp.port is not None else 5432
+    except (ValueError, TypeError):
+        _fail("REPORTING_DATABASE_URL_CONTAINER has an invalid port")
+    if _rep_port != 5432:
+        _fail("REPORTING_DATABASE_URL_CONTAINER port must be the postgres "
+              "container target port")
+    _rep_db = _rp.path.lstrip("/") or ""
+    if _rep_db != db_name:
+        _fail("REPORTING_DATABASE_URL_CONTAINER must target the application "
+              "database")
+    _rendered_rep = _backend_env.get("REPORTING_DATABASE_URL")
+    if _rendered_rep is None:
+        _fail("backend service environment must carry REPORTING_DATABASE_URL")
+    if not isinstance(_rendered_rep, str):
+        _fail("backend service REPORTING_DATABASE_URL must be a string")
+    if _rendered_rep != _rep_container:
+        _fail("backend service REPORTING_DATABASE_URL does not match "
+              "backend/.env (REPORTING_DATABASE_URL_CONTAINER)")
+
     print("OK")
 
 

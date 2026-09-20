@@ -50,6 +50,163 @@ def normalize_async_url(url: str) -> str:
     return parts._replace(scheme="postgresql+asyncpg").geturl()
 
 
+# R1-R7: read-only reporting identity probes.  Every statement is a pure
+# SELECT/catalog read; the probe issues no DDL and no DML and never tests
+# write refusal by writing.
+_REPORTING_PROBE_SQL = (
+    ("identity", "SELECT current_user"),
+    ("database", "SELECT current_database()"),
+    ("role_membership",
+     "SELECT pg_has_role('reporting_user', 'reporting_role', 'MEMBER')"),
+    ("role_flags",
+     "SELECT rolsuper, rolcreaterole, rolcreatedb FROM pg_roles "
+     "WHERE rolname = 'reporting_user'"),
+    ("public_schema_create",
+     "SELECT has_schema_privilege('reporting_user', 'public', 'CREATE')"),
+    ("tenant_schema_create",
+     "SELECT has_schema_privilege('reporting_user', :tenant, 'CREATE')"),
+    ("read_only_setting",
+     "SELECT current_setting('default_transaction_read_only')"),
+    ("statement_timeout",
+     "SELECT current_setting('statement_timeout')"),
+    ("public_select_wholesalers",
+     "SELECT has_table_privilege('reporting_user', 'public.wholesalers', 'SELECT')"),
+    ("public_select_retailers",
+     "SELECT has_table_privilege('reporting_user', 'public.retailers', 'SELECT')"),
+    ("public_select_wholesaler_retailer_bindings",
+     "SELECT has_table_privilege('reporting_user', "
+     "'public.wholesaler_retailer_bindings', 'SELECT')"),
+    ("public_insert_wholesalers",
+     "SELECT has_table_privilege('reporting_user', 'public.wholesalers', 'INSERT')"),
+    ("public_update_wholesalers",
+     "SELECT has_table_privilege('reporting_user', 'public.wholesalers', 'UPDATE')"),
+    ("public_delete_wholesalers",
+     "SELECT has_table_privilege('reporting_user', 'public.wholesalers', 'DELETE')"),
+    ("tenant_select_rpt_receivables_summary",
+     "SELECT has_table_privilege('reporting_user', :tenant_table, 'SELECT')"),
+    ("tenant_insert_rpt_receivables_summary",
+     "SELECT has_table_privilege('reporting_user', :tenant_table, 'INSERT')"),
+    ("tenant_update_rpt_receivables_summary",
+     "SELECT has_table_privilege('reporting_user', :tenant_table, 'UPDATE')"),
+    ("tenant_delete_rpt_receivables_summary",
+     "SELECT has_table_privilege('reporting_user', :tenant_table, 'DELETE')"),
+)
+
+
+def _normalize_reporting_async_url(url: str) -> str:
+    """Structural single normalization of the reporting DSN (R1-R7): same
+    two-scheme policy as the runtime URL; errors are credential-free."""
+    parts = urlsplit(url)
+    if parts.scheme not in ("postgresql", "postgresql+asyncpg"):
+        raise ValueError(
+            "unsupported REPORTING_DATABASE_URL scheme (expected "
+            "postgresql:// or postgresql+asyncpg://)")
+    return parts._replace(scheme="postgresql+asyncpg").geturl()
+
+
+def _timeout_ms(raw) -> int:
+    value = str(raw).strip().lower()
+    if value.endswith("ms"):
+        return int(value[:-2])
+    if value.endswith("s"):
+        return int(value[:-1]) * 1000
+    return int(value)
+
+
+async def _probe_reporting(reason, tenant: str, runtime_database_url: str) -> None:
+    """Read-only reporting identity probe (R1-R7).  Catalog reads and SETTING
+    reads only.  Every failure produces a named neutral reason and prevents
+    Uvicorn; reasons never contain the DSN or any credential form."""
+    from urllib.parse import urlsplit as _urlsplit
+    from sqlalchemy import text as _text
+    from sqlalchemy.ext.asyncio import create_async_engine as _engine
+
+    dsn = os.environ.get("REPORTING_DATABASE_URL", "")
+    if not dsn:
+        reason("reporting runtime DSN missing: REPORTING_DATABASE_URL is not "
+               "set - the reporting engine cannot initialize")
+        return
+    try:
+        normalized = _normalize_reporting_async_url(dsn)
+    except ValueError as exc:
+        reason(str(exc))
+        return
+    runtime_db = _urlsplit(runtime_database_url).path.lstrip("/")
+    tenant_table = '"' + tenant + '".rpt_receivables_summary'
+    engine = _engine(normalized)
+    try:
+        async with engine.connect() as conn:
+            identity = (await conn.execute(
+                _text(_REPORTING_PROBE_SQL[0][1]))).scalar()
+            if identity != "reporting_user":
+                reason("reporting connection is not bound to reporting_user")
+                return
+            database = (await conn.execute(
+                _text(_REPORTING_PROBE_SQL[1][1]))).scalar()
+            if database != runtime_db:
+                reason("reporting connection targets a different database "
+                       "than the runtime application database")
+                return
+            member = (await conn.execute(
+                _text(_REPORTING_PROBE_SQL[2][1]))).scalar()
+            if not member:
+                reason("reporting identity lacks reporting_role membership")
+                return
+            flags = (await conn.execute(
+                _text(_REPORTING_PROBE_SQL[3][1]))).one()
+            if flags.rolsuper or flags.rolcreaterole or flags.rolcreatedb:
+                reason("reporting identity must not be superuser, createrole "
+                       "or createdb")
+                return
+            public_create = (await conn.execute(
+                _text(_REPORTING_PROBE_SQL[4][1]))).scalar()
+            tenant_create = (await conn.execute(
+                _text(_REPORTING_PROBE_SQL[5][1]),
+                {"tenant": tenant})).scalar()
+            if public_create or tenant_create:
+                reason("reporting identity must not hold schema CREATE on "
+                       "public or the default tenant")
+                return
+            read_only = (await conn.execute(
+                _text(_REPORTING_PROBE_SQL[6][1]))).scalar()
+            if str(read_only).lower() not in ("on", "true", "1"):
+                reason("reporting identity must default to read-only "
+                       "transactions")
+                return
+            timeout_raw = (await conn.execute(
+                _text(_REPORTING_PROBE_SQL[7][1]))).scalar()
+            if _timeout_ms(timeout_raw) != 30000:
+                reason("reporting identity statement timeout must be the "
+                       "migration-defined 30 seconds")
+                return
+            expectations = {
+                "public_select_wholesalers": True,
+                "public_select_retailers": True,
+                "public_select_wholesaler_retailer_bindings": True,
+                "public_insert_wholesalers": False,
+                "public_update_wholesalers": False,
+                "public_delete_wholesalers": False,
+                "tenant_select_rpt_receivables_summary": True,
+                "tenant_insert_rpt_receivables_summary": False,
+                "tenant_update_rpt_receivables_summary": False,
+                "tenant_delete_rpt_receivables_summary": False,
+            }
+            params = {"tenant": tenant, "tenant_table": tenant_table}
+            for name, sql in _REPORTING_PROBE_SQL:
+                if name not in expectations:
+                    continue
+                allowed = (await conn.execute(_text(sql), params)).scalar()
+                if bool(allowed) is not expectations[name]:
+                    reason("reporting identity privilege surface mismatch: "
+                           + name + " expected " + str(expectations[name]))
+                    return
+    except Exception as exc:  # noqa: BLE001 - named type only, no detail echo
+        reason("reporting connection refused or unusable: "
+               + type(exc).__name__)
+    finally:
+        await engine.dispose()
+
+
 def evaluate_contract(database_url: str, tenant: str = "t_dev",
                       backend_dir: str | os.PathLike | None = None) -> list[str]:
     """One readiness attempt.  Returns the attempt's named refusal reasons;
@@ -98,6 +255,9 @@ def evaluate_contract(database_url: str, tenant: str = "t_dev",
                 # LedgerGuardAuthorityError / PublicContractError on drift)
                 await bts._assert_ledger_guard_function_authority(conn)
                 await bts._assert_public_binding_balance_contract(conn)
+                # R1-R7: read-only reporting identity probe (named
+                # refusals; catalog/setting reads only).
+                await _probe_reporting(reason, tenant, database_url)
         except Exception as exc:  # noqa: BLE001 — named, credential-free
             reason(f"{type(exc).__name__}: {exc}")
         finally:

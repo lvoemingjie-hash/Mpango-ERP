@@ -32,13 +32,13 @@ from db.sql_safety import validate_identifier
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-# The reporting engine connects as reporting_user (member of reporting_role).
-# In production, REPORTING_DATABASE_URL should be set as an env var pointing
-# to the same database but with reporting_user credentials.
-#
-# Fallback: If REPORTING_DATABASE_URL is not set, we derive it from the
-# primary DATABASE_URL by replacing the username/password.  This works for
-# dev/staging where the migration created reporting_user with a known password.
+# The reporting engine connects as reporting_user (member of reporting_role)
+# through the EXPLICIT runtime DSN carried in REPORTING_DATABASE_URL (R1-R7).
+# There is NO fallback: the DSN is never derived from DATABASE_URL, the
+# setup-only REPORTING_USER_PASSWORD is never read at runtime, and the DSN is
+# structurally normalized to the asyncpg driver exactly once without ever
+# being echoed.  The initial preflight proves the DSN password equals the
+# setup-time REPORTING_USER_PASSWORD before any side effect.
 # ---------------------------------------------------------------------------
 
 REPORTING_CURRENCY_CODE = "USD"
@@ -47,31 +47,37 @@ settings = get_settings()
 
 
 def _build_reporting_url() -> str:
+    """Build the reporting database URL (R1-R7).
+
+    The explicit REPORTING_DATABASE_URL runtime DSN is REQUIRED.  It is
+    structurally normalized to the asyncpg driver exactly once (never by
+    global string replacement, so a pre-suffixed async URL is not doubled).
+    Diagnostics are fixed neutral messages that never contain the DSN, its
+    authority, or any credential form.
     """
-    Build the reporting database URL.
+    from urllib.parse import urlsplit, urlunsplit
 
-    Priority:
-    1. REPORTING_DATABASE_URL env var (explicit override)
-    2. Derive from DATABASE_URL by swapping credentials to reporting_user
-    """
-    explicit_url = os.environ.get("REPORTING_DATABASE_URL")
-    if explicit_url:
-        return explicit_url.replace("postgresql://", "postgresql+asyncpg://")
-
-    # Derive from primary DATABASE_URL
-    # Format: postgresql://user:pass@host:port/db
-    base_url = settings.DATABASE_URL
-    # Extract host portion (everything after @)
-    if "@" in base_url:
-        host_part = base_url.split("@", 1)[1]
-    else:
-        host_part = "localhost:5432/mpango_erp"
-
-    # S8-SEC: Never hardcode credentials — require env var
-    reporting_password = os.environ.get("REPORTING_USER_PASSWORD")
-    if not reporting_password:
-        raise RuntimeError("REPORTING_USER_PASSWORD environment variable must be set")
-    return f"postgresql+asyncpg://reporting_user:{reporting_password}@{host_part}"
+    url = os.environ.get("REPORTING_DATABASE_URL", "")
+    if not url:
+        raise RuntimeError(
+            "REPORTING_DATABASE_URL environment variable must be set for the "
+            "reporting engine")
+    parts = urlsplit(url)
+    if parts.scheme not in ("postgresql", "postgresql+asyncpg"):
+        raise RuntimeError(
+            "reporting DSN scheme must be postgresql or postgresql+asyncpg")
+    if not parts.hostname:
+        raise RuntimeError("reporting DSN must include a host")
+    if parts.fragment:
+        raise RuntimeError("reporting DSN must not contain a fragment")
+    if (parts.username or "") != "reporting_user":
+        raise RuntimeError("reporting DSN must bind the reporting_user identity")
+    if not (parts.password or ""):
+        raise RuntimeError("reporting DSN must include a password")
+    if not (parts.path.lstrip("/") or ""):
+        raise RuntimeError("reporting DSN must include a database")
+    # structural single normalization; query options are preserved verbatim
+    return urlunsplit(parts._replace(scheme="postgresql+asyncpg"))
 
 
 # ---------------------------------------------------------------------------

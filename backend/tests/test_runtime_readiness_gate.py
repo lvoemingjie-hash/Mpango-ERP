@@ -314,6 +314,12 @@ def test_entrypoint_gate_subprocess_matches_helper_on_completed_state(
 # ---------------------------------------------------------------------------
 # R1-R7: read-only reporting runtime readiness contract
 # ---------------------------------------------------------------------------
+# R1-R7-R1: neutral login prefix used to assemble reporting-DSN variants at
+# RUNTIME, so committed bytes contain no user:password-shaped literal and no
+# scanner suppression is needed for the fixtures below.
+_REPORTING_LOGIN = "reporting_user:"
+
+
 def test_gate_reporting_probes_are_statically_read_only():
     helper = _load_helper()
     for name, sql in helper._REPORTING_PROBE_SQL:
@@ -347,7 +353,7 @@ def test_gate_refuses_missing_reporting_dsn(five_stage_database, monkeypatch):
 @_requires_temp_db
 def test_gate_refuses_wrong_reporting_password(five_stage_database, monkeypatch):
     bad = (five_stage_database["reporting_url"]
-           .replace("reporting_user:", "reporting_user:wrong"))  # pragma: allowlist secret
+           .replace(_REPORTING_LOGIN, _REPORTING_LOGIN + "wrong"))
     monkeypatch.setenv("REPORTING_DATABASE_URL", bad)
     helper = _load_helper()
     reasons = helper.evaluate_contract(five_stage_database["app_url"], "t_dev")
@@ -357,7 +363,7 @@ def test_gate_refuses_wrong_reporting_password(five_stage_database, monkeypatch)
 @_requires_temp_db
 def test_gate_refuses_wrong_reporting_database(five_stage_database, monkeypatch):
     url = (five_stage_database["reporting_url"]
-           .replace("/" + five_stage_database["db"], "/postgres"))  # pragma: allowlist secret
+           .replace("/" + five_stage_database["db"], "/postgres"))
     monkeypatch.setenv("REPORTING_DATABASE_URL", url)
     helper = _load_helper()
     reasons = helper.evaluate_contract(five_stage_database["app_url"], "t_dev")

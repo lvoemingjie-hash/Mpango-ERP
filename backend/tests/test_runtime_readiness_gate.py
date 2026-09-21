@@ -64,6 +64,18 @@ def _snapshot_membership(cur, member=_REPORTING_MEMBER,
     return [tuple(row) for row in cur.fetchall()]
 
 
+def _membership_options(admin, inherit, set_):
+    """All three membership booleans, always stated explicitly.
+
+    PostgreSQL 16 keeps the CURRENT value of an option that a GRANT omits,
+    so a correction that spells out only INHERIT and SET cannot turn an
+    existing ADMIN TRUE back into ADMIN FALSE.  Every correction therefore
+    names ADMIN, INHERIT and SET, in that order."""
+    return ["ADMIN " + ("TRUE" if admin else "FALSE"),
+            "INHERIT " + ("TRUE" if inherit else "FALSE"),
+            "SET " + ("TRUE" if set_ else "FALSE")]
+
+
 def _reconcile_membership(cur, member, role, wanted):
     """Bring the (member <- role) membership rows exactly back to `wanted`.
 
@@ -86,9 +98,7 @@ def _reconcile_membership(cur, member, role, wanted):
     for grantor, admin, inherit, set_ in wanted:
         if (grantor, admin, inherit, set_) in current:
             continue
-        options = [o for o in ("ADMIN OPTION" if admin else None,
-                               "INHERIT " + ("TRUE" if inherit else "FALSE"),
-                               "SET " + ("TRUE" if set_ else "FALSE")) if o]
+        options = _membership_options(admin, inherit, set_)
         cur.execute(pg_sql.SQL("SET ROLE {}").format(
             pg_sql.Identifier(grantor)))
         cur.execute(pg_sql.SQL("GRANT {} TO {}").format(
@@ -103,30 +113,38 @@ def _reconcile_membership(cur, member, role, wanted):
 def _libpq_dsn(dsn: str) -> str:
     """A SQLAlchemy-style URL ('postgresql+asyncpg://...') is normalised to
     the plain form psycopg2/libpq accepts.  Without this the probe never
-    reaches the server at all and would compare two client-side parse
-    errors as if they were equal outcomes."""
+    reaches the server at all and would report a client-side parse error
+    where an authentication outcome is required."""
     scheme, sep, rest = dsn.partition("://")
     if sep and "+" in scheme:
         return scheme.split("+", 1)[0] + sep + rest
     return dsn
 
 
-def _connection_outcome(dsn=None, **kwargs):
-    """Normalised outcome of a REAL authentication attempt.
+def _dsn_login_identity(dsn: str):
+    """The login name the environment reporting DSN authenticates as, or
+    None when the DSN does not name one."""
+    scheme, sep, rest = dsn.partition("://")
+    if not sep:
+        return None
+    netloc = rest.split("/", 1)[0]
+    if "@" not in netloc:
+        return None
+    return netloc.rsplit("@", 1)[0].split(":", 1)[0] or None
 
-    A SCRAM verifier cannot be inverted to its plaintext, so the captured
-    verifier is the only surviving representation of the original
-    credential; replaying it before and after the fixture and comparing
-    the outcomes makes any role drop, rename or verifier change observable
-    at the connection level.  A client-side failure is reported as its own
-    exception class, so a DSN that libpq cannot even parse stays visible
-    instead of being silently treated as an unchanged outcome."""
+
+def _probe_dsn(dsn: str) -> str:
+    """Outcome of a REAL authentication attempt through the environment
+    reporting DSN: 'ok' on success, otherwise the exception class name.
+
+    This is the only credential-level connection this fixture can prove.
+    A SCRAM verifier is not a client password, so replaying the captured
+    verifier would not authenticate anything and is not used as evidence.
+    The verifier is checked separately, byte-for-byte, in the catalog."""
     import psycopg2
 
-    if dsn is not None:
-        kwargs["dsn"] = _libpq_dsn(dsn)
     try:
-        conn = psycopg2.connect(connect_timeout=10, **kwargs)
+        conn = psycopg2.connect(_libpq_dsn(dsn), connect_timeout=10)
     except Exception as exc:
         return type(exc).__name__
     conn.close()
@@ -198,23 +216,41 @@ def five_stage_database():
     sequence: provision -> alembic 001..039 -> grants -> verify -> runtime
     bootstrap of the default tenant.
 
-    R1-R7-R2-R1-R1-R2A exact fixture state (CTO-AUTH-ORDER-R2-DBAUTH-
-    R1R7R2R1R1-R2A-EXACT-FIXTURE-STATE-2026-09-21): the shared cluster
-    login reporting_user is captured as THREE independent pre-state facts -
-    whether the role exists, its pg_authid verifier, and every
-    reporting_user <- reporting_role membership row with its grantor and
-    grant options.  Absence is never folded into a NULL verifier: an absent
-    role is _MISSING_VERIFIER, a present role without a password is None.
-    Teardown then runs in a fixed order, every step on its own fresh admin
+    R1-R7-R2-R1-R1-R2B fixture trust (CTO-AUTH-ORDER-R2-DBAUTH-R1R7R2R1R1-
+    R2B-FIXTURE-TRUST-2026-09-21).  The shared cluster login reporting_user
+    is captured as THREE independent pre-state facts - whether the role
+    exists, its pg_authid verifier, and every reporting_user <-
+    reporting_role membership row with its grantor and grant options.
+    Absence is never folded into a NULL verifier: an absent role is
+    _MISSING_VERIFIER, a present role without a password is None.
+
+    CREDENTIAL PROOF.  When the login exists, the environment reporting DSN
+    must authenticate as it FOR REAL, and it must do so BEFORE this fixture
+    writes anything; any other outcome - a different login name, a parse
+    error, a rejected password, an unreachable server - refuses the run
+    outright.  After teardown the same DSN must authenticate again, so the
+    check is a positive proof on both sides rather than an equality between
+    two possibly identical failures.  The captured SCRAM verifier is never
+    replayed as a client password: a verifier is not a password and such an
+    attempt would prove nothing.  The verifier is checked separately and
+    byte-for-byte in the catalog.  When the role was absent pre-fixture the
+    fixture claims ONLY catalog-absence restoration and makes no credential
+    login claim at all.
+
+    MEMBERSHIP.  Corrections are issued only through the RECORDED grantor
+    (PostgreSQL 16 tracks memberships per grantor, so a plain administrator
+    REVOKE is a no-op) and always state ADMIN, INHERIT and SET explicitly,
+    because an omitted option keeps its current value and would leave an
+    existing ADMIN TRUE in place.
+
+    TEARDOWN runs in a fixed order, every step on its own fresh admin
     connection that is explicitly committed, rolled back and closed:
-    restore the credential, remove the sandbox database and the sandbox
-    roles, re-check the verifier, re-check the membership set, re-check the
-    original credential connection.  The membership set is corrected only
-    through the RECORDED grantor - PostgreSQL 16 tracks memberships per
-    grantor, so a plain administrator REVOKE is a no-op.  Nothing is
-    swallowed and nothing is left to process exit or to a DROP ROLE side
-    effect: every cleanup and every check appends to teardown_errors, and
-    any entry fails the module as an ERROR."""
+    restore the credential, remove the sandbox database, put the membership
+    set back through the recorded grantor and drop the sandbox roles, then
+    re-check the verifier, the membership set and the credential login.
+    Nothing is swallowed and nothing is left to process exit or to a
+    DROP ROLE side effect: every cleanup and every check appends to
+    teardown_errors, and any entry fails the module as an ERROR."""
     server = _SandboxServer()
     suffix = uuid.uuid4().hex[:8]
     mig_role, app_role = "mpango_migrate_" + suffix, "mpango_app_" + suffix
@@ -227,6 +263,8 @@ def five_stage_database():
     original_verifier = _MISSING_VERIFIER
     original_membership = []
     original_dsn = os.environ.get("REPORTING_DATABASE_URL") or None
+    credential_login = "NOT_APPLICABLE_ROLE_ABSENT"
+    credential_login_proven = False
     try:
         # ---- pre-state: three independent facts about the shared login ---
         capture_conn = _admin_connect(server.admin_db_url("postgres"))
@@ -242,12 +280,30 @@ def five_stage_database():
         finally:
             capture_conn.rollback()
             capture_conn.close()
-        original_credential = _connection_outcome(
-            host=server.parsed.hostname, port=server.parsed.port or 5432,
-            dbname="postgres", user=_REPORTING_MEMBER,
-            password=(original_verifier if original_role_exists else "") or "")
-        original_dsn_outcome = (_connection_outcome(dsn=original_dsn)
-                                if original_dsn else None)
+        # ---- credential proof, strictly BEFORE any write ----------------
+        if original_role_exists:
+            if original_dsn is None:
+                pytest.fail(
+                    "five_stage_database: reporting_user exists but "
+                    "REPORTING_DATABASE_URL is not set, so the original "
+                    "reporting credential cannot be proven before the "
+                    "fixture writes anything")
+            dsn_identity = _dsn_login_identity(original_dsn)
+            if dsn_identity != _REPORTING_MEMBER:
+                pytest.fail(
+                    "five_stage_database: REPORTING_DATABASE_URL "
+                    f"authenticates as {dsn_identity!r}, not "
+                    f"{_REPORTING_MEMBER!r}, so it does not prove the "
+                    "reporting credential")
+            original_dsn_outcome = _probe_dsn(original_dsn)
+            if original_dsn_outcome != "ok":
+                pytest.fail(
+                    "five_stage_database: the REPORTING_DATABASE_URL login "
+                    f"FAILED before any write ({original_dsn_outcome}); "
+                    "refusing to run, because a fixture that cannot prove "
+                    "the original credential cannot prove it restored it")
+            credential_login = "PROVEN_BEFORE_WRITE"
+            credential_login_proven = True
         # phase 1: provision (admin) - the sandbox database does NOT
         # pre-exist; the product creates it owned by the migration authority
         result = _run_provisioner(["--provision"], env)
@@ -310,7 +366,8 @@ def five_stage_database():
                "server": server, "reporting_url": reporting_url,
                "original_role_exists": original_role_exists,
                "original_verifier": original_verifier,
-               "original_membership": original_membership}
+               "original_membership": original_membership,
+               "credential_login": credential_login}
     finally:
         teardown_errors = []
         # (1) restore the credential of the shared login.  An absent role
@@ -419,33 +476,18 @@ def five_stage_database():
         except Exception as exc:
             teardown_errors.append(
                 f"membership check: {type(exc).__name__}: {exc}")
-        # (5) original-credential connection check on a fresh connection.
-        #     The environment's own reporting DSN is the pre-fixture
-        #     credential connection; when libpq cannot even parse it the
-        #     check could not be performed, which is a failure of the
-        #     check itself and never a silent pass.
+        # (5) credential login check.  Only a login PROVEN before the
+        #     fixture's first write is re-proven here; when the role was
+        #     absent pre-fixture the fixture claims catalog-absence
+        #     restoration only and deliberately makes no login claim.
         try:
-            if original_dsn_outcome == "ProgrammingError":
-                teardown_errors.append(
-                    "original-credential connection: the environment "
-                    "reporting DSN is not parseable by libpq, so the "
-                    "connection check could not be performed")
-            outcome = _connection_outcome(
-                host=server.parsed.hostname, port=server.parsed.port or 5432,
-                dbname="postgres", user=_REPORTING_MEMBER,
-                password=(original_verifier
-                          if original_role_exists else "") or "")
-            if outcome != original_credential:
-                teardown_errors.append(
-                    "original-credential connection: authentication outcome "
-                    f"changed (pre={original_credential} post={outcome})")
-            if original_dsn_outcome is not None:
-                dsn_outcome = _connection_outcome(dsn=original_dsn)
-                if dsn_outcome != original_dsn_outcome:
+            if credential_login_proven:
+                dsn_outcome = _probe_dsn(original_dsn)
+                if dsn_outcome != "ok":
                     teardown_errors.append(
-                        "original-credential connection: "
-                        "REPORTING_DATABASE_URL outcome changed "
-                        f"(pre={original_dsn_outcome} post={dsn_outcome})")
+                        "original-credential connection: the environment "
+                        "reporting DSN does not authenticate after teardown "
+                        f"({dsn_outcome}), but it did before any write")
         except Exception as exc:
             teardown_errors.append(
                 f"original-credential connection: "

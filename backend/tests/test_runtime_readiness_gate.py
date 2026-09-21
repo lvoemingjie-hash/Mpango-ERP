@@ -39,6 +39,9 @@ ENTRYPOINT = BACKEND_DIR / "docker-entrypoint.sh"
 GATE = BACKEND_DIR / "scripts" / "runtime_readiness_gate.py"
 
 
+_MISSING_VERIFIER = object()  # sentinel: verifier not yet captured
+
+
 def _load_helper():
     spec = importlib.util.spec_from_file_location("r1r4_gate", GATE)
     assert spec is not None and spec.loader is not None
@@ -102,7 +105,15 @@ def test_gate_refuses_database_without_completed_setup():
 def five_stage_database():
     """A disposable database that has completed the product five-stage
     sequence: provision -> alembic 001..039 -> grants -> verify -> runtime
-    bootstrap of the default tenant."""
+    bootstrap of the default tenant.
+
+    R1-R5-R1-R1 credential isolation (CTO-AUTH-ORDER-R2-DBAUTH-
+    R1R5R1R1-REPORTING-CREDENTIAL-FIXTURE-ISOLATION-2026-09-21): the
+    shared cluster role reporting_user has its password verifier captured
+    BEFORE this fixture touches it, and the exact verifier (or NULL) is
+    restored unconditionally on a fresh admin connection in teardown, then
+    verified byte-equal on a second fresh connection.  Every teardown step
+    fails the module explicitly on error - nothing is swallowed."""
     server = _SandboxServer()
     suffix = uuid.uuid4().hex[:8]
     mig_role, app_role = "mpango_migrate_" + suffix, "mpango_app_" + suffix
@@ -115,52 +126,136 @@ def five_stage_database():
     assert result.returncode == 0, result.stderr
     mig_url = server.url_for(db=sandbox_db, user=mig_role, password=mig_pw)
     app_url = server.url_for(db=sandbox_db, user=app_role, password=app_pw)
-    # cluster-global role accommodation (test-env only; documented in the
-    # combined-contract suite)
-    conn = server.conn()
-    with conn.cursor() as cur:
-        for role in ("reporting_role", "reporting_user"):
-            cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
-            if cur.fetchone():
-                cur.execute("GRANT " + role + " TO " + mig_role +
-                            " WITH ADMIN OPTION")
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=BACKEND_DIR, capture_output=True, text=True, timeout=600,
-        env={**os.environ, "DATABASE_URL": mig_url,
-             "REPORTING_USER_PASSWORD": ctx_reporting,
-             "MPANGO_ENV": "test"})
-    assert result.returncode == 0, result.stderr[-2000:]
-    result = _run_provisioner(["--apply-grants"], env)
-    assert result.returncode == 0, result.stderr
-    result = _run_provisioner(["--verify"], env)
-    assert result.returncode == 0, result.stderr
-    # R1-R7 cluster-global reporting_user password accommodation (test-env
-    # only, same documented pattern as the migrate/app role grants): align
-    # the shared login with THIS sandbox's migration-time secret so the
-    # readiness reporting probe is deterministic across module runs.
-    with conn.cursor() as cur:
-        cur.execute("ALTER ROLE reporting_user WITH PASSWORD %s",
-                    (ctx_reporting,))
-        conn.commit()
-    reporting_url = server.url_for(db=sandbox_db, user="reporting_user",
-                                   password=ctx_reporting)
-    # phase 5: runtime bootstrap of the default tenant
-    result = subprocess.run(
-        [sys.executable, "scripts/bootstrap_tenant_schema.py", "t_dev"],
-        cwd=BACKEND_DIR, capture_output=True, text=True, timeout=300,
-        env={**os.environ, "DATABASE_URL": app_url, "MPANGO_ENV": "test",
-             "SECRET_KEY": ctx_gate})
-    assert result.returncode == 0, result.stderr[-2000:]
-    yield {"app_url": app_url, "mig_url": mig_url, "db": sandbox_db,
-           "server": server, "reporting_url": reporting_url}
+    original_verifier = _MISSING_VERIFIER
     try:
-        server.drop_db(sandbox_db)
-        server.drop_role(app_role)
-        server.drop_role(mig_role)
-    except Exception:
-        pass
-
+        # capture the pre-test verifier on a DEDICATED initial connection,
+        # explicitly rolled back and closed (reads only; nothing to commit)
+        capture = _admin_connect(server.admin_db_url("postgres"))
+        try:
+            with capture.cursor() as cur:
+                cur.execute("SELECT rolpassword FROM pg_authid "
+                            "WHERE rolname = 'reporting_user'")
+                row = cur.fetchone()
+                original_verifier = row[0] if row else None
+        finally:
+            capture.rollback()
+            capture.close()
+        # cluster-global role accommodation (test-env only; documented in the
+        # combined-contract suite)
+        conn = server.conn()
+        with conn.cursor() as cur:
+            for role in ("reporting_role", "reporting_user"):
+                cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
+                if cur.fetchone():
+                    cur.execute("GRANT " + role + " TO " + mig_role +
+                                " WITH ADMIN OPTION")
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            cwd=BACKEND_DIR, capture_output=True, text=True, timeout=600,
+            env={**os.environ, "DATABASE_URL": mig_url,
+                 "REPORTING_USER_PASSWORD": ctx_reporting,
+                 "MPANGO_ENV": "test"})
+        assert result.returncode == 0, result.stderr[-2000:]
+        result = _run_provisioner(["--apply-grants"], env)
+        assert result.returncode == 0, result.stderr
+        result = _run_provisioner(["--verify"], env)
+        assert result.returncode == 0, result.stderr
+        # R1-R7 cluster-global reporting_user password accommodation (test-env
+        # only, same documented pattern as the migrate/app role grants): align
+        # the shared login with THIS sandbox's migration-time secret so the
+        # readiness reporting probe is deterministic across module runs.
+        with conn.cursor() as cur:
+            cur.execute("ALTER ROLE reporting_user WITH PASSWORD %s",
+                        (ctx_reporting,))
+            conn.commit()
+        reporting_url = server.url_for(db=sandbox_db, user="reporting_user",
+                                       password=ctx_reporting)
+        # phase 5: runtime bootstrap of the default tenant
+        result = subprocess.run(
+            [sys.executable, "scripts/bootstrap_tenant_schema.py", "t_dev"],
+            cwd=BACKEND_DIR, capture_output=True, text=True, timeout=300,
+            env={**os.environ, "DATABASE_URL": app_url, "MPANGO_ENV": "test",
+                 "SECRET_KEY": ctx_gate})
+        assert result.returncode == 0, result.stderr[-2000:]
+        yield {"app_url": app_url, "mig_url": mig_url, "db": sandbox_db,
+               "server": server, "reporting_url": reporting_url}
+    finally:
+        teardown_errors = []
+        # (a) credential restore on a FRESH connection - runs on all three
+        # paths (setup success, setup failure, test failure)
+        if original_verifier is not _MISSING_VERIFIER:
+            try:
+                restore = _admin_connect(server.admin_db_url("postgres"))
+                try:
+                    with restore.cursor() as cur:
+                        if original_verifier is None:
+                            cur.execute("ALTER ROLE reporting_user "
+                                        "WITH PASSWORD NULL")
+                        else:
+                            cur.execute("ALTER ROLE reporting_user "
+                                        "WITH PASSWORD %s",
+                                        (original_verifier,))
+                    restore.commit()
+                finally:
+                    restore.rollback()
+                    restore.close()
+            except Exception as exc:
+                teardown_errors.append(
+                    "reporting_user verifier restore failed: "
+                    f"{type(exc).__name__}: {exc}")
+        # (b) byte-equal verification on a SECOND fresh connection
+        if original_verifier is not _MISSING_VERIFIER:
+            try:
+                verify = _admin_connect(server.admin_db_url("postgres"))
+                try:
+                    with verify.cursor() as cur:
+                        cur.execute("SELECT rolpassword FROM pg_authid "
+                                    "WHERE rolname = 'reporting_user'")
+                        row = cur.fetchone()
+                        current = row[0] if row else None
+                finally:
+                    verify.rollback()
+                    verify.close()
+                if current != original_verifier:
+                    teardown_errors.append(
+                        "reporting_user verifier is not byte-equal to the "
+                        "captured pre-test state")
+            except Exception as exc:
+                teardown_errors.append(
+                    "reporting_user verifier verification failed: "
+                    f"{type(exc).__name__}: {exc}")
+        # (c) revoke the cluster accommodation membership granted by the
+        #     sandbox migrate role (migration 011 grants reporting_role to
+        #     reporting_user), then drop sandbox database and roles -
+        #     explicit failures only
+        try:
+            cleanup = _admin_connect(server.admin_db_url("postgres"))
+            try:
+                with cleanup.cursor() as cur:
+                    cur.execute("REVOKE reporting_role FROM reporting_user")
+            finally:
+                cleanup.rollback()
+                cleanup.close()
+        except Exception as exc:
+            teardown_errors.append(
+                "cluster accommodation membership revoke failed: "
+                f"{type(exc).__name__}: {exc}")
+        try:
+            server.drop_db(sandbox_db)
+        except Exception as exc:
+            teardown_errors.append(
+                f"sandbox database drop failed: "
+                f"{type(exc).__name__}: {exc}")
+        for role in (app_role, mig_role):
+            try:
+                server.drop_role(role)
+            except Exception as exc:
+                teardown_errors.append(
+                    f"sandbox role {role} drop failed: "
+                    f"{type(exc).__name__}: {exc}")
+        if teardown_errors:
+            pytest.fail("five_stage_database teardown failed: "
+                        + " | ".join(teardown_errors))
 
 @_requires_temp_db
 def test_gate_refuses_missing_tenant_bootstrap_state(five_stage_database):

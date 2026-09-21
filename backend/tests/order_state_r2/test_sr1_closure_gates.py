@@ -1157,14 +1157,117 @@ async def test_sr1_f4_soft_deleted_invalid_row_is_not_history(
         await _set_method_check(db, schema, present=True)
 
 
-def test_sr1_f4_039_preflight_rejects_non_finite_amounts():
-    """SR1-F4 (migration, real alembic on a disposable PG16 database):
-    Numeric NaN, Infinity AND -Infinity in effective payment history are
-    each refused by the 039 preflight with the named invalid-history
-    message and zero writes."""
-    import os as _os
-    if _os.environ.get("MPANGO_ALLOW_TEMP_DB_CREATE") != "1":
-        pytest.skip("set MPANGO_ALLOW_TEMP_DB_CREATE=1 for migration tests")
+def _r2f_admin_url(source: str) -> str:
+    """The maintenance-database URL carrying the same credentials as
+    TEST_DATABASE_URL: the shared reporting pre-state is cluster-global and
+    is read and restored through the maintenance database."""
+    from urllib.parse import urlsplit
+
+    return urlsplit(source)._replace(path="/postgres").geturl()
+
+
+def _r2f_connect(admin_url: str):
+    import psycopg2
+
+    conn = psycopg2.connect(admin_url)
+    conn.autocommit = True
+    return conn
+
+
+def _r2f_rpt_state(conn):
+    """The accepted R2E capture semantics, reused deliberately rather than
+    copied: a second implementation of the same restore rules would be free
+    to drift from the one that was reviewed.  Test-only helper; no product
+    code is involved."""
+    from tests.test_combined_setup_authority_contract import _rpt_state
+
+    return _rpt_state(conn)
+
+
+def _r2f_restore_role(cur, name, prestate):
+    from tests.test_combined_setup_authority_contract import _rpt_restore_role
+
+    return _rpt_restore_role(cur, name, prestate)
+
+
+def _r2f_restore_reporting(admin_url, prestate, errors):
+    """Unconditionally restore the cluster-global reporting identity and
+    verify it.
+
+    Called only AFTER the disposable database has been dropped: while it
+    still exists the shared login holds privileges inside it and DROP ROLE
+    cannot succeed.  Membership corrections go through the RECORDED grantor
+    with explicit ADMIN/INHERIT/SET options.  Every failure is collected -
+    nothing is swallowed - and the verification re-reads the state on a
+    fresh connection and compares it item by item."""
+    def step(label, fn):
+        try:
+            conn = _r2f_connect(admin_url)
+            try:
+                with conn.cursor() as cur:
+                    return fn(cur)
+            finally:
+                conn.close()
+        except Exception as exc:
+            errors.append(f"{label}: {type(exc).__name__}: {exc}")
+            return None
+
+    def _membership(cur):
+        from tests.test_combined_setup_authority_contract import (
+            _RPT_CONTAINER,
+            _RPT_MEMBER,
+            _rpt_reconcile_membership,
+        )
+
+        executed = _rpt_reconcile_membership(
+            cur, _RPT_MEMBER, _RPT_CONTAINER, prestate["membership"])
+        return ("membership already exact" if not executed
+                else "; ".join(executed))
+
+    step("membership restore", _membership)
+    step("reporting_user restore",
+         lambda cur: _r2f_restore_role(
+             cur, "reporting_user", prestate["roles"]["reporting_user"]))
+    step("reporting_role restore",
+         lambda cur: _r2f_restore_role(
+             cur, "reporting_role", prestate["roles"]["reporting_role"]))
+
+    try:
+        conn = _r2f_connect(admin_url)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT rolname FROM pg_roles WHERE rolname LIKE "
+                    "'mpango_migrate_%' OR rolname LIKE 'mpango_app_%' "
+                    "ORDER BY 1")
+                roles = [r[0] for r in cur.fetchall()]
+                cur.execute(
+                    "SELECT datname FROM pg_database WHERE datname LIKE "
+                    "'%r2sr1f4%' ORDER BY 1")
+                databases = [r[0] for r in cur.fetchall()]
+            observed = _r2f_rpt_state(conn)
+        finally:
+            conn.close()
+        if roles:
+            errors.append("sandbox role residue remains: " + ", ".join(roles))
+        if databases:
+            errors.append("temporary database residue remains: "
+                          + ", ".join(databases))
+        if observed != prestate:
+            errors.append(
+                "reporting identity is not item-by-item equal to the "
+                f"pre-state (pre={prestate!r} post={observed!r})")
+    except Exception as exc:
+        errors.append(
+            f"post-teardown verification: {type(exc).__name__}: {exc}")
+
+
+def _sr1f4_039_body(source: str) -> None:
+    """The 039 preflight exercise.
+
+    The body is unchanged from the revision before R2F; it is only moved out
+    of the test so the test itself can own an unconditional restore boundary
+    around it, covering the whole disposable-database lifetime."""
     import importlib.util
     import os
 
@@ -1180,7 +1283,6 @@ def test_sr1_f4_039_preflight_rejects_non_finite_amounts():
         _register_tenant,
     )
 
-    source = os.environ["TEST_DATABASE_URL"]
     with temporary_database_url(source, "r2sr1f4") as db_url:
         engine = _engine(db_url)
         cfg = Config("alembic.ini")
@@ -1248,6 +1350,56 @@ def test_sr1_f4_039_preflight_rejects_non_finite_amounts():
             with engine.begin() as conn:
                 conn.execute(text(
                     f'DELETE FROM "{schema}".payments'))
+
+def test_sr1_f4_039_preflight_rejects_non_finite_amounts():
+    """SR1-F4 (migration, real alembic on a disposable PG16 database):
+    Numeric NaN, Infinity AND -Infinity in effective payment history are
+    each refused by the 039 preflight with the named invalid-history
+    message and zero writes.
+
+    R2F (CTO-AUTH-ORDER-R2-DBAUTH-R2F-SR1F4-REPORTING-STATE-ISOLATION-
+    2026-09-21): the alembic run executes as the administrator named by
+    TEST_DATABASE_URL, so migration 011 creates the CLUSTER-GLOBAL
+    reporting_role and reporting_user when they are absent - with the
+    running session as the membership grantor.  The shared pre-state is
+    therefore captured read-only BEFORE the temporary database is created,
+    and an unconditional restore puts it back AFTER the temporary database
+    has been dropped: an absent pre-state is restored as absence, an
+    existing identity item by item.  A body failure and a restore failure
+    are both surfaced, never one at the cost of the other."""
+    import os
+
+    if os.environ.get("MPANGO_ALLOW_TEMP_DB_CREATE") != "1":
+        pytest.skip("set MPANGO_ALLOW_TEMP_DB_CREATE=1 for migration tests")
+
+    source = os.environ["TEST_DATABASE_URL"]
+    admin_url = _r2f_admin_url(source)
+    prestate_conn = _r2f_connect(admin_url)
+    try:
+        prestate = _r2f_rpt_state(prestate_conn)
+    finally:
+        prestate_conn.close()
+
+    body_error = None
+    try:
+        _sr1f4_039_body(source)
+    except Exception as exc:
+        body_error = exc
+
+    restore_errors = []
+    _r2f_restore_reporting(admin_url, prestate, restore_errors)
+    if restore_errors:
+        detail = " | ".join(restore_errors)
+        if body_error is not None:
+            raise AssertionError(
+                "SR1-F4[039] reporting-state restore FAILED after a body "
+                f"failure - both errors visible: body={body_error!r}; "
+                f"restore={detail}") from body_error
+        raise AssertionError(
+            "SR1-F4[039] reporting-state restore FAILED (fail-closed): "
+            + detail)
+    if body_error is not None:
+        raise body_error
 
 
 # ---------------------------------------------------------------------------

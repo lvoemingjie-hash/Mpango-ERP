@@ -31,6 +31,8 @@ from tests.test_combined_setup_authority_contract import (
     _SandboxServer,
     _admin_connect,
     _requires_temp_db,
+    _rpt_restore_role,
+    _rpt_state,
     _run_provisioner,
     _scenario_env,
 )
@@ -254,14 +256,20 @@ def five_stage_database():
     because an omitted option keeps its current value and would leave an
     existing ADMIN TRUE in place.
 
-    TEARDOWN runs in a fixed order, every step on its own fresh admin
-    connection that is explicitly committed, rolled back and closed:
-    restore the credential, remove the sandbox database, put the membership
-    set back through the recorded grantor and drop the sandbox roles, then
-    re-check the verifier, the membership set and the credential login.
-    Nothing is swallowed and nothing is left to process exit or to a
-    DROP ROLE side effect: every cleanup and every check appends to
-    teardown_errors, and any entry fails the module as an ERROR."""
+    R2G fixture-state conservation (CTO-AUTH-ORDER-R2-DBAUTH-R2G-GATE-
+    FIXTURE-REPORTING-ROLE-CONSERVATION-2026-09-21): the pre-state covers
+    BOTH reporting roles - each one's existence, verifier, rolconfig and
+    attributes - plus the complete membership set with grantors and
+    options.  TEARDOWN runs in a fixed order, every step on its own fresh
+    admin connection that is explicitly committed, rolled back and closed:
+    remove the sandbox database, put the membership set back through the
+    recorded grantor, restore each reporting role from its OWN pre-state,
+    drop the task roles last, and then verify item by item on a fresh
+    connection.  The container role is therefore never dropped merely
+    because the login was absent.  Nothing is swallowed and nothing is left
+    to process exit or to a DROP ROLE side effect: every cleanup and every
+    check appends to teardown_errors, and any entry fails the module as an
+    ERROR."""
     server = _SandboxServer()
     suffix = uuid.uuid4().hex[:8]
     mig_role, app_role = "mpango_migrate_" + suffix, "mpango_app_" + suffix
@@ -281,17 +289,16 @@ def five_stage_database():
     # cannot commit an ALTER, DROP, GRANT, REVOKE or pg_terminate_backend.
     capture_conn = _admin_connect(server.admin_db_url("postgres"))
     try:
-        with capture_conn.cursor() as cur:
-            cur.execute("SELECT rolpassword FROM pg_authid "
-                        "WHERE rolname = %s", (_REPORTING_MEMBER,))
-            row = cur.fetchone()
-            original_role_exists = row is not None
-            if original_role_exists:
-                original_verifier = row[0]
-            original_membership = _snapshot_membership(cur)
+        original_prestate = _rpt_state(capture_conn)
     finally:
         capture_conn.rollback()
         capture_conn.close()
+    original_role_exists = (
+        original_prestate["roles"][_REPORTING_MEMBER] is not None)
+    original_verifier = original_prestate["roles"][
+        _REPORTING_MEMBER][0] if original_role_exists else \
+        _MISSING_VERIFIER
+    original_membership = original_prestate["membership"]
     if original_role_exists:
         if original_dsn is None:
             pytest.fail(
@@ -382,29 +389,16 @@ def five_stage_database():
                "credential_login": credential_login}
     finally:
         teardown_errors = []
-        # (1) restore the credential of the shared login.  An absent role
-        #     stays absent - removing it belongs to step (2b), after the
-        #     sandbox objects that depend on it are gone.
-        try:
-            cred_conn = _admin_connect(server.admin_db_url("postgres"))
-            try:
-                with cred_conn.cursor() as cur:
-                    if original_role_exists:
-                        if original_verifier is None:
-                            cur.execute("ALTER ROLE reporting_user "
-                                        "WITH PASSWORD NULL")
-                        else:
-                            cur.execute("ALTER ROLE reporting_user "
-                                        "WITH PASSWORD %s",
-                                        (original_verifier,))
-                cred_conn.commit()
-            finally:
-                cred_conn.rollback()
-                cred_conn.close()
-        except Exception as exc:
-            teardown_errors.append(
-                f"credential restore: {type(exc).__name__}: {exc}")
-        # (2a) remove the sandbox database
+        # R2G (CTO-AUTH-ORDER-R2-DBAUTH-R2G-GATE-FIXTURE-REPORTING-ROLE-
+        # CONSERVATION-2026-09-21): fixed order, each step on its own fresh
+        # admin connection that is explicitly committed, rolled back and
+        # closed.  BOTH reporting roles are restored from their OWN captured
+        # pre-state - an absent role stays absent, an existing one gets its
+        # verifier, its rolconfig and its attributes back - so the container
+        # role is never dropped merely because the login happened to be
+        # absent.  Nothing is swallowed.
+        # (1) remove the sandbox database first: while it exists the shared
+        #     login holds privileges inside it and DROP ROLE cannot succeed.
         try:
             db_conn = _admin_connect(server.admin_db_url("postgres"))
             try:
@@ -421,75 +415,93 @@ def five_stage_database():
         except Exception as exc:
             teardown_errors.append(
                 f"sandbox database drop: {type(exc).__name__}: {exc}")
-        # (2b) put the membership set back through the recorded grantor and
-        #      drop every role this fixture created.  The migration records
-        #      its own grant against THIS run's migration authority, so the
-        #      grantor-aware revoke has to happen before that role can be
-        #      dropped at all.
+        # (2) put the membership set back through the RECORDED grantor.  The
+        #     migration records its own grant against THIS run's migration
+        #     authority, so this also releases that role from the grantor
+        #     dependency that would otherwise make DROP ROLE fail.
         try:
-            role_conn = _admin_connect(server.admin_db_url("postgres"))
+            member_conn = _admin_connect(server.admin_db_url("postgres"))
             try:
-                with role_conn.cursor() as cur:
+                with member_conn.cursor() as cur:
                     _reconcile_membership(cur, _REPORTING_MEMBER,
                                           _REPORTING_CONTAINER,
-                                          original_membership)
-                    if not original_role_exists:
-                        cur.execute('DROP ROLE IF EXISTS "reporting_user"')
+                                          original_prestate["membership"])
+                member_conn.commit()
+            finally:
+                member_conn.rollback()
+                member_conn.close()
+        except Exception as exc:
+            teardown_errors.append(
+                f"membership restore: {type(exc).__name__}: {exc}")
+        # (3)+(4) restore each reporting role from its OWN pre-state, the
+        #         login first and then the container.
+        for label, name in (("reporting_user restore", _REPORTING_MEMBER),
+                            ("reporting_role restore", _REPORTING_CONTAINER)):
+            try:
+                role_conn = _admin_connect(server.admin_db_url("postgres"))
+                try:
+                    with role_conn.cursor() as cur:
+                        _rpt_restore_role(
+                            cur, name, original_prestate["roles"][name])
+                    role_conn.commit()
+                finally:
+                    role_conn.rollback()
+                    role_conn.close()
+            except Exception as exc:
+                teardown_errors.append(
+                    f"{label}: {type(exc).__name__}: {exc}")
+        # (5) only now drop the task roles this fixture created
+        try:
+            task_conn = _admin_connect(server.admin_db_url("postgres"))
+            try:
+                with task_conn.cursor() as cur:
                     for role in (app_role, mig_role):
                         cur.execute(f'DROP ROLE IF EXISTS "{role}"')
-                role_conn.commit()
+                task_conn.commit()
             finally:
-                role_conn.rollback()
-                role_conn.close()
+                task_conn.rollback()
+                task_conn.close()
         except Exception as exc:
             teardown_errors.append(
-                f"sandbox role cleanup: {type(exc).__name__}: {exc}")
-        # (3) verifier check on a fresh connection: existence AND verifier
+                f"sandbox app/migrate role drop: {type(exc).__name__}: {exc}")
+        # (6) item-by-item verification on a fresh connection: both roles'
+        #     full state and the membership set against the captured
+        #     pre-state, plus cluster-wide task-role residue.  A verifier is
+        #     compared, never printed.
         try:
-            check_conn = _admin_connect(server.admin_db_url("postgres"))
+            verify_conn = _admin_connect(server.admin_db_url("postgres"))
             try:
-                with check_conn.cursor() as cur:
-                    cur.execute("SELECT rolpassword FROM pg_authid "
-                                "WHERE rolname = %s", (_REPORTING_MEMBER,))
-                    verified_row = cur.fetchone()
+                observed = _rpt_state(verify_conn)
+                with verify_conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT rolname FROM pg_roles WHERE rolname LIKE "
+                        "'mpango_migrate_%' OR rolname LIKE 'mpango_app_%' "
+                        "ORDER BY 1")
+                    residue = [r[0] for r in cur.fetchall()]
             finally:
-                check_conn.rollback()
-                check_conn.close()
-            if not original_role_exists and verified_row is not None:
+                verify_conn.rollback()
+                verify_conn.close()
+            for name in (_REPORTING_MEMBER, _REPORTING_CONTAINER):
+                if observed["roles"][name] != original_prestate["roles"][name]:
+                    teardown_errors.append(
+                        f"{name} state is not item-by-item equal to the "
+                        f"pre-state (existed_before="
+                        f"{original_prestate['roles'][name] is not None}, "
+                        f"exists_after={observed['roles'][name] is not None}, "
+                        "verifier/rolconfig/attributes differ)")
+            if observed["membership"] != original_prestate["membership"]:
                 teardown_errors.append(
-                    "verifier check: reporting_user still exists but the "
-                    "role was absent before the fixture ran")
-            elif original_role_exists and verified_row is None:
+                    "membership state is not item-by-item equal to the "
+                    f"pre-state (pre={original_prestate['membership']!r} "
+                    f"post={observed['membership']!r})")
+            if residue:
                 teardown_errors.append(
-                    "verifier check: reporting_user is missing but the role "
-                    "existed before the fixture ran")
-            elif original_role_exists and verified_row[0] != original_verifier:
-                teardown_errors.append(
-                    "verifier check: reporting_user verifier is not "
-                    "byte-equal to the captured pre-fixture state")
+                    "task role residue remains: " + ", ".join(residue))
         except Exception as exc:
             teardown_errors.append(
-                f"verifier check: {type(exc).__name__}: {exc}")
-        # (4) membership check on a fresh connection: read-only catalog
-        try:
-            set_conn = _admin_connect(server.admin_db_url("postgres"))
-            try:
-                with set_conn.cursor() as cur:
-                    restored_membership = _snapshot_membership(cur)
-            finally:
-                set_conn.rollback()
-                set_conn.close()
-            if restored_membership != original_membership:
-                teardown_errors.append(
-                    "membership check: the reporting_user <- reporting_role "
-                    "membership rows are not identical to the pre-fixture "
-                    f"state (pre={original_membership} "
-                    f"post={restored_membership})")
-        except Exception as exc:
-            teardown_errors.append(
-                f"membership check: {type(exc).__name__}: {exc}")
-        # (5) credential login check.  Only a login PROVEN before the
-        #     fixture's first write is re-proven here; when the role was
+                f"item-by-item verification: {type(exc).__name__}: {exc}")
+        # (7) credential login check.  Only a login PROVEN before the
+        #     fixture's first write is re-proven here; when the login was
         #     absent pre-fixture the fixture claims catalog-absence
         #     restoration only and deliberately makes no login claim.
         try:

@@ -100,16 +100,31 @@ def _reconcile_membership(cur, member, role, wanted):
     return executed
 
 
-def _connection_outcome(**kwargs):
+def _libpq_dsn(dsn: str) -> str:
+    """A SQLAlchemy-style URL ('postgresql+asyncpg://...') is normalised to
+    the plain form psycopg2/libpq accepts.  Without this the probe never
+    reaches the server at all and would compare two client-side parse
+    errors as if they were equal outcomes."""
+    scheme, sep, rest = dsn.partition("://")
+    if sep and "+" in scheme:
+        return scheme.split("+", 1)[0] + sep + rest
+    return dsn
+
+
+def _connection_outcome(dsn=None, **kwargs):
     """Normalised outcome of a REAL authentication attempt.
 
     A SCRAM verifier cannot be inverted to its plaintext, so the captured
     verifier is the only surviving representation of the original
     credential; replaying it before and after the fixture and comparing
     the outcomes makes any role drop, rename or verifier change observable
-    at the connection level."""
+    at the connection level.  A client-side failure is reported as its own
+    exception class, so a DSN that libpq cannot even parse stays visible
+    instead of being silently treated as an unchanged outcome."""
     import psycopg2
 
+    if dsn is not None:
+        kwargs["dsn"] = _libpq_dsn(dsn)
     try:
         conn = psycopg2.connect(connect_timeout=10, **kwargs)
     except Exception as exc:
@@ -404,8 +419,17 @@ def five_stage_database():
         except Exception as exc:
             teardown_errors.append(
                 f"membership check: {type(exc).__name__}: {exc}")
-        # (5) original-credential connection check on a fresh connection
+        # (5) original-credential connection check on a fresh connection.
+        #     The environment's own reporting DSN is the pre-fixture
+        #     credential connection; when libpq cannot even parse it the
+        #     check could not be performed, which is a failure of the
+        #     check itself and never a silent pass.
         try:
+            if original_dsn_outcome == "ProgrammingError":
+                teardown_errors.append(
+                    "original-credential connection: the environment "
+                    "reporting DSN is not parseable by libpq, so the "
+                    "connection check could not be performed")
             outcome = _connection_outcome(
                 host=server.parsed.hostname, port=server.parsed.port or 5432,
                 dbname="postgres", user=_REPORTING_MEMBER,

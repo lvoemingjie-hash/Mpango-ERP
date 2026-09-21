@@ -374,27 +374,130 @@ def test_gate_refuses_wrong_reporting_database(five_stage_database, monkeypatch)
 @_requires_temp_db
 def test_gate_refuses_missing_reporting_role_membership(
         five_stage_database, monkeypatch):
+    """R1-R7-R2-R1 grantor-aware closure (CTO-AUTH-ORDER-R2-DBAUTH-
+    R1R7R2R1-PG16-GRANTOR-TEST-CLOSURE-2026-09-21): PostgreSQL 16 records
+    role-membership grants per grantor in pg_auth_members; a plain
+    administrator REVOKE does not remove a membership granted by the
+    migration authority.  This test (1) reproduces that R4 behavior,
+    (2) reads and saves the membership's full catalog facts before any
+    write, (3) revokes through the recorded grantor, (4) asserts both
+    post-revoke preconditions before touching the gate, (5) requires the
+    named gate refusal, and (6/7) restores the exact original grant and
+    options in an exception-safe finally, then verifies the catalog
+    snapshot and pg_has_role on a fresh connection."""
+    from psycopg2 import sql as pg_sql
+
     monkeypatch.setenv("REPORTING_DATABASE_URL",
                        five_stage_database["reporting_url"])
     admin = _admin_connect(five_stage_database["server"]
                            .admin_db_url(five_stage_database["db"]))
+    member = "reporting_user"
+    role = "reporting_role"
+    facts = []
     try:
         with admin.cursor() as cur:
-            cur.execute("REVOKE reporting_role FROM reporting_user")
+            # (2) full catalog facts of the membership, saved before any write
+            cur.execute(
+                "SELECT g.grantor::regrole::text, g.admin_option, "
+                "g.inherit_option, g.set_option "
+                "FROM pg_auth_members g "
+                "JOIN pg_roles m ON m.oid = g.member "
+                "JOIN pg_roles r ON r.oid = g.roleid "
+                "WHERE m.rolname = %s AND r.rolname = %s",
+                (member, role))
+            facts = cur.fetchall()
+            assert facts, "expected the reporting_role membership to exist"
+            grantor = facts[0][0]
+            # (1) R4 reproduction: a plain administrator REVOKE does not
+            # remove the migration-granted membership on PostgreSQL 16
+            cur.execute(pg_sql.SQL("REVOKE {} FROM {}").format(
+                pg_sql.Identifier(role), pg_sql.Identifier(member)))
+            cur.execute("SELECT pg_has_role(%s, %s, 'MEMBER')",
+                        (member, role))
+            still_member = cur.fetchone()[0]
+            assert still_member, (
+                "R4 reproduction failed: the plain administrator REVOKE "
+                "unexpectedly removed the grantor-tracked membership")
         admin.commit()
+
+        # (3) grantor-aware revocation through the recorded grantor
+        with admin.cursor() as cur:
+            cur.execute(pg_sql.SQL("SET ROLE {}").format(
+                pg_sql.Identifier(grantor)))
+            cur.execute(pg_sql.SQL("REVOKE {} FROM {}").format(
+                pg_sql.Identifier(role), pg_sql.Identifier(member)))
+            cur.execute("RESET ROLE")
+            # (4) post-revoke preconditions: both must hold before the gate
+            # is invoked; otherwise fail immediately (no fabricated RED)
+            cur.execute(
+                "SELECT count(*) FROM pg_auth_members g "
+                "JOIN pg_roles m ON m.oid = g.member "
+                "JOIN pg_roles r ON r.oid = g.roleid "
+                "WHERE m.rolname = %s AND r.rolname = %s",
+                (member, role))
+            direct_rows = cur.fetchone()[0]
+            cur.execute("SELECT pg_has_role(%s, %s, 'MEMBER')",
+                        (member, role))
+            has_role = cur.fetchone()[0]
+        admin.commit()
+        assert direct_rows == 0 and not has_role, (
+            "post-revoke preconditions failed: direct_rows="
+            f"{direct_rows}, pg_has_role={has_role}")
+
+        # (5) the real gate must name the missing membership
+        helper = _load_helper()
+        reasons = helper.evaluate_contract(
+            five_stage_database["app_url"], "t_dev")
+        assert reasons and "lacks reporting_role membership" in reasons[-1], \
+            reasons
     finally:
-        admin.close()
-    helper = _load_helper()
-    reasons = helper.evaluate_contract(five_stage_database["app_url"], "t_dev")
+        if facts:
+            try:
+                grantor = facts[0][0]
+                with admin.cursor() as cur:
+                    # (6) restore the exact original grant and options via
+                    # the original grantor
+                    cur.execute(pg_sql.SQL("SET ROLE {}").format(
+                        pg_sql.Identifier(grantor)))
+                    restore = pg_sql.SQL("GRANT {} TO {}").format(
+                        pg_sql.Identifier(role), pg_sql.Identifier(member))
+                    # PostgreSQL 16.15 membership options are comma-separated
+                    # after a single WITH (verified live against PG16.15)
+                    option_parts = ["ADMIN OPTION" if facts[0][1] else None,
+                                    "INHERIT " + ("TRUE" if facts[0][2]
+                                                  else "FALSE"),
+                                    "SET " + ("TRUE" if facts[0][3]
+                                              else "FALSE")]
+                    option_sql = ", ".join(o for o in option_parts if o)
+                    if option_sql:
+                        restore += pg_sql.SQL(" WITH " + option_sql)
+                    cur.execute(restore)
+                    cur.execute("RESET ROLE")
+                admin.commit()
+            except Exception:
+                pass
+    # (7) post-restore verification on a fresh connection: the catalog
+    # snapshot must equal the pre-test facts and the membership must work
     admin = _admin_connect(five_stage_database["server"]
                            .admin_db_url(five_stage_database["db"]))
     try:
         with admin.cursor() as cur:
-            cur.execute("GRANT reporting_role TO reporting_user")
-        admin.commit()
+            cur.execute(
+                "SELECT g.grantor::regrole::text, g.admin_option, "
+                "g.inherit_option, g.set_option "
+                "FROM pg_auth_members g "
+                "JOIN pg_roles m ON m.oid = g.member "
+                "JOIN pg_roles r ON r.oid = g.roleid "
+                "WHERE m.rolname = %s AND r.rolname = %s",
+                (member, role))
+            restored = cur.fetchall()
+            assert restored == facts, (facts, restored)
+            cur.execute("SELECT pg_has_role(%s, %s, 'MEMBER')",
+                        (member, role))
+            assert cur.fetchone()[0] is True
     finally:
         admin.close()
-    assert reasons and "lacks reporting_role membership" in reasons[-1], reasons
+
 
 
 @_requires_temp_db

@@ -721,88 +721,166 @@ def test_gate_refuses_wrong_reporting_database(five_stage_database, monkeypatch)
 @_requires_temp_db
 def test_gate_refuses_missing_reporting_role_membership(
         five_stage_database, monkeypatch):
-    """R1-R7-R2-R1-R1 fail-closed restore closure (CTO-AUTH-ORDER-R2-DBAUTH-
-    R1R7R2R1-R1-FAIL-CLOSED-RESTORE-2026-09-21): PostgreSQL 16 records role
-    memberships per grantor in pg_auth_members, so a plain administrator
-    REVOKE does not remove a membership granted by the migration authority.
-    The test reproduces that R4 behavior, reads and saves the membership's
-    full catalog facts (grantor name resolved through pg_roles, never a
-    regrole::text cast), revokes through the recorded grantor, asserts both
-    post-revoke preconditions before touching the gate, and requires the
-    named gate refusal.  The precise restore and the catalog-snapshot
-    verification then run on an UNCONDITIONAL path with fresh admin
-    connections; no exception is ever swallowed - a restore failure
-    re-raises as an explicit failure (with the body error preserved and
-    visible when both fail), and a passing restore still re-raises any
-    body error."""
+    """R1-R7-R2-R1-R1 membership refusal, R2D isolation closure (CTO-AUTH-
+    ORDER-R2-DBAUTH-R2D-D-PARTITION-ISOLATION-2026-09-21).
+
+    Two independent parts, and neither may damage the shared canonical
+    reporting_user membership.
+
+    Part 1 - the PostgreSQL 16 R4 reproduction on TASK-SPECIFIC roles.  A
+    scratch container, a scratch grantor and a scratch member are created
+    for this invocation alone; the scratch grantor records the membership,
+    a plain administrator REVOKE is shown not to remove it, and every
+    scratch object is dropped in an unconditional finally.  The shared
+    reporting_user membership is never touched here, so this reproduction
+    can no longer fail on - or pollute - cluster state left by other
+    nodes: the precondition it depends on now belongs entirely to this
+    test.
+
+    Part 2 - the real gate refusal against the real reporting identity.
+    The precondition (the canonical membership exists) is checked while
+    still read-only, BEFORE any write.  The first membership write - the
+    grantor-aware revoke of the canonical grant - then happens inside the
+    try whose finally unconditionally restores the recorded facts through
+    the recorded grantor with explicit ADMIN/INHERIT/SET options and
+    verifies the restoration on a fresh connection.  A restore failure
+    raises even when the body passed (fail-closed), and a body error is
+    re-raised after a verified restore.  No membership write is ever
+    executed outside this boundary, so an assertion can no longer leave
+    the canonical membership revoked for the nodes that follow."""
     from psycopg2 import sql as pg_sql
 
     monkeypatch.setenv("REPORTING_DATABASE_URL",
                        five_stage_database["reporting_url"])
     server = five_stage_database["server"]
     admin_db_url = server.admin_db_url(five_stage_database["db"])
-    member = "reporting_user"
-    role = "reporting_role"
+    member = _REPORTING_MEMBER
+    role = _REPORTING_CONTAINER
 
-    def _membership_facts(cur):
-        cur.execute(
-            "SELECT grn.rolname, g.admin_option, g.inherit_option, "
-            "g.set_option "
-            "FROM pg_auth_members g "
-            "JOIN pg_roles m ON m.oid = g.member "
-            "JOIN pg_roles r ON r.oid = g.roleid "
-            "JOIN pg_roles grn ON grn.oid = g.grantor "
-            "WHERE m.rolname = %s AND r.rolname = %s",
-            (member, role))
-        return cur.fetchall()
-
-    # ---- phase A: catalog facts + R4 reproduction (connection 1) --------
-    facts = []
-    grantor = None
+    # ---- part 1: R4 reproduction on task-specific scratch roles --------
+    suffix = uuid.uuid4().hex[:8]
+    container = "r2d_probe_container_" + suffix
+    probe_grantor = "r2d_probe_grantor_" + suffix
+    probe_member = "r2d_probe_member_" + suffix
+    reproduced = None
+    setup_error = None
     conn = _admin_connect(admin_db_url)
     try:
         with conn.cursor() as cur:
-            facts = _membership_facts(cur)
-            assert facts, "expected the reporting_role membership to exist"
-            grantor = facts[0][0]
-            # R4 reproduction: the plain administrator REVOKE does not
-            # remove the migration-granted membership on PostgreSQL 16
+            cur.execute(pg_sql.SQL("CREATE ROLE {} NOLOGIN").format(
+                pg_sql.Identifier(container)))
+            cur.execute(pg_sql.SQL("CREATE ROLE {} NOLOGIN").format(
+                pg_sql.Identifier(probe_grantor)))
+            cur.execute(pg_sql.SQL("CREATE ROLE {} NOLOGIN").format(
+                pg_sql.Identifier(probe_member)))
+            cur.execute(pg_sql.SQL("GRANT {} TO {} WITH ADMIN OPTION").format(
+                pg_sql.Identifier(container),
+                pg_sql.Identifier(probe_grantor)))
+            cur.execute(pg_sql.SQL("SET ROLE {}").format(
+                pg_sql.Identifier(probe_grantor)))
+            cur.execute(pg_sql.SQL("GRANT {} TO {}").format(
+                pg_sql.Identifier(container), pg_sql.Identifier(probe_member)))
+            cur.execute("RESET ROLE")
+            # the R4 reproduction itself: a plain administrator REVOKE
+            # against a membership recorded by ANOTHER grantor
             cur.execute(pg_sql.SQL("REVOKE {} FROM {}").format(
-                pg_sql.Identifier(role), pg_sql.Identifier(member)))
+                pg_sql.Identifier(container),
+                pg_sql.Identifier(probe_member)))
             cur.execute("SELECT pg_has_role(%s, %s, 'MEMBER')",
-                        (member, role))
-            assert cur.fetchone()[0], (
-                "R4 reproduction failed: the plain administrator REVOKE "
-                "unexpectedly removed the grantor-tracked membership")
-        conn.commit()
+                        (probe_member, container))
+            reproduced = cur.fetchone()[0]
+    except Exception as exc:
+        setup_error = exc
     finally:
         conn.rollback()
         conn.close()
-
-    # ---- phase B: grantor-aware revoke + preconditions + gate (conn 2) --
-    body_error = None
-    conn = _admin_connect(admin_db_url)
+    # unconditional scratch cleanup: the scratch membership is revoked
+    # through its recorded grantor and every scratch role is dropped,
+    # whatever the setup did or did not do
+    scratch_errors = []
     try:
-        with conn.cursor() as cur:
-            cur.execute(pg_sql.SQL("SET ROLE {}").format(
-                pg_sql.Identifier(grantor)))
-            cur.execute(pg_sql.SQL("REVOKE {} FROM {}").format(
-                pg_sql.Identifier(role), pg_sql.Identifier(member)))
-            cur.execute("RESET ROLE")
-            cur.execute(
-                "SELECT count(*) FROM pg_auth_members g "
-                "JOIN pg_roles m ON m.oid = g.member "
-                "JOIN pg_roles r ON r.oid = g.roleid "
-                "WHERE m.rolname = %s AND r.rolname = %s",
-                (member, role))
-            direct_rows = cur.fetchone()[0]
-            cur.execute("SELECT pg_has_role(%s, %s, 'MEMBER')",
-                        (member, role))
-            has_role = cur.fetchone()[0]
-        conn.commit()
+        cleanup = _admin_connect(admin_db_url)
+        try:
+            with cleanup.cursor() as cur:
+                cur.execute(pg_sql.SQL("SET ROLE {}").format(
+                    pg_sql.Identifier(probe_grantor)))
+                cur.execute(pg_sql.SQL("REVOKE {} FROM {}").format(
+                    pg_sql.Identifier(container),
+                    pg_sql.Identifier(probe_member)))
+                cur.execute("RESET ROLE")
+                for name in (probe_member, probe_grantor, container):
+                    cur.execute(pg_sql.SQL("DROP ROLE {}").format(
+                        pg_sql.Identifier(name)))
+            cleanup.commit()
+        finally:
+            cleanup.rollback()
+            cleanup.close()
+    except Exception as exc:
+        scratch_errors.append(f"{type(exc).__name__}: {exc}")
+    # the reproduction is judged only AFTER the scratch cleanup, so a
+    # failure here leaves nothing behind either way
+    problems = []
+    if setup_error is not None:
+        problems.append(f"scratch setup: "
+                        f"{type(setup_error).__name__}: {setup_error}")
+    if reproduced is not True:
+        problems.append(
+            "R4 reproduction failed on task-specific roles: the plain "
+            "administrator REVOKE unexpectedly removed a membership "
+            "recorded by another grantor")
+    if scratch_errors:
+        problems.append("scratch cleanup: " + " | ".join(scratch_errors))
+    assert not problems, " | ".join(problems)
+
+    # ---- part 2: the real refusal inside an unconditional restore ------
+    # read-only precondition, before any write: the canonical membership
+    # must exist, otherwise the revoke below would be a no-op and the
+    # named refusal would prove nothing about the restore
+    probe = _admin_connect(admin_db_url)
+    try:
+        with probe.cursor() as cur:
+            facts = _snapshot_membership(cur)
+    finally:
+        probe.rollback()
+        probe.close()
+    assert facts, (
+        "precondition failed before any write: the canonical "
+        f"{member} <- {role} membership does not exist")
+
+    body_error = None
+    restore_error = None
+    restored = None
+    restored_has_role = None
+    try:
+        conn = _admin_connect(admin_db_url)
+        try:
+            with conn.cursor() as cur:
+                # FIRST membership write of this test - already inside the
+                # boundary whose finally restores the recorded facts
+                _reconcile_membership(cur, member, role, [])
+            conn.commit()
+        finally:
+            conn.rollback()
+            conn.close()
+        conn = _admin_connect(admin_db_url)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT count(*) FROM pg_auth_members g "
+                    "JOIN pg_roles m ON m.oid = g.member "
+                    "JOIN pg_roles r ON r.oid = g.roleid "
+                    "WHERE m.rolname = %s AND r.rolname = %s",
+                    (member, role))
+                direct_rows = cur.fetchone()[0]
+                cur.execute("SELECT pg_has_role(%s, %s, 'MEMBER')",
+                            (member, role))
+                has_role = cur.fetchone()[0]
+        finally:
+            conn.rollback()
+            conn.close()
         assert direct_rows == 0 and not has_role, (
-            "post-revoke preconditions failed: direct_rows="
-            f"{direct_rows}, pg_has_role={has_role}")
+            f"post-revoke preconditions failed: direct_rows={direct_rows}, "
+            f"pg_has_role={has_role}")
         helper = _load_helper()
         reasons = helper.evaluate_contract(
             five_stage_database["app_url"], "t_dev")
@@ -811,50 +889,27 @@ def test_gate_refuses_missing_reporting_role_membership(
     except Exception as exc:
         body_error = exc
     finally:
-        conn.rollback()
-        conn.close()
-
-    # ---- phase C: UNCONDITIONAL restore + verification ------------------
-    # A fresh connection performs the restore; a second fresh connection
-    # performs the read-only verification, so neither depends on any
-    # earlier session state.  Any failure here is captured and re-raised
-    # explicitly below (never swallowed).
-    restore_error = None
-    restored = None
-    restored_has_role = None
-    try:
-        conn = _admin_connect(admin_db_url)
         try:
-            with conn.cursor() as cur:
-                cur.execute(pg_sql.SQL("SET ROLE {}").format(
-                    pg_sql.Identifier(grantor)))
-                option_parts = ["ADMIN OPTION" if facts[0][1] else None,
-                                "INHERIT " + ("TRUE" if facts[0][2]
-                                              else "FALSE"),
-                                "SET " + ("TRUE" if facts[0][3]
-                                          else "FALSE")]
-                option_sql = ", ".join(o for o in option_parts if o)
-                restore = pg_sql.SQL("GRANT {} TO {}").format(
-                    pg_sql.Identifier(role), pg_sql.Identifier(member))
-                if option_sql:
-                    restore += pg_sql.SQL(" WITH " + option_sql)
-                cur.execute(restore)
-                cur.execute("RESET ROLE")
-            conn.commit()
-        finally:
-            conn.rollback()
-            conn.close()
-        conn = _admin_connect(admin_db_url)
-        try:
-            with conn.cursor() as cur:
-                restored = _membership_facts(cur)
-                cur.execute("SELECT pg_has_role(%s, %s, 'MEMBER')",
-                            (member, role))
-                restored_has_role = cur.fetchone()[0]
-        finally:
-            conn.close()
-    except Exception as exc:
-        restore_error = exc
+            conn = _admin_connect(admin_db_url)
+            try:
+                with conn.cursor() as cur:
+                    _reconcile_membership(cur, member, role, facts)
+                conn.commit()
+            finally:
+                conn.rollback()
+                conn.close()
+            conn = _admin_connect(admin_db_url)
+            try:
+                with conn.cursor() as cur:
+                    restored = _snapshot_membership(cur)
+                    cur.execute("SELECT pg_has_role(%s, %s, 'MEMBER')",
+                                (member, role))
+                    restored_has_role = cur.fetchone()[0]
+            finally:
+                conn.rollback()
+                conn.close()
+        except Exception as exc:
+            restore_error = exc
 
     # ---- fail-closed arbitration ----------------------------------------
     if restore_error is not None:
@@ -866,11 +921,11 @@ def test_gate_refuses_missing_reporting_role_membership(
         raise AssertionError(
             "membership restore FAILED (fail-closed): "
             f"{restore_error!r}") from restore_error
-    if restored != facts or restored_has_role is not True:
+    if restored != facts or (facts and restored_has_role is not True):
         detail = (f"restore verification mismatch: pre={facts} "
                   f"post={restored} pg_has_role={restored_has_role}")
         if body_error is not None:
-            raise AssertionError(detail + f"; body error also present: "
+            raise AssertionError(detail + "; body error also present: "
                                  f"{body_error!r}")
         raise AssertionError(detail)
     if body_error is not None:

@@ -629,6 +629,216 @@ def test_provisioner_refuses_connectable_roles_wrong_owner_before_writes():
         server.drop_role(mig_role)
 
 
+# ---------------------------------------------------------------------------
+# R2E: shared cluster reporting identity - pre-state and unconditional restore
+# (CTO-AUTH-ORDER-R2-DBAUTH-R2E-D-PARTITION-SHARED-STATE-2026-09-21)
+# ---------------------------------------------------------------------------
+# reporting_role / reporting_user / their membership are CLUSTER-GLOBAL, and
+# migration 011 creates them (with whatever REPORTING_USER_PASSWORD the run
+# supplies) when they are absent.  A test that runs migrations therefore
+# writes shared cluster state, and it must put that state back whatever else
+# happens: on a fresh cluster it must restore ABSENCE.
+_RPT_CONTAINER = "reporting_role"
+_RPT_MEMBER = "reporting_user"
+
+
+def _rpt_membership_rows(cur, member=_RPT_MEMBER, role=_RPT_CONTAINER):
+    """Read-only snapshot of the (member <- role) membership rows.
+
+    The granting role comes from pg_roles - never a regrole::text cast
+    handed back to an Identifier - and all three grant options are kept."""
+    cur.execute(
+        "SELECT grn.rolname, g.admin_option, g.inherit_option, g.set_option "
+        "FROM pg_auth_members g "
+        "JOIN pg_roles m ON m.oid = g.member "
+        "JOIN pg_roles r ON r.oid = g.roleid "
+        "JOIN pg_roles grn ON grn.oid = g.grantor "
+        "WHERE m.rolname = %s AND r.rolname = %s ORDER BY 1",
+        (member, role))
+    return [tuple(row) for row in cur.fetchall()]
+
+
+def _rpt_state(conn):
+    """Cluster-global reporting pre-state, read-only.
+
+    Called before this test's first cluster-level role write.  Captures
+    existence, the pg_authid verifier, the per-role configuration
+    (rolconfig - the settings migration 011 applies), the role attributes
+    and every related membership row with its grantor and grant options,
+    so the teardown can restore item by item AND prove equality."""
+    state = {"roles": {}, "membership": []}
+    with conn.cursor() as cur:
+        for name in (_RPT_CONTAINER, _RPT_MEMBER):
+            cur.execute(
+                "SELECT a.rolpassword, r.rolconfig, r.rolcanlogin, "
+                "r.rolsuper, r.rolcreaterole, r.rolcreatedb, r.rolinherit, "
+                "r.rolreplication, r.rolbypassrls "
+                "FROM pg_roles r LEFT JOIN pg_authid a ON a.oid = r.oid "
+                "WHERE r.rolname = %s", (name,))
+            row = cur.fetchone()
+            state["roles"][name] = None if row is None else (
+                row[0], sorted(row[1]) if row[1] else None, *row[2:])
+        state["membership"] = _rpt_membership_rows(cur)
+    return state
+
+
+def _rpt_options(admin, inherit, set_):
+    """All three membership booleans, always stated explicitly: PostgreSQL
+    16 keeps the current value of an option that a GRANT omits, so omitting
+    ADMIN could not turn an existing ADMIN TRUE back into ADMIN FALSE."""
+    return ["ADMIN " + ("TRUE" if admin else "FALSE"),
+            "INHERIT " + ("TRUE" if inherit else "FALSE"),
+            "SET " + ("TRUE" if set_ else "FALSE")]
+
+
+def _rpt_reconcile_membership(cur, user, role, wanted):
+    """Bring the (user <- role) membership rows exactly back to `wanted`.
+
+    PostgreSQL 16 records every membership against the granting role, so
+    every correction is issued with SET ROLE against the RECORDED grantor:
+    a plain administrator REVOKE cannot remove a membership recorded
+    against another grantor, which is precisely why the migration's own
+    grant (grantor = this run's migration authority) kept DROP ROLE
+    failing.  Returns the statements executed."""
+    from psycopg2 import sql as pg_sql
+
+    current = _rpt_membership_rows(cur, user, role)
+    executed = []
+    for grantor in sorted({r[0] for r in current} - {r[0] for r in wanted}):
+        cur.execute(pg_sql.SQL("SET ROLE {}").format(
+            pg_sql.Identifier(grantor)))
+        cur.execute(pg_sql.SQL("REVOKE {} FROM {}").format(
+            pg_sql.Identifier(role), pg_sql.Identifier(user)))
+        cur.execute("RESET ROLE")
+        executed.append(f"REVOKE {role} FROM {user} GRANTED BY {grantor}")
+    for grantor, admin, inherit, set_ in wanted:
+        if (grantor, admin, inherit, set_) in current:
+            continue
+        options = _rpt_options(admin, inherit, set_)
+        cur.execute(pg_sql.SQL("SET ROLE {}").format(
+            pg_sql.Identifier(grantor)))
+        cur.execute(pg_sql.SQL("GRANT {} TO {}").format(
+            pg_sql.Identifier(role), pg_sql.Identifier(user))
+            + pg_sql.SQL(" WITH " + ", ".join(options)))
+        cur.execute("RESET ROLE")
+        executed.append(f"GRANT {role} TO {user} WITH {', '.join(options)}"
+                        f" GRANTED BY {grantor}")
+    return executed
+
+
+def _rpt_restore_role(cur, name, prestate):
+    """Restore one shared role: an absent pre-state stays absent, an
+    existing one gets its verifier and its configuration back."""
+    from psycopg2 import sql as pg_sql
+
+    if prestate is None:
+        cur.execute(pg_sql.SQL("DROP ROLE IF EXISTS {}").format(
+            pg_sql.Identifier(name)))
+        return f"{name}: dropped (absent before this test)"
+    verifier, config = prestate[0], prestate[1]
+    if verifier is None:
+        cur.execute(pg_sql.SQL("ALTER ROLE {} WITH PASSWORD NULL").format(
+            pg_sql.Identifier(name)))
+    else:
+        cur.execute(pg_sql.SQL("ALTER ROLE {} WITH PASSWORD %s").format(
+            pg_sql.Identifier(name)), (verifier,))
+    cur.execute(pg_sql.SQL("ALTER ROLE {} RESET ALL").format(
+        pg_sql.Identifier(name)))
+    for setting in (config or []):
+        key, _, value = setting.partition("=")
+        cur.execute(pg_sql.SQL("ALTER ROLE {} SET {} = %s").format(
+            pg_sql.Identifier(name), pg_sql.SQL(key)), (value,))
+    return (f"{name}: verifier and {len(config or [])} configuration "
+            "setting(s) restored")
+
+
+def _teardown_two_role_lifecycle(server, sandbox_db, app_role, mig_role,
+                                 prestate, errors):
+    """Unconditional restore of the shared reporting identity plus removal of
+    this test's cluster-level artefacts.
+
+    Order is load bearing.  The sandbox database goes first, because while it
+    still exists the shared login holds privileges inside it and DROP ROLE
+    cannot succeed.  The membership set is reconciled next, through the
+    RECORDED grantor, which also releases this run's migration authority from
+    the grantor dependency that made DROP ROLE fail and left
+    mpango_migrate_* behind.  Only then are the shared roles restored, and
+    only at the very end are the sandbox app/migrate roles dropped.  Every
+    step reports its own failure; nothing is swallowed."""
+    def step(label, fn):
+        try:
+            conn = _admin_connect(server.admin_url)
+            try:
+                with conn.cursor() as cur:
+                    detail = fn(cur)
+                conn.commit()
+            finally:
+                conn.rollback()
+                conn.close()
+            return detail
+        except Exception as exc:
+            errors.append(f"{label}: {type(exc).__name__}: {exc}")
+            return None
+
+    def _drop_sandbox(cur):
+        cur.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname = %s AND pid <> pg_backend_pid()", (sandbox_db,))
+        cur.execute(f'DROP DATABASE IF EXISTS "{sandbox_db}"')
+        return "sandbox database dropped"
+
+    def _restore_membership(cur):
+        executed = _rpt_reconcile_membership(
+            cur, _RPT_MEMBER, _RPT_CONTAINER, prestate["membership"])
+        return ("membership already exact" if not executed
+                else "; ".join(executed))
+
+    def _restore_member(cur):
+        return _rpt_restore_role(cur, _RPT_MEMBER,
+                                 prestate["roles"][_RPT_MEMBER])
+
+    def _restore_container(cur):
+        return _rpt_restore_role(cur, _RPT_CONTAINER,
+                                 prestate["roles"][_RPT_CONTAINER])
+
+    def _drop_sandbox_roles(cur):
+        for name in (app_role, mig_role):
+            cur.execute(f'DROP ROLE IF EXISTS "{name}"')
+        return f"sandbox roles dropped: {app_role}, {mig_role}"
+
+    step("sandbox database drop", _drop_sandbox)
+    step("reporting membership restore", _restore_membership)
+    step("reporting_user restore", _restore_member)
+    step("reporting_role restore", _restore_container)
+    step("sandbox app/migrate role drop", _drop_sandbox_roles)
+
+    # final read-only verification on a fresh connection: zero sandbox
+    # residue cluster-wide, and the reporting identity item by item equal to
+    # the captured pre-state
+    try:
+        conn = _admin_connect(server.admin_url)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT rolname FROM pg_roles WHERE rolname LIKE "
+                    "'mpango_migrate_%' OR rolname LIKE 'mpango_app_%' "
+                    "ORDER BY 1")
+                residue = [r[0] for r in cur.fetchall()]
+            observed = _rpt_state(conn)
+        finally:
+            conn.close()
+        if residue:
+            errors.append("sandbox role residue remains: "
+                          + ", ".join(residue))
+        if observed != prestate:
+            errors.append(
+                "reporting identity is not item-by-item equal to the "
+                f"pre-state (pre={prestate!r} post={observed!r})")
+    except Exception as exc:
+        errors.append(
+            f"post-teardown verification: {type(exc).__name__}: {exc}")
+
+
 @_requires_temp_db
 def test_two_role_lifecycle_and_public_contract_refusals():
     import psycopg2
@@ -657,6 +867,17 @@ def test_two_role_lifecycle_and_public_contract_refusals():
         "MPANGO_DB_MIGRATE_PASSWORD": mig_pw,
         "MPANGO_DB_APP_PASSWORD": app_pw,
     }
+    # R2E: the shared cluster reporting identity (reporting_role,
+    # reporting_user, their membership and configuration) is captured
+    # read-only BEFORE this test's first cluster-level role write - the
+    # accommodation GRANT below - so the finally can restore it item by item
+    # and prove equality.  On a fresh cluster the captured pre-state is
+    # ABSENCE, and absence is what the teardown must restore.
+    prestate_conn = _admin_connect(server.admin_url)
+    try:
+        prestate = _rpt_state(prestate_conn)
+    finally:
+        prestate_conn.close()
     try:
         # phase 1: provision (admin) — the sandbox database does NOT pre-exist;
         # the product creates it owned by the migration authority.
@@ -860,21 +1081,17 @@ def test_two_role_lifecycle_and_public_contract_refusals():
             admin.close()
             cluster_admin.close()
     finally:
-        # cleanup: drop the product-created database and roles
-        try:
-            cluster_admin = _admin_connect(server.admin_url)
-            try:
-                with cluster_admin.cursor() as cur:
-                    cur.execute(
-                        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                        "WHERE datname = %s AND pid <> pg_backend_pid()", (sandbox_db,))
-                    cur.execute(f'DROP DATABASE IF EXISTS "{sandbox_db}"')
-                    cur.execute(f'DROP ROLE IF EXISTS "{app_role}"')
-                    cur.execute(f'DROP ROLE IF EXISTS "{mig_role}"')
-            finally:
-                cluster_admin.close()
-        except Exception:
-            pass
+        # R2E unconditional restore.  Everything this test did to the
+        # SHARED cluster reporting identity is put back, and every cleanup
+        # failure is collected and raised: the previous
+        # `except Exception: pass` hid a failed DROP ROLE, left
+        # mpango_migrate_* behind and destroyed the shared credential.
+        teardown_errors = []
+        _teardown_two_role_lifecycle(server, sandbox_db, app_role, mig_role,
+                                     prestate, teardown_errors)
+        if teardown_errors:
+            pytest.fail("two-role lifecycle teardown failures: "
+                        + " | ".join(teardown_errors))
 
 
 def test_preflight_accepts_exact_public_frontend_url_and_still_bans_setup_only(

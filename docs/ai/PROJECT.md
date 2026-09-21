@@ -1,16 +1,17 @@
 # Mpango ERP Project Status
 
-**Last updated:** 2026-08-30
+**Last updated:** 2026-09-22
 **Status owner:** CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Current reviewed product-code baseline:** `d9dc2e4130ea87a57d433dfadeb2f2736576fac6` (the accepted DC-12R1-MVP-L1-HE2-ET1-R3-A1-M1 controlled governance merge; before new controlled work, fetch the live protected tip, require this baseline to be its ancestor, then freeze that live tip)
-**HE2 R3+A1 status: MERGED_AND_INDEPENDENTLY_RUNTIME_VERIFIED** - source `483b8ab0`, Kilo review `db87f0d3`, Lubuntu fresh-runtime authority final `6fb1e31e`, merge `d9dc2e41`, merge report `1017be0c`. This closes backend CWD/temp-DB authority preflight and replaces the global hard-coded Alembic head with protected profile-bound exact head/parent authorization. It does not add migration `038` or SKU product code.
-**H2-B status: MERGED_AND_BROWSER_VERIFIED** - controlled merge `436d61e2` has parents `6e9470a1` and `25626f4d`; its tree is identical to the reviewed source. Accepted evidence: source `25626f4d`, Kilo review `d6289a6b`, backend authority `90f96e3f` (3773 collected / 3710 passed / 48 skipped / 15 xfailed / zero red), browser E1 `04134016` (24/24 browser PASS, 29-node inventory gap=0), and merge report `c400b7c5`. This closes the wholesaler forgot/reset password chain, the anonymous reset 401 redirect defect, multi-replica password-reset atomicity, the user role assignment `MissingGreenlet` defect, and the associated test-residue/temporary-database stability fixes. It does not claim deployment, VPS, real-device acceptance, or customer delivery.
-**J1-H2-A-R2 status: MERGED** - controlled merge `6e9470a1` has parents `c5b66d26` and `bf574cf9`; an ancestor of the current tip, not the tip itself.
-**R4-C1-R1 status: MERGED_AND_BROWSER_VERIFIED** - controlled merge `a29f8db0` has parents `9067e38f` and `f51c109`; its tree is identical to the reviewed source. Accepted evidence: Kilo source review `5cff172a`, OpenCode fresh-runtime browser evidence `0e1c7ed8` (`162/162`), Kilo evidence review `b0b1ff4f`, and merge report `046fe7de`. This closes the responsive wholesaler MainLayout and mobile navigation browser gate; now an ancestor of the current tip, it does not claim human acceptance, VPS, HTTPS, or customer delivery.
-**H7 status: MERGED_AND_CLOSED** - controlled merge `ea990826` has parents `a6ef3aac` and `a0a14e4d`, and its tree is identical to the reviewed source. Accepted evidence: Kilo `8b04a92b`, Lubuntu native setup `189852da`, Lubuntu Phase-4 zero-red `4fa13dac`, post-merge H7 bundle 325/325, and GitNexus indexed/current at `ea990826`. This proves the merged source and setup path; it does not claim local or VPS deployment.
-**Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5` (the accepted Contract D merge; an ancestor contained in the current tip — it is NOT the current branch tip)
-**Current database head:** `037_payment_declarations_schema`
+**Protected product branch tip:** `bd2373cbfeafde07f1771aba2089f0d1b5f0cd3f` (live fetch on 2026-09-22; it is an ancestor of the reviewed integration candidate and has not been moved by the Order R2 integration work)
+**Current reviewed integration candidate:** `5c93763ded903cc4e903d67997f1528d09ddc4b8` (tree `e6444326ac2c023b610fc1d796b595439fcf0c22`)
+**Published candidate branch:** `origin/codex/order-r2-dbauth-r2g-e1-final-candidate-20260922`
+**Order R2 + DB-authority integration branch:** `origin/codex/order-state-r2-e1-source-revision-f1-f3-20260919@5c93763d`
+**Integration result:** `PASS_EXACT_FAST_FORWARD` - the target moved from `2df6a3bf` to `5c93763d` with 40 linear commits, zero merge commits, no content rewrite, and a report-only receipt at `origin/reports/order-r2-dbauth-r2g-e1-ff-merge-receipt-20260922@66b396e0`
+**Composite verification result:** `PASS_FOR_CTO_ORDER_R2_DB_AUTHORITY_R2G_E1_FINAL_COMPOSITE_V3_RECONCILIATION`
+**Separate revocation/stock candidate:** `a516d2b3257f782ce068e71e8730c05541f08931` (tree `6a412568cd2c50fcf1d92103d989603a5b819e60`) passed its bounded independent V3 line but is not an ancestor of `5c93763d`; integration is still a deliberate gate
+**Current reviewed candidate database head:** `039_order_credit_holds` (migration `038_catalog_identity_vertical_slice` is its parent)
+**Deployment status:** NOT AUTHORIZED; no production or customer environment is claimed
 **Delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
 
 This file is the continuously maintained source of truth for product status,
@@ -21,14 +22,23 @@ evidence belongs in `ai-ledger/`. Durable product philosophy belongs in
 ## 1. Executive Summary
 
 Mpango is beyond prototype stage. The wholesaler ERP, tenant isolation,
-financial invariants, credential lifecycle, deterministic test gate, retailer
-identity, supplier-scoped retailer login, catalog/order workspace, read-only
-retailer finance visibility, and the payment-declaration maker-checker loop are
-materially implemented.
+financial invariants, credential lifecycle, retailer identity, supplier-scoped
+retailer login, stable catalog/SKU identity, order-state authority, per-order
+credit holds, read-only retailer finance visibility, and the payment-declaration
+maker-checker loop are materially implemented.
 
-The current product is still pre-pilot because final workspace polish, the
-real-mailbox browser journey, customer HTTPS deployment, the formal DB-OPS
-package, tenant branding, and current user manuals are not all closed.
+The reviewed integration candidate now combines Order R2 with the hardened
+tenant-bootstrap and database-authority topology. The runtime application uses a
+zero-write entrypoint, a read-only readiness gate, explicit runtime/reporting
+database URLs, and a five-stage setup path owned by separate authority roles.
+The target integration branch was fast-forwarded exactly to the reviewed
+candidate after the final composite V3 reconciliation.
+
+The current product is still pre-pilot. The reviewed integration candidate has
+not been promoted to `product-dev-recovered`, deployed, or accepted by a
+customer. Final workspace polish, the real-mailbox browser journey, customer
+HTTPS deployment, the formal DB-OPS package, tenant branding, current manuals,
+and named human support coverage are not all closed.
 
 Current engineering truth:
 
@@ -43,6 +53,9 @@ Current engineering truth:
   confirmation may enter the canonical payment transaction.
 - A merged SHA is not a deployed SHA. Runtime delivery requires exact-SHA
   deployment evidence.
+- Pricing and downstream ordering semantics remain contract-gated. The next
+  authorized step is a business-contract and acceptance-test mapping, not
+  product implementation.
 
 ## 2. Product Position
 
@@ -82,11 +95,14 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Product code baseline | `d9dc2e41` is the current reviewed baseline. It includes the H2-B product closure and the merged HE2 authority chain through R3+A1; the latter changes governance only and leaves the product migration head at `037` |
-| Protected-tip rule | Every task fetches `origin/product-dev-recovered` live, verifies the task's frozen base against the live tip, and starts from a clean isolated worktree. Do not silently branch from `436d61e2`, `cdb39e96`, or another ancestor |
+| Protected product baseline | `origin/product-dev-recovered@bd2373cb`; this branch was not moved by the Order R2 + DB-authority integration |
+| Reviewed integration candidate | `5c93763d`, tree `e6444326`; final composite V3 reconciliation accepted the candidate |
+| Integrated contract branch | `origin/codex/order-state-r2-e1-source-revision-f1-f3-20260919@5c93763d`; strict fast-forward receipt `66b396e0` |
+| Separate revocation/stock candidate | `origin/zcode/mpango-mvp-invariants-r1-auth-stock-fix-2026-09-08@a516d2b3`; independently verified but not contained in `5c93763d` |
+| Protected-tip rule | Every new task fetches live remote refs, states which baseline it uses, and starts in a clean isolated worktree. A task must not silently equate the reviewed integration branch with `product-dev-recovered` or a deployed environment |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
-| Alembic head | Current product head `037_payment_declarations_schema`; protected authority profile may validate an exact future `038_catalog_identity_vertical_slice` whose declared parent is `037` |
+| Alembic head | Reviewed integration candidate head `039_order_credit_holds`; parent chain includes `038_catalog_identity_vertical_slice` -> `037_payment_declarations_schema` |
 | Windows default workspace | Dirty; read-only for controlled work |
 | Controlled work | Clean isolated worktrees only |
 | Tencent mainland VPS | Development, validation, or disaster-recovery role |
@@ -99,15 +115,16 @@ deployment state from a merged branch.
 
 | Area | Status | Current truth |
 |---|---|---|
-| Tenant isolation | Strong foundation | Schema-per-tenant, validated identifiers, contextual JWTs, and binding guards |
+| Tenant isolation | Strong foundation; revocation candidate separately verified | Schema-per-tenant, validated identifiers, contextual JWTs, and binding guards are integrated. Candidate `a516d2b3` independently verifies active-user/active-tenant revalidation but is not an ancestor of `5c93763d`; identity-only refresh, logout, and password-reset session invalidation remain open |
+| Tenant bootstrap and DB authority | Integrated candidate independently verified | Migration authority owns shared database objects; runtime bootstrap is fail-closed, public-DDL-free, and runs only after the five-stage setup and read-only verification contract |
 | Wholesaler authentication | Implemented | Login, tenant selection, setup/reset, and terminal-token handling |
 | Wholesaler credential recovery H2-B | Merged and browser-verified | Forgot/reset password chain, anonymous reset 401 no-redirect, multi-replica reset atomicity, and role-assignment `MissingGreenlet` closure merged at `436d61e2` |
 | Credential email links | Source complete; runtime pending | Absolute fragment links and query rejection are merged |
 | Users and RBAC | Implemented | Tenant roles exist; retailer permissions are isolated as `client:*` |
-| Orders | Implemented and hardened | State, financial, ownership, and cross-retailer boundaries are regression-covered |
+| Orders | R2 authority integrated and V3 reconciled | Locked-fresh state transitions, per-order credit holds, cancel/collection checks, and canonical payment/declaration interaction are represented through migration `039`; pricing extensions remain closed |
 | Payments | Financially hardened | Canonical methods, idempotency, replay, partial payment, and ledger invariants |
 | Receivables | Financially hardened | Non-negative exposure and collection semantics protected by migration `035` |
-| Inventory and catalog | Core capability present | Retailer catalog and order workspace are supplier-scoped |
+| Inventory and catalog | Stable SKU identity integrated; stock fix separate | Migration `038`, catalog-product/SKU separation, package identity guards, and public API provisioning are integrated. Concurrent stock-update protection was independently verified on separate candidate `a516d2b3` and is not in `5c93763d`; duplicate-return and cross-tenant cache isolation remain open |
 | Reporting and exports | Implemented | Supported provisioning and sanitized worker/runtime boundaries |
 | Retailer identity S1 | Merged | Invitation, setup/reset, verified email, authoritative mapping, migration `036` |
 | Retailer private login S2 | Merged | One supplier portal, one contextual JWT, no `available_tenants` |
@@ -119,8 +136,9 @@ deployment state from a merged branch.
 | Printable business records | Backend and browser A-D merged | Read-only order, declaration, eligible receipt, and relationship-statement print data plus browser-print UI are available |
 | H7 setup and dependency reconciliation | Merged and independently verified | Native setup ran twice on Lubuntu; cross-host focused gates and post-merge evidence are zero-red |
 | HE2 authority governance | R3+A1 merged and independently verified | Backend CWD/temp-DB inputs and profile-bound Alembic head/parent are checked by runner and child; invalid environments VOID before product execution |
+| Combined runtime topology | Composite V3 accepted on `5c93763d` | Zero-write entrypoint, read-only readiness, explicit public-frontend/reporting URL wiring, reporting-role read-only checks, five-stage setup, S `243/21`, O `27/27`, and D `22/22` evidence reconciled; this is composite evidence, not one uninterrupted full-suite run |
 | Local deployment and browser rehearsal | Automated browser gate closed | Fresh-runtime Playwright evidence passed `162/162` for source `f51c109`, merged as `a29f8db0`; human acceptance remains and no VPS delivery is claimed |
-| Retailer workspace closure | Responsive shell and credential closure merged; pre-delivery queue active | Mobile navigation, overflow, and the H2-A/H2-B credential lineage are closed; pricing, onboarding, and final acceptance move through the 2026-08-26 pre-delivery execution queue |
+| Retailer workspace closure | Responsive shell and credential closure merged; next contract gate active | Mobile navigation, overflow, and the H2-A/H2-B credential lineage are closed; pricing/ordering semantics now require a refreshed contract and acceptance-test map before implementation |
 | Retailer end-to-end S4 | Partially closed | Local real-JWT browser matrix is green; real mailbox and deployed HTTPS journey on the latest SHA remain |
 | Platform operator schema | Foundation merged | Migration `034` tables exist |
 | Platform operator runtime | Incomplete | Dedicated login/JWT/guard/frontend lifecycle remains |
@@ -130,6 +148,28 @@ deployment state from a merged branch.
 | AI-native operations | Planned | Requires trustworthy data, permissions, approvals, audit, and rollback first |
 
 ## 5. Accepted Engineering Milestones
+
+### 2026-09-22 Order R2 + DB-authority integrated candidate
+
+The reviewed candidate `5c93763d` (tree `e6444326`) is the accepted integration
+line for Order R2, catalog/SKU identity, tenant bootstrap, database authority,
+runtime readiness, reporting access, and their test-trust closures. The frozen
+Order E1 contract target was moved from `2df6a3bf` to `5c93763d` by strict
+fast-forward only; receipt commit `66b396e0` records the before/after refs,
+40-commit linear range, zero merge commits, tree identity, fsck, diff-check, and
+clean-worktree proof.
+
+The final result is a composite V3 acceptance, not a claim that one uninterrupted
+envelope ran every gate on the final test-only successor. Accepted evidence
+includes the combined runtime S partition (`243 passed / 21 skipped`), O
+partition (`27/27`), final D partition (`22/22`), five reporting-identity
+conservation scenarios, zero product drift across the late test-only successors,
+and independent source/falsification reviews. Full-suite and browser runtime were
+not rerun in the final closure round.
+
+This milestone closes the integration line. It does not promote
+`product-dev-recovered`, authorize deployment, or authorize pricing and new
+ordering implementation.
 
 ### DC-10 and DC-11 foundation
 
@@ -288,9 +328,11 @@ Accepted evidence: Kilo source review `d6289a6b`, authoritative backend
 `90f96e3f` (3773 collected / 3710 passed / 48 skipped / 15 xfailed, zero red),
 authoritative browser E1 `04134016` (24/24 browser nodes PASS, 29-node
 inventory reconciliation gap=0), and controlled merge report `c400b7c5`.
-Retained known debt: full-suite post-state 4/0/29 test-hygiene residue,
-`RT0 = BLOCKED_BY_H2_C`, `REMOTE_ENFORCEMENT_NOT_VERIFIED`, and no
-deployment/VPS/real-device acceptance.
+At that milestone, the retained debt was full-suite post-state 4/0/29
+test-hygiene residue, `RT0 = BLOCKED_BY_H2_C`,
+`REMOTE_ENFORCEMENT_NOT_VERIFIED`, and no deployment/VPS/real-device
+acceptance. H2-C was subsequently integrated; the line remains here only as
+historical evidence context.
 
 ### DC-12R1-MVP-L1-HE2-ET1-R3+A1 authority governance closure
 
@@ -317,12 +359,29 @@ negative controls VOID with zero authority-command launches. Merge report:
 
 ## 6. Latest Validation Snapshot
 
-The current reviewed tree is `d9dc2e41` (HE2 R3+A1 governance closure). Its
-merge tree equals source `483b8ab0`. Kilo independently reported 186/186
-governance tests and 102 RED / 9 GREEN mutation controls. Lubuntu independently
-reported fresh-runtime core 8/8, Redis 7/7, and 17/17 negative controls VOID
-with zero command launches. This proves the merged authority mechanism; it
-does not prove migration `038`, SKU-M1, deployment, or customer readiness.
+The current reviewed integration tree is `e6444326` at candidate `5c93763d`.
+The final composite V3 reconciliation binds the accepted runtime product bytes
+to the final test-trust successor and closes the Order R2 + DB-authority line.
+The contract target was then fast-forwarded exactly to that commit; receipt
+`66b396e0` records local, tracking, and remote equality plus tree identity.
+
+Accepted current evidence:
+
+- S partition: `243 passed`, `21 skipped`, zero failures/errors;
+- Order partition: `27/27`;
+- DB-authority partition: `22/22` in the frozen original order;
+- five reporting-identity conservation scenarios, including body and restore
+  failure paths, with task-role residue zero after normal teardown or rescue;
+- entrypoint refusal before setup, five-stage setup to exact head `039`, runtime
+  readiness before Uvicorn, health/auth checks, and read-only reporting identity;
+- final critical product blobs unchanged across the late fixture/test-only
+  corrections.
+
+`FULL_SUITE_RESULT` and `BROWSER_RUNTIME` were not rerun in the final closure
+round. This evidence does not prove deployment, protected-branch promotion,
+real-mailbox HTTPS delivery, or customer readiness.
+
+### Retained historical validation
 
 The H2-B product tree `436d61e2` remains an accepted ancestor. Its merge tree
 equals source `25626f4d`. The authoritative backend gate reported 3773
@@ -330,10 +389,10 @@ collected, 3710 passed, 48 skipped, 15 xfailed, zero red. The authoritative
 browser gate reported 24/24 browser nodes PASS with the 29-node inventory
 reconciliation gap=0 (24 browser + 5 non-browser). This proves the merged
 source tree for the password-recovery lineage. It does not prove deployment,
-VPS networking, HTTPS, real-device acceptance, or customer readiness. Retained
-post-state debt: 4/0/29 test-hygiene residue (external attribution; module
-replay restores 0/0/0), `RT0 = BLOCKED_BY_H2_C`,
-`REMOTE_ENFORCEMENT_NOT_VERIFIED`.
+VPS networking, HTTPS, real-device acceptance, or customer readiness. At that
+time, retained debt was 4/0/29 test-hygiene residue (external attribution;
+module replay restores 0/0/0), `RT0 = BLOCKED_BY_H2_C`, and
+`REMOTE_ENFORCEMENT_NOT_VERIFIED`. H2-C was subsequently integrated.
 
 At the R4-C1-R1 merge, the reviewed product tree was `a29f8db0`. Its merge
 tree equals source `f51c109`. The accepted local browser evidence used fresh
@@ -399,6 +458,9 @@ real browser/mailbox journey.
    measured before feature scope is chosen.
 2. The latest SHA has not passed the full invitation/setup/reset/login/order/
    payment/finance journey through a real mailbox and deployed HTTPS runtime.
+3. Pricing and downstream ordering rules have not yet been re-frozen against
+   the accepted Order R2/SKU/DB-authority candidate. Implementation must wait
+   for one business-rule -> task -> acceptance-test contract.
 
 ### P1 operational blockers
 
@@ -407,26 +469,32 @@ real browser/mailbox journey.
    safe AI-agent actions are not one approved DB-OPS package.
 3. Dedicated platform operator runtime authentication is incomplete.
 4. User manuals and operator runbooks do not yet match final deployed behavior.
+5. `deploy_vps.sh` and `reset-staging.sh` still carry legacy migration/runtime
+   authority assumptions and are outside the accepted five-stage setup contract.
+6. Production Compose replacement and PostgreSQL image digest pinning remain
+   separately authorized deployment work.
+7. The reviewed integration candidate is not yet promoted to
+   `product-dev-recovered`; any such promotion requires an explicit identity and
+   history gate.
 
 ### Tracked known debt (preserved, non-blocking)
 
-1. Full-suite post-state test-hygiene residue of 4 wholesalers /
-   0 registrations / 29 uuid-named schemas (4/0/29), externally attributed to
-   other test files; the closed module's net contribution is zero and replay
-   restores 0/0/0.
-2. `RT0 = BLOCKED_BY_H2_C`: the retailer discovery layer is missing and no API
-   bypass of the missing retailer UI is permitted.
-3. H2-C candidate `42c5d328` is not merged. Its reported backend execution was
-   reclassified by `31adf492` as `VOID_ENVIRONMENT_PRECHECK`; browser evidence
-   is NOT_RUN. It must be re-integrated on the current baseline and rerun under
-   the accepted authority profile.
-4. SKU-R0-M1 is active as a separately authorized V3 line, but has no frozen
-   candidate. The previous uncommitted work is recovery input only; migration
-   `038`, full backend, browser and independent-review claims remain open.
-5. `REMOTE_ENFORCEMENT_NOT_VERIFIED`: remote/server-side enforcement is not
+1. The final composite conclusion did not rerun the full suite or browser
+   runtime on `5c93763d`; it inherits accepted product-byte evidence and adds
+   fresh targeted closure evidence.
+2. Revocation/stock candidate `a516d2b3` passed its six targeted repairs but is
+   a separate line, not an ancestor of `5c93763d`. Its integration remains a
+   deliberate decision. Concurrent duplicate-return single economic effect,
+   cross-tenant cache isolation, identity-only refresh, logout revocation, and
+   password-reset session invalidation remain open.
+3. `REMOTE_ENFORCEMENT_NOT_VERIFIED`: remote/server-side enforcement is not
    verified.
-6. Not deployed: no VPS deployment or real-device acceptance exists for the
-   current baseline; no customer-ready or release-approved status is claimed.
+4. No production/VPS deployment or real-device acceptance exists for the
+   reviewed integration candidate; no customer-ready or release-approved status
+   is claimed.
+5. External product-number cross-reference/bulk establishment and the explicit
+   single-person refund exception are deliberately excluded from the first
+   release, not silently missing requirements.
 
 ### Important but later
 
@@ -437,8 +505,25 @@ real browser/mailbox journey.
 - Automated KYC and self-service tenant branding.
 - SMS or WhatsApp transaction notification delivery.
 - AI-native conversational mutations.
+- Internal-first screenshot/screen-recording issue reports, with explicit
+  upload/view permissions, retention, access audit, and sensitive-data policy.
 
 ## 8. Ordered Work Plan
+
+### Frozen business decisions (Jeff, 2026-09-16)
+
+| Decision | Current truth |
+|---|---|
+| P01 first-release markets | Kenya and Uganda. Both use `Africa/Nairobi` (EAT, UTC+3, no DST). Money precision is market-specific: KES uses 2 decimal places; UGX uses 0. Discount and rounding rules must consume the currency precision and must never create fractional UGX |
+| P02 external product identifiers | Not in the first release. Schedule as a fast follow after the SKU delivery line is stable; a named customer may receive a separately scoped implementation if required |
+| P03 single-person refund exception | Not in the first release. Refund maker and approver remain separate people; no generic single-person-mode switch is authorized |
+| P04 tenant data retention | Configurable default of one year from tenant termination plus completed handoff. Deletion requires traceable notices, named ownership, escalation for no response, and manual final reconciliation; contract or legal obligations may override the default |
+| P05 pilot support ownership | Jeff is the current primary human owner. No real human backup is yet available. AI may monitor and alert but must not be presented as the backup decision-maker or substitute for human account reconciliation |
+
+The proposed screenshot/screen-recording feedback mechanism is a separate
+internal-first feature. It is not part of P05 or incident recovery and has no
+implementation authorization until access, privacy, retention, and audit rules
+are frozen.
 
 ### Stage 1: Complete the retailer MVP loop
 
@@ -576,32 +661,42 @@ onboarding and full business journey / VPS / real-device final acceptance).
 
 Merged and browser-verified as `436d61e2`; see Section 5 for the full record.
 
-#### Pre-delivery execution queue (active dual line)
+#### Pre-delivery execution queue (refreshed 2026-09-22)
 
-Frozen record: `docs/planning/2026-08-26_mvp_pre_delivery_execution_queue.md`
-(brought into the current baseline from planning source `addda5b6` by
-DC-12R1-MVP-L1-CT1, updated by CT2 after the HE2 R3+A1 merge). Two bounded
-lines now run in parallel and must both close before pricing implementation:
+The former H2-C/SKU/Order/DB-authority parallel lines have converged in reviewed
+candidate `5c93763d`; the contract target fast-forward is complete. The ordered
+next work is:
 
-1. `H2-C` - re-integrate and independently verify the retailer discovery layer
-   on `d9dc2e41` (also unblocks `RT0`)
-2. `SKU-R0-M1-R1` - customer-centered stable catalog identity:
-   `CatalogProduct -> SellableUnit -> CatalogOffer boundary`, with immutable
-   order snapshots and no pricing implementation
-3. `PRICING-R0` - freeze base-price, customer special-price, order-price
-   snapshot, price-adjustment, and reorder contracts
-4. `PRICING-R1` - implement SKU base price and single-retailer special price
-5. `ORDER-PRICE-R1` - implement one-shot wholesaler order price adjustment
-   with retailer confirm/reject/24h timeout
-6. `REORDER-R1` - generate new drafts from historical orders with
-   current-price re-resolution
-7. First-use onboarding (首次使用引导)
-8. Full business journey / VPS / real-device final acceptance
+1. `PROJECT-TRUTH-SYNC` - update this source of truth and reconcile the merge
+   receipt (this document change).
+2. `REVOCATION-STOCK-INTEGRATION-R0` - read-only/source-design gate. Compare
+   the three product paths in `a516d2b3` with `5c93763d`, map overlapping auth,
+   tenant, inventory, and test semantics, and decide whether to reapply or
+   supersede each fix. No cherry-pick or product edit in R0.
+3. `REVOCATION-STOCK-INTEGRATION-R1` - only if R0 requires it, create a bounded
+   successor on the exact current integration baseline and rerun its V3 gates.
+4. `PRICING-AND-ORDERING-CONTRACT-R0` - docs/tests/design only. Freeze the
+   authoritative event table, old-contract/RBAC compatibility, business-rule ->
+   implementation-task -> acceptance-test mapping, KES/UGX precision, base
+   price, customer special price, immutable order-price snapshot, bounded price
+   adjustment, retailer confirm/reject/timeout, cancellation/collection effects,
+   and reorder price re-resolution. No migration or product code.
+5. `BASELINE-PROMOTION-DECISION` - before implementation, CTO must name the
+   exact implementation base (`5c93763d` integration line or a separately
+   approved promotion into `product-dev-recovered`) and freeze its tree.
+6. `PRICING-R1` - only after R0 acceptance, implement SKU base price and one
+   retailer-specific price without weakening tenant/RBAC boundaries.
+7. `ORDER-PRICE-R1` - implement the approved one-shot order adjustment and
+   customer decision lifecycle; preserve immutable accounting snapshots.
+8. `REORDER-R1` - create a new draft from history with current-price
+   re-resolution; never mutate the historical order.
+9. First-use onboarding, human pilot rehearsal, and full business journey.
+10. Separate deployment-readiness line: production Compose, deployment scripts,
+   image digest pinning, HTTPS, backup/restore, monitoring, and exact-SHA proof.
 
-`FINANCE_LOCALIZATION_R0 = AUDIT_ONLY_NON_BLOCKING`: Uganda/UGX and
-multi-currency questions do not block the MVP queue. Each queue entry still
-requires its own CTO-authorized gate before any product code changes, and the
-queue itself is planning truth, not implementation authorization.
+Queue ordering is project truth, not implementation authorization. Each product
+slice still requires its own CTO scope, risk tier, verification tier, frozen
+base, and independent acceptance gate.
 
 #### DC-12R1-S3-S3-D - branded workspace and residual UX closure (after J1)
 
@@ -662,13 +757,15 @@ expand the current product scope or weaken isolation boundaries.
 | Role | Responsibility |
 |---|---|
 | CTO/Codex | Architecture, scope, risk, contracts, merge, release verdict, project truth |
-| Zcode product line | H2-C integration/correction candidates and Windows-side bounded evidence |
-| Codex-L SKU supervisor | SKU-M1 architecture, implementation, internal review, candidate truth, and STOP enforcement |
-| OpenCode2 independent SKU reviewer | Independent SKU source, migration, runtime and browser evidence |
+| Zcode product line | Bounded product/test corrections and author-side evidence on explicitly authorized paths |
+| Codex-L supervisor | Order, SKU, authority, and contract source review; candidate truth and STOP enforcement within allocated capacity |
+| Fresh Kilo reviewer | Non-overlapping source, falsification, PG16/runtime, and evidence review; author PASS is never inherited |
 | Product coding agent | Other bounded implementation/design slices on isolated branches |
 | Independent Lubuntu validator | Fresh DB, full-suite, cross-environment, and browser evidence |
 | OPS agent | Deployment, DNS/TLS, backup/restore, monitoring, and runtime evidence |
-| Human owner | Credentials, mailbox, domain, legal data, and production authorization |
+| Jeff / human owner | Current primary pilot owner; credentials, mailbox, domain, legal data, business decisions, and production authorization |
+| Human backup | Not yet staffed; must be named and trained before backup coverage is claimed |
+| AI monitoring | Monitoring and alerting only; not a human backup, financial approver, or account-reconciliation authority |
 | Wholesaler pilot owner | Business workflow acceptance and operational feedback |
 
 No agent's self-reported PASS is sufficient by itself.
@@ -686,10 +783,16 @@ No agent's self-reported PASS is sufficient by itself.
 - No hidden skip, xfail, deselection, or assertion weakening.
 - No secrets, credentials, raw exceptions, or private row contents in reports.
 - No protected push without explicit human approval.
-- No SKU-M1 expansion into pricing, order lifecycle, payment, tax, promotion,
-  or customer-special-price semantics.
-- No migration `038` acceptance without exact parent `037`, single-head proof,
-  all-tenant preflight, rollback/no-partial-mutation evidence, and independent
+- No pricing or new ordering product change before
+  `PRICING-AND-ORDERING-CONTRACT-R0` is accepted against an exact frozen base.
+- No fractional UGX. Currency precision and discount rounding are authoritative
+  configuration, not UI formatting.
+- No first-release single-person refund exception; maker and approver remain
+  separate human identities.
+- No claim that the integration target, protected product branch, and deployed
+  runtime are the same object unless each ref/SHA is independently proven.
+- No migration `038` or `039` acceptance without exact ancestry, single-head
+  proof, preflight, rollback/no-partial-mutation evidence, and independent
   authority execution.
 - No authority execution after failed CWD/temp-DB/profile/Alembic/PG/Redis or
   runner-child binding preflight.

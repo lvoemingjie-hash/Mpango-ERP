@@ -217,12 +217,23 @@ def five_stage_database():
     bootstrap of the default tenant.
 
     R1-R7-R2-R1-R1-R2B fixture trust (CTO-AUTH-ORDER-R2-DBAUTH-R1R7R2R1R1-
-    R2B-FIXTURE-TRUST-2026-09-21).  The shared cluster login reporting_user
-    is captured as THREE independent pre-state facts - whether the role
-    exists, its pg_authid verifier, and every reporting_user <-
-    reporting_role membership row with its grantor and grant options.
-    Absence is never folded into a NULL verifier: an absent role is
-    _MISSING_VERIFIER, a present role without a password is None.
+    R2B-FIXTURE-TRUST-2026-09-21) with the R2C preflight boundary
+    (CTO-AUTH-ORDER-R2-DBAUTH-R2C-PREFLIGHT-ZERO-WRITE-2026-09-21).  The
+    shared cluster login reporting_user is captured as THREE independent
+    pre-state facts - whether the role exists, its pg_authid verifier, and
+    every reporting_user <- reporting_role membership row with its grantor
+    and grant options.  Absence is never folded into a NULL verifier: an
+    absent role is _MISSING_VERIFIER, a present role without a password is
+    None.
+
+    PREFLIGHT, and why it sits outside the write lifecycle.  The pre-state
+    capture and the credential proof run BEFORE the try/finally that owns
+    every write.  A refusal therefore never reaches provisioning or
+    teardown at all: the refusal is not merely residue-free, it performs no
+    write, because the write lifecycle is never entered.  While the
+    preflight is running the fixture issues read-only SQL only - the
+    server-side statement trace recorded with counterexample B is the
+    evidence for that, and the before/after snapshots are supplementary.
 
     CREDENTIAL PROOF.  When the login exists, the environment reporting DSN
     must authenticate as it FOR REAL, and it must do so BEFORE this fixture
@@ -265,45 +276,46 @@ def five_stage_database():
     original_dsn = os.environ.get("REPORTING_DATABASE_URL") or None
     credential_login = "NOT_APPLICABLE_ROLE_ABSENT"
     credential_login_proven = False
+    # ---- PREFLIGHT: read-only, outside the write lifecycle --------------
+    # Nothing below this point runs if the preflight refuses, so a refusal
+    # cannot commit an ALTER, DROP, GRANT, REVOKE or pg_terminate_backend.
+    capture_conn = _admin_connect(server.admin_db_url("postgres"))
     try:
-        # ---- pre-state: three independent facts about the shared login ---
-        capture_conn = _admin_connect(server.admin_db_url("postgres"))
-        try:
-            with capture_conn.cursor() as cur:
-                cur.execute("SELECT rolpassword FROM pg_authid "
-                            "WHERE rolname = %s", (_REPORTING_MEMBER,))
-                row = cur.fetchone()
-                original_role_exists = row is not None
-                if original_role_exists:
-                    original_verifier = row[0]
-                original_membership = _snapshot_membership(cur)
-        finally:
-            capture_conn.rollback()
-            capture_conn.close()
-        # ---- credential proof, strictly BEFORE any write ----------------
-        if original_role_exists:
-            if original_dsn is None:
-                pytest.fail(
-                    "five_stage_database: reporting_user exists but "
-                    "REPORTING_DATABASE_URL is not set, so the original "
-                    "reporting credential cannot be proven before the "
-                    "fixture writes anything")
-            dsn_identity = _dsn_login_identity(original_dsn)
-            if dsn_identity != _REPORTING_MEMBER:
-                pytest.fail(
-                    "five_stage_database: REPORTING_DATABASE_URL "
-                    f"authenticates as {dsn_identity!r}, not "
-                    f"{_REPORTING_MEMBER!r}, so it does not prove the "
-                    "reporting credential")
-            original_dsn_outcome = _probe_dsn(original_dsn)
-            if original_dsn_outcome != "ok":
-                pytest.fail(
-                    "five_stage_database: the REPORTING_DATABASE_URL login "
-                    f"FAILED before any write ({original_dsn_outcome}); "
-                    "refusing to run, because a fixture that cannot prove "
-                    "the original credential cannot prove it restored it")
-            credential_login = "PROVEN_BEFORE_WRITE"
-            credential_login_proven = True
+        with capture_conn.cursor() as cur:
+            cur.execute("SELECT rolpassword FROM pg_authid "
+                        "WHERE rolname = %s", (_REPORTING_MEMBER,))
+            row = cur.fetchone()
+            original_role_exists = row is not None
+            if original_role_exists:
+                original_verifier = row[0]
+            original_membership = _snapshot_membership(cur)
+    finally:
+        capture_conn.rollback()
+        capture_conn.close()
+    if original_role_exists:
+        if original_dsn is None:
+            pytest.fail(
+                "five_stage_database: reporting_user exists but "
+                "REPORTING_DATABASE_URL is not set, so the original "
+                "reporting credential cannot be proven before the fixture "
+                "writes anything")
+        dsn_identity = _dsn_login_identity(original_dsn)
+        if dsn_identity != _REPORTING_MEMBER:
+            pytest.fail(
+                "five_stage_database: REPORTING_DATABASE_URL authenticates "
+                f"as {dsn_identity!r}, not {_REPORTING_MEMBER!r}, so it does "
+                "not prove the reporting credential")
+        original_dsn_outcome = _probe_dsn(original_dsn)
+        if original_dsn_outcome != "ok":
+            pytest.fail(
+                "five_stage_database: the REPORTING_DATABASE_URL login "
+                f"FAILED before any write ({original_dsn_outcome}); refusing "
+                "to run, because a fixture that cannot prove the original "
+                "credential cannot prove it restored it")
+        credential_login = "PROVEN_BEFORE_WRITE"
+        credential_login_proven = True
+    # ---- WRITE LIFECYCLE: entered only after the preflight succeeded ----
+    try:
         # phase 1: provision (admin) - the sandbox database does NOT
         # pre-exist; the product creates it owned by the migration authority
         result = _run_provisioner(["--provision"], env)

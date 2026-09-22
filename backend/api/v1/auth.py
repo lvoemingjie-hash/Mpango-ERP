@@ -446,8 +446,111 @@ async def select_tenant(
 # POST /auth/refresh
 # ---------------------------------------------------------------------------
 
+async def _validate_contextual_refresh_subject(
+    db: AsyncSession, payload: TokenPayload
+) -> None:
+    """R1 revocation fix: re-validate the CURRENT subject and tenant of a
+    contextual refresh token against the database before issuing new tokens.
+
+    A refresh token whose tenant no longer exists or was deleted/suspended, or
+    whose subject no longer exists / was soft-deleted / was deactivated, must
+    be refused (401) — the token's old claims are evidence of a PAST identity,
+    not of current authorization. The tenant schema used for the user lookup is
+    derived from the wholesaler row (never from the token's schema claim), so a
+    token cannot direct this lookup at an arbitrary schema. DB errors raised by
+    a missing tenant schema/table also fail closed (401) instead of leaking 500.
+    """
+    from api.context.tenant import (
+        TENANT_ACTIVE_STATUS,
+        _is_missing_tenant_resource_error,
+    )
+    from db.sql_safety import validate_identifier
+
+    wholesaler = await get_wholesaler_by_id(db, payload.tenant_id)
+    if wholesaler is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "TENANT_NOT_FOUND",
+                "message": "Tenant not found or deleted",
+            },
+        )
+    if wholesaler.status != TENANT_ACTIVE_STATUS:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "TENANT_NOT_ACTIVE",
+                "message": "Tenant is not active",
+            },
+        )
+
+    tenant_schema = wholesaler.get_tenant_schema()
+    validate_identifier(tenant_schema, "tenant_schema")
+    try:
+        user_id = UUID(str(payload.user_id))
+    except (TypeError, ValueError):
+        user_id = None
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "PRINCIPAL_NOT_FOUND",
+                "message": "Refresh subject no longer exists",
+            },
+        )
+    try:
+        user_row = (
+            await db.execute(
+                text(
+                    f'SELECT is_active, is_deleted FROM "{tenant_schema}".users '
+                    "WHERE id = :uid"
+                ),
+                {"uid": user_id},
+            )
+        ).first()
+    except Exception as exc:
+        if _is_missing_tenant_resource_error(exc):
+            # Torn-down tenant schema: the token references a tenant whose
+            # scope no longer exists — deny, never 500, never issue.
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "TENANT_NOT_FOUND",
+                    "message": "Tenant not found or deleted",
+                },
+            )
+        raise
+    if user_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "PRINCIPAL_NOT_FOUND",
+                "message": "Refresh subject no longer exists",
+            },
+        )
+    if bool(user_row.is_deleted):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "PRINCIPAL_DELETED",
+                "message": "Refresh subject has been deleted",
+            },
+        )
+    if not bool(user_row.is_active):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "PRINCIPAL_INACTIVE",
+                "message": "Refresh subject is inactive",
+            },
+        )
+
+
 @router.post("/refresh", response_model=Union[LoginResponse, IdentityLoginResponse], status_code=status.HTTP_200_OK)
-async def refresh_token(request: RefreshTokenRequest):
+async def refresh_token(
+    request: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db_session),
+):
     """
     Refresh access token endpoint.
 
@@ -455,11 +558,19 @@ async def refresh_token(request: RefreshTokenRequest):
     - Identity refresh -> new Identity tokens
     - Contextual refresh -> new Contextual tokens (preserves tenant claims)
 
+    R1 revocation fix (contextual branch): before re-signing, the CURRENT
+    subject and tenant are re-validated against the database — nonexistent,
+    soft-deleted or deactivated subjects, and deleted/suspended tenants, are
+    refused with 401 instead of receiving a fresh session. Identity-only
+    refresh has no tenant binding and remains claim-based (recorded as an
+    open boundary, not covered by this fix).
+
     Returns:
         LoginResponse with new access_token and refresh_token.
 
     Raises:
-        HTTPException 401: If refresh token invalid, expired, or wrong type.
+        HTTPException 401: If refresh token invalid, expired, wrong type, or
+        its subject/tenant is no longer valid.
     """
     try:
         payload = decode_token(request.refresh_token)
@@ -504,7 +615,10 @@ async def refresh_token(request: RefreshTokenRequest):
                 timestamp=datetime.utcnow(),
             )
         else:
-            # Contextual refresh - preserve tenant claims
+            # Contextual refresh - the subject must still be valid in the
+            # tenant's CURRENT state (R1 revocation fix); only then are the
+            # tenant claims preserved into the new pair.
+            await _validate_contextual_refresh_subject(db, payload)
             access_token = create_contextual_token(
                 user_id=payload.user_id,
                 roles=payload.roles,

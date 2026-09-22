@@ -484,6 +484,7 @@ class InventoryService:
             select(InventoryStock)
             .where(InventoryStock.id == stock.id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         stock = result.scalar_one()
 

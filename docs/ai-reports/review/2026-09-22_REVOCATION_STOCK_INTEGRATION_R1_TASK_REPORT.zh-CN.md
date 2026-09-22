@@ -127,3 +127,53 @@ TESTS_RUN_THIS_ROUND=FORMAL_83_NODES + REGRESSION_MAIN_315 + REGRESSION_S4D_ISOL
 FULL_SUITE_RESULT=NOT_RUN_THIS_ROUND（全量全库差分不在本轮授权；独立 V3 为验收门）
 PRODUCT_SOURCE_EDITS=3_FILES_NARROW（tenant.py/auth.py 字节等于历史修复；inventory_service.py 单行）
 NEXT_GATE=CTO_REVOCATION_STOCK_INTEGRATION_R1_CANDIDATE_FREEZE（对象 7d95eaa2146019bdf7212006565358d91d87546d）
+
+---
+
+# 勘误与更正轮（CTO 裁定 NEED_CHANGES，复核记录 b5c99508a）
+
+RESULT=CORRECTED_CANDIDATE_READY_FOR_CTO_REVOCATION_STOCK_R1_CORRECTED_CANDIDATE_FREEZE
+更正候选：**9533602c0283b9388822e396375b5516b817c6a9**（parent 9c300b5a；7d95eaa2 的正常后继；产品三文件字节相对 7d95eaa2 **零变化**，仅测试支撑两文件）
+
+## E1（对 F1/P1 的勘误：撤回"等价超集"）
+
+原报告 §6 的"O27/D22 等价全量超集"表述**撤回**。逐节点对账（CTO 复核 + 本方复核一致）：原主回归信封中 O27 27/27 全 PASS（保留，不因材料更正重复运行）；**D22 实为 0 PASS / 7 SKIP / 15 未收集**——其中 039 非有限值预检节点与 6 个 combined authority 生命周期/所有权节点因未开启 `MPANGO_ALLOW_TEMP_DB_CREATE=1` 而 SKIP；15 个 readiness-gate 节点因该文件未纳入当时的回归选集而根本未收集。
+**补足**：按 CTO 提供的清单（historical-nodes-D.txt，blob b2bbc42f…）在更正候选上原样执行 22 节点——`MPANGO_ALLOW_TEMP_DB_CREATE=1` 显式开启、源库名/端口预检记录在案（d22_source_precheck.json：test_mpango_revint_r1c2@127.0.0.1:15433，端口白名单声明 15433）、临时库由 D22 文件自身的既定拓扑以 ADMINISTRATOR 凭据创建。结果：**22/22 PASS，rc=0**，JUnit nodeid 集合与 CTO 清单完全一致（reconciliation_c2.json：equal=true）。
+
+## E2（对 F2/P1 的勘误：撤回"汇总零错误"）
+
+原报告 §6 的"回归面 299 PASS + 16 SKIP + 0 FAIL/ERROR"**撤回**。两份结果分别保留、永不抵消：
+- 主信封（本套件运行拓扑）：**290 PASS / 16 SKIP / 9 ERROR**（junit_regression.xml 原件保留）；9 个 ERROR 均为 s4d 文件 setup 阶段的公共守卫函数替换与 migration-authority 拓扑的结构性冲突，按原样保留为 ERROR，不重新分类为 PRE_EXISTING（本包内无同环境 BASE-vs-candidate 对照）。
+- s4d 隔离信封（诊断性、变更函数所有权拓扑）：**9 PASS**（junit_s4d_isolated.xml 原件保留）——仅诊断用途，不得折算为主拓扑证据，亦不得用于生产拓扑声明。
+
+## E3（对 F3/P1 的更正：三身份拓扑）
+
+更正候选 9533602c0 在授权测试/支撑文件内实现**管理员 ≠ 迁移权威 ≠ 运行时**并消费产品既有 provisioner 合同（scripts/provision_runtime_db_roles.py）；产品权限门零改动：
+- 新声明 `MPANGO_INVARIANTS_R0_ADMIN_DATABASE_URL`（管理员=容器引导用户，超级用户，仅做 provisioner 引导）；
+- 守卫反转原绑定：容器 POSTGRES_USER 必须绑定**管理员** URL，迁移用户等于容器引导管理员即拒绝（新增 guards 负控 test_f1_guard_refuses_migration_equal_to_container_admin）；
+- verify_migration_identity_live 发布**实时角色属性**（rolsuper=false、库 owner=迁移角色）——最小特权为证据而非断言；新增 verify_admin_identity_live 只读探针；
+- 新阶段 apply_product_minimum_grants：夹具调用**产品 provisioner** `--apply-grants`（迁移权威身份）+ 只读 `--verify`（rc=2 即拒绝），取代一切手写授权。
+运行身份合同不变（非特权、零成员、公共 schema 无 CREATE）。
+**更正候选上的作者运行**（VPS 全新 r1c2 信封，provisioner 三阶段实跑：mpango_migrate=NOSUPERUSER/NOCREATEDB/CREATEROLE、mpango_app=严格、库 owner=mpango_migrate）：84 节点（含新负控）收集==JUnit 逐点一致，**83 PASS + 1 FAIL + 0 ERROR + 0 SKIP**（唯一 FAIL 仍是登记的缓存诊断命名 RED，见 E4）。
+
+## E4（对 F4 的确认：缓存跨租户为 MVP 阻断）
+
+更正候选运行中唯一失败节点仍为 test_r1_red_diagnostic_sku_list_cache_not_tenant_scoped（INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED：租户 B 收到租户 A 的记录 id）。无 xfail、未禁用 Redis、断言未削弱、84 节点运行**不称为全绿**。缓存隔离修复属后续 CTO 专属范围，本轮未顺手修改。
+
+## E5（对 F5/P2 的更正：清单绑定）
+
+原 manifest.json（实绑 22 件，报告误写 23）**原样保留**；新增 manifest_correction_round.json（**37 件**）以追加式绑定：cleanup_record.json（此前未绑定件）全部绑定，并绑定更正轮全部证据（junit_formal_c2.xml、junit_d22_c2.xml、reconciliation_c2.json、d22_source_precheck.json、nodes-D/O.txt、清理记录、容器事实、残渣探针等）。manifest 自身按惯例自排除。
+
+## E6（变异还原记录的口径）
+
+M1–M4 的还原命令为逐文件 `git checkout -- <file>` 后 `git status --porcelain`（计数 0，工作树==索引==冻结候选树）+ M1 另有 blob 比对（7f550693…）。M2–M4 的 blob 级逐一比对为**作者断言**（命令如上，供 Kilo 复现）；VPS 材料已随清理销毁。变异针对的产品三文件在更正候选中字节未变，变异证据仍绑定 7d95eaa2 的产品字节。
+
+## E7（更正轮准备迭代台账）
+
+1. D22 第 1 次：1 FAIL（temp-DB 助手端口白名单未声明 15433）→ 环境声明补齐（非代码）。
+2. D22 第 2 次：1 FAIL（源库名非 test 前缀）→ 信封重建（POSTGRES_DB=test_mpango_revint_r1c2，provisioner 重跑，数据库 owner=mpango_migrate）。
+3. 第 3 次：**22/22 PASS**；同信封 84 节点套件 83 PASS + 1 登记 RED。
+清理：容器×2×两轮、凭据/env、任务目录均移除并验证；窗口过滤的匿名卷移除算术差额已在 correction-round/cleanup_record_correction_round.json 的 DISCLOSED_FILTER_LIMITATION 如实披露（至多 1 个非本任务匿名卷可能被同窗口过滤移除，供 CTO 知悉；未触碰任何带标签/具名/他队资源）。
+
+NEXT_GATE=CTO_REVOCATION_STOCK_R1_CORRECTED_CANDIDATE_FREEZE（对象 9533602c0283b9388822e396375b5516b817c6a9）
+MERGE_AUTHORIZED=NO / DEPLOYMENT_AUTHORIZED=NO / PRICING_AND_FURTHER_ORDERING_IMPLEMENTATION_AUTHORIZED=NO / Fresh Kilo V3 未解锁

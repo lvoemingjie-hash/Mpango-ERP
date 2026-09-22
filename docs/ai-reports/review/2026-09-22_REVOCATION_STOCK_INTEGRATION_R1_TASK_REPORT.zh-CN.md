@@ -177,3 +177,45 @@ M1–M4 的还原命令为逐文件 `git checkout -- <file>` 后 `git status --p
 
 NEXT_GATE=CTO_REVOCATION_STOCK_R1_CORRECTED_CANDIDATE_FREEZE（对象 9533602c0283b9388822e396375b5516b817c6a9）
 MERGE_AUTHORIZED=NO / DEPLOYMENT_AUTHORIZED=NO / PRICING_AND_FURTHER_ORDERING_IMPLEMENTATION_AUTHORIZED=NO / Fresh Kilo V3 未解锁
+
+---
+
+# 资源事件补录（追加式；CTO 处置 bf2fed157）
+
+RESULT=RESOURCE_INCIDENT_LEDGER_PUBLISHED__DELETION_OWNERSHIP_PARTIALLY_UNKNOWN__RUNTIME_HELD
+本节为**追加式补录**，不改动 E1–E7 及原清理记录原文；与本节冲突之处以本节为准。
+
+## I1（撤回两项绝对声明）
+
+- **撤回** E7/cleanup_record_correction_round.json 中"至多 1 个非本任务匿名卷可能被同窗口过滤移除"——该算术基于对原始输出的误读（记为 3 个 ID）。原始 cleanup_output.txt 实为 **4 个不同 64-hex ID、各出现两次**（每一对 = docker volume rm 的成功回显 + `cat` 清单回显——此配对属解读，非标注事实）。
+- **撤回**"他队资源零触碰"在**卷**维度的适用：匿名、悬空、同时段创建都不构成所有权证明。该论断仅对以下范围保留且可证：任务容器（精确命名+标签核验）、带标签/具名卷（从未成为任何命令的目标）、批次 A 之外由精确 ID 删除且删除前已核验 CreatedAt 的两个卷。
+
+## I2（逐操作台账：resource_incident_ledger.json）
+
+| 操作 | 时间界(+08:00) | 选择方式 | 记录到的卷 ID | 归属 |
+| --- | --- | --- | --- | --- |
+| 1（R1 轮清理） | ~11:37 | **精确 ID**（删除前逐卷 inspect CreatedAt） | aadf72f7…、15fbf59d…（删除成功） | **本任务（已证）**：CreatedAt 10:52:43/10:53:17 与守护进程日志的 r1 容器启动时刻一致 |
+| 2（更正轮信封重建步） | ~13:44 | **时间窗** T11:/T12:（输出重定向未记录） | **0–2 个，全部未记录** | **UNKNOWN**；注意首信封任务卷创建于 13:39:1x（T13:），不匹配该窗口——此步目标（若有）**不是**本任务首信封卷 |
+| 3（更正轮最终清理） | ~14:1x | **时间窗** T12:/T13: | 72fed824…、c4f2aa48…、d8ebc06a…、ea74888a…（4 个，删除成功） | **逐卷 UNKNOWN**；数量上恰与本任务两轮信封所建 4 卷（13:39:1x、13:44:0x，均在 T13: 窗口）吻合——此映射仅为与守护进程日志时间线一致的**假设，未证明**（无逐卷创建记录存留） |
+
+全日总账：本任务共创建 6 个匿名卷（2+2+2）；操作 1 以精确 ID 删除 2（已证）；操作 3 删除 4（ID 有记录、归属 UNKNOWN）；操作 2 删除 0–2 个（完全未记录、归属 UNKNOWN）。**在无逐卷创建记录的情况下，"未影响他队数据"与任何"误删上限"均不可证明。**
+
+## I3（证据缺口，保持缺失、不重构）
+
+- Docker volume 事件缓冲已轮转（限定窗口重放为空）；守护进程 info 级日志只记容器网络事件、不记卷操作——逐卷创建/删除时刻**不可恢复**。
+- 命令级精确时间戳未逐条捕获，操作时间以工件锚点定界（容器 sbJoin：10:52:43/10:53:17、13:39:12、13:44:08）。
+- 被删卷的 docker volume inspect 在删除后不可执行；未接触 /var/lib/docker、未做磁盘恢复（遵指令）。
+
+## I4（遏制与协议）
+
+- 自处置文件下发起：该共享 VPS 上本任务**删除/prune/新资源创建全部暂停**（I2 台账之后仅做只读勘查）；`r2d-pg`、`procurement-workspace` 未触碰。
+- 已按指令 5 产出《VPS 匿名卷删除事件通报》（RESOURCE_OWNERS_NOTICE.md）供转发 VPS 资源负责人与同期任务负责人：请其核对 2026-09-22 11:00–14:20+08:00 窗口的匿名卷数据连续性与备份覆盖；**容器在运行不能证明 detached 数据完好**；未经 CTO 单独授权的恢复范围，不重建卷、不恢复备份、不重启共享服务、不做磁盘恢复。
+- 后续资源协议（指令 4）：创建时登记精确资源 ID/挂载映射；改用具任务标签的**具名卷**或专用一次性 Docker 主机；删除前逐个重新验证归属；不确定即保留并上报——不以资源安全换零残留报告。
+
+## I5（对 Fresh Kilo 与冻结状态的确认）
+
+- 候选与全部证据保持冻结：**9533602c0**（tree df91b65b…，product 三文件与 7d95eaa2 字节一致）；报告后继为文档提交，不替代被测候选身份。D22/O27/全量套件均**未重跑**。
+- Fresh Kilo 只读源码审查授权（CTO-AUTH-REVOCATION-STOCK-R1-CORRECTION-FRESH-KILO-SOURCE-20260922）不含任何 VPS/容器/数据库操作；本报告不构成运行时验收。
+
+NEXT_GATE=资源事件隔离处置完成前，运行时维持 HOLD；独立运行验收另行冻结
+MERGE_AUTHORIZED=NO / DEPLOYMENT_AUTHORIZED=NO / FORMAL_V3_RUNTIME_AUTHORIZED=NO / PRICING_AND_FURTHER_ORDERING_IMPLEMENTATION_AUTHORIZED=NO

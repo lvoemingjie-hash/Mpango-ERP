@@ -31,6 +31,7 @@ import asyncio
 import ipaddress
 import json
 import os
+import re
 import subprocess
 import sys
 import uuid
@@ -782,8 +783,12 @@ async def verify_run_privileges_post_migration(db_url: str) -> None:
         if not has:
             raise refuse("missing CREATE on database (tenant schema creation).")
 
-        # public schema USAGE+CREATE — scripts/bootstrap_tenant_schema
-        # CREATE OR REPLACE FUNCTION public.prevent_ledger_modification().
+        # public schema USAGE — reads/writes of the migration-owned public
+        # rows (wholesalers/retailers/bindings) by support.seed_public_tenant_rows
+        # and drop_tenant. CREATE on public is deliberately REQUIRED NOT to
+        # exist: the candidate's bootstrap precondition refuses a runtime
+        # role that could create or substitute objects in the migration-owned
+        # schema (see verify_public_object_authority).
         usage, create = (
             await probe.execute(
                 text(
@@ -793,8 +798,14 @@ async def verify_run_privileges_post_migration(db_url: str) -> None:
                 {"u": run_user},
             )
         ).one()
-        if not (usage and create):
-            raise refuse("missing USAGE/CREATE on schema public (bootstrap function replace).")
+        if not usage:
+            raise refuse("missing USAGE on schema public (public tenant rows).")
+        if create:
+            raise refuse(
+                "holds CREATE on schema public — the runtime role must never "
+                "be able to create or substitute objects in the "
+                "migration-owned public schema."
+            )
 
         # Public rows — support.seed_public_tenant_rows / drop_tenant
         # INSERT/UPDATE/DELETE/SELECT on wholesalers, retailers, bindings.
@@ -838,9 +849,11 @@ async def verify_run_privileges_post_migration(db_url: str) -> None:
         if missing_seqs:
             raise refuse(f"{missing_seqs} public sequence(s) lack USAGE for the run role.")
 
-        # Ledger-immutability function: bootstrap must be able to CREATE OR
-        # REPLACE it, which requires EXECUTE *and* ownership (PG refuses
-        # replacement by a non-owner).
+        # Ledger-immutability function: the candidate's bootstrap requires it
+        # to exist, to be owned by the MIGRATION authority (the database
+        # owner) — never by the run role — and to be EXECUTable by the run
+        # role (verify_public_object_authority checks the owner facts; here
+        # only the run role's EXECUTE is re-asserted).
         owner = (
             await probe.execute(
                 text(
@@ -853,11 +866,12 @@ async def verify_run_privileges_post_migration(db_url: str) -> None:
         ).scalar_one_or_none()
         if owner is None:
             raise refuse("public.prevent_ledger_modification() missing after migration.")
-        if owner != run_user:
+        if owner == run_user:
             raise refuse(
-                "public.prevent_ledger_modification() is owned by "
-                f"{owner!r}; the bootstrap path replaces it via CREATE OR "
-                "REPLACE which requires ownership by the run role."
+                "public.prevent_ledger_modification() is owned by the run "
+                f"role {run_user!r}; the candidate's migration-authority "
+                "contract requires the database owner (migration identity) "
+                "to own it."
             )
         has = (
             await probe.execute(
@@ -939,50 +953,91 @@ def run_public_migrations(migration_url: str) -> None:
         )
 
 
-async def align_fixture_object_ownership(migration_url: str) -> None:
-    """Post-migration ownership alignment on the MIGRATION identity.
+async def verify_public_object_authority(db_url: str, migration_url: str) -> None:
+    """Integration adaptation (2026-09-22): verify the shared public ledger
+    guard function's migration authority instead of transferring ownership.
 
-    The product tenant bootstrap (running as the test-session role) executes
-    ``CREATE OR REPLACE FUNCTION public.prevent_ledger_modification()``;
-    PostgreSQL refuses replacement by a non-owner, so the function created
-    by migration 010 under the migration identity must be owned by the run
-    role before any bootstrap runs. This is the COMPLETE list of public
-    objects the bootstrap replaces (scripts/bootstrap_tenant_schema.py has
-    exactly one public-function replacement); it is executed idempotently on
-    the migration connection right after the real migrations, with the
-    rationale recorded in REPAIR_LEDGER §privileges. No REASSIGN OWNED, no
-    cross-database shortcuts, no inheritance.
+    WHY THIS REPLACES align_fixture_object_ownership: the 037-era bootstrap
+    executed ``CREATE OR REPLACE FUNCTION public.prevent_ledger_modification()``
+    as the RUN role, so the run role had to OWN the function and hold CREATE
+    on schema public. The current candidate's bootstrap
+    (scripts/bootstrap_tenant_schema.py, DB-authority work) enforces the
+    OPPOSITE contract and refuses the tenant bootstrap otherwise:
+    the function must be owned by the MIGRATION authority (the database
+    owner), and the runtime role must hold NO CREATE on the migration-owned
+    public schema. Per the R1 directive the product bootstrap authority
+    checks are never weakened — the fixture's post-migration stage therefore
+    now VERIFIES the current contract (function owner == database owner ==
+    the declared migration identity; EXECUTE for the run role; no CREATE on
+    public for the run role) instead of altering ownership.
     """
-    import re as _re
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    _, _, _, run_user = _parse_pg_url(os.environ["TEST_DATABASE_URL"])
-    if not _re.fullmatch(r"[a-z_][a-z0-9_]*", run_user):
-        # Identifier-safety gate (the value originates from a declared URL;
-        # still refused defensively before it reaches DDL).
+    _, _, _, run_user = _parse_pg_url(db_url)
+    _, _, _, migration_user = _parse_pg_url(migration_url)
+    if not re.fullmatch(r"[a-z_][a-z0-9_]*", run_user):
         raise GuardRefused(
             f"GUARD_REFUSED_RUN_ROLE: run user {run_user!r} is not a plain "
-            "identifier; refusing DDL ownership alignment."
+            "identifier; refusing the public-authority probe."
         )
-    url = migration_url
+
+    def refuse(detail: str) -> GuardRefused:
+        return GuardRefused(
+            "GUARD_REFUSED_PUBLIC_AUTHORITY: the shared public ledger guard "
+            "function does not satisfy the candidate's migration-authority "
+            f"contract (bootstrap would refuse every tenant bootstrap). "
+            f"{detail}"
+        )
+
+    url = db_url
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
     engine = create_async_engine(url)
     try:
         async with engine.begin() as conn:
-            exists = (
+            row = (
                 await conn.execute(
                     text(
-                        "SELECT 1 FROM pg_proc p JOIN pg_namespace n "
-                        "ON n.oid = p.pronamespace WHERE n.nspname = 'public' "
-                        "AND p.proname = 'prevent_ledger_modification'"
-                    )
+                        "SELECT p.oid IS NOT NULL AS function_exists, "
+                        "pg_get_userbyid(p.proowner) AS owner_name, "
+                        "(SELECT pg_get_userbyid(datdba) FROM pg_database "
+                        " WHERE datname = current_database()) AS db_owner, "
+                        "has_function_privilege(:run, 'public.prevent_ledger_modification()', "
+                        "'EXECUTE') AS run_can_execute, "
+                        "has_schema_privilege(:run, 'public', 'CREATE') AS run_can_create "
+                        "FROM (SELECT to_regprocedure('public.prevent_ledger_modification()') "
+                        "AS oid) probe LEFT JOIN pg_proc p ON p.oid = probe.oid"
+                    ),
+                    {"run": run_user},
                 )
-            ).scalar_one_or_none()
-            if exists:
-                await conn.execute(
-                    text(f'ALTER FUNCTION public.prevent_ledger_modification() OWNER TO "{run_user}"')
-                )
+            ).mappings().first()
+        if row is None or not row["function_exists"]:
+            raise refuse(
+                "public.prevent_ledger_modification() is missing after "
+                "migration 010 (it must be created by migrations, never by "
+                "tenant bootstrap)."
+            )
+        if row["owner_name"] != row["db_owner"]:
+            raise refuse(
+                f"function owner {row['owner_name']!r} != database owner "
+                f"{row['db_owner']!r}; the bootstrap precondition requires "
+                "the migration authority (database owner) to own it."
+            )
+        if row["owner_name"] != migration_user:
+            raise refuse(
+                f"function owner {row['owner_name']!r} != declared migration "
+                f"identity {migration_user!r}."
+            )
+        if not row["run_can_execute"]:
+            raise refuse(
+                f"run role {run_user!r} lacks EXECUTE on the guard function."
+            )
+        if row["run_can_create"]:
+            raise refuse(
+                f"run role {run_user!r} holds CREATE on schema public; the "
+                "runtime role must never be able to create or substitute "
+                "objects in the migration-owned public schema."
+            )
     finally:
         await engine.dispose()
 
@@ -1000,8 +1055,10 @@ async def _r0_task_database_stages():
     3. verify_run_identity_live — run connection really is the declared
        non-privileged, membership-free test-session role;
     4. run_public_migrations — real 001..039 via the migration subprocess;
-    4b. align_fixture_object_ownership — migration identity transfers the
-        bootstrap-replaced public function to the run role (idempotent);
+    4b. verify_public_object_authority — the shared public ledger guard
+        function is verified against the candidate's migration-authority
+        contract (owned by the database owner / declared migration identity,
+        EXECUTE for the run role, NO CREATE on public for the run role);
     5. head verification via the RUN connection;
     6. verify_run_privileges_post_migration — the run role really holds every
        privilege the fixtures consume.
@@ -1011,7 +1068,7 @@ async def _r0_task_database_stages():
     await verify_migration_identity_live(migration_url)
     await verify_run_identity_live(db_url)
     run_public_migrations(migration_url)
-    await align_fixture_object_ownership(migration_url)
+    await verify_public_object_authority(db_url, migration_url)
     try:
         async with AsyncSessionLocal() as probe:
             head = (

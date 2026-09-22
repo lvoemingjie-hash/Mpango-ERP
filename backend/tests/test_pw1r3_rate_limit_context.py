@@ -21,6 +21,17 @@ Deterministic-start design (PW1-R3-R1):
 - The tenant schema/user is SYNTHETIC but real-PG: direct DDL + INSERT (not
   the formal owner/retailer lifecycle) — sufficient and exact for exercising
   resolve_tenant_context()'s real DB lookup.
+
+Deterministic boundary (V3, 2026-09-23): the exact-boundary node
+test_101st_anonymous_is_429_and_contextually_independently_admitted no longer
+relies on 101 real HTTP requests completing inside one real 60s window (the
+wall-clock assumption that failed a fresh Kilo 84-run at 307.482s with no
+product regression). It now pins a controlled time source (see FixedLogicalClock
+below), performs the first 100 anonymous increments directly through the REAL
+RateLimiter against the task-owned real Redis, and lets the 101st request —
+the FIRST real HTTP one — hit the REAL middleware and return exactly 429.
+The product rate limiter, its limits (100/1000), WINDOW_SIZE=60 and the Redis
+fixed-window algorithm are untouched.
 """
 import os
 import uuid
@@ -32,13 +43,14 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from redis.asyncio import Redis
 from sqlalchemy import text
+from starlette.requests import Request
 
 import core.rate_limiter as rate_limiter_module
 from api.app import configure_app
 from auth.strategies.jwt import JwtAuthStrategy
 from core.config import get_settings
 from core.error_codes import register_exception_handlers
-from core.rate_limiter import RateLimiter
+from core.rate_limiter import WINDOW_SIZE, RateLimiter
 from core.security import create_contextual_token, create_identity_token, hash_password
 from database.session import AsyncSessionLocal
 
@@ -222,6 +234,77 @@ def contextual_token(rl):
 
 
 # ---------------------------------------------------------------------------
+# Test-injected controlled time source (PW1-R3 deterministic boundary,
+# CTO-AUTH-REVOCATION-STOCK-R1-PW1R3-DETERMINISTIC-BOUNDARY-20260923).
+#
+# The product's fixed-window math — core/rate_limiter.py
+# `int(time.time() / WINDOW_SIZE)` — resolves `time` from ITS OWN module
+# namespace at call time. A function-scoped monkeypatch of that ONE module
+# attribute pins the window selection for the REAL product code path: every
+# increment then lands in ONE deterministic window regardless of host speed
+# or real minute boundaries. The injection is scoped to the test and the
+# rate-limit module only (never a global, never a permanent replacement of
+# Python time.time) and monkeypatch restores the original automatically.
+# ---------------------------------------------------------------------------
+# A fixed instant 30 seconds INSIDE its window (mid-window, maximally far
+# from both boundaries; 1234590.0 = 60*20576 + 30).
+LOGICAL_NOW = 1_234_590.0
+
+
+class FixedLogicalClock:
+    """Object with a fixed ``time()`` — the controlled time source."""
+
+    def __init__(self, instant: float):
+        self._instant = instant
+
+    def time(self) -> float:
+        return self._instant
+
+
+@pytest.fixture
+def fixed_window(monkeypatch):
+    """Pin core.rate_limiter's clock to LOGICAL_NOW for this test only.
+
+    Both the direct RateLimiter calls and the REAL HTTP middleware path (the
+    inner RateLimitingMiddleware and the auth-rejection hook call the same
+    limiter code, which reads ``time`` from core.rate_limiter's namespace)
+    then share ONE fixed logical window, so every key and count is exact and
+    independent of wall-clock speed.
+    """
+    clock = FixedLogicalClock(LOGICAL_NOW)
+    monkeypatch.setattr(rate_limiter_module, "time", clock)
+    return clock
+
+
+def fixed_window_index(instant: float = LOGICAL_NOW) -> int:
+    """The window index the pinned product clock selects for ``instant``."""
+    return int(instant // WINDOW_SIZE)
+
+
+def direct_request(client_ip: str) -> Request:
+    """A REAL starlette Request for direct RateLimiter.check_rate_limit calls.
+
+    The scope mirrors what ASGITransport produces: the peer address is the
+    transport-level client (NOT a forged X-Forwarded-For/X-Real-IP header),
+    so `_get_client_ip` falls back to the exact peer this test owns. No
+    tenant/user state is attached — the anonymous bucket is exercised."""
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "server": ("testserver", 80),
+        "path": "/api/v1/auth/me",
+        "raw_path": b"/api/v1/auth/me",
+        "query_string": b"",
+        "headers": [],
+        "client": (client_ip, 12345),
+    }
+    return Request(scope)
+
+
+# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 async def test_middleware_order_auth_runs_before_rate_limiting():
@@ -274,37 +357,90 @@ async def test_identity_only_jwt_uses_ip_limit_100():
         assert resp.headers.get("X-RateLimit-Limit") == "100"
 
 
-async def test_101st_anonymous_is_429_and_contextual_independently_admitted(rl_tenant):
-    """Mandatory #9, deterministic: this test owns a fresh IP bucket
-    (a fresh peer IP) and a fresh tenant bucket (function-scoped rl_tenant), so the
-    exact-boundary math holds without residue accounting: the 101st anonymous
-    request is 429 at limit 100; garbage Authorization shares the SAME IP
-    bucket (rejection path — no bypass); a valid contextual request is
-    independently admitted at limit 1000."""
-    async with make_client(_make_test_ip(15)) as client:
-        first_429 = None
-        for i in range(1, 151):
+async def test_101st_anonymous_is_429_and_contextual_independently_admitted(
+    rl_tenant, real_rate_limiter, fixed_window
+):
+    """Mandatory #9, deterministic under the test-injected controlled clock.
+
+    This test owns a fresh IP bucket (a fresh peer IP) and a fresh tenant
+    bucket (function-scoped rl_tenant), and deletes EXACTLY those two keys
+    before and after. The controlled time source pins the product's window
+    selection (core.rate_limiter reads ``time`` from its own module
+    namespace) to one fixed mid-window instant, so all anonymous increments —
+    the 100 direct ones below AND the HTTP ones — land in ONE fixed window
+    deterministically, independent of host speed or real minute boundaries.
+
+    Split proof: increments 1..100 run directly through the REAL
+    RateLimiter.check_rate_limit against the task-owned real Redis; the
+    101st request is the FIRST real HTTP one, so the exact boundary — 429
+    with limit 100, X-RateLimit-Remaining 0, Retry-After > 0 and code
+    RATE_LIMIT_EXCEEDED — is proven through the REAL middleware stack.
+    Garbage Authorization then shares the SAME anonymous bucket (rejection
+    path — no bypass) and a valid contextual request is independently
+    admitted at limit 1000."""
+    ip = _make_test_ip(15)
+    limiter = real_rate_limiter
+    redis = await limiter._get_redis()
+    window = fixed_window_index()
+    own_keys = [
+        f"rate_limit:ip:{ip}:{window}",
+        f"rate_limit:tenant:{rl_tenant['tenant_id']}:{rl_tenant['user_id']}:{window}",
+    ]
+    # Pre-delete ONLY this test's own two exact keys (fresh run-unique IP and
+    # fresh tenant UUIDs make this a defensive zero; asserted as such).
+    assert await redis.delete(*own_keys) == 0, (
+        "task-owned buckets must start empty in the fixed window"
+    )
+    try:
+        # Increments 1..100 — direct, real limiter, real Redis, fixed window.
+        counts = []
+        for _ in range(100):
+            allowed, count, limit = await limiter.check_rate_limit(direct_request(ip))
+            assert allowed is True and limit == 100
+            counts.append(count)
+
+        # THE 101st anonymous request — through the REAL HTTP stack — must be
+        # exactly the one refused: precise boundary, not "some 429".
+        async with make_client(ip) as client:
             resp = await client.get("/api/v1/auth/me")
-            if resp.status_code == 429:
-                first_429 = i
-                break
-        assert first_429 == 101, f"429 must arrive at exactly the 101st request (got {first_429})"
-        assert resp.headers.get("X-RateLimit-Limit") == "100"
-        assert resp.headers.get("X-RateLimit-Remaining") == "0"
-        assert int(resp.headers.get("Retry-After", "0")) > 0
-        assert resp.json().get("code") == "RATE_LIMIT_EXCEEDED"
+            assert resp.status_code == 429, (
+                f"the 101st anonymous request must be 429, got {resp.status_code}"
+            )
+            assert resp.headers.get("X-RateLimit-Limit") == "100"
+            assert resp.headers.get("X-RateLimit-Remaining") == "0"
+            assert int(resp.headers.get("Retry-After", "0")) > 0
+            assert resp.json().get("code") == "RATE_LIMIT_EXCEEDED"
 
-        # Malformed/invalid Authorization shares the SAME anonymous bucket:
-        # the auth-rejection path is rate-limited — no unlimited bypass.
-        garbage = await client.get("/api/v1/auth/me", headers={"Authorization": "Bearer not-a-jwt"})
-        assert garbage.status_code == 429
-        assert garbage.headers.get("X-RateLimit-Limit") == "100"
+            # Malformed/invalid Authorization shares the SAME anonymous bucket:
+            # the auth-rejection path is rate-limited — no unlimited bypass.
+            garbage = await client.get(
+                "/api/v1/auth/me", headers={"Authorization": "Bearer not-a-jwt"}
+            )
+            assert garbage.status_code == 429
+            assert garbage.headers.get("X-RateLimit-Limit") == "100"
 
-        # A valid contextual request is independently admitted.
-        token = contextual_token(rl_tenant)
-        ctx = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
-        assert ctx.status_code == 200
-        assert ctx.headers.get("X-RateLimit-Limit") == "1000"
+            # A valid contextual request is independently admitted.
+            token = contextual_token(rl_tenant)
+            ctx = await client.get(
+                "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+            )
+            assert ctx.status_code == 200
+            assert ctx.headers.get("X-RateLimit-Limit") == "1000"
+
+        # Post-conditions (asserted AFTER the boundary so the exact-101st
+        # assertion is the first one a window-breaking regression can trip):
+        # the 100 direct increments formed ONE unbroken in-window sequence,
+        # the two anonymous-path HTTP requests landed in the SAME IP bucket,
+        # and the contextual request in its OWN tenant bucket only.
+        assert counts == list(range(1, 101)), (
+            "all 100 direct increments must land in ONE fixed window "
+            f"(sequence broken: {counts[:3]}...{counts[-3:]})"
+        )
+        assert await redis.get(own_keys[0]) == "102"
+        assert await redis.get(own_keys[1]) == "1"
+    finally:
+        # Post-delete ONLY this test's own two exact keys.
+        await redis.delete(*own_keys)
 
 
 async def test_health_endpoints_are_exempt_from_rate_limiting():

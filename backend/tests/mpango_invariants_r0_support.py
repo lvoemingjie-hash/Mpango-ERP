@@ -59,6 +59,11 @@ REDIS_CONTAINER_ENV_VAR = "MPANGO_INVARIANTS_R0_REDIS_CONTAINER"
 # connection declaration. It must never fall back to the run-session URL,
 # the run user, alembic.ini, or any host default.
 MIGRATION_URL_ENV_VAR = "MPANGO_INVARIANTS_R0_MIGRATION_DATABASE_URL"
+# R1 correction (CTO F3): the ADMINISTRATOR identity is declared separately.
+# The container bootstrap user is the cluster ADMINISTRATOR (the only role
+# allowed to create the migration-authority role and the application
+# database — via the product provisioner); it is NOT the migration identity.
+ADMIN_URL_ENV_VAR = "MPANGO_INVARIANTS_R0_ADMIN_DATABASE_URL"
 # Optional task-evidence capture of the sanitized real migration output
 # (off by default; never read by the product, only by the task env).
 MIGRATION_LOG_ENV_VAR = "MPANGO_INVARIANTS_R0_MIGRATION_LOG"
@@ -400,22 +405,34 @@ def _assert_engine_binding(engine_url, *, host: str, port: int, dbname: str, use
 def verify_task_database_ownership_sync() -> str:
     """Pre-write ownership proof (sync part). Returns the verified RUN URL.
 
-    F1 role-closure contract (three identities):
+    Three-identity contract (R1 correction, CTO F3 — the accepted product
+    provisioning topology of scripts/provision_runtime_db_roles.py):
 
-    - container bootstrap / migration identity: ``POSTGRES_USER`` of the task
-      container, bound to ``MPANGO_INVARIANTS_R0_MIGRATION_DATABASE_URL``;
-    - test-session identity: the user in ``TEST_DATABASE_URL`` (==
-      ``DATABASE_URL``); must be a DIFFERENT, non-privileged role;
+    - ADMINISTRATOR: the container bootstrap user (``POSTGRES_USER``,
+      superuser), declared via ``MPANGO_INVARIANTS_R0_ADMIN_DATABASE_URL``.
+      Its ONLY accepted role in this task is the cluster bootstrap that the
+      product provisioner performs (create the migration-authority role, the
+      runtime role and the application database owned by the former).
+    - MIGRATION AUTHORITY: a DEDICATED role (product default
+      ``mpango_migrate``) that owns the application database and every
+      migration-created object — declared via
+      ``MPANGO_INVARIANTS_R0_MIGRATION_DATABASE_URL``. It must NEVER be the
+      container bootstrap administrator.
+    - TEST-SESSION/RUNTIME identity: the user in ``TEST_DATABASE_URL`` (==
+      ``DATABASE_URL``; product default ``mpango_app``) — non-privileged,
+      membership-free, no CREATE on the migration-owned public schema.
     - reporting identity: ``reporting_role`` / ``reporting_user`` created by
-      migration 011 (read-only; not used by this suite's connections).
+      migration 011 (read-only; additional, not a substitute for the
+      separate administrator).
 
     Refuses (before any write) when: any declaration missing,
     TEST_DATABASE_URL != DATABASE_URL, non-loopback host, missing db name,
     owner label outside the task namespace, container label/image/port/db
     mismatch, the migration URL does not bind to the same task container
-    target (host/port/db) with the container POSTGRES_USER, the run user
-    equals the bootstrap/migration user, or the live engine is not bound to
-    the declared run user and target.
+    target (host/port/db), the migration user equals the container
+    bootstrap administrator, the admin URL user does not bind the container
+    POSTGRES_USER, the run user equals the migration user, or the live
+    engine is not bound to the declared run user and target.
     """
     container = os.environ.get(CONTAINER_ENV_VAR, "").strip()
     owner_label = os.environ.get(OWNER_LABEL_ENV_VAR, "").strip()
@@ -464,7 +481,7 @@ def verify_task_database_ownership_sync() -> str:
             f"{OWNER_LABEL_PREFIX}-* task label, got {owner_label!r}."
         )
 
-    # --- F1 role closure: the migration identity declaration. These checks
+    # --- role closure: the MIGRATION authority declaration. These checks
     # deliberately sit after the original refusals (same messages preserved)
     # and before any docker inspect / subprocess work.
     migration_url = os.environ.get(MIGRATION_URL_ENV_VAR, "").strip()
@@ -494,6 +511,39 @@ def verify_task_database_ownership_sync() -> str:
             "GUARD_REFUSED_DATABASE_OWNERSHIP: the test-session user equals "
             f"the migration/bootstrap user {mig_user!r}; the run identity "
             "must be a separate, non-privileged role."
+        )
+
+    # --- R1 correction (CTO F3): the ADMINISTRATOR declaration. The
+    # container bootstrap user is the administrator ONLY; the migration
+    # identity is a dedicated role created by the product provisioner.
+    admin_url = os.environ.get(ADMIN_URL_ENV_VAR, "").strip()
+    if not admin_url:
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: missing required environment: "
+            f"{ADMIN_URL_ENV_VAR}. The container bootstrap user is the "
+            "cluster ADMINISTRATOR (product provisioner bootstrap only) and "
+            "must be declared separately from the migration authority."
+        )
+    admin_host, admin_port, _admin_dbname, admin_user = _parse_pg_url(admin_url)
+    if admin_host not in LOOPBACK_HOSTS:
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: admin URL host "
+            f"'{admin_host}' is not loopback."
+        )
+    if (admin_host, admin_port) != (host, port):
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: admin URL endpoint "
+            f"({admin_host}:{admin_port}) differs from the task target "
+            f"({host}:{port}); all three identities must bind ONE task "
+            "cluster."
+        )
+    if mig_user == admin_user:
+        raise GuardRefused(
+            "GUARD_REFUSED_DATABASE_OWNERSHIP: the migration authority user "
+            f"{mig_user!r} equals the container bootstrap ADMINISTRATOR "
+            f"{admin_user!r}; migration must run under its own dedicated "
+            "role created by the product provisioner — never the container "
+            "bootstrap administrator."
         )
 
     info = _docker_inspect(container)
@@ -528,12 +578,13 @@ def verify_task_database_ownership_sync() -> str:
             f"{env_pairs.get('POSTGRES_DB')!r} != URL database {dbname!r}; "
             "refusing to write into an unexpected (possibly pre-existing) database."
         )
-    if env_pairs.get("POSTGRES_USER") != mig_user:
+    if env_pairs.get("POSTGRES_USER") != admin_user:
         raise GuardRefused(
             "GUARD_REFUSED_DATABASE_OWNERSHIP: container POSTGRES_USER "
-            f"{env_pairs.get('POSTGRES_USER')!r} must bind the "
-            "bootstrap/migration identity, but the migration URL user is "
-            f"{mig_user!r}."
+            f"{env_pairs.get('POSTGRES_USER')!r} must bind the declared "
+            f"ADMINISTRATOR URL user {admin_user!r} (the container bootstrap "
+            "identity is the cluster administrator created by the product "
+            "provisioner topology, not the migration authority)."
         )
 
     _assert_engine_binding(
@@ -653,9 +704,12 @@ async def _live_identity_probe(db_url: str) -> dict:
 
 async def verify_migration_identity_live(migration_url: str) -> dict:
     """Live proof that the migration connection really is the declared
-    bootstrap/migration identity on the declared task database (F1 role
-    closure). Returns the identity facts (also used as evidence in the
-    integration test / ledger)."""
+    migration-authority role on the declared task database (F1 role closure;
+    R1 correction CTO F3: the facts published here must PROVE the dedicated
+    least-privilege shape — the migration role owns the application database
+    and is NOT a superuser — so the separate administrator is demonstrably
+    not being reused). Returns the identity facts (also used as evidence in
+    the integration test / ledger)."""
     _, _, dbname, mig_user = _parse_pg_url(migration_url)
     facts = await _live_identity_probe(migration_url)
     if facts["database"] != dbname:
@@ -675,6 +729,97 @@ async def verify_migration_identity_live(migration_url: str) -> dict:
             "GUARD_REFUSED_MIGRATION_IDENTITY: server is "
             f"{facts['version'].split(',')[0]!r}, expected a PostgreSQL 16 "
             "cluster matching the declared postgres:16 task container."
+        )
+    # R1 correction (CTO F3): live role attributes + database ownership,
+    # published here so the least-privilege migration authority shape is
+    # evidence, not assertion.
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    url = migration_url
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    engine = create_async_engine(url)
+    try:
+        async with engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    text(
+                        "SELECT r.rolsuper, r.rolcreatedb, r.rolcreaterole, "
+                        "r.rolreplication, "
+                        "pg_get_userbyid(d.datdba) AS database_owner "
+                        "FROM pg_roles r JOIN pg_database d "
+                        "ON d.datname = current_database() "
+                        "WHERE r.rolname = current_user"
+                    )
+                )
+            ).one()
+    finally:
+        await engine.dispose()
+    facts["role_attributes"] = {
+        "rolsuper": bool(row[0]),
+        "rolcreatedb": bool(row[1]),
+        "rolcreaterole": bool(row[2]),
+        "rolreplication": bool(row[3]),
+        "database_owner": row[4],
+    }
+    if row[0]:
+        raise GuardRefused(
+            "GUARD_REFUSED_MIGRATION_IDENTITY: the migration role is a "
+            "superuser; the migration authority must be a dedicated "
+            "non-superuser role (product provisioner contract)."
+        )
+    if row[4] != mig_user:
+        raise GuardRefused(
+            "GUARD_REFUSED_MIGRATION_IDENTITY: the application database is "
+            f"owned by {row[4]!r}, not by the declared migration authority "
+            f"{mig_user!r} (the product provisioner creates the database "
+            "owned by the migration role)."
+        )
+    return facts
+
+
+async def verify_admin_identity_live(admin_url: str) -> dict:
+    """Live proof (R1 correction, CTO F3) that the declared ADMINISTRATOR
+    really is the container bootstrap user AND a cluster superuser — the
+    only role permitted to run the product provisioner's create-roles-and-
+    database phase. The administrator is never used for migrations or by
+    any test session; this probe is read-only."""
+    _, _, dbname, admin_user = _parse_pg_url(admin_url)
+    facts = await _live_identity_probe(admin_url)
+    if facts["session_user"] != admin_user or facts["current_user"] != admin_user:
+        raise GuardRefused(
+            "GUARD_REFUSED_ADMIN_IDENTITY: admin connection identity is "
+            f"session_user={facts['session_user']!r} "
+            f"current_user={facts['current_user']!r}, expected the declared "
+            f"administrator {admin_user!r}."
+        )
+    if not facts["version"].startswith("PostgreSQL 16."):
+        raise GuardRefused(
+            "GUARD_REFUSED_ADMIN_IDENTITY: server is "
+            f"{facts['version'].split(',')[0]!r}, expected a PostgreSQL 16 "
+            "cluster matching the declared postgres:16 task container."
+        )
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    url = admin_url
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    engine = create_async_engine(url)
+    try:
+        async with engine.connect() as conn:
+            rolsuper = (
+                await conn.execute(
+                    text("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
+                )
+            ).scalar_one()
+    finally:
+        await engine.dispose()
+    facts["role_attributes"] = {"rolsuper": bool(rolsuper)}
+    if not rolsuper:
+        raise GuardRefused(
+            "GUARD_REFUSED_ADMIN_IDENTITY: the declared administrator "
+            f"{admin_user!r} is not a cluster superuser; the container "
+            "bootstrap user must be the administrator."
         )
     return facts
 
@@ -1042,6 +1187,74 @@ async def verify_public_object_authority(db_url: str, migration_url: str) -> Non
         await engine.dispose()
 
 
+def apply_product_minimum_grants() -> None:
+    """Apply the accepted product provisioning sequence's minimum grants.
+
+    R1 correction (CTO F3): instead of hand-written task grants, the fixture
+    invokes the PRODUCT provisioner (scripts/provision_runtime_db_roles.py
+    ``--apply-grants``) as the migration authority, after the migrations and
+    before any fixture write. The provisioner applies its frozen minimum
+    grant set (public USAGE, alembic_version SELECT, public sequence usage,
+    public-table DML, ledger-guard EXECUTE, database CONNECT+CREATE for the
+    runtime role — and never CREATE on the migration-owned public schema,
+    never ALTER OWNER / GRANT ALL). The same invocation then runs the
+    provisioner's read-only ``--verify`` (exit 2 on any contract violation).
+
+    Phase contract (provisioner docstring): ``--apply-grants`` connects as
+    the MIGRATION authority; the ADMINISTRATOR URL is declared for the
+    provisioner's binding preflight but the administrator itself performs no
+    write in this phase.
+    """
+    backend_dir = Path(__file__).resolve().parents[1]
+    provisioner = backend_dir / "scripts" / "provision_runtime_db_roles.py"
+    if not provisioner.is_file():
+        raise GuardRefused(
+            "GUARD_REFUSED_PROVISIONING: the product provisioner "
+            "scripts/provision_runtime_db_roles.py is missing; refusing to "
+            "substitute hand-written grants."
+        )
+    stage_env = {
+        **os.environ,
+        "MPANGO_DB_ADMIN_URL": os.environ[ADMIN_URL_ENV_VAR].strip(),
+        "MPANGO_DB_MIGRATE_URL": os.environ[MIGRATION_URL_ENV_VAR].strip(),
+        "MPANGO_DB_APP_URL": os.environ["TEST_DATABASE_URL"].strip(),
+    }
+    for phase in ("--apply-grants", "--verify"):
+        try:
+            result = subprocess.run(
+                [sys.executable, str(provisioner), phase],
+                cwd=str(backend_dir),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=180,
+                env=stage_env,
+            )
+        except subprocess.TimeoutExpired as expired:
+            partial = ""
+            for chunk in (getattr(expired, "stdout", None), getattr(expired, "stderr", None)):
+                if chunk:
+                    if isinstance(chunk, bytes):
+                        chunk = chunk.decode("utf-8", errors="replace")
+                    partial += "\n" + chunk
+            raise GuardRefused(
+                f"GUARD_REFUSED_PROVISIONING: provisioner {phase} TIMED OUT "
+                "(connection credentials sanitized):"
+                f"{_sanitize_connection_output(partial, stage_env['MPANGO_DB_MIGRATE_URL'])}"
+            ) from expired
+        output = _sanitize_connection_output(
+            (result.stdout or "") + "\n--- stderr ---\n" + (result.stderr or ""),
+            stage_env["MPANGO_DB_MIGRATE_URL"],
+        )
+        if result.returncode != 0:
+            raise GuardRefused(
+                f"GUARD_REFUSED_PROVISIONING: product provisioner {phase} "
+                f"failed (rc={result.returncode}); the runtime role's "
+                "minimum-grant contract is not established — refusing "
+                f"before any business write (output sanitized):\n{output}"
+            )
+
+
 async def _r0_task_database_stages():
     """Session fixture: prove ownership + role contract, migrate, verify
     readiness; no business writes before every stage passes.
@@ -1049,13 +1262,21 @@ async def _r0_task_database_stages():
     Stage order (each failure keeps ALL database-dependent tests out of their
     bodies and is reported as a sanitized GuardRefused category):
     1. verify_task_database_ownership_sync — declarations, container binding,
-       migration/run same-target binding, run != bootstrap, engine binding;
+       ADMINISTRATOR (container bootstrap user) separately declared and
+       bound, migration != administrator, migration/run same-target binding,
+       run != migration, engine binding;
     2. verify_migration_identity_live — migration URL really is the declared
-       bootstrap identity on the declared database;
+       dedicated migration-authority role on the declared database: database
+       owner, non-superuser, live role attributes published;
+    2b. verify_admin_identity_live — the declared administrator really is
+        the container bootstrap user and a cluster superuser (read-only
+        probe; the administrator performs no migration and no test write);
     3. verify_run_identity_live — run connection really is the declared
        non-privileged, membership-free test-session role;
     4. run_public_migrations — real 001..039 via the migration subprocess;
-    4b. verify_public_object_authority — the shared public ledger guard
+    4b. apply_product_minimum_grants — the PRODUCT provisioner's
+        --apply-grants (as the migration authority) + read-only --verify;
+    4c. verify_public_object_authority — the shared public ledger guard
         function is verified against the candidate's migration-authority
         contract (owned by the database owner / declared migration identity,
         EXECUTE for the run role, NO CREATE on public for the run role);
@@ -1066,8 +1287,10 @@ async def _r0_task_database_stages():
     db_url = verify_task_database_ownership_sync()
     migration_url = os.environ[MIGRATION_URL_ENV_VAR].strip()
     await verify_migration_identity_live(migration_url)
+    await verify_admin_identity_live(os.environ[ADMIN_URL_ENV_VAR].strip())
     await verify_run_identity_live(db_url)
     run_public_migrations(migration_url)
+    apply_product_minimum_grants()
     await verify_public_object_authority(db_url, migration_url)
     try:
         async with AsyncSessionLocal() as probe:

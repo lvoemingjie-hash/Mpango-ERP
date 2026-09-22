@@ -1070,7 +1070,10 @@ async def test_r1_guard_redis_eviction_delete_helper_refuses_missing_pool_before
 # ---------------------------------------------------------------------------
 
 def _f1_declare_base_env(monkeypatch, *, migration_url):
-    from tests.mpango_invariants_r0_support import MIGRATION_URL_ENV_VAR
+    from tests.mpango_invariants_r0_support import (
+        ADMIN_URL_ENV_VAR,
+        MIGRATION_URL_ENV_VAR,
+    )
 
     monkeypatch.setenv(CONTAINER_ENV_VAR, "any-task-container")
     monkeypatch.setenv(OWNER_LABEL_ENV_VAR, "zcode-mvp-invariants-f1-role-closure")
@@ -1080,6 +1083,12 @@ def _f1_declare_base_env(monkeypatch, *, migration_url):
     monkeypatch.delenv(MIGRATION_URL_ENV_VAR, raising=False)
     if migration_url:
         monkeypatch.setenv(MIGRATION_URL_ENV_VAR, migration_url)
+    # R1 correction (CTO F3): the container bootstrap user is declared as the
+    # ADMINISTRATOR on the same task endpoint (the guard checks the
+    # admin==migration separation before any docker/subprocess work).
+    monkeypatch.setenv(
+        ADMIN_URL_ENV_VAR, "postgresql://inv_admin@127.0.0.1:52639/inv_f1_lab"
+    )
 
 
 def test_f1_guard_refuses_missing_migration_url(monkeypatch):
@@ -1129,4 +1138,34 @@ def test_f1_guard_refuses_run_user_equal_to_bootstrap(monkeypatch):
         "postgresql://inv_boot@127.0.0.1:52639/inv_f1_lab",
     )
     with pytest.raises(GuardRefused, match="migration/bootstrap user"):
+        verify_task_database_ownership_sync()
+
+
+def test_f1_guard_refuses_migration_equal_to_container_admin(monkeypatch):
+    """[GUARD CONTROL, R1 correction CTO F3] The migration authority user
+    equal to the container bootstrap ADMINISTRATOR → refuse before any
+    docker/subprocess work: migration must run under its own dedicated role
+    created by the product provisioner, never the container bootstrap user."""
+    from tests.mpango_invariants_r0_support import (
+        ADMIN_URL_ENV_VAR,
+        MIGRATION_URL_ENV_VAR,
+        verify_task_database_ownership_sync,
+    )
+
+    run_url = "postgresql://inv_run@127.0.0.1:52639/inv_f1_lab"
+    monkeypatch.setenv(CONTAINER_ENV_VAR, "any-task-container")
+    monkeypatch.setenv(OWNER_LABEL_ENV_VAR, "zcode-mvp-invariants-f1-role-closure")
+    monkeypatch.setenv("TEST_DATABASE_URL", run_url)
+    monkeypatch.setenv("DATABASE_URL", run_url)
+    monkeypatch.setenv(
+        ADMIN_URL_ENV_VAR,
+        "postgresql://inv_admin@127.0.0.1:52639/inv_f1_lab",
+    )
+    monkeypatch.setenv(
+        MIGRATION_URL_ENV_VAR,
+        "postgresql://inv_admin@127.0.0.1:52639/inv_f1_lab",
+    )
+    with pytest.raises(
+        GuardRefused, match="bootstrap ADMINISTRATOR"
+    ):
         verify_task_database_ownership_sync()

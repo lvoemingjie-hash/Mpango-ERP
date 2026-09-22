@@ -32,8 +32,9 @@ themselves, so their verdicts are evidence, not assumption:
   snapshot under a corrected name. Test-level controls only — not a
   product-fix proof.
 
-No product code is imported beyond auth.factory / the guard function; no
-database connection is opened.
+No product code is imported beyond auth.factory / the guard function and
+the sku-list cache key builder (api.v1.skus._skus_list_cache_key, pure key
+construction with no Redis/DB access); no database connection is opened.
 """
 from __future__ import annotations
 
@@ -740,13 +741,84 @@ def test_r1_guard_redis_eviction_guard_refuses_non_loopback_url(monkeypatch):
 
 
 def test_r1_guard_sku_list_cache_key_shape_is_exact():
-    """[GUARD CONTROL] The precise-key deletion targets exactly the one key
-    `_list_skus_cached` builds for the default listing — page 1, size 10,
-    is_active None, query q (core/cache.py: skus_list:{page}:{size}:{is_active}:{q})."""
+    """[GUARD CONTROL] The precise-key deletion targets exactly the keys
+    `_list_skus_cached` builds — the tenant-scoped shape
+    skus_list:{tenant_schema}:{page}:{size}:{is_active}:{q} (default listing:
+    page 1, size 10, is_active None, query q). The test-side helper and the
+    PRODUCT key builder (api.v1.skus._skus_list_cache_key) must agree on the
+    exact bytes, so precise-key eviction can never drift from what the
+    product actually writes."""
+    from api.v1.skus import _skus_list_cache_key as product_key_builder
+
     from tests.test_mpango_mvp_invariants_r0_revocation import _sku_list_cache_key
 
-    assert _sku_list_cache_key("R1ISOSHAREDAB12CD34") == (
-        "skus_list:1:10:None:R1ISOSHAREDAB12CD34"
+    schema = "t_ab12cd34ef"
+    q = "R1ISOSHAREDAB12CD34"
+    expected = f"skus_list:{schema}:1:10:None:{q}"
+    assert _sku_list_cache_key(q, tenant_schema=schema) == expected
+    session = SimpleNamespace(info={"tenant_schema": schema})
+    # core/cache.py composes key = f"{key_prefix}:{key_builder(...)}" with
+    # key_prefix="skus_list": the product builder yields the tenant-first
+    # suffix, so the composed key is exactly the eviction target.
+    assert f"skus_list:{product_key_builder(session, 1, 10, None, q)}" == expected
+    assert product_key_builder(session, 1, 10, None, q) == (
+        f"{schema}:1:10:None:{q}"
+    )
+
+
+def test_r1_guard_sku_list_cache_key_differs_per_tenant_and_is_stable():
+    """[GUARD CONTROL] Identical listing parameters under two tenant schemas
+    must produce DIFFERENT cache keys, and the same tenant schema with the
+    same parameters must produce a STABLE identical key (the R1 SKU-cache
+    tenant-isolation contract)."""
+    from api.v1.skus import _skus_list_cache_key as product_key_builder
+
+    def session_for(schema: str) -> SimpleNamespace:
+        return SimpleNamespace(info={"tenant_schema": schema})
+
+    key_a1 = "skus_list:" + product_key_builder(session_for("t_aaaa1111"), 2, 25, True, "probe")
+    key_a2 = "skus_list:" + product_key_builder(session_for("t_aaaa1111"), 2, 25, True, "probe")
+    key_b = "skus_list:" + product_key_builder(session_for("t_bbbb2222"), 2, 25, True, "probe")
+
+    assert key_a1 == key_a2, (
+        "the same tenant schema with identical parameters must build the "
+        "same key (normal cache hits depend on key stability)"
+    )
+    assert key_a1 != key_b, (
+        "identical query parameters under different tenant schemas must "
+        "address different cache keys (tenant isolation)"
+    )
+    assert key_a1.startswith("skus_list:t_aaaa1111:2:25:True:probe"), (
+        f"unexpected tenant-scoped key shape: {key_a1!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    "session_factory, case",
+    [
+        (lambda: SimpleNamespace(), "no-info-attribute"),
+        (lambda: SimpleNamespace(info={}), "missing-tenant-schema"),
+        (lambda: SimpleNamespace(info={"tenant_schema": None}), "none-tenant-schema"),
+        (lambda: SimpleNamespace(info={"tenant_schema": ""}), "empty-tenant-schema"),
+        (lambda: SimpleNamespace(info={"tenant_schema": 123}), "non-string-tenant-schema"),
+        (lambda: SimpleNamespace(info={"tenant_schema": "t_evil:drop"}), "colon-injection"),
+        (lambda: SimpleNamespace(info={"tenant_schema": "t-evil"}), "dash-invalid"),
+        (lambda: SimpleNamespace(info={"tenant_schema": "t evil"}), "space-invalid"),
+    ],
+)
+def test_r1_guard_sku_list_cache_key_fail_closed_named_rejection(session_factory, case):
+    """[GUARD CONTROL] A session whose tenant_schema is missing, empty,
+    non-string or an invalid identifier must be rejected by a NAMED error
+    carrying the invariant — never degraded to a global, None-namespaced or
+    pre-R1 cache key (fail-closed contract)."""
+    from api.v1.skus import SkuListCacheTenantContextError
+    from api.v1.skus import _skus_list_cache_key as product_key_builder
+
+    with pytest.raises(SkuListCacheTenantContextError) as raised:
+        product_key_builder(session_factory(), 1, 10, None, "probe")
+    assert "INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED" in str(raised.value), (
+        f"[{case}] the rejection must be NAMED after the invariant, got "
+        f"{str(raised.value)[:200]!r}"
     )
 
 

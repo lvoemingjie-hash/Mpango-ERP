@@ -37,11 +37,12 @@ findings F1/F3 of 2026-09-08) — test-only changes, product bytes untouched:
   (assert_listing_exactly_own_tenant — also fed broken shapes by the guards
   counterexamples) accepts only the caller's own record. The DB-isolation
   control states and enforces an explicit cache-isolation premise (evicting
-  the tenant-shared skus_list cache entries between the two listings on the
-  task-owned Redis). The cache-reachable same-key leak is a REGISTERED risk
-  with its own bounded diagnostic node: it asserts the correct invariant and
-  is expected NAMED RED when the cache is reachable, explicit SKIP when it
-  is not.
+  the two exact tenant-scoped skus_list cache keys between the two listings
+  on the task-owned Redis). The cache-reachable same-key leak was a
+  REGISTERED risk with its own bounded diagnostic node; it asserts the
+  correct invariant and is expected GREEN when the cache is reachable
+  (fixed by the R1 SKU-cache tenant-isolation round, which scoped the key
+  to the session's tenant_schema), explicit SKIP when it is not.
 - F3: the refresh negatives are decoupled — (a) a nonexistent user inside a
   REAL ACTIVE tenant must hit PRINCIPAL_NOT_FOUND (not the tenant branch);
   (b) a token whose claims are byte-identical to the issuer's but whose
@@ -69,8 +70,9 @@ Environment premises:
 - REDIS_URL must point at a throwaway address so no existing Redis instance
   is touched: unreachable (focused premise) → read-through caches fail open;
   a reachable TASK-OWNED Redis (full-suite premise) is required only by the
-  cache diagnostic node, which then reproduces the registered leak as a
-  named RED.
+  cache diagnostic node, which asserts the tenant-scoped cache-key invariant
+  (expected GREEN since the R1 SKU-cache tenant-isolation fix; explicit SKIP
+  when the cache is unreachable).
 - Access tokens are signed with the test process SECRET_KEY via the product's
   own create_contextual_token (same documented limitation as the external
   probes: synthetic issuance material, real verification path).
@@ -383,11 +385,52 @@ async def _sku_list_cache_reachable() -> bool:
         return False
 
 
-def _sku_list_cache_key(q: str) -> str:
-    """The EXACT cache key `_list_skus_cached` uses for the default listing
-    (page=1, size=10, is_active=None) with query `q` (core/cache.py decorator:
-    key = f"{prefix}:{page}:{size}:{is_active}:{q}")."""
-    return f"skus_list:1:10:None:{q}"
+def _sku_list_cache_key(q: str, tenant_schema: str) -> str:
+    """The EXACT tenant-scoped cache key `_list_skus_cached` uses for the
+    default listing (page=1, size=10, is_active=None) with query `q` for the
+    given tenant schema (core/cache.py decorator over the
+    `_skus_list_cache_key` builder:
+    key = f"skus_list:{tenant_schema}:{page}:{size}:{is_active}:{q}")."""
+    return f"skus_list:{tenant_schema}:1:10:None:{q}"
+
+
+async def _sku_list_cache_key_exists(key: str) -> bool | None:
+    """Ownership-proven EXISTS read for ONE exact sku-list cache key.
+
+    Returns True/False when the task Redis is reachable and its ownership is
+    proven (same verify_task_redis_ownership_sync discipline as the precise
+    deletion helper); returns None when the cache is unreachable (premise
+    absent). An ownership refusal while the cache IS reachable is raised as
+    a named failure — a precise-key probe must never fall back to reading an
+    unproven Redis, and must not be swallowed into a false verdict.
+    """
+    from tests.mpango_invariants_r0_support import (
+        GuardRefused,
+        verify_task_redis_ownership_sync,
+    )
+
+    try:
+        from core.cache import get_redis_client
+
+        client = await get_redis_client()
+    except Exception as exc:
+        return None
+    try:
+        verify_task_redis_ownership_sync(client)
+    except GuardRefused as refused:
+        raise AssertionError(
+            f"INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED: the cache is "
+            f"reachable but its task ownership cannot be proven ({refused}); "
+            "refusing to probe keys on an unproven Redis."
+        ) from refused
+    try:
+        await client.ping()
+    except Exception:
+        return None
+    try:
+        return bool(await client.exists(key))
+    except Exception:
+        return None
 
 
 async def _delete_sku_list_cache_keys(keys: list) -> str:
@@ -888,19 +931,22 @@ async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_cli
     目标缺陷: none (control; pins that the R1 revocation checks did not
     disturb database-level tenant isolation).
     环境前提 (explicit cache-isolation premise): between the two listings the
-    EXACT shared cache key (skus_list:1:10:None:<q>) is deleted on the
-    task-owned Redis via _delete_sku_list_cache_keys — which FIRST proves the
-    actual cached client/pool binding (host/port/db/scheme) against the
+    TWO EXACT tenant-scoped cache keys
+    (skus_list:{tenant_schema}:1:10:None:<q> for EACH tenant) are deleted on
+    the task-owned Redis via _delete_sku_list_cache_keys — which FIRST proves
+    the actual cached client/pool binding (host/port/db/scheme) against the
     declared target (verify_task_redis_ownership_sync: declared container +
     owner label + redis:* image + 127.0.0.1 port mapping against REDIS_URL)
-    and then deletes ONLY the named key (no SCAN, no wildcards).
+    and then deletes ONLY the two named keys (no SCAN, no wildcards). With
+    the run-unique query token only the first tenant's key exists at
+    eviction time, so exactly one key is removed.
     If ownership cannot be proven while the cache IS reachable, the premise
     cannot be established safely and the node SKIPs (fail-closed: no
     deletion on an unproven Redis). If the cache is unreachable, the
     fail-open premise applies (no cache can serve cross-tenant pages). The
-    cache-reachable same-key leak is a separate registered risk with its own
-    bounded diagnostic node (expected named RED when the cache is reachable
-    and ownership-proven); it is deliberately NOT folded into this control.
+    sku-list cache is tenant-scoped since the R1 SKU-cache tenant-isolation
+    fix (skus_list:{tenant_schema}:{page}:{size}:{is_active}:{q}); this
+    control keeps proving DB-level isolation with a cache-free premise.
     执行入口: GET /api/v1/skus (identical params, per-tenant tokens) and
     POST /api/v1/auth/refresh for BOTH tenants through the real HTTP stack.
     未覆盖边界: write-path isolation (covered by the R0 concurrency file's
@@ -919,7 +965,10 @@ async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_cli
             identity=identity_b, email=f"r1r1-iso-b-{uuid.uuid4().hex[:8]}@example.com"
         )
         shared_code = f"R1ISOSHARED{uuid.uuid4().hex[:8].upper()}"
-        own_cache_key = _sku_list_cache_key(shared_code)
+        own_cache_keys = [
+            _sku_list_cache_key(shared_code, identity.schema)
+            for identity in (identity_a, identity_b)
+        ]
         async with tenant_session(identity_a.schema, identity_a.wholesaler_id) as db:
             sku_id_a = await seed_sku_with_stock(
                 db, sku_code=shared_code, quantity_on_hand=Decimal("5"),
@@ -936,7 +985,7 @@ async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_cli
             "/api/v1/skus", params=params,
             headers={"Authorization": "Bearer " + _bearer(user_a, identity_a)},
         )
-        premise = await _delete_sku_list_cache_keys([own_cache_key])
+        premise = await _delete_sku_list_cache_keys(own_cache_keys)
         if premise.startswith("refused-ownership"):
             pytest.skip(
                 "CONTROL_R1_ISOLATION: cache-isolation premise unestablishable "
@@ -997,11 +1046,12 @@ async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_cli
                 f"bound to the refreshing tenant schema, got {claims.tenant_schema}"
             )
     finally:
-        # Best-effort teardown of THIS test's own exact cache key (precise
-        # key, ownership-proven path; if ownership is unproven the key is
-        # left to the cache TTL — no destructive action is attempted).
+        # Best-effort teardown of THIS test's own two exact tenant-scoped
+        # cache keys (precise keys, ownership-proven path; if ownership is
+        # unproven the keys are left to the cache TTL — no destructive
+        # action is attempted).
         try:
-            await _delete_sku_list_cache_keys([_sku_list_cache_key(shared_code)])
+            await _delete_sku_list_cache_keys(own_cache_keys)
         except Exception:
             pass
         await identity_b.drop()
@@ -1010,27 +1060,37 @@ async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_cli
 
 @pytest.mark.integration
 async def test_r1_red_diagnostic_sku_list_cache_not_tenant_scoped(http_client):
-    """[REGISTERED-RISK DIAGNOSTIC — expected NAMED RED when the sku-list
-    cache is reachable; explicit SKIP when it is not] Identical query keys
-    must not serve one tenant's cached page to another.
+    """[INVARIANT DIAGNOSTIC — expected GREEN when the sku-list cache is
+    reachable since the R1 SKU-cache tenant-isolation fix; explicit SKIP when
+    it is not] Identical query keys must not serve one tenant's cached page
+    to another.
 
     正常对照: the same shared assertion as the DB-isolation control is used
     (invariant name overridden), so this diagnostic cannot pass on weaker
     terms than the control.
-    登记风险 (registered, NOT authorized to fix): the sku-list read-through
-    cache key (skus_list:{page}:{size}:{is_active}:{q}) has no tenant
-    dimension. With a reachable cache, tenant B's listing under the SAME key
-    as tenant A's can be served from A's cached page — a cross-tenant read
-    that never touches the database. This node reproduces that shape once,
-    in a bounded way (fresh tenants, a run-unique query token, no other
-    cache traffic), and asserts the CORRECT invariant; today it therefore
-    FAILS with INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED when the cache
-    is reachable (the named RED), and PASSES only if the cache key ever
-    becomes tenant-safe. When the cache is unreachable the premise is absent
-    and the node SKIPs with an explicit reason (never counted as GREEN
-    evidence either way). No cache implementation change is authorized.
-    环境前提: reachable task-owned Redis for the RED shape; unreachable
-    cache → skip (premise absent).
+    已修复缺陷 (fixed by CTO-AUTH-REVOCATION-STOCK-R1-SKU-CACHE-TENANT-
+    ISOLATION-ZCODEW-2026-09-22): the sku-list read-through cache key had no
+    tenant dimension (skus_list:{page}:{size}:{is_active}:{q}), so with a
+    reachable cache tenant B's listing under the SAME key as tenant A's
+    could be served from A's cached page — a cross-tenant read that never
+    touched the database. The key is now
+    skus_list:{tenant_schema}:{page}:{size}:{is_active}:{q}, taken from the
+    tenant-scoped DB session (session.info["tenant_schema"]) with a
+    fail-closed named rejection before any Redis access when it is missing,
+    empty or invalid. This node reproduces the ORIGINAL leak shape once, in
+    a bounded way (fresh tenants, a run-unique query token, no eviction
+    between the two tenants' listings), and asserts the CORRECT invariant:
+    tenant B must receive EXACTLY its own page even with tenant A's entry
+    still hot. It also proves the fix did not break normal caching: the
+    same tenant repeating the same query gets a stable key (entry present
+    after the first listing) and its own page on the cache-hit path, and
+    after both tenants listed, BOTH tenant-scoped keys exist SIMULTANEOUSLY
+    under identical query parameters (a shared key could hold only one
+    entry). When the cache is unreachable the premise is absent and the
+    node SKIPs with an explicit reason (never counted as GREEN evidence
+    either way).
+    环境前提: reachable task-owned Redis; unreachable cache → skip
+    (premise absent).
     执行入口: GET /api/v1/skus with identical params, two tenant tokens,
     real HTTP stack (cache hit path included).
     未覆盖范围: any cache namespace other than skus_list:*; write caches.
@@ -1052,6 +1112,10 @@ async def test_r1_red_diagnostic_sku_list_cache_not_tenant_scoped(http_client):
             identity=identity_b, email=f"r1r1-cdiag-b-{uuid.uuid4().hex[:8]}@example.com"
         )
         shared_code = f"R1CACHEDIAG{uuid.uuid4().hex[:8].upper()}"
+        own_cache_keys = {
+            identity.schema: _sku_list_cache_key(shared_code, identity.schema)
+            for identity in (identity_a, identity_b)
+        }
         async with tenant_session(identity_a.schema, identity_a.wholesaler_id) as db:
             sku_id_a = await seed_sku_with_stock(
                 db, sku_code=shared_code, quantity_on_hand=Decimal("5"),
@@ -1063,7 +1127,7 @@ async def test_r1_red_diagnostic_sku_list_cache_not_tenant_scoped(http_client):
                 name="CACHE-DIAG-MARKER-TENANT-B",
             )
 
-        params = {"q": shared_code}  # identical cache key for both tenants
+        params = {"q": shared_code}  # identical query parameters for both
         listing_a = await http_client.get(
             "/api/v1/skus", params=params,
             headers={"Authorization": "Bearer " + _bearer(user_a, identity_a)},
@@ -1077,7 +1141,33 @@ async def test_r1_red_diagnostic_sku_list_cache_not_tenant_scoped(http_client):
             shared_code=shared_code, label="cache-diag-A",
             invariant="INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED",
         )
-        # Same key, NO eviction: the registered risk shape.
+        # Same tenant, same params: the STABLE tenant-scoped key must now
+        # hold an entry (cache population on the miss path)...
+        assert await _sku_list_cache_key_exists(
+            own_cache_keys[identity_a.schema]
+        ) is True, (
+            "INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED[cache-diag-A]: "
+            "tenant A's exact tenant-scoped cache key must exist after its "
+            "first listing (normal cache population must keep working)."
+        )
+        # ...and the cache-HIT path must still serve tenant A exactly its
+        # own page (no eviction: this second listing is served from cache).
+        listing_a_again = await http_client.get(
+            "/api/v1/skus", params=params,
+            headers={"Authorization": "Bearer " + _bearer(user_a, identity_a)},
+        )
+        assert listing_a_again.status_code == 200, (
+            "cache diagnostic: tenant A repeat listing must succeed, got "
+            f"{listing_a_again.status_code}"
+        )
+        assert_listing_exactly_own_tenant(
+            listing_a_again.json(),
+            own_sku_id=str(sku_id_a), own_name_marker="CACHE-DIAG-MARKER-TENANT-A",
+            shared_code=shared_code, label="cache-diag-A-hit",
+            invariant="INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED",
+        )
+        # Same params, NO eviction, OTHER tenant: the original leak shape.
+        # Tenant B must get its OWN page — never tenant A's cached one.
         listing_b = await http_client.get(
             "/api/v1/skus", params=params,
             headers={"Authorization": "Bearer " + _bearer(user_b, identity_b)},
@@ -1091,11 +1181,27 @@ async def test_r1_red_diagnostic_sku_list_cache_not_tenant_scoped(http_client):
             shared_code=shared_code, label="cache-diag-B",
             invariant="INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED",
         )
+        # Key distinctness under identical query parameters: after BOTH
+        # tenants listed, BOTH exact tenant-scoped keys exist simultaneously
+        # — impossible under the pre-R1 shared key, which could hold only
+        # one tenant's page.
+        for identity, label in (
+            (identity_a, "A"), (identity_b, "B"),
+        ):
+            assert await _sku_list_cache_key_exists(
+                own_cache_keys[identity.schema]
+            ) is True, (
+                "INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED[cache-diag-"
+                f"{label}]: tenant {label}'s exact tenant-scoped key must "
+                "exist after both tenants listed with identical parameters "
+                "(a shared cache key could hold only one entry)."
+            )
     finally:
-        # Best-effort teardown of THIS diagnostic's own exact cache key
-        # (precise key, ownership-proven path; TTL expiry is the fallback).
+        # Best-effort teardown of THIS diagnostic's own two exact
+        # tenant-scoped cache keys (precise keys, ownership-proven path;
+        # TTL expiry is the fallback).
         try:
-            await _delete_sku_list_cache_keys([_sku_list_cache_key(shared_code)])
+            await _delete_sku_list_cache_keys(list(own_cache_keys.values()))
         except Exception:
             pass
         await identity_b.drop()

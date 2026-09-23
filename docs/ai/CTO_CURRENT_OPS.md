@@ -702,12 +702,31 @@ Standing boundaries:
 
 ## Agent Assignment
 
-- **Zcode/Windows product line:** close H2-C baseline integration and bounded
-  corrections under explicit CTO gates.
-- **Codex-L SKU supervisor:** own SKU-M1 architecture, implementation, internal
-  review and candidate evidence within the frozen product/package boundary.
-- **OpenCode2:** independently review SKU source, migration, tests, fresh
-  runtime and browser evidence; it must not inherit Codex-L's PASS claims.
+- HISTORICAL/SUPERSEDED (2026-09-23) — **Zcode/Windows product line:** close
+  H2-C baseline integration and bounded corrections under explicit CTO gates.
+  Superseded: H2-C is an integrated, closed line (common base `bd2373cb` on
+  the protected line), not a current assignment.
+- HISTORICAL/SUPERSEDED (2026-09-23) — **Codex-L SKU supervisor:** own SKU-M1
+  architecture, implementation, internal review and candidate evidence within
+  the frozen product/package boundary. Superseded: catalog/SKU identity
+  (migration `038`) is accepted on the reviewed contract line inside the
+  `5c93763d` composite; no current SKU-M1 work line exists.
+- HISTORICAL/SUPERSEDED (2026-09-23) — **OpenCode2:** independently review SKU
+  source, migration, tests, fresh runtime and browser evidence; it must not
+  inherit Codex-L's PASS claims. Superseded as stated; the independent-review
+  role for the current work is Fresh Kilo's below.
+- CURRENT (2026-09-23, controlled promotion review):
+  - **ZCode-W:** executed the read-only protected-promotion-readiness R0
+    inventory (CTO-AUTH-MPANGO-PROTECTED-PROMOTION-READINESS-R0-20260923) and
+    its authorized material corrections; its output carries no merge,
+    deployment, runtime-acceptance, or product-PASS authority.
+  - **Fresh Kilo:** independently review the R0 package, its erratum, and the
+    doc successor in a fresh context — re-verify identities, counts, evidence
+    attribution, conflict rehearsal, and doc consistency; it must not inherit
+    ZCode-W's findings.
+  - After a Fresh Kilo pass, only the CTO defines the exact merged candidate
+    and the independent V3/V4 runtime plan; full suite, browser runtime, and
+    deployment remain unrun/hold.
 - **All product agents:** start from a fetched, clean, isolated worktree at
   the live tip named by the current CTO directive (protected tip `57df5334`
   or the frozen candidate it names — as of 2026-09-23 the reviewed

@@ -1,17 +1,37 @@
 # CTO Current Ops
 
-**Last updated:** 2026-08-30
+**Last updated:** 2026-09-23
 **Owner:** Codex acting as CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Current reviewed product-code baseline:** `d9dc2e4130ea87a57d433dfadeb2f2736576fac6` (the accepted DC-12R1-MVP-L1-HE2-ET1-R3-A1-M1 controlled governance merge; before new controlled work, fetch the live protected tip, require this baseline to be its ancestor, then freeze that live tip)
-**HE2 R3+A1 status: MERGED_AND_INDEPENDENTLY_RUNTIME_VERIFIED** - controlled merge `d9dc2e41` has parents `cdb39e96` and `483b8ab0`; its tree is identical to source `483b8ab0`. Accepted evidence: Kilo cumulative governance review `db87f0d3`, Lubuntu fresh-runtime authority-profile final `6fb1e31e`, and merge report `1017be0c`. The authority runner now binds backend CWD/temp-DB inputs and profile-authorized Alembic head/parent lineage; it does not merge migration `038` or any SKU product code.
+**Protected product branch tip:** `57df5334f35130b6dc58e4bf5f3893a91bfc8a07` (tree `829fd8e0`; a docs-only successor of common base `bd2373cbfeafde07f1771aba2089f0d1b5f0cd3f`; fetched and verified 2026-09-23)
+**Current reviewed integration candidate:** `a78f544098bba55bbb0cba6f2ee9c5b84cddf86a` (tree `e458ce4e`) on `origin/codex/order-state-r2-e1-source-revision-f1-f3-20260919` — NOT yet promoted; `57df5334` is not an ancestor of `a78f5440`, so fast-forward from the current protected tip is not possible
+**Current candidate migration head:** `039_order_credit_holds` (parent `038_catalog_identity_vertical_slice`); the protected line remains at `037_payment_declarations_schema`
+**Resource incident:** audit complete, anonymous-volume attribution partly unknown; deployment hold remains. Deployment is NOT AUTHORIZED and nothing is deployed.
+**Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
+
+**2026-09-23 supersede note:** the previously recorded "current reviewed product-code
+baseline `d9dc2e41`" and "current migration head `037`" narratives below are
+HISTORICAL. `d9dc2e41` remains a verified ancestor of the protected tip (51
+commits behind `57df5334`), but current-state anchors are the protected tip
+`57df5334` and the reviewed integration candidate `a78f5440` recorded above.
+Since that era, the contract line integrated H2-C (via common base `bd2373cb`
+on the protected line), catalog/SKU identity with migration `038`, Order R2 +
+DB-authority with migration `039` and the five-stage deploy authority (accepted
+composite V3 at `5c93763d`), the six bounded revocation/stock fixes, tenant-
+scoped SKU list caching, the deterministic PW1R3 boundary, and the S4-D
+topology closure (accepted through `a78f5440`; Fresh Kilo R0+R1+R2 composite,
+receipt `1e238893`). `FULL_SUITE_RESULT=NOT_RUN_THIS_ROUND` and
+`BROWSER_RUNTIME=NOT_RUN_THIS_ROUND` on `a78f5440`; see
+`docs/ai/PROJECT.md` (2026-09-23) section 6 for the accepted-evidence snapshot.
+
+**HE2 R3+A1 status (HISTORICAL, era of `d9dc2e41`): MERGED_AND_INDEPENDENTLY_RUNTIME_VERIFIED** - controlled merge `d9dc2e41` has parents `cdb39e96` and `483b8ab0`; its tree is identical to source `483b8ab0`. Accepted evidence: Kilo cumulative governance review `db87f0d3`, Lubuntu fresh-runtime authority-profile final `6fb1e31e`, and merge report `1017be0c`. The authority runner now binds backend CWD/temp-DB inputs and profile-authorized Alembic head/parent lineage; it does not merge migration `038` or any SKU product code.
 **H2-B status: MERGED_AND_BROWSER_VERIFIED** - controlled merge `436d61e2` has parents `6e9470a1` and `25626f4d`; its tree is identical to the reviewed source `25626f4d`. Accepted evidence: source `25626f4d`, Kilo review `d6289a6b`, backend authority `90f96e3f` (3773 collected / 3710 passed / 48 skipped / 15 xfailed / zero red), browser E1 `04134016` (24/24 browser PASS, 29-node inventory gap=0), and merge report `c400b7c5`.
 **Accepted J1-H2-A-R2 merge:** `6e9470a1daa5d6eece29724316fdd8aef6b737c1` - parents `c5b66d26` and `bf574cf9`; it is now an ancestor of the current tip, not the tip itself.
 **Accepted R4-C1-R1 merge:** `a29f8db02365737c64d0d8d442e8ef48a8a19d6d` - parents `9067e38f` and `f51c109`; merge tree identical to the independently reviewed source; fresh-runtime browser matrix `162/162`; now an ancestor, not the current tip.
 **Accepted H7 merge:** `ea9908263d57737e434d7d61e06e5f0ee941aa81` - parents `a6ef3aac` and `a0a14e4d`; merge tree identical to the independently reviewed source.
 **Accepted readiness-debt merge:** `a6ef3aac0ab03615e9d70e08e504b9858baf61c5` - DC-12R1-MVP-R0-R1 P2/P3 readiness-debt closure and direct parent of the H7 source lineage; it is now an ancestor, not the current tip.
 **Accepted product code merge:** `adcc7f281c661897ad050a8278686375b611edb5` (accepted Contract D merge; an ancestor of the current tip, NOT the tip itself)
-**Current migration head:** `037_payment_declarations_schema` (the merged authority profile can authorize a future exact successor `038_catalog_identity_vertical_slice` with parent `037`; that migration is not in the baseline)
+**Current migration head (HISTORICAL, era of `d9dc2e41`):** `037_payment_declarations_schema` — SUPERSEDED 2026-09-23: the reviewed integration candidate `a78f5440` carries `039_order_credit_holds` (parent `038_catalog_identity_vertical_slice`); the protected line still carries `037` only.
 **Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
 
 This is the short operating picture for Mpango agents. Read
@@ -20,7 +40,18 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- `d9dc2e41` is the current reviewed baseline. It carries accepted
+- (2026-09-23) The protected product branch tip is `57df5334` (docs-only
+  successor of common base `bd2373cb`). The reviewed integration candidate is
+  `a78f5440` on `codex/order-state-r2-e1-source-revision-f1-f3-20260919`
+  (Order R2 + DB-authority V3 composite accepted at `5c93763d`; six
+  revocation/stock fixes, tenant-scoped SKU caching, PW1R3 boundary, and S4-D
+  closure accepted through `a78f5440` via the Fresh Kilo R0+R1+R2 composite,
+  receipt `1e238893`). Promotion into `product-dev-recovered` has NOT happened
+  and requires the protected-promotion-readiness review plus a fresh
+  independent runtime/browser plan. Full suite and browser runtime have not
+  been run on `a78f5440`. The resource-incident deployment hold remains.
+- HISTORICAL (era of `d9dc2e41`, superseded as current-state 2026-09-23):
+  `d9dc2e41` is the current reviewed baseline. It carries accepted
   Contracts A-D, H7 setup/dependency reconciliation, PW1 auth/rate-limit/cache/
   permission closures, the R4-C1-R1 responsive MainLayout closure, the J1
   friction-audit merge lineage, the J1-H2-A-R2 credential closure, and the
@@ -92,6 +123,13 @@ in `ai-ledger/`.
   future exact `038 -> 037` SKU migration; it does not add that migration.
 
 ## Latest Accepted Evidence
+
+> HISTORICAL (2026-08-30 era, anchored to `d9dc2e41`). Retained as evidence
+> record; NOT the current accepted-evidence snapshot. Current snapshot:
+> `docs/ai/PROJECT.md` (2026-09-23) section 6 — Order R2 + DB-authority V3
+> composite at `5c93763d`, and revocation/stock, SKU cache, PW1R3, S4-D
+> evidence through `a78f5440` (main regression `299 passed / 16 expected
+> skipped` and frozen 84 `84/84` each support only their claimed scope).
 
 HE2 R3+A1 controlled governance merge and independent authority verification:
 
@@ -243,13 +281,17 @@ Post-merge validation:
   non-blocking.
 - `RT0` remains `BLOCKED_BY_H2_C` (retailer discovery layer missing); no API
   bypass of the missing retailer UI is permitted.
-- H2-C integration candidate `42c5d328` is not merged. Its Lubuntu run was
+- ~~H2-C integration candidate `42c5d328` is not merged. Its Lubuntu run was
   corrected by `31adf492` to `VOID_ENVIRONMENT_PRECHECK`; browser execution
-  was NOT_RUN. It requires a new baseline integration and valid authority run.
-- SKU-R0-M1 is an authorized parallel V3 work line on baseline `d9dc2e41`, but
+  was NOT_RUN. It requires a new baseline integration and valid authority run.~~
+  SUPERSEDED 2026-09-23: H2-C was integrated (common base `bd2373cb` on the
+  protected line; see `docs/ai/PROJECT.md` "H2-C was subsequently integrated").
+- ~~SKU-R0-M1 is an authorized parallel V3 work line on baseline `d9dc2e41`, but
   it currently has no frozen candidate. Migration `038`, three-layer catalog
   product code, full-suite evidence, browser evidence, and independent final
-  review all remain unaccepted.
+  review all remain unaccepted.~~ SUPERSEDED 2026-09-23: catalog/SKU identity
+  with migration `038` is part of the accepted `5c93763d` composite on the
+  contract line; full-suite and browser evidence remain unaccepted there.
 - `REMOTE_ENFORCEMENT_NOT_VERIFIED`: remote/server-side enforcement has not
   been verified.
 - Nothing is deployed: no VPS deployment and no real-device acceptance have
@@ -266,6 +308,11 @@ Post-merge validation:
   tenant branding, and user manuals remain.
 
 ## Completed Deployment Prerequisite - H7 Manifest Reconciliation
+
+> HISTORICAL record (H7 R1→R16-R2 chain, 2026-07/08 era). Retained as evidence;
+> current deployment-relevant state is the five-stage DB-authority deploy path
+> carried by the integration candidate (see `docs/ai/PROJECT.md` 2026-09-23)
+> plus the resource-incident deployment hold.
 
 Before any local deployment, requirements.txt and Poetry's main-group lock
 inventory must have identical canonical package names and exact versions. This
@@ -552,11 +599,42 @@ review path, not the current gate state.
 
 ## Active Phase
 
-**Active gate:** dual-line pre-delivery execution (see
-`docs/planning/2026-08-26_mvp_pre_delivery_execution_queue.md`).
+**Active gate (2026-09-23):** protected-branch promotion readiness for the
+reviewed integration candidate `a78f5440` — read-only cumulative inventory
+R0, then Fresh Kilo review, then a fresh independent runtime plan on one
+exact frozen merged candidate. The historical dual-line queue below is
+SUPERSEDED: H2-C and SKU-R0-M1/catalog identity are both closed on the
+contract line. Ordered queue per `docs/ai/PROJECT.md` section 8:
 
-The current baseline is `d9dc2e41`. Two bounded product lines may progress in
-parallel, and both must close before the pricing implementation chain begins:
+1. `PROTECTED-PROMOTION-READINESS-R0` — cumulative source/evidence inventory
+   from common base `bd2373cb` to both tips (119 reachable commits, 96
+   first-parent, one merge, 212 changed paths; verified 2026-09-23).
+2. `FRESH-INDEPENDENT-RUNTIME-PLAN` — freeze one exact merged candidate and
+   the minimum V3/V4 suite on an isolated host (full backend suite, finance/
+   tenant/inventory coverage, browser gate). No runtime acceptance is
+   inherited from report branches; nothing has run on `a78f5440` at full-suite
+   or browser scope.
+3. `BASELINE-PROMOTION-DECISION` — CTO decides whether and how `a78f5440`
+   enters `product-dev-recovered` (fast-forward from the current protected
+   tip is not possible: its docs-only successor is not an ancestor).
+4. `PRICING-AND-ORDERING-CONTRACT-R0` — only after separate authorization.
+
+Standing boundaries (unchanged):
+
+- `FINANCE_LOCALIZATION_R0 = AUDIT_ONLY_NON_BLOCKING`: Uganda/UGX and
+  multi-currency questions do not block the MVP queue.
+- Custom SKU fields remain `POST_MVP_DISCOVERY`; SKU-M1 is limited to stable
+  product/package identity and immutable order snapshots.
+- This queue is planning truth, not implementation authorization; each entry
+  still requires its own CTO-authorized gate before product code changes.
+- A local rehearsal or merged browser gate is not a VPS, HTTPS,
+  customer-delivery, or production approval. Nothing is deployed. The
+  resource-incident deployment hold remains; anonymous-volume attribution is
+  partly unknown.
+
+**SUPERSEDED historical phase text (2026-08-30):** the current baseline is
+`d9dc2e41`. Two bounded product lines may progress in parallel, and both must
+close before the pricing implementation chain begins:
 
 1. `H2-C` closure: re-integrate the retailer discovery candidate on the current
    baseline, pass a valid backend authority run, then execute its reviewed
@@ -607,7 +685,7 @@ Standing boundaries:
    `c5b66d26` and the J1-H2-A-R2 credential closure merged as `6e9470a1`.
 9. **MVP-L1-J1-H2-B (completed):** wholesaler password recovery and
    test-hygiene closure merged and browser-verified as `436d61e2`.
-10. **Pre-delivery queue (active dual line):** `H2-C` and `SKU-R0-M1-R1` run
+10. **Pre-delivery queue (SUPERSEDED 2026-09-23; was active dual line):** `H2-C` and `SKU-R0-M1-R1` run
     as separately gated parallel lines; after both merge, continue with
     `PRICING-R0` → `PRICING-R1` → `ORDER-PRICE-R1` → `REORDER-R1` → first-use
     onboarding → full business journey / VPS / real-device final acceptance.
@@ -631,7 +709,9 @@ Standing boundaries:
 - **OpenCode2:** independently review SKU source, migration, tests, fresh
   runtime and browser evidence; it must not inherit Codex-L's PASS claims.
 - **All product agents:** start from a fetched, clean, isolated worktree at
-  current baseline `d9dc2e41`; no self-reported PASS is merge authority.
+  the live tip named by the current CTO directive (protected tip `57df5334`
+  or the frozen candidate it names — as of 2026-09-23 the reviewed
+  integration candidate `a78f5440`); no self-reported PASS is merge authority.
 - **Journey observer:** for the onboarding and final-acceptance queue entries,
   record workflow time, clicks, assistance, API-only steps, dead ends, and
   abandonment risk without coaching away product friction.
@@ -654,7 +734,8 @@ Stop and report to the CTO if:
 
 - fetched `origin/product-dev-recovered` is not exactly the authorized task
   base or does not descend from reviewed baseline
-  `d9dc2e4130ea87a57d433dfadeb2f2736576fac6`, or that
+  `d9dc2e4130ea87a57d433dfadeb2f2736576fac6` (historical anchor, verified
+  ancestor of the 2026-09-23 protected tip `57df5334f35130b6dc58e4bf5f3893a91bfc8a07`), or that
   baseline does not descend from the J1-H2-A-R2 merge
   `6e9470a1daa5d6eece29724316fdd8aef6b737c1`, the R4-C1-R1 merge
   `a29f8db02365737c64d0d8d442e8ef48a8a19d6d`, or accepted Contract D merge

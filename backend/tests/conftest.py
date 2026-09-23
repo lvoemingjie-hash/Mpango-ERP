@@ -160,8 +160,112 @@ async def ensure_reporting_user_password() -> None:
         pass
 
 
+class TestLedgerGuardAuthorityError(RuntimeError):
+    """The live database violates the test-fixture ledger-guard authority contract.
+
+    Raised fail-closed by _assert_test_ledger_guard_contract before the
+    fixture issues ANY statement, so a topology in which the test runtime
+    role would have to create, replace or re-own the migration-owned
+    ``public.prevent_ledger_modification()`` can never touch the database.
+    """
+
+
+async def _assert_test_ledger_guard_contract(session: AsyncSession) -> None:
+    """Read-only proof that this fixture may run against the live database.
+
+    Mirrors the product DB-authority contract enforced by
+    scripts/provision_runtime_db_roles.py: the migration authority (the
+    database owner) exclusively owns ``public.prevent_ledger_modification()``
+    and the test runtime role only ever EXECUTEs it from tenant triggers.
+    Every statement below is a pure catalog SELECT, so asserting the contract
+    can never itself violate it.
+    """
+    guard_rows = (await session.execute(text("""
+        SELECT p.oid::text AS function_oid,
+               pg_get_userbyid(p.proowner) AS owner,
+               format_type(p.prorettype, NULL) AS return_type,
+               pg_get_function_identity_arguments(p.oid) AS identity_arguments,
+               (SELECT pg_get_userbyid(datdba) FROM pg_database
+                WHERE datname = current_database()) AS database_owner,
+               current_user AS runtime_role,
+               COALESCE((SELECT rolsuper FROM pg_roles
+                         WHERE rolname = current_user), false) AS runtime_superuser,
+               has_schema_privilege(current_user, 'public', 'CREATE')
+                   AS runtime_public_create,
+               has_function_privilege(current_user, p.oid, 'EXECUTE')
+                   AS runtime_guard_execute,
+               pg_has_role(current_user, pg_get_userbyid(p.proowner), 'MEMBER')
+                   OR pg_has_role(current_user, pg_get_userbyid(p.proowner), 'USAGE')
+                   AS runtime_member_of_owner
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public'
+          AND p.proname = 'prevent_ledger_modification'
+    """))).mappings().all()
+
+    if not guard_rows:
+        raise TestLedgerGuardAuthorityError(
+            "TEST_LEDGER_GUARD_AUTHORITY: public.prevent_ledger_modification() "
+            "is missing — the migration-owned guard must already exist "
+            "(migrations run as the migration authority); the test runtime "
+            "role never creates or replaces it"
+        )
+    if len(guard_rows) > 1:
+        raise TestLedgerGuardAuthorityError(
+            "TEST_LEDGER_GUARD_AUTHORITY: expected exactly one "
+            f"public.prevent_ledger_modification(), found {len(guard_rows)} "
+            "overloads"
+        )
+    guard = guard_rows[0]
+    violations = []
+    if guard["return_type"] != "trigger" or guard["identity_arguments"].strip() != "":
+        violations.append(
+            f"guard shape is not a zero-argument trigger function "
+            f"(args={guard['identity_arguments']!r}, "
+            f"returns={guard['return_type']!r})"
+        )
+    if guard["owner"] != guard["database_owner"]:
+        violations.append(
+            f"guard owner {guard['owner']!r} is not the database owner "
+            f"/migration authority {guard['database_owner']!r}"
+        )
+    if guard["runtime_role"] == guard["owner"]:
+        violations.append(
+            f"runtime role {guard['runtime_role']!r} IS the guard owner"
+        )
+    if guard["runtime_superuser"]:
+        violations.append(
+            f"runtime role {guard['runtime_role']!r} is a superuser"
+        )
+    if guard["runtime_member_of_owner"]:
+        violations.append(
+            f"runtime role {guard['runtime_role']!r} holds membership in the "
+            "guard owner role"
+        )
+    if guard["runtime_public_create"]:
+        violations.append(
+            f"runtime role {guard['runtime_role']!r} holds CREATE on schema "
+            "public"
+        )
+    if not guard["runtime_guard_execute"]:
+        violations.append(
+            f"runtime role {guard['runtime_role']!r} lacks EXECUTE on the "
+            "guard function; tenant triggers could not fire"
+        )
+    if violations:
+        raise TestLedgerGuardAuthorityError(
+            "TEST_LEDGER_GUARD_AUTHORITY: live database topology violates "
+            "the test-fixture authority contract: " + "; ".join(violations)
+        )
+
+
 async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: str) -> None:
     """Ensure tenant test schema/tables exist for S5 order+ledger integration tests."""
+    # Fail-closed authority contract BEFORE any write: no CREATE SCHEMA, no
+    # tenant DDL and no trigger DDL may run unless the live topology proves
+    # the runtime role never has to touch the migration-owned public guard.
+    await _assert_test_ledger_guard_contract(session)
+
     await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{tenant_schema}"'))
     await session.execute(text(f'SET search_path TO "{tenant_schema}", public'))
 
@@ -562,26 +666,11 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
         )
     """))
 
-    await session.execute(text("""
-        CREATE OR REPLACE FUNCTION public.prevent_ledger_modification()
-        RETURNS TRIGGER AS $$
-        BEGIN
-            IF TG_OP = 'UPDATE' THEN
-                RAISE EXCEPTION 'Ledger entries are immutable. UPDATE operations are not allowed.'
-                    USING ERRCODE = 'integrity_constraint_violation',
-                          HINT = 'Ledger entries cannot be modified after creation. Create a correction entry instead.';
-            END IF;
-
-            IF TG_OP = 'DELETE' THEN
-                RAISE EXCEPTION 'Ledger entries are immutable. DELETE operations are not allowed.'
-                    USING ERRCODE = 'integrity_constraint_violation',
-                          HINT = 'Ledger entries cannot be deleted. Create a reversal entry instead.';
-            END IF;
-
-            RETURN OLD;
-        END;
-        $$ LANGUAGE plpgsql;
-    """))
+    # The shared guard public.prevent_ledger_modification() is created by
+    # migration 010 and owned by the migration authority (the database
+    # owner).  The test runtime role must never CREATE OR REPLACE it — the
+    # read-only authority assertion above proved the migration topology
+    # already provides it; tenant triggers only ever EXECUTE it.
 
     await session.execute(text(f"""
         DROP TRIGGER IF EXISTS prevent_ledger_mod

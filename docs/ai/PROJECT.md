@@ -1,16 +1,16 @@
 # Mpango ERP Project Status
 
-**Last updated:** 2026-09-22
+**Last updated:** 2026-09-23
 **Status owner:** CTO
 **Canonical product branch:** `origin/product-dev-recovered`
-**Protected product branch tip:** `bd2373cbfeafde07f1771aba2089f0d1b5f0cd3f` (live fetch on 2026-09-22; it is an ancestor of the reviewed integration candidate and has not been moved by the Order R2 integration work)
-**Current reviewed integration candidate:** `5c93763ded903cc4e903d67997f1528d09ddc4b8` (tree `e6444326ac2c023b610fc1d796b595439fcf0c22`)
-**Published candidate branch:** `origin/codex/order-r2-dbauth-r2g-e1-final-candidate-20260922`
-**Order R2 + DB-authority integration branch:** `origin/codex/order-state-r2-e1-source-revision-f1-f3-20260919@5c93763d`
-**Integration result:** `PASS_EXACT_FAST_FORWARD` - the target moved from `2df6a3bf` to `5c93763d` with 40 linear commits, zero merge commits, no content rewrite, and a report-only receipt at `origin/reports/order-r2-dbauth-r2g-e1-ff-merge-receipt-20260922@66b396e0`
-**Composite verification result:** `PASS_FOR_CTO_ORDER_R2_DB_AUTHORITY_R2G_E1_FINAL_COMPOSITE_V3_RECONCILIATION`
-**Separate revocation/stock candidate:** `a516d2b3257f782ce068e71e8730c05541f08931` (tree `6a412568cd2c50fcf1d92103d989603a5b819e60`) passed its bounded independent V3 line but is not an ancestor of `5c93763d`; integration is still a deliberate gate
+**Protected product branch tip:** `57df5334f35130b6dc58e4bf5f3893a91bfc8a07` (2026-09-22 docs-only successor of common base `bd2373cb`; fetched 2026-09-23)
+**Current reviewed integration candidate:** `a78f544098bba55bbb0cba6f2ee9c5b84cddf86a` (tree `e458ce4e88cd97778f8bf01dc9efe0579771cd4f`)
+**Published integration branch:** `origin/codex/order-state-r2-e1-source-revision-f1-f3-20260919@a78f5440`
+**Latest integration result:** strict fast-forward from `c24bbab6b` to `a78f5440`; report-only receipt `1e23889312a05d1e9ed208ec6a589f28d353d104`. This moved the contract branch, not the protected product branch.
+**Composite verification:** Order R2 + DB-authority V3 accepted on ancestor `5c93763d`; revocation/stock, SKU cache isolation, PW1R3 deterministic boundary, and S4-D topology closure independently accepted on the successor line through `a78f5440`.
+**Historical revocation/stock source:** `a516d2b3257f782ce068e71e8730c05541f08931` is not an ancestor of the integration branch; its bounded fixes were ported and reviewed on the successor line.
 **Current reviewed candidate database head:** `039_order_credit_holds` (migration `038_catalog_identity_vertical_slice` is its parent)
+**Resource incident:** audit complete, anonymous-volume attribution partly unknown; deployment hold remains
 **Deployment status:** NOT AUTHORIZED; no production or customer environment is claimed
 **Delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
 
@@ -27,12 +27,13 @@ retailer login, stable catalog/SKU identity, order-state authority, per-order
 credit holds, read-only retailer finance visibility, and the payment-declaration
 maker-checker loop are materially implemented.
 
-The reviewed integration candidate now combines Order R2 with the hardened
-tenant-bootstrap and database-authority topology. The runtime application uses a
-zero-write entrypoint, a read-only readiness gate, explicit runtime/reporting
-database URLs, and a five-stage setup path owned by separate authority roles.
-The target integration branch was fast-forwarded exactly to the reviewed
-candidate after the final composite V3 reconciliation.
+The reviewed integration candidate combines Order R2, tenant-bootstrap and
+database authority, the six bounded revocation/stock fixes, tenant-scoped SKU
+list caching, and deterministic PW1R3 and S4-D test contracts. Its runtime
+application uses a zero-write entrypoint, a read-only readiness gate, explicit
+runtime/reporting database URLs, and a five-stage setup path owned by separate
+authority roles. The contract branch now points to `a78f5440`; promotion to
+the protected product branch requires a separate cumulative review.
 
 The current product is still pre-pilot. The reviewed integration candidate has
 not been promoted to `product-dev-recovered`, deployed, or accepted by a
@@ -95,10 +96,11 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Protected product baseline | `origin/product-dev-recovered@bd2373cb`; this branch was not moved by the Order R2 + DB-authority integration |
-| Reviewed integration candidate | `5c93763d`, tree `e6444326`; final composite V3 reconciliation accepted the candidate |
-| Integrated contract branch | `origin/codex/order-state-r2-e1-source-revision-f1-f3-20260919@5c93763d`; strict fast-forward receipt `66b396e0` |
-| Separate revocation/stock candidate | `origin/zcode/mpango-mvp-invariants-r1-auth-stock-fix-2026-09-08@a516d2b3`; independently verified but not contained in `5c93763d` |
+| Protected product baseline | `origin/product-dev-recovered@57df5334`; its only successor after common base `bd2373cb` updates this document |
+| Reviewed integration candidate | `a78f5440`, tree `e458ce4e`; accepted bounded V3 evidence is composite across its successor line |
+| Integrated contract branch | `origin/codex/order-state-r2-e1-source-revision-f1-f3-20260919@a78f5440`; latest strict fast-forward receipt `1e238893` |
+| Historical revocation/stock source | `a516d2b3` remains a separate source commit; its bounded fixes were ported to the integration line at `95c044ec` and reviewed there |
+| Cross-branch promotion | Protected tip is not an ancestor of `a78f5440`; the lines share `bd2373cb`. The contract side has 119 reachable commits (96 first-parent, one merge) and 212 changed paths; cumulative scope/evidence review precedes any protected promotion |
 | Protected-tip rule | Every new task fetches live remote refs, states which baseline it uses, and starts in a clean isolated worktree. A task must not silently equate the reviewed integration branch with `product-dev-recovered` or a deployed environment |
 | Main | `origin/main@134ea59e`, not promoted |
 | Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
@@ -115,7 +117,7 @@ deployment state from a merged branch.
 
 | Area | Status | Current truth |
 |---|---|---|
-| Tenant isolation | Strong foundation; revocation candidate separately verified | Schema-per-tenant, validated identifiers, contextual JWTs, and binding guards are integrated. Candidate `a516d2b3` independently verifies active-user/active-tenant revalidation but is not an ancestor of `5c93763d`; identity-only refresh, logout, and password-reset session invalidation remain open |
+| Tenant isolation | Bounded revocation closure on integration line | Active-user, active-tenant, and contextual-refresh refusal checks were ported at `95c044ec` and independently verified; identity-only refresh, logout, and password-reset session invalidation remain open |
 | Tenant bootstrap and DB authority | Integrated candidate independently verified | Migration authority owns shared database objects; runtime bootstrap is fail-closed, public-DDL-free, and runs only after the five-stage setup and read-only verification contract |
 | Wholesaler authentication | Implemented | Login, tenant selection, setup/reset, and terminal-token handling |
 | Wholesaler credential recovery H2-B | Merged and browser-verified | Forgot/reset password chain, anonymous reset 401 no-redirect, multi-replica reset atomicity, and role-assignment `MissingGreenlet` closure merged at `436d61e2` |
@@ -124,7 +126,7 @@ deployment state from a merged branch.
 | Orders | R2 authority integrated and V3 reconciled | Locked-fresh state transitions, per-order credit holds, cancel/collection checks, and canonical payment/declaration interaction are represented through migration `039`; pricing extensions remain closed |
 | Payments | Financially hardened | Canonical methods, idempotency, replay, partial payment, and ledger invariants |
 | Receivables | Financially hardened | Non-negative exposure and collection semantics protected by migration `035` |
-| Inventory and catalog | Stable SKU identity integrated; stock fix separate | Migration `038`, catalog-product/SKU separation, package identity guards, and public API provisioning are integrated. Concurrent stock-update protection was independently verified on separate candidate `a516d2b3` and is not in `5c93763d`; duplicate-return and cross-tenant cache isolation remain open |
+| Inventory and catalog | SKU identity, bounded stock fix, and cache isolation on integration line | Migration `038` and catalog-product/SKU separation are integrated. Locked-row freshness for concurrent adjustments was ported at `95c044ec`; SKU list cache keys are tenant-scoped at `46ba2b1c` and independently verified. Duplicate-return single-effect closure remains separately tracked |
 | Reporting and exports | Implemented | Supported provisioning and sanitized worker/runtime boundaries |
 | Retailer identity S1 | Merged | Invitation, setup/reset, verified email, authoritative mapping, migration `036` |
 | Retailer private login S2 | Merged | One supplier portal, one contextual JWT, no `available_tenants` |
@@ -136,7 +138,7 @@ deployment state from a merged branch.
 | Printable business records | Backend and browser A-D merged | Read-only order, declaration, eligible receipt, and relationship-statement print data plus browser-print UI are available |
 | H7 setup and dependency reconciliation | Merged and independently verified | Native setup ran twice on Lubuntu; cross-host focused gates and post-merge evidence are zero-red |
 | HE2 authority governance | R3+A1 merged and independently verified | Backend CWD/temp-DB inputs and profile-bound Alembic head/parent are checked by runner and child; invalid environments VOID before product execution |
-| Combined runtime topology | Composite V3 accepted on `5c93763d` | Zero-write entrypoint, read-only readiness, explicit public-frontend/reporting URL wiring, reporting-role read-only checks, five-stage setup, S `243/21`, O `27/27`, and D `22/22` evidence reconciled; this is composite evidence, not one uninterrupted full-suite run |
+| Combined runtime topology | Composite V3 accepted on ancestor `5c93763d` | Zero-write entrypoint, read-only readiness, explicit public-frontend/reporting URL wiring, reporting-role read-only checks, five-stage setup, S `243/21`, O `27/27`, and D `22/22` evidence reconciled; the new successor line has separate targeted evidence, not one uninterrupted full-suite run |
 | Local deployment and browser rehearsal | Automated browser gate closed | Fresh-runtime Playwright evidence passed `162/162` for source `f51c109`, merged as `a29f8db0`; human acceptance remains and no VPS delivery is claimed |
 | Retailer workspace closure | Responsive shell and credential closure merged; next contract gate active | Mobile navigation, overflow, and the H2-A/H2-B credential lineage are closed; pricing/ordering semantics now require a refreshed contract and acceptance-test map before implementation |
 | Retailer end-to-end S4 | Partially closed | Local real-JWT browser matrix is green; real mailbox and deployed HTTPS journey on the latest SHA remain |
@@ -148,6 +150,28 @@ deployment state from a merged branch.
 | AI-native operations | Planned | Requires trustworthy data, permissions, approvals, audit, and rollback first |
 
 ## 5. Accepted Engineering Milestones
+
+### 2026-09-23 Revocation/stock and S4-D closure on the contract branch
+
+Seven successors moved the reviewed contract line from `5c93763d` to
+`a78f5440`. The bounded revocation/stock fixes entered at `95c044ec`, SKU
+list cache isolation at `46ba2b1c`, the deterministic PW1R3 boundary at
+`c24bbab6b`, and the S4-D fixture authority repair at `a78f5440`. The last
+step was a strict fast-forward of the contract branch from `c24bbab6b` to
+`a78f5440`, recorded in report-only receipt `1e238893`.
+
+Fresh Kilo S4-D evidence is composite: R0 contract `10/10` and S4-D `9/9`;
+R1 M1/M2 semantic RED with exact restores and main regression `299 passed /
+16 expected skipped / 0 failed / 0 errors`; R2 frozen 84 `84/84`, exact
+JUnit-node reconciliation, final product verify passed, and guard state did
+not drift. The cache and PW1R3 closures have their separate independent
+acceptance records. These results close the named cache, timing-test, and
+S4-D test-topology blockers on the contract branch. They do not represent a
+new full-suite or browser-runtime run on `a78f5440`.
+
+The protected product branch remains at `57df5334`. Its docs-only successor
+after common base `bd2373cb` means promotion requires a cumulative
+cross-branch review and an explicit protected-branch decision.
 
 ### 2026-09-22 Order R2 + DB-authority integrated candidate
 
@@ -359,11 +383,12 @@ negative controls VOID with zero authority-command launches. Merge report:
 
 ## 6. Latest Validation Snapshot
 
-The current reviewed integration tree is `e6444326` at candidate `5c93763d`.
-The final composite V3 reconciliation binds the accepted runtime product bytes
-to the final test-trust successor and closes the Order R2 + DB-authority line.
-The contract target was then fast-forwarded exactly to that commit; receipt
-`66b396e0` records local, tracking, and remote equality plus tree identity.
+The current reviewed integration tree is `e458ce4e` at candidate `a78f5440`.
+The Order R2 + DB-authority runtime composite was accepted on its ancestor
+`5c93763d` (tree `e6444326`); the original contract fast-forward receipt is
+`66b396e0`. Later revocation/stock, cache, PW1R3, and S4-D closures have
+their own independent evidence. Receipt `1e238893` records the final contract
+branch fast-forward to `a78f5440`.
 
 Accepted current evidence:
 
@@ -376,9 +401,14 @@ Accepted current evidence:
   readiness before Uvicorn, health/auth checks, and read-only reporting identity;
 - final critical product blobs unchanged across the late fixture/test-only
   corrections.
+- bounded revocation/stock suite: six historical repair nodes green on the
+  current product line; cache isolation independently reviewed on real Redis;
+- S4-D composite: contract `10/10`, S4-D `9/9`, semantic M1/M2 controls,
+  main regression `299 passed / 16 expected skipped / 0 failed / 0 errors`,
+  and frozen 84 `84/84` with final product verify passing.
 
-`FULL_SUITE_RESULT` and `BROWSER_RUNTIME` were not rerun in the final closure
-round. This evidence does not prove deployment, protected-branch promotion,
+`FULL_SUITE_RESULT` and `BROWSER_RUNTIME` were not rerun on `a78f5440`.
+This evidence does not prove deployment, protected-branch promotion,
 real-mailbox HTTPS delivery, or customer readiness.
 
 ### Retained historical validation
@@ -476,17 +506,20 @@ real browser/mailbox journey.
 7. The reviewed integration candidate is not yet promoted to
    `product-dev-recovered`; any such promotion requires an explicit identity and
    history gate.
+8. The anonymous-volume resource incident audit is complete, but attribution
+   of some deleted volumes remains unknown. Deployment stays on hold pending a
+   separate resource-owner disposition and operating controls.
 
 ### Tracked known debt (preserved, non-blocking)
 
-1. The final composite conclusion did not rerun the full suite or browser
-   runtime on `5c93763d`; it inherits accepted product-byte evidence and adds
-   fresh targeted closure evidence.
-2. Revocation/stock candidate `a516d2b3` passed its six targeted repairs but is
-   a separate line, not an ancestor of `5c93763d`. Its integration remains a
-   deliberate decision. Concurrent duplicate-return single economic effect,
-   cross-tenant cache isolation, identity-only refresh, logout revocation, and
-   password-reset session invalidation remain open.
+1. The accepted runtime result on `5c93763d` was composite. Later targeted
+   closures through `a78f5440` did not rerun a full suite or browser runtime
+   on that final SHA.
+2. Historical source `a516d2b3` is not an ancestor of the current contract
+   branch; its bounded revocation/stock fixes were ported at `95c044ec`.
+   Cross-tenant SKU cache isolation is closed at `46ba2b1c`. Concurrent
+   duplicate-return single economic effect, identity-only refresh, logout
+   revocation, and password-reset session invalidation remain separately open.
 3. `REMOTE_ENFORCEMENT_NOT_VERIFIED`: remote/server-side enforcement is not
    verified.
 4. No production/VPS deployment or real-device acceptance exists for the
@@ -661,38 +694,31 @@ onboarding and full business journey / VPS / real-device final acceptance).
 
 Merged and browser-verified as `436d61e2`; see Section 5 for the full record.
 
-#### Pre-delivery execution queue (refreshed 2026-09-22)
+#### Pre-delivery execution queue (refreshed 2026-09-23)
 
-The former H2-C/SKU/Order/DB-authority parallel lines have converged in reviewed
-candidate `5c93763d`; the contract target fast-forward is complete. The ordered
-next work is:
+The contract branch is reviewed through `a78f5440`; the protected product
+branch remains at `57df5334`. The ordered next work is:
 
-1. `PROJECT-TRUTH-SYNC` - update this source of truth and reconcile the merge
-   receipt (this document change).
-2. `REVOCATION-STOCK-INTEGRATION-R0` - read-only/source-design gate. Compare
-   the three product paths in `a516d2b3` with `5c93763d`, map overlapping auth,
-   tenant, inventory, and test semantics, and decide whether to reapply or
-   supersede each fix. No cherry-pick or product edit in R0.
-3. `REVOCATION-STOCK-INTEGRATION-R1` - only if R0 requires it, create a bounded
-   successor on the exact current integration baseline and rerun its V3 gates.
-4. `PRICING-AND-ORDERING-CONTRACT-R0` - docs/tests/design only. Freeze the
-   authoritative event table, old-contract/RBAC compatibility, business-rule ->
-   implementation-task -> acceptance-test mapping, KES/UGX precision, base
-   price, customer special price, immutable order-price snapshot, bounded price
-   adjustment, retailer confirm/reject/timeout, cancellation/collection effects,
-   and reorder price re-resolution. No migration or product code.
-5. `BASELINE-PROMOTION-DECISION` - before implementation, CTO must name the
-   exact implementation base (`5c93763d` integration line or a separately
-   approved promotion into `product-dev-recovered`) and freeze its tree.
-6. `PRICING-R1` - only after R0 acceptance, implement SKU base price and one
-   retailer-specific price without weakening tenant/RBAC boundaries.
-7. `ORDER-PRICE-R1` - implement the approved one-shot order adjustment and
-   customer decision lifecycle; preserve immutable accounting snapshots.
-8. `REORDER-R1` - create a new draft from history with current-price
-   re-resolution; never mutate the historical order.
-9. First-use onboarding, human pilot rehearsal, and full business journey.
-10. Separate deployment-readiness line: production Compose, deployment scripts,
-   image digest pinning, HTTPS, backup/restore, monitoring, and exact-SHA proof.
+1. `PROTECTED-PROMOTION-READINESS-R0` - read-only cumulative source and
+   evidence inventory from common base `bd2373cb` to both tips. Account for
+   the contract side's 119 reachable commits, 96 first-parent commits, one
+   merge, and 212 changed paths. Identify product, test, migration, deployment,
+   frontend, documentation, and evidence scope; preview conflicts and specify
+   the independent runtime and browser gates needed before promotion.
+2. `FRESH-INDEPENDENT-RUNTIME-PLAN` - after R0 review, freeze one exact merged
+   candidate and the minimum V3/V4 suite on an isolated host. No runtime
+   acceptance or protected promotion is inherited from report branches.
+3. `BASELINE-PROMOTION-DECISION` - CTO decides whether and how the reviewed
+   integration candidate enters `product-dev-recovered`; a fast-forward is not
+   possible from the current protected tip because its docs-only successor
+   is not an ancestor of `a78f5440`.
+4. `PRICING-AND-ORDERING-CONTRACT-R0` - only after separate authorization,
+   freeze business rules, pricing precision, order snapshots, customer
+   decisions, cancellation effects, and reorder semantics before product work.
+5. First-use onboarding and the full human business journey.
+6. Separate deployment-readiness line: resolve the resource-incident hold,
+   production Compose, deployment scripts, image pinning, HTTPS,
+   backup/restore, monitoring, and exact-SHA proof.
 
 Queue ordering is project truth, not implementation authorization. Each product
 slice still requires its own CTO scope, risk tier, verification tier, frozen

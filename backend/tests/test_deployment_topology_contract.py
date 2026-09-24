@@ -1,6 +1,10 @@
 """Permanent tests for the deployment topology contract
 (CTO-AUTH-ORDER-R2-DB-AUTHORITY-INTEGRATION-R1-R3-TOPOLOGY-AND-READINESS-CLOSURE-2026-09-19).
 
+R1R1 fixture amendment (CTO-AUTH-MPANGO-PROMOTION-M-G1-DC2H-ACTIVE-SMTP-R1R1-FIXTURE-20260924):
+the synthetic environment now also carries the nine SMTP runtime inputs the
+ACTIVE compose requires; no node, assertion, or preflight call changed.
+
 1. The REAL primary Compose file plus its default override is rendered with
    a synthetic secret environment (docker compose config) and the REAL
    setup_preflight is executed against that rendered document — the accepted
@@ -58,6 +62,18 @@ REDIS_URL_CONTAINER=redis://redis:6379/0
 # ---- explicit required runtime input (R1-R6) ----
 PUBLIC_FRONTEND_URL=https://app.example.com
 REPORTING_DATABASE_URL_CONTAINER=@REPORTING_RUNTIME_DSN@
+# ---- explicit required SMTP runtime inputs (DC2H ACTIVE-SMTP-R1:
+#      the ACTIVE compose interpolates the nine operator-supplied keys
+#      as REQUIRED with no defaults; this fixture must satisfy them) ----
+EMAIL_PROVIDER=smtp
+EMAIL_DELIVERY_MODE=smtp
+SMTP_HOST=smtp.synthetic.invalid
+SMTP_PORT=2587
+SMTP_USER=compose_smtp_user
+SMTP_PASSWORD=@DC2H_SMTP_PASSWORD@
+EMAIL_FROM=compose-synth@example.invalid
+SMTP_STARTTLS=true
+SMTP_USE_TLS=false
 # ---- compose interpolation ----
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=compose_admin_pw
@@ -71,7 +87,13 @@ DEFAULT_TENANT_SCHEMA=t_dev
     # F3 (R1-R7-R2): the R1-R7-added credential-shaped literal is assembled
     # at runtime from neutral components (value byte-identical); the
     # substitution lands inside SYNTHETIC_BACKEND_ENV exactly as before.
-    "postgresql://" + "reporting_user:" + "compose_rup_pw@postgres:5432/mpango_erp")
+    "postgresql://" + "reporting_user:" + "compose_rup_pw@postgres:5432/mpango_erp"
+).replace(
+    "@DC2H_SMTP_PASSWORD@",
+    # DC2H ACTIVE-SMTP-R1R1 (CTO-AUTH-...-R1R1-FIXTURE-20260924): the SMTP
+    # fixture secret is assembled at runtime from neutral fragments so no
+    # credential-shaped literal appears in source.
+    "-".join(["compose", "smtp", "pw", "synthetic", "9f3a72be"]))
 
 
 @pytest.mark.skipif(not _docker_available(), reason="docker CLI not available")

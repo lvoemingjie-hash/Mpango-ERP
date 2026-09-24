@@ -178,148 +178,37 @@ async def _seed_system_data(db) -> str:
     else:
         print("  . Retailer exists")
 
+    # R2 contract: confirming demo orders requires a live (wholesaler,
+    # retailer) binding.
+    row_b = (await db.execute(
+        text("SELECT 1 FROM public.wholesaler_retailer_bindings "
+             "WHERE wholesaler_id = :w AND retailer_id = :r AND is_deleted IS FALSE"),
+        {"w": DEMO_WHOLESALER_ID, "r": DEMO_RETAILER_ID},
+    )).scalar()
+    if row_b is None:
+        await db.execute(text(
+            "INSERT INTO public.wholesaler_retailer_bindings "
+            "(wholesaler_id, retailer_id, status, outstanding_balance, is_deleted) "
+            "VALUES (:w, :r, 'active', 0, FALSE) "
+            "ON CONFLICT (wholesaler_id, retailer_id) DO NOTHING"
+        ), {"w": DEMO_WHOLESALER_ID, "r": DEMO_RETAILER_ID})
+        print("  + Binding created")
+    else:
+        print("  . Binding exists")
+
     await db.commit()
     return Wholesaler.derive_schema_from_id(str(DEMO_WHOLESALER_ID))
 
 
 async def _bootstrap_tenant_schema(db, ts: str) -> None:
-    """Create tenant schema and tables via DDL (idempotent)."""
-    from sqlalchemy import text
+    """Delegate to the single canonical tenant bootstrap implementation."""
+    from database.session import settings
+    from scripts.bootstrap_tenant_schema import bootstrap
 
-    await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
-    await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))
-
-    for enum_ddl in [
-        "DO $$ BEGIN CREATE TYPE order_status AS ENUM "
-        "('draft','confirmed','partially_paid','paid','fulfilled','cancelled','voided','returned'); "
-        "EXCEPTION WHEN duplicate_object THEN null; END $$",
-        "DO $$ BEGIN CREATE TYPE account_type AS ENUM "
-        "('receivable','revenue','cash','liability'); "
-        "EXCEPTION WHEN duplicate_object THEN null; END $$",
-    ]:
-        await db.execute(text(enum_ddl))
-    await db.execute(text("ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'returned'"))
-
-    tables = [
-        f'CREATE TABLE IF NOT EXISTS "{ts}".users ('
-        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-        "email VARCHAR(255) NOT NULL UNIQUE, password_hash VARCHAR(255) NOT NULL,"
-        "full_name TEXT, is_active BOOLEAN NOT NULL DEFAULT true,"
-        "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
-        "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
-        "created_by UUID, updated_by UUID)",
-
-        f'CREATE TABLE IF NOT EXISTS "{ts}".roles ('
-        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-        "name VARCHAR(100) NOT NULL UNIQUE, description TEXT,"
-        "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
-        "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
-        "created_by UUID, updated_by UUID)",
-
-        f'CREATE TABLE IF NOT EXISTS "{ts}".permissions ('
-        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-        "code VARCHAR(100) NOT NULL UNIQUE, description TEXT,"
-        "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
-        "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
-        "created_by UUID, updated_by UUID)",
-
-        f'CREATE TABLE IF NOT EXISTS "{ts}".user_roles ('
-        f'user_id UUID NOT NULL REFERENCES "{ts}".users(id) ON DELETE CASCADE,'
-        f'role_id UUID NOT NULL REFERENCES "{ts}".roles(id) ON DELETE CASCADE,'
-        "PRIMARY KEY (user_id, role_id))",
-
-        f'CREATE TABLE IF NOT EXISTS "{ts}".role_permissions ('
-        f'role_id UUID NOT NULL REFERENCES "{ts}".roles(id) ON DELETE CASCADE,'
-        f'permission_id UUID NOT NULL REFERENCES "{ts}".permissions(id) ON DELETE CASCADE,'
-        "PRIMARY KEY (role_id, permission_id))",
-
-        f'CREATE TABLE IF NOT EXISTS "{ts}".skus ('
-        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-        "sku_code VARCHAR(64) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL,"
-        "description TEXT, unit VARCHAR(32) NOT NULL DEFAULT 'unit',"
-        "category VARCHAR(64), is_active BOOLEAN NOT NULL DEFAULT true,"
-        "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
-        "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
-        "created_by UUID, updated_by UUID)",
-
-        f'CREATE TABLE IF NOT EXISTS "{ts}".inventory_stocks ('
-        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-        f'sku_id UUID NOT NULL UNIQUE REFERENCES "{ts}".skus(id) ON DELETE CASCADE,'
-        "quantity_on_hand NUMERIC(12,2) NOT NULL DEFAULT 0,"
-        "quantity_reserved NUMERIC(12,2) NOT NULL DEFAULT 0,"
-        "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
-        "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
-        "created_by UUID, updated_by UUID)",
-
-        f'CREATE TABLE IF NOT EXISTS "{ts}".inventory_movements ('
-        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-        f'sku_id UUID NOT NULL REFERENCES "{ts}".skus(id) ON DELETE CASCADE,'
-        "movement_type VARCHAR(32) NOT NULL,"
-        "quantity NUMERIC(12,2) NOT NULL,"
-        "quantity_before NUMERIC(12,2) NOT NULL,"
-        "quantity_after NUMERIC(12,2) NOT NULL,"
-        "reason TEXT,"
-        "reference_type VARCHAR(50),"
-        "reference_id UUID,"
-        "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
-        "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
-        "created_by UUID, updated_by UUID)",
-
-        f'CREATE TABLE IF NOT EXISTS "{ts}".orders ('
-        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-        "wholesaler_id UUID NOT NULL, retailer_id UUID NOT NULL,"
-        "status order_status NOT NULL DEFAULT 'draft',"
-        "total_amount NUMERIC(12,2) NOT NULL DEFAULT 0, notes TEXT,"
-        "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
-        "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
-        "created_by UUID, updated_by UUID)",
-
-        f'CREATE TABLE IF NOT EXISTS "{ts}".order_items ('
-        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-        f'order_id UUID NOT NULL REFERENCES "{ts}".orders(id) ON DELETE CASCADE,'
-        "product_name TEXT NOT NULL, sku_code VARCHAR(64) NOT NULL,"
-        "quantity INTEGER NOT NULL, unit_price NUMERIC(12,2) NOT NULL,"
-        "subtotal NUMERIC(12,2) NOT NULL,"
-        "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
-        "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
-        "created_by UUID, updated_by UUID)",
-
-        f'CREATE TABLE IF NOT EXISTS "{ts}".ledger_entries ('
-        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-        "transaction_date TIMESTAMPTZ NOT NULL DEFAULT now(),"
-        "account_type account_type NOT NULL,"
-        "amount NUMERIC(20,4) NOT NULL,"
-        "reference_type VARCHAR(50) NOT NULL, reference_id UUID NOT NULL,"
-        "description TEXT, entry_version INTEGER NOT NULL DEFAULT 1,"
-        "hash VARCHAR(64),"
-        "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
-        "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
-        "created_by UUID, updated_by UUID)",
-    ]
-    for ddl in tables:
-        await db.execute(text(ddl))
-
-    # Ledger immutability trigger
-    await db.execute(text(
-        "CREATE OR REPLACE FUNCTION public.prevent_ledger_modification() "
-        "RETURNS TRIGGER AS $$ BEGIN "
-        "IF TG_OP = 'UPDATE' THEN RAISE EXCEPTION 'Ledger immutable' "
-        "USING ERRCODE = 'integrity_constraint_violation'; END IF; "
-        "IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'Ledger immutable' "
-        "USING ERRCODE = 'integrity_constraint_violation'; END IF; "
-        "RETURN OLD; END; $$ LANGUAGE plpgsql"
-    ))
-    await db.execute(text(
-        f'DROP TRIGGER IF EXISTS prevent_ledger_mod ON "{ts}".ledger_entries'
-    ))
-    await db.execute(text(
-        f'CREATE TRIGGER prevent_ledger_mod '
-        f'BEFORE UPDATE OR DELETE ON "{ts}".ledger_entries '
-        f'FOR EACH ROW EXECUTE FUNCTION public.prevent_ledger_modification()'
-    ))
-
-    await db.commit()
-    print(f"  + Tenant schema {ts} bootstrapped")
+    # The caller uses a fresh public-scoped session; close its implicit
+    # transaction before the canonical bootstrap opens its own engine.
+    await db.rollback()
+    await bootstrap(ts, settings.DATABASE_URL)
 
 
 async def _seed_rbac(db, ts: str) -> None:
@@ -419,8 +308,8 @@ async def _seed_skus(db, ts: str) -> None:
     for sku_code, name, desc, unit, category in DEMO_SKUS:
         try:
             await svc.create_sku(
-                db, sku_code=sku_code, name=name, description=desc,
-                unit=unit, category=category, is_active=True, created_by=None,
+                db, catalog_product_id=None, sku_code=sku_code, name=name, description=desc,
+                unit=unit, package_quantity=1, category=category, is_active=True, created_by=None,
             )
             created += 1
         except Exception:
@@ -463,6 +352,7 @@ async def _seed_orders(db, ts: str) -> None:
     """Seed orders using ORM + OrderService.transition (exercises guardrail)."""
     from sqlalchemy import text, select
     from models.order import Order, OrderItem, OrderStatus
+    from models.sku import SKU
     from services.order_service import OrderService
     from core.domain.order_state import OrderState
 
@@ -477,13 +367,11 @@ async def _seed_orders(db, ts: str) -> None:
         print(f"  . Orders already seeded ({len(existing_count)} found)")
         return
 
-    svc = OrderService(db)
-    state_map = {
-        "confirmed": OrderState.CONFIRMED,
-        "paid": OrderState.PAID,
-        "fulfilled": OrderState.FULFILLED,
-        "cancelled": OrderState.CANCELLED,
-    }
+    from services.order_command_service import OrderCommandService
+    from services.canonical_payment_service import CanonicalPaymentService
+
+    commands = OrderCommandService(db)
+    canonical = CanonicalPaymentService()
 
     for i, spec in enumerate(DEMO_ORDERS, 1):
         order = Order(
@@ -497,10 +385,19 @@ async def _seed_orders(db, ts: str) -> None:
         await db.flush()
 
         for sku_code, prod_name, qty, unit_price in spec["items"]:
+            sellable_unit = (await db.execute(
+                select(SKU).where(
+                    SKU.sku_code == sku_code,
+                    SKU.is_deleted.is_(False),
+                )
+            )).scalar_one()
             item = OrderItem(
                 order_id=order.id,
+                sellable_unit_id=sellable_unit.id,
+                identity_status="stable",
                 product_name=prod_name,
                 sku_code=sku_code,
+                unit_snapshot=sellable_unit.unit,
                 quantity=qty,
                 unit_price=unit_price,
                 subtotal=qty * unit_price,
@@ -509,11 +406,32 @@ async def _seed_orders(db, ts: str) -> None:
         await db.flush()
 
         for tname in spec["transitions"]:
-            target = state_map[tname]
-            order = await svc.transition(
-                order_id=order.id, target_state=target,
-                reason=f"Demo seed: {tname}",
-            )
+            if tname == "confirmed":
+                result = await commands.confirm_order(
+                    order.id, updated_by=str(order.created_by or DEMO_WHOLESALER_ID))
+                order = result.order
+            elif tname == "paid":
+                # payments go ONLY through the canonical service
+                pay = await canonical.confirm_payment(
+                    db=db,
+                    order_id=str(order.id),
+                    amount=order.total_amount,
+                    method="cash",
+                    transaction_id=None,
+                    idempotency_key=f"seed-{order.id}",
+                    created_by=None,
+                )
+                order = pay.order
+            elif tname == "fulfilled":
+                result = await commands.fulfill_order(
+                    order.id, updated_by=str(DEMO_WHOLESALER_ID))
+                order = result.order
+            elif tname == "cancelled":
+                result = await commands.cancel_order(
+                    order.id, updated_by=str(DEMO_WHOLESALER_ID))
+                order = result.order
+            else:
+                raise ValueError(f"unknown demo transition {tname}")
 
         await db.commit()
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))

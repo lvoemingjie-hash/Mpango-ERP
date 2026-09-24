@@ -152,6 +152,10 @@ class TestExportEnqueueErrorBoundary:
         SENTINEL_TEXT = f"Connection refused: {SENTINEL_URL}"
 
         export_logger = logging.getLogger("api.v1.exports")
+        # Under the full suite, earlier alembic-based tests run fileConfig()
+        # which disables existing loggers; re-enable so this boundary's log
+        # capture is meaningful in any collection order.
+        export_logger.disabled = False
         capture = _CaptureHandler()
         original_level = export_logger.level
         export_logger.setLevel(logging.ERROR)

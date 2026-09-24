@@ -2,9 +2,15 @@
 # Mpango ERP — Staging Docker Compose
 # Version: v0.1.9-contract-polish
 #
-# Usage:
-#   cp .env.example .env   # then fill in secrets
-#   docker compose up -d --build
+# Usage (ORDER — the five-stage database setup runs FIRST):
+#   cp .env.example .env                          # compose-level secrets
+#   cp backend/.env.example backend/.env          # two-role URLs (both
+#                                                 # contexts) + secrets
+#   backend/scripts/setup.sh                       # 1 provision (admin)
+#                                                 # 2 alembic 001..039 (authority)
+#                                                 # 3 grants  4 verify
+#                                                 # 5 runtime bootstrap
+#   docker compose --env-file backend/.env up -d --build   # THEN the runtime
 #   docker compose logs -f
 #
 # Architecture:
@@ -14,25 +20,39 @@
 #              backend depends on postgres + redis
 # =============================================================================
 
+# ---------------------------------------------------------------------------
+# USAGE CONTRACT (R1-R2): `docker compose up` is NOT a fresh-database
+# bootstrap.  The five-stage database setup (backend/scripts/setup.sh:
+# provision -> alembic through 039 -> grants -> verify -> runtime bootstrap)
+# must complete BEFORE the backend runtime starts.  The postgres service
+# below provides the MAINTENANCE database (administrator only); the
+# application database is created by provisioning phase 1 and is never
+# pre-created or application-schema-initialized here.
+# PostgreSQL line: 16 (the identity pinned by the accepted integration
+# contract; image digest pinning remains an open hardening item).
+# ---------------------------------------------------------------------------
 services:
   # ---------------------------------------------------------------------------
-  # PostgreSQL 15
+  # PostgreSQL 16 (MAINTENANCE database only — see the USAGE CONTRACT below)
   # ---------------------------------------------------------------------------
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-mpango_erp}
-      POSTGRES_USER: ${POSTGRES_USER:-mpango}
+      # MAINTENANCE database (administrator only).  The application database
+      # is a DIFFERENT database (normally mpango_erp): it is NOT pre-created
+      # here — provisioning phase 1 creates it owned by the migration
+      # authority (an existing wrong-owner database refuses).
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mpango} -d ${POSTGRES_DB:-mpango_erp}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - mpango_network
 
@@ -63,11 +83,15 @@ services:
     environment:
       # Environment
       - MPANGO_ENV=production
-      # Database (REQUIRED)
-      - DATABASE_URL=${DATABASE_URL:-postgresql://mpango:${POSTGRES_PASSWORD}@postgres:5432/mpango_erp}
+      - PUBLIC_FRONTEND_URL=${PUBLIC_FRONTEND_URL:?PUBLIC_FRONTEND_URL must be set to an absolute HTTPS origin}
+      - REPORTING_DATABASE_URL=${REPORTING_DATABASE_URL_CONTAINER:?REPORTING_DATABASE_URL_CONTAINER must be set to the container-context reporting connection}
+      # Database (REQUIRED, RUNTIME ROLE ONLY, CONTAINER CONTEXT — the Compose
+      # service DNS name; the host-side loopback translation lives in
+      # backend/.env and is proven equivalent by setup_preflight)
+      - DATABASE_URL=${DATABASE_URL_CONTAINER:?DATABASE_URL_CONTAINER must be set to the container-context runtime connection}
       - DATABASE_ECHO=${DATABASE_ECHO:-false}
-      # Redis (REQUIRED)
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      # Redis (REQUIRED, CONTAINER CONTEXT)
+      - REDIS_URL=${REDIS_URL_CONTAINER:?REDIS_URL_CONTAINER must be set to the container-context Redis connection}
       # Security (REQUIRED)
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set}
       - ALGORITHM=${ALGORITHM:-HS256}
@@ -85,8 +109,10 @@ services:
       - ENABLE_REQUEST_LOGGING=${ENABLE_REQUEST_LOGGING:-true}
       - ENABLE_SQL_PROFILING=${ENABLE_SQL_PROFILING:-false}
       - SLOW_QUERY_THRESHOLD_MS=${SLOW_QUERY_THRESHOLD_MS:-100}
-      # Reporting (required by migration 011_s6_p_reporting_role)
-      - REPORTING_USER_PASSWORD=${REPORTING_USER_PASSWORD:-ReportingPass_staging_2026}
+      # NOTE: no setup-only credentials here (MPANGO_DB_ADMIN_URL,
+      # MPANGO_DB_MIGRATE_URL, role passwords, REPORTING_USER_PASSWORD).
+      # The reporting password is a setup-time secret consumed by Alembic
+      # migration 011 only; setup_preflight refuses it in this environment.
       # Pool & Timeout
       - REQUEST_TIMEOUT_SECONDS=${REQUEST_TIMEOUT_SECONDS:-30}
       - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
@@ -97,6 +123,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # /health/live is a LIVENESS probe (process restart decisions only): it
+    # performs no dependency checks and is NOT proof that the five-stage
+    # setup completed.  Setup completion is enforced once, at container
+    # start, by the entrypoint's read-only readiness gate.
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/live"]
       interval: 30s

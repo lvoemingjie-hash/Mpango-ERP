@@ -3,10 +3,12 @@ import type { ApiResponse, PaginatedData } from '@/types/api';
 
 export interface SKU {
   id: string;
+  catalog_product_id: string;
   sku_code: string;
   name: string;
   description: string | null;
   unit: string;
+  package_quantity: number;
   category: string | null;
   is_active: boolean;
   created_at: string;
@@ -14,10 +16,12 @@ export interface SKU {
 }
 
 export interface SKUCreateRequest {
+  catalog_product_id?: string;
   sku_code: string;
   name: string;
   description?: string;
   unit?: string;
+  package_quantity?: number;
   category?: string;
   is_active?: boolean;
 }
@@ -26,6 +30,7 @@ export interface SKUUpdateRequest {
   name?: string;
   description?: string;
   unit?: string;
+  package_quantity?: number;
   category?: string;
   is_active?: boolean;
 }

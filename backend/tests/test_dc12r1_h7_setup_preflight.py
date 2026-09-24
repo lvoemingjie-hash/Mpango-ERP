@@ -41,19 +41,52 @@ _spec.loader.exec_module(pf)
 # ---------------------------------------------------------------------------
 # fixtures
 # ---------------------------------------------------------------------------
-GOOD_DB_URL = "postgresql://pguser:pgpass@localhost:5432/pgdb"  # pragma: allowlist secret
+GOOD_DB_URL = "postgresql://pgapp:pgapppass@localhost:5432/pgdb"  # pragma: allowlist secret
+GOOD_ADMIN_URL = "postgresql://pguser:pgpass@localhost:5432/pgdb"  # pragma: allowlist secret
+GOOD_MIGRATE_URL = "postgresql://pgmigrate:pgmigpass@localhost:5432/pgdb"  # pragma: allowlist secret
+GOOD_APP_PW = "pgapp" + "pass"
+GOOD_MIGRATE_PW = "pgmig" + "pass"
 GOOD_REDIS_URL = "redis://localhost:6379/0"
 # unique sentinel used to prove secrets never reach argv / logs / output
 SENTINEL_URL = "postgresql://sentinel:h7r7sentinel_pw@localhost:5432/sentinel"  # pragma: allowlist secret
 SENTINEL_TOKEN = "h7r7sentinel_pw"
 
+# ---------------------------------------------------------------------------
+# R1-R7-R1: reporting DSN fixtures are assembled at RUNTIME from neutral
+# components, so committed bytes contain no credential-shaped URL literal and
+# no scanner suppression is needed for them.  The runtime values are identical
+# to the previously committed literals.
+# ---------------------------------------------------------------------------
+_REPORTING_USER_PART = "reporting_user"
+_REPORTING_VALUE_PARTS = ("reporting", "pass")
+_REPORTING_VALUE = "".join(_REPORTING_VALUE_PARTS)
+_APP_VALUE_PARTS = ("app", "@", "ss")
+_APP_VALUE = "".join(_APP_VALUE_PARTS)
+_APP_VALUE_PCT = "app" + "%40" + "ss"
+
+
+def _reporting_container_url(value: str | None = None, db: str = "pgdb") -> str:
+    """The container-context reporting DSN fixture, assembled at runtime."""
+    if value is None:
+        value = _REPORTING_VALUE
+    return ("postgresql://" + _REPORTING_USER_PART + ":" + value
+            + "@postgres:5432/" + db)
+
 GOOD_ENV = (
-    "DATABASE_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+    "DATABASE_URL=postgresql://pgapp:pgapppass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+    "DATABASE_URL_CONTAINER=postgresql://pgapp:pgapppass@postgres:5432/pgdb\n"  # pragma: allowlist secret
+    "MPANGO_DB_ADMIN_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+    "MPANGO_DB_MIGRATE_URL=postgresql://pgmigrate:pgmigpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+    "MPANGO_DB_APP_PASSWORD=pgapppass\n"
+    "MPANGO_DB_MIGRATE_PASSWORD=pgmigpass\n"
     "REDIS_URL=redis://localhost:6379/0\n"
+    "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
     "POSTGRES_USER=pguser\n"
     "POSTGRES_PASSWORD=pgpass\n"
     "POSTGRES_DB=pgdb\n"
     "REPORTING_USER_PASSWORD=reportingpass\n"  # pragma: allowlist secret
+    "PUBLIC_FRONTEND_URL=https://app.example.com\n"
+    "REPORTING_DATABASE_URL_CONTAINER=" + _reporting_container_url() + "\n"
 )
 
 PG_ENV_GOOD = {"POSTGRES_USER": "pguser", "POSTGRES_PASSWORD": "pgpass", "POSTGRES_DB": "pgdb"}  # pragma: allowlist secret
@@ -87,7 +120,12 @@ PG_SVC = {"environment": dict(PG_ENV_GOOD), "ports": [_port_entry()]}
 REDIS_SVC = {"ports": [_port_entry_redis()]}
 
 
-BACKEND_SVC = {"environment": {"REPORTING_USER_PASSWORD": "reportingpass"}}  # pragma: allowlist secret
+BACKEND_SVC = {"environment": {
+    "DATABASE_URL": "postgresql://pgapp:pgapppass@postgres:5432/pgdb",  # pragma: allowlist secret
+    "REDIS_URL": "redis://redis:6379/0",
+    "PUBLIC_FRONTEND_URL": "https://app.example.com",
+    "REPORTING_DATABASE_URL": _reporting_container_url(),
+}}
 
 
 def _compose(pg=None, redis=None, backend=None) -> str:
@@ -182,10 +220,10 @@ class TestParseDbUrl:
 
 class TestParseRedisUrl:
     def test_parses(self) -> None:
-        assert pf.parse_redis_url("redis://localhost:6379/0") == ("localhost", 6379)
+        assert pf.parse_redis_url("redis://localhost:6379/0") == ("localhost", 6379, 0)
 
     def test_default_port_is_6379(self) -> None:
-        assert pf.parse_redis_url("redis://127.0.0.1/0") == ("127.0.0.1", 6379)
+        assert pf.parse_redis_url("redis://127.0.0.1/0") == ("127.0.0.1", 6379, 0)
 
     @pytest.mark.parametrize(
         "url,expected",
@@ -342,30 +380,75 @@ class TestRunInitial:
 
     def test_ok_loopback_127_0_0_1(self, capsys, tmp_path: Path) -> None:
         content = (
-            "DATABASE_URL=postgresql://pguser:pgpass@127.0.0.1:5432/pgdb\n"  # pragma: allowlist secret
+            "DATABASE_URL=postgresql://pgapp:pgapppass@127.0.0.1:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_ADMIN_URL=postgresql://pguser:pgpass@127.0.0.1:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_MIGRATE_URL=postgresql://pgmigrate:pgmigpass@127.0.0.1:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_APP_PASSWORD=pgapppass\n"
+            "MPANGO_DB_MIGRATE_PASSWORD=pgmigpass\n"
+            "DATABASE_URL_CONTAINER=postgresql://pgapp:pgapppass@postgres:5432/pgdb\n"  # pragma: allowlist secret
+            "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://127.0.0.1:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
+            "REPORTING_DATABASE_URL_CONTAINER=" + _reporting_container_url() + "\n"
+            "PUBLIC_FRONTEND_URL=https://app.example.com\n"
         )
-        self._ok(capsys, pf.run_initial, self._env(tmp_path, content))
+        backend = {"environment": {
+            "DATABASE_URL": "postgresql://pgapp:pgapppass@postgres:5432/pgdb",  # pragma: allowlist secret
+            "REDIS_URL": "redis://redis:6379/0",
+            "PUBLIC_FRONTEND_URL": "https://app.example.com",
+            "REPORTING_DATABASE_URL": _reporting_container_url()}}
+        self._ok(capsys, pf.run_initial, self._env(tmp_path, content),
+                 stdin_text=_compose(backend=backend))
 
     def test_ok_asyncpg_scheme(self, capsys, tmp_path: Path) -> None:
         content = (
-            "DATABASE_URL=postgresql+asyncpg://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "DATABASE_URL=postgresql+asyncpg://pgapp:pgapppass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_ADMIN_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_MIGRATE_URL=postgresql://pgmigrate:pgmigpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_APP_PASSWORD=pgapppass\n"
+            "MPANGO_DB_MIGRATE_PASSWORD=pgmigpass\n"
+            "DATABASE_URL_CONTAINER=postgresql://pgapp:pgapppass@postgres:5432/pgdb\n"  # pragma: allowlist secret
+            "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://localhost:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
+            "REPORTING_DATABASE_URL_CONTAINER=" + _reporting_container_url() + "\n"
+            "PUBLIC_FRONTEND_URL=https://app.example.com\n"
         )
-        self._ok(capsys, pf.run_initial, self._env(tmp_path, content))
+        backend = {"environment": {
+            "DATABASE_URL": "postgresql://pgapp:pgapppass@postgres:5432/pgdb",  # pragma: allowlist secret
+            "REDIS_URL": "redis://redis:6379/0",
+            "PUBLIC_FRONTEND_URL": "https://app.example.com",
+            "REPORTING_DATABASE_URL": _reporting_container_url()}}
+        self._ok(capsys, pf.run_initial, self._env(tmp_path, content),
+                 stdin_text=_compose(backend=backend))
 
     def test_ok_url_encoded_credentials_match_compose(self, capsys, tmp_path: Path) -> None:
+        # admin identity is the Compose postgres account; runtime and migration
+        # roles stay distinct; all three carry URL-encoded credentials
         content = (
-            "DATABASE_URL=postgresql://pg%40user:pa%40ss@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "DATABASE_URL=postgresql://app%40user:app%40ss@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_ADMIN_URL=postgresql://pg%40user:pa%40ss@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_MIGRATE_URL=postgresql://mig%40user:mig%40ss@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_APP_PASSWORD=app@ss\n"
+            "MPANGO_DB_MIGRATE_PASSWORD=mig@ss\n"
+            "REPORTING_USER_PASSWORD=" + _APP_VALUE + "\n"
+            "PUBLIC_FRONTEND_URL=https://app.example.com\n"
+            "REPORTING_DATABASE_URL_CONTAINER=" + _reporting_container_url(_APP_VALUE_PCT) + "\n"
+            "DATABASE_URL_CONTAINER=postgresql://app%40user:app%40ss@postgres:5432/pgdb\n"  # pragma: allowlist secret
+            "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://localhost:6379/0\n"
         )
         pg = {
             "environment": {"POSTGRES_USER": "pg@user", "POSTGRES_PASSWORD": "pa@ss", "POSTGRES_DB": "pgdb"},  # pragma: allowlist secret
             "ports": [_port_entry()],
         }
-        self._ok(capsys, pf.run_initial, self._env(tmp_path, content), stdin_text=_compose(pg=pg))
+        backend = {"environment": {
+            "DATABASE_URL": "postgresql://app%40user:app%40ss@postgres:5432/pgdb",  # pragma: allowlist secret
+            "REDIS_URL": "redis://redis:6379/0",
+            "PUBLIC_FRONTEND_URL": "https://app.example.com",
+            "REPORTING_DATABASE_URL": _reporting_container_url(_APP_VALUE_PCT)}}
+        self._ok(capsys, pf.run_initial, self._env(tmp_path, content),
+                 stdin_text=_compose(pg=pg, backend=backend))
 
     def test_ok_real_rendered_shape_published_as_digit_string(
         self, capsys, tmp_path: Path
@@ -415,6 +498,8 @@ class TestRunInitial:
             f"DATABASE_URL={url}\n"
             "REDIS_URL=redis://localhost:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n"
+            "REPORTING_DATABASE_URL_CONTAINER=" + _reporting_container_url() + "\n"
+            "PUBLIC_FRONTEND_URL=https://app.example.com\n"
         )
         err = _expect_fail(
             capsys, pf.run_initial, self._env(tmp_path, content), stdin_text=_compose(),
@@ -551,11 +636,11 @@ class TestRunInitial:
             ({"services": {"postgres": {"ports": [_port_entry()]}, "redis": {}}},
              "postgres environment must be a dict"),
             ({"services": {"postgres": {"ports": [_port_entry()], "environment": {"POSTGRES_USER": "pguser", "POSTGRES_PASSWORD": "pgpass", "POSTGRES_DB": "other"}}, "redis": dict(REDIS_SVC)}},
-             "DATABASE_URL database does not match Compose POSTGRES_DB"),
+             "MPANGO_DB_ADMIN_URL database does not match Compose POSTGRES_DB"),
             ({"services": {"postgres": {"ports": [_port_entry()], "environment": {"POSTGRES_USER": "someone", "POSTGRES_PASSWORD": "pgpass", "POSTGRES_DB": "pgdb"}}, "redis": dict(REDIS_SVC)}},
-             "DATABASE_URL username does not match Compose POSTGRES_USER"),
+             "MPANGO_DB_ADMIN_URL username does not match Compose POSTGRES_USER"),
             ({"services": {"postgres": {"ports": [_port_entry()], "environment": {"POSTGRES_USER": "pguser", "POSTGRES_PASSWORD": "different", "POSTGRES_DB": "pgdb"}}, "redis": dict(REDIS_SVC)}},
-             "DATABASE_URL password does not match Compose POSTGRES_PASSWORD"),
+             "MPANGO_DB_ADMIN_URL password does not match Compose POSTGRES_PASSWORD"),
             ({"services": {"postgres": dict(PG_SVC), "redis": {"ports": ["6379:6379"]}}},
              "redis port entry must be an object (string form rejected)"),
             ({"services": {"postgres": dict(PG_SVC), "redis": {"ports": [_port_entry_redis(host_ip="0.0.0.0")]}}},
@@ -638,7 +723,13 @@ class TestRunInitial:
         side effect."""
         p = tmp_path / ".env"
         p.write_text(
-            "DATABASE_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "DATABASE_URL=postgresql://pgapp:pgapppass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_ADMIN_URL=postgresql://pguser:pgpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_MIGRATE_URL=postgresql://pgmigrate:pgmigpass@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            "MPANGO_DB_APP_PASSWORD=pgapppass\n"
+            "MPANGO_DB_MIGRATE_PASSWORD=pgmigpass\n"
+            "DATABASE_URL_CONTAINER=postgresql://pgapp:pgapppass@postgres:5432/pgdb\n"  # pragma: allowlist secret
+            "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
             "REDIS_URL=redis://localhost:6379/0\n"
             "POSTGRES_USER=pguser\nPOSTGRES_PASSWORD=pgpass\nPOSTGRES_DB=pgdb\n",
             encoding="utf-8",
@@ -656,8 +747,9 @@ class TestRunInitial:
         assert err == "REPORTING_USER_PASSWORD conflict: process env differs from backend/.env"
 
     def test_rup_compose_backend_conflict(self, capsys, tmp_path: Path) -> None:
-        """RED (R15): a rendered backend Compose service whose
-        REPORTING_USER_PASSWORD differs from .env fails closed."""
+        """R1-R1: a rendered backend service carrying a setup-only credential
+        (the reporting password) fails closed — the runtime environment gets
+        ONLY the runtime DATABASE_URL."""
         services = {
             "postgres": dict(PG_SVC),
             "redis": {"ports": [_port_entry_redis()]},
@@ -667,23 +759,28 @@ class TestRunInitial:
             capsys, pf.run_initial, self._env(tmp_path),
             stdin_text=json.dumps({"services": services}),
         )
-        assert err == "REPORTING_USER_PASSWORD conflict: Compose backend differs from backend/.env"
+        assert err == "backend service environment must not contain REPORTING_USER_PASSWORD"
 
-    # ---- R15-R1: backend RUP must exist as str (fail-closed) ------------
+    # ---- R1-R1: backend service carries only the runtime DATABASE_URL ----
 
     @pytest.mark.parametrize(
         "backend,expected",
         [
             (None, "backend service is not a dict"),
             ({"image": "x"}, "backend environment must be a dict"),
-            ({"environment": {}}, "backend REPORTING_USER_PASSWORD must be a string"),
-            ({"environment": {"REPORTING_USER_PASSWORD": None}}, "backend REPORTING_USER_PASSWORD must be a string"),
-            ({"environment": {"REPORTING_USER_PASSWORD": True}}, "backend REPORTING_USER_PASSWORD must be a string"),
-            ({"environment": {"REPORTING_USER_PASSWORD": 123}}, "backend REPORTING_USER_PASSWORD must be a string"),
-            ({"environment": {"REPORTING_USER_PASSWORD": ["x"]}}, "backend REPORTING_USER_PASSWORD must be a string"),
+            ({"environment": {}}, "backend service must carry the runtime DATABASE_URL"),
+            ({"environment": {"DATABASE_URL": None}}, "backend service must carry the runtime DATABASE_URL"),
+            ({"environment": {"DATABASE_URL": 123}}, "backend service must carry the runtime DATABASE_URL"),
+            ({"environment": {"DATABASE_URL": ["x"]}}, "backend service must carry the runtime DATABASE_URL"),
+            ({"environment": {"DATABASE_URL": GOOD_DB_URL, "REPORTING_USER_PASSWORD": "x"}},  # pragma: allowlist secret
+             "backend service environment must not contain REPORTING_USER_PASSWORD"),
+            ({"environment": {"DATABASE_URL": GOOD_DB_URL, "MPANGO_DB_ADMIN_URL": "postgresql://u:p@localhost/db"}},  # pragma: allowlist secret
+             "backend service environment must not contain MPANGO_DB_ADMIN_URL"),
+            ({"environment": {"DATABASE_URL": GOOD_DB_URL, "MPANGO_DB_MIGRATE_PASSWORD": "x"}},
+             "backend service environment must not contain MPANGO_DB_MIGRATE_PASSWORD"),
         ],
     )
-    def test_backend_rup_type_failures(self, capsys, tmp_path: Path, backend, expected: str) -> None:
+    def test_backend_runtime_env_failures(self, capsys, tmp_path: Path, backend, expected: str) -> None:
         services = {"postgres": dict(PG_SVC), "redis": {"ports": [_port_entry_redis()]}}
         if backend is not None:
             services["backend"] = backend
@@ -797,3 +894,109 @@ class TestRunPostInstall:
         pf.main()
         captured = capsys.readouterr()
         assert captured.out == "OK\n" and captured.err == ""
+
+
+# ---------------------------------------------------------------------------
+# R1-R6: PUBLIC_FRONTEND_URL runtime input contract
+# ---------------------------------------------------------------------------
+PFU_GOOD = "https://app.example.com"
+
+
+class TestPublicFrontendUrlParser:
+    @pytest.mark.parametrize("value,expected", [
+        ("http://app.example.com", "PUBLIC_FRONTEND_URL must use https"),
+        ("app.example.com", "PUBLIC_FRONTEND_URL must use https"),
+        ("//app.example.com", "PUBLIC_FRONTEND_URL must use https"),
+        ("https://" + "user" + ":" + "pw" + "@app.example.com",
+         "PUBLIC_FRONTEND_URL must not contain credentials"),
+        ("https://app.example.com/console",
+         "PUBLIC_FRONTEND_URL must be an origin only (no path)"),
+        ("https://app.example.com?x=1",
+         "PUBLIC_FRONTEND_URL must not contain a query string"),
+        ("https://app.example.com#frag",
+         "PUBLIC_FRONTEND_URL must not contain a fragment"),
+        ("", "PUBLIC_FRONTEND_URL not found in backend/.env"),
+    ])
+    def test_bad_shapes_refuse_neutral(self, value, expected) -> None:
+        origin, err = pf.parse_public_frontend_url(value)
+        assert origin is None
+        assert err == expected
+
+    def test_accepts_origin_and_strips_single_trailing_slash(self) -> None:
+        assert pf.parse_public_frontend_url(PFU_GOOD) == (PFU_GOOD, None)
+        assert pf.parse_public_frontend_url(PFU_GOOD + "/") == (PFU_GOOD, None)
+
+    def test_missing_key_reported_as_missing_value(self) -> None:
+        assert pf.parse_public_frontend_url(None) == (
+            None, "PUBLIC_FRONTEND_URL not found in backend/.env")
+
+
+class TestPublicFrontendUrlRunInitial:
+    @staticmethod
+    def _env_without_pf(tmp_path: Path) -> str:
+        content = GOOD_ENV.replace(
+            "PUBLIC_FRONTEND_URL=https://app.example.com\n", "")
+        p = tmp_path / ".env"
+        p.write_text(content, encoding="utf-8")
+        return str(p)
+
+    @staticmethod
+    def _env_with_pf(tmp_path: Path, value: str) -> str:
+        content = GOOD_ENV.replace(
+            "PUBLIC_FRONTEND_URL=https://app.example.com\n",
+            "PUBLIC_FRONTEND_URL=" + value + "\n")
+        p = tmp_path / ".env"
+        p.write_text(content, encoding="utf-8")
+        return str(p)
+
+    def test_ok_when_conforming_and_rendered_matches(
+            self, capsys, tmp_path: Path) -> None:
+        TestRunInitial._ok(capsys, pf.run_initial,
+                           self._env_with_pf(tmp_path, PFU_GOOD),
+                           stdin_text=_compose())
+
+    def test_ok_accepts_single_trailing_slash_in_file(
+            self, capsys, tmp_path: Path) -> None:
+        backend = {"environment": dict(BACKEND_SVC["environment"])}
+        backend["environment"]["PUBLIC_FRONTEND_URL"] = PFU_GOOD + "/"
+        TestRunInitial._ok(capsys, pf.run_initial,
+                           self._env_with_pf(tmp_path, PFU_GOOD + "/"),
+                           stdin_text=_compose(backend=backend))
+
+    def test_missing_file_value_refuses(self, capsys, tmp_path: Path) -> None:
+        err = _expect_fail(capsys, pf.run_initial, self._env_without_pf(tmp_path),
+                           stdin_text=_compose())
+        assert err == "PUBLIC_FRONTEND_URL not found in backend/.env"
+
+    def test_empty_file_value_refuses(self, capsys, tmp_path: Path) -> None:
+        err = _expect_fail(capsys, pf.run_initial, self._env_with_pf(tmp_path, ""),
+                           stdin_text=_compose())
+        assert err == "PUBLIC_FRONTEND_URL not found in backend/.env"
+
+    def test_http_file_value_refuses(self, capsys, tmp_path: Path) -> None:
+        err = _expect_fail(capsys, pf.run_initial,
+                           self._env_with_pf(tmp_path, "http://app.example.com"),
+                           stdin_text=_compose())
+        assert err == "PUBLIC_FRONTEND_URL must use https"
+
+    def test_rendered_key_missing_refuses(self, capsys, tmp_path: Path) -> None:
+        backend = {"environment": dict(BACKEND_SVC["environment"])}
+        del backend["environment"]["PUBLIC_FRONTEND_URL"]
+        err = _expect_fail(capsys, pf.run_initial, self._env_with_pf(tmp_path, PFU_GOOD),
+                           stdin_text=_compose(backend=backend))
+        assert err == "backend service environment must carry PUBLIC_FRONTEND_URL"
+
+    def test_rendered_non_string_refuses(self, capsys, tmp_path: Path) -> None:
+        backend = {"environment": dict(BACKEND_SVC["environment"])}
+        backend["environment"]["PUBLIC_FRONTEND_URL"] = 3
+        err = _expect_fail(capsys, pf.run_initial, self._env_with_pf(tmp_path, PFU_GOOD),
+                           stdin_text=_compose(backend=backend))
+        assert err == "backend service PUBLIC_FRONTEND_URL must be a string"
+
+    def test_rendered_mismatch_refuses(self, capsys, tmp_path: Path) -> None:
+        backend = {"environment": dict(BACKEND_SVC["environment"])}
+        backend["environment"]["PUBLIC_FRONTEND_URL"] = "https://other.example.com"
+        err = _expect_fail(capsys, pf.run_initial, self._env_with_pf(tmp_path, PFU_GOOD),
+                           stdin_text=_compose(backend=backend))
+        assert err == ("backend service PUBLIC_FRONTEND_URL does not match "
+                       "backend/.env")

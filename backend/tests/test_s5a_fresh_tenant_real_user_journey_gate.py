@@ -369,6 +369,11 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
         await _seed_public_tenant_and_retailer(
             tenant_id=tenant_id, code=tenant_code, retailer_id=retailer_id
         )
+        # R2 contract: confirm requires a live (wholesaler, retailer) binding.
+        from tests.order_state_r2.contract_helpers import ensure_binding
+        async with AsyncSessionLocal() as binding_session:
+            await ensure_binding(binding_session, tenant_id, retailer_id)
+            await binding_session.commit()
         await _seed_admin(tenant_schema, admin_id, admin_email, admin_password)
 
         async with _tenant_session(tenant_schema, tenant_id) as session:
@@ -554,12 +559,23 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
 
         await bootstrap(isolation_schema, get_settings().DATABASE_URL)
         async with _tenant_session(isolation_schema, isolation_tenant_id) as other_session:
+            # Stable catalog identity: skus.catalog_product_id is NOT NULL
+            # since migration 038, so the raw seed owns a CatalogProduct row.
+            other_product_id = (
+                await other_session.execute(
+                    text(
+                        "INSERT INTO catalog_products (name, is_active) "
+                        "VALUES ('Other Tenant SKU', true) RETURNING id"
+                    )
+                )
+            ).scalar_one()
             other_sku_id = (
                 await other_session.execute(
                     text(
-                        "INSERT INTO skus (sku_code, name, unit, is_active) "
-                        "VALUES ('S5A-SKU-001', 'Other Tenant SKU', 'piece', true) RETURNING id"
-                    )
+                        "INSERT INTO skus (sku_code, name, unit, is_active, catalog_product_id, package_quantity) "
+                        "VALUES ('S5A-SKU-001', 'Other Tenant SKU', 'piece', true, :product_id, 1.000) RETURNING id"
+                    ),
+                    {"product_id": other_product_id},
                 )
             ).scalar_one()
             await other_session.execute(
@@ -569,21 +585,33 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
                 ),
                 {"sku_id": other_sku_id},
             )
+            # R2 contract: the isolation tenant is a legitimately provisioned
+            # neighbour — it needs wholesaler/retailer/binding public rows for
+            # its confirmed order's credit hold.
+            isolation_retailer_id = uuid.uuid4()
+            from tests.order_state_r2.contract_helpers import ensure_binding as _r2_binding
+            async with AsyncSessionLocal() as public_session:
+                await _r2_binding(public_session, isolation_tenant_id,
+                                  isolation_retailer_id)
+                await public_session.commit()
             other_order_id = (
                 await other_session.execute(
                     text(
                         "INSERT INTO orders (wholesaler_id, retailer_id, total_amount, notes) "
                         "VALUES (:wholesaler_id, :retailer_id, 100.00, 'S5-A isolation') RETURNING id"
                     ),
-                    {"wholesaler_id": isolation_tenant_id, "retailer_id": uuid.uuid4()},
+                    {"wholesaler_id": isolation_tenant_id,
+                     "retailer_id": isolation_retailer_id},
                 )
             ).scalar_one()
             await other_session.execute(
                 text(
-                    "INSERT INTO order_items (order_id, product_name, sku_code, quantity, unit_price, subtotal) "
-                    "VALUES (:order_id, 'Other Tenant SKU', 'S5A-SKU-001', 4, 25.00, 100.00)"
+                    "INSERT INTO order_items (order_id, product_name, sku_code, quantity, unit_price, subtotal, "
+                    "sellable_unit_id, identity_status, unit_snapshot) "
+                    "VALUES (:order_id, 'Other Tenant SKU', 'S5A-SKU-001', 4, 25.00, 100.00, "
+                    ":sku_id, 'stable', 'piece')"
                 ),
-                {"order_id": other_order_id},
+                {"order_id": other_order_id, "sku_id": other_sku_id},
             )
             await other_session.commit()
             other_token = TokenPayload(

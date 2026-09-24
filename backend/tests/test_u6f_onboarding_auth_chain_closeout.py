@@ -610,8 +610,8 @@ async def test_migration_schema_sanity_uses_current_single_head():
     alembic_cfg = Config(str(backend_dir / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(backend_dir / "alembic"))
     script = ScriptDirectory.from_config(alembic_cfg)
-    assert script.get_heads() == ["037_payment_declarations_schema"]
-    assert script.get_current_head() == "037_payment_declarations_schema"
+    assert script.get_heads() == ["039_order_credit_holds"]
+    assert script.get_current_head() == "039_order_credit_holds"
 
     assert TenantRegistration.__tablename__ == "tenant_registrations"
     assert EmailVerificationToken.__tablename__ == "email_verification_tokens"

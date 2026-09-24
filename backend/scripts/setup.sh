@@ -106,37 +106,67 @@ pip install -r requirements.txt
 python "$SCRIPT_DIR/setup_preflight.py" --env-file .env --post-install || {
     echo "Post-install verification failed." >&2; exit 1; }
 
-# Resolve the validated DATABASE_URL and REPORTING_USER_PASSWORD from
-# backend/.env via the SAME strict parser the preflight uses
-# (setup_preflight.parse_env_file) — no second handwritten parser, no `set -a`,
-# no sourcing of .env. Values are captured into temporary shell variables and
-# never printed. Both are exported BEFORE Alembic (migrations including
-# 011_s6_p_reporting_role require REPORTING_USER_PASSWORD). It is unset before
-# tenant bootstrap so the reporting password does not extend its lifetime.
-_NATIVE_CREDS="$(python -c "import sys; sys.path.insert(0, sys.argv[1]); from setup_preflight import parse_env_file; e=parse_env_file('.env'); print(e.get('DATABASE_URL','')); print(e.get('REPORTING_USER_PASSWORD',''))" "$SCRIPT_DIR" 2>/dev/null)" \
-    || { echo "Could not resolve credentials from backend/.env." >&2; exit 1; }
-_NATIVE_DB_URL="${_NATIVE_CREDS%%$'\n'*}"
-_NATIVE_DB_URL="${_NATIVE_DB_URL%$'\r'}"
-_NATIVE_RUP="${_NATIVE_CREDS#*$'\n'}"
-_NATIVE_RUP="${_NATIVE_RUP%$'\r'}"
-unset _NATIVE_CREDS  # R15-R1: clear the combined buffer immediately after split
-[ -n "$_NATIVE_DB_URL" ] || { echo "DATABASE_URL missing from backend/.env." >&2; exit 1; }
-[ -n "$_NATIVE_RUP" ] || { echo "REPORTING_USER_PASSWORD missing from backend/.env." >&2; exit 1; }
-export DATABASE_URL="$_NATIVE_DB_URL"
-export REPORTING_USER_PASSWORD="$_NATIVE_RUP"
+# =========================================================================
+# TWO-ROLE DB AUTHORITY - five ordered operator phases
+# (MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY R1; combined-candidate P0 closure)
+#
+#   phase 1  provision  (admin)               roles + application database
+#   phase 2  migrate    (migration authority) alembic through 039
+#   phase 3  grants     (migration authority) minimum runtime grants
+#   phase 4  verify     (read-only)           authority contract verification
+#   phase 5  bootstrap  (runtime role)        tenant schema via DATABASE_URL
+#
+# DATABASE_URL - here and in the runtime environment - binds the RUNTIME role
+# only.  Admin and migration credentials are resolved from backend/.env into
+# temporary shell variables, exported ONLY for their own phase, never
+# printed, and unset again before the next phase, so they never linger in the
+# backend runtime environment.
+# =========================================================================
+_NATIVE_KEYS=(MPANGO_DB_ADMIN_URL MPANGO_DB_MIGRATE_URL DATABASE_URL MPANGO_DB_MIGRATE_PASSWORD MPANGO_DB_APP_PASSWORD REPORTING_USER_PASSWORD)
+_NATIVE_VALUES="$(python -c "
+import sys; sys.path.insert(0, sys.argv[1])
+from setup_preflight import parse_env_file
+e = parse_env_file('.env')
+for k in sys.argv[2:]:
+    print(e.get(k, ''))
+" "$SCRIPT_DIR" "${_NATIVE_KEYS[@]}" 2>/dev/null)"     || { echo "Could not resolve two-role credentials from backend/.env." >&2; exit 1; }
+mapfile -t _V <<<"$_NATIVE_VALUES"
+unset _NATIVE_VALUES
+_ADMIN_URL="${_V[0]%$'\r'}"; _MIGRATE_URL="${_V[1]%$'\r'}"; _RUNTIME_DB_URL="${_V[2]%$'\r'}"
+_MIGRATE_PW="${_V[3]%$'\r'}"; _APP_PW="${_V[4]%$'\r'}"; _RUP="${_V[5]%$'\r'}"
+unset _V
+for _k in _ADMIN_URL:_MPANGO_DB_ADMIN_URL _MIGRATE_URL:_MPANGO_DB_MIGRATE_URL _RUNTIME_DB_URL:DATABASE_URL _MIGRATE_PW:_MPANGO_DB_MIGRATE_PASSWORD _APP_PW:_MPANGO_DB_APP_PASSWORD _RUP:REPORTING_USER_PASSWORD; do
+    _var="${_k%%:*}"; _envn="${_k##*:}"
+    [ -n "${!_var}" ] || { echo "${_envn} missing from backend/.env." >&2; exit 1; }
+done
+unset _k _var _envn
 
-echo "Running public Alembic migration"
+echo "Phase 1/5: provisioning DB roles and application database (admin)"
+export MPANGO_DB_ADMIN_URL="$_ADMIN_URL" MPANGO_DB_MIGRATE_URL="$_MIGRATE_URL" MPANGO_DB_APP_URL="$_RUNTIME_DB_URL"
+export MPANGO_DB_MIGRATE_PASSWORD="$_MIGRATE_PW" MPANGO_DB_APP_PASSWORD="$_APP_PW"
+python scripts/provision_runtime_db_roles.py --provision
+unset MPANGO_DB_ADMIN_URL MPANGO_DB_MIGRATE_URL MPANGO_DB_APP_URL MPANGO_DB_MIGRATE_PASSWORD MPANGO_DB_APP_PASSWORD
+
+echo "Phase 2/5: running migrations through 039 as the migration authority"
+export DATABASE_URL="$_MIGRATE_URL"
+export REPORTING_USER_PASSWORD="$_RUP"
 alembic upgrade head
+unset DATABASE_URL REPORTING_USER_PASSWORD
 
-# REPORTING_USER_PASSWORD is only needed by Alembic migrations; drop it before
-# tenant bootstrap so the reporting password does not extend its lifetime.
-unset REPORTING_USER_PASSWORD _NATIVE_RUP
+echo "Phase 3/5: applying minimum runtime grants (migration authority)"
+export MPANGO_DB_ADMIN_URL="$_ADMIN_URL" MPANGO_DB_MIGRATE_URL="$_MIGRATE_URL" MPANGO_DB_APP_URL="$_RUNTIME_DB_URL"
+python scripts/provision_runtime_db_roles.py --apply-grants
 
-echo "Bootstrapping tenant schema"
+echo "Phase 4/5: verifying the authority contract (read-only)"
+python scripts/provision_runtime_db_roles.py --verify
+unset MPANGO_DB_ADMIN_URL MPANGO_DB_MIGRATE_URL MPANGO_DB_APP_URL
+
+echo "Phase 5/5: bootstrapping tenant schema as the runtime role"
+export DATABASE_URL="$_RUNTIME_DB_URL"
 python scripts/bootstrap_tenant_schema.py "${DEFAULT_TENANT_SCHEMA:-t_dev}"
 
-# Drop the connection URL and all temporary variables.
-unset DATABASE_URL _NATIVE_DB_URL _NATIVE_CREDS
+# Drop the runtime URL and every temporary credential variable.
+unset DATABASE_URL _ADMIN_URL _MIGRATE_URL _RUNTIME_DB_URL _MIGRATE_PW _APP_PW _RUP _NATIVE_KEYS
 
 cd "$REPO_ROOT"
 echo "Setting up frontend"

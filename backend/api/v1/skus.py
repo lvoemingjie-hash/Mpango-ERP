@@ -13,6 +13,7 @@ from api.middleware.rbac import RequirePermission  # S2.5: Added RBAC import
 from core.cache import cache
 from core.logging_config import get_request_logger
 from core.security import TokenPayload
+from db.sql_safety import validate_identifier
 from schemas.common import DataResponse, Pagination
 from schemas.sku import SKUCreateRequest, SKUUpdateRequest, SKURead
 from services.sku_service import SKUService
@@ -21,13 +22,65 @@ from services.sku_service import SKUService
 router = APIRouter()
 
 
+class SkuListCacheTenantContextError(RuntimeError):
+    """INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED fail-closed guard.
+
+    Raised while building the sku-list cache key — BEFORE any Redis access —
+    when the tenant-scoped DB session does not carry a usable
+    ``session.info["tenant_schema"]``. The key must never degrade to a
+    global, ``None``-namespaced or pre-R1 key: a list page cached for one
+    tenant must be unreachable for any other tenant.
+    """
+
+
+def _skus_list_cache_key(
+    db: AsyncSession,
+    page: int,
+    size: int,
+    is_active: Optional[bool],
+    q: Optional[str],
+) -> str:
+    """Tenant-scoped ``@cache`` key builder for ``_list_skus_cached``.
+
+    Cache Key: skus_list:{tenant_schema}:{page}:{size}:{is_active}:{q}
+
+    The tenant dimension comes ONLY from the actual tenant-scoped DB session
+    (``AsyncSession.info["tenant_schema"]``, set by api/context/tenant.py
+    ``create_tenant_session`` after the product's own identifier validation)
+    — never from request parameters or any caller-supplied string. A missing,
+    empty or invalid tenant_schema fails closed with
+    SkuListCacheTenantContextError (raised here, so before the cache
+    decorator touches Redis).
+    """
+    info = getattr(db, "info", None)
+    tenant_schema = info.get("tenant_schema") if isinstance(info, dict) else None
+    if not isinstance(tenant_schema, str) or not tenant_schema:
+        raise SkuListCacheTenantContextError(
+            "INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED: the tenant-scoped "
+            "DB session carries no tenant_schema in session.info; refusing "
+            "to build a sku-list cache key (fail-closed: no global, None-"
+            "namespaced or pre-R1 cache key may ever be used)."
+        )
+    try:
+        validate_identifier(tenant_schema, "tenant_schema")
+    except ValueError as exc:
+        raise SkuListCacheTenantContextError(
+            "INVARIANT_R1_SKU_LIST_CACHE_NOT_TENANT_SCOPED: session.info "
+            f"tenant_schema is not a valid schema identifier ({exc}); "
+            "refusing to build a sku-list cache key."
+        ) from exc
+    return f"{tenant_schema}:{page}:{size}:{is_active}:{q}"
+
+
 def _sku_to_read(sku) -> SKURead:
     return SKURead(
         id=str(sku.id),
+        catalog_product_id=str(sku.catalog_product_id),
         sku_code=sku.sku_code,
         name=sku.name,
         description=sku.description,
         unit=sku.unit,
+        package_quantity=sku.package_quantity,
         category=sku.category,
         is_active=sku.is_active,
         created_at=sku.created_at,
@@ -38,7 +91,7 @@ def _sku_to_read(sku) -> SKURead:
 @cache(
     ttl_seconds=60,
     key_prefix="skus_list",
-    key_builder=lambda db, page, size, is_active, q: f"{page}:{size}:{is_active}:{q}"
+    key_builder=_skus_list_cache_key
 )
 async def _list_skus_cached(
     db: AsyncSession,
@@ -49,25 +102,30 @@ async def _list_skus_cached(
 ):
     """
     S3-C: Cached helper for listing SKUs.
-    
-    Cache Key: skus_list:{page}:{size}:{is_active}:{q}
+
+    Cache Key: skus_list:{tenant_schema}:{page}:{size}:{is_active}:{q}
     TTL: 60 seconds
-    
+
     Rationale: Product catalog is read-heavy and changes infrequently.
-    Caching reduces DB load by 80% for catalog browsing.
+    Caching reduces DB load by 80% for catalog browsing. The key is scoped
+    to the caller's tenant schema (R1 SKU-cache tenant isolation): identical
+    query parameters in two tenants address two different keys, and a
+    session without a valid tenant schema is rejected before Redis access.
     """
     service = SKUService()
     items, total = await service.list_skus(db, page=page, size=size, is_active=is_active, q=q)
-    
+
     # Convert to dict format for JSON serialization
     return {
         "items": [
             {
                 "id": str(s.id),
+                "catalog_product_id": str(s.catalog_product_id),
                 "sku_code": s.sku_code,
                 "name": s.name,
                 "description": s.description,
                 "unit": s.unit,
+                "package_quantity": str(s.package_quantity),
                 "category": s.category,
                 "is_active": s.is_active,
                 "created_at": s.created_at.isoformat() if hasattr(s.created_at, 'isoformat') else s.created_at,
@@ -109,18 +167,20 @@ async def list_skus(
     try:
         # S3-C: Use cached helper function
         result_data = await _list_skus_cached(db, page, size, is_active, q)
-        
+
         total = result_data["total"]
         pages = ceil(total / size) if total > 0 else 0
-        
+
         # Convert cached dict items back to SKURead objects
         items = [
             SKURead(
                 id=item["id"],
+                catalog_product_id=item["catalog_product_id"],
                 sku_code=item["sku_code"],
                 name=item["name"],
                 description=item["description"],
                 unit=item["unit"],
+                package_quantity=item["package_quantity"],
                 category=item["category"],
                 is_active=item["is_active"],
                 created_at=item["created_at"],
@@ -188,10 +248,12 @@ async def create_sku(
         service = SKUService()
         sku = await service.create_sku(
             db,
+            catalog_product_id=request.catalog_product_id,
             sku_code=request.sku_code,
             name=request.name,
             description=request.description,
             unit=request.unit,
+            package_quantity=request.package_quantity,
             category=request.category,
             is_active=request.is_active,
             created_by=token.user_id,
@@ -328,6 +390,7 @@ async def update_sku(
             name=request.name,
             description=request.description,
             unit=request.unit,
+            package_quantity=request.package_quantity,
             category=request.category,
             is_active=request.is_active,
             updated_by=token.user_id,

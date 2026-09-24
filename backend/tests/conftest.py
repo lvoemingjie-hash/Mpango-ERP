@@ -160,8 +160,112 @@ async def ensure_reporting_user_password() -> None:
         pass
 
 
+class TestLedgerGuardAuthorityError(RuntimeError):
+    """The live database violates the test-fixture ledger-guard authority contract.
+
+    Raised fail-closed by _assert_test_ledger_guard_contract before the
+    fixture issues ANY statement, so a topology in which the test runtime
+    role would have to create, replace or re-own the migration-owned
+    ``public.prevent_ledger_modification()`` can never touch the database.
+    """
+
+
+async def _assert_test_ledger_guard_contract(session: AsyncSession) -> None:
+    """Read-only proof that this fixture may run against the live database.
+
+    Mirrors the product DB-authority contract enforced by
+    scripts/provision_runtime_db_roles.py: the migration authority (the
+    database owner) exclusively owns ``public.prevent_ledger_modification()``
+    and the test runtime role only ever EXECUTEs it from tenant triggers.
+    Every statement below is a pure catalog SELECT, so asserting the contract
+    can never itself violate it.
+    """
+    guard_rows = (await session.execute(text("""
+        SELECT p.oid::text AS function_oid,
+               pg_get_userbyid(p.proowner) AS owner,
+               format_type(p.prorettype, NULL) AS return_type,
+               pg_get_function_identity_arguments(p.oid) AS identity_arguments,
+               (SELECT pg_get_userbyid(datdba) FROM pg_database
+                WHERE datname = current_database()) AS database_owner,
+               current_user AS runtime_role,
+               COALESCE((SELECT rolsuper FROM pg_roles
+                         WHERE rolname = current_user), false) AS runtime_superuser,
+               has_schema_privilege(current_user, 'public', 'CREATE')
+                   AS runtime_public_create,
+               has_function_privilege(current_user, p.oid, 'EXECUTE')
+                   AS runtime_guard_execute,
+               pg_has_role(current_user, pg_get_userbyid(p.proowner), 'MEMBER')
+                   OR pg_has_role(current_user, pg_get_userbyid(p.proowner), 'USAGE')
+                   AS runtime_member_of_owner
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public'
+          AND p.proname = 'prevent_ledger_modification'
+    """))).mappings().all()
+
+    if not guard_rows:
+        raise TestLedgerGuardAuthorityError(
+            "TEST_LEDGER_GUARD_AUTHORITY: public.prevent_ledger_modification() "
+            "is missing — the migration-owned guard must already exist "
+            "(migrations run as the migration authority); the test runtime "
+            "role never creates or replaces it"
+        )
+    if len(guard_rows) > 1:
+        raise TestLedgerGuardAuthorityError(
+            "TEST_LEDGER_GUARD_AUTHORITY: expected exactly one "
+            f"public.prevent_ledger_modification(), found {len(guard_rows)} "
+            "overloads"
+        )
+    guard = guard_rows[0]
+    violations = []
+    if guard["return_type"] != "trigger" or guard["identity_arguments"].strip() != "":
+        violations.append(
+            f"guard shape is not a zero-argument trigger function "
+            f"(args={guard['identity_arguments']!r}, "
+            f"returns={guard['return_type']!r})"
+        )
+    if guard["owner"] != guard["database_owner"]:
+        violations.append(
+            f"guard owner {guard['owner']!r} is not the database owner "
+            f"/migration authority {guard['database_owner']!r}"
+        )
+    if guard["runtime_role"] == guard["owner"]:
+        violations.append(
+            f"runtime role {guard['runtime_role']!r} IS the guard owner"
+        )
+    if guard["runtime_superuser"]:
+        violations.append(
+            f"runtime role {guard['runtime_role']!r} is a superuser"
+        )
+    if guard["runtime_member_of_owner"]:
+        violations.append(
+            f"runtime role {guard['runtime_role']!r} holds membership in the "
+            "guard owner role"
+        )
+    if guard["runtime_public_create"]:
+        violations.append(
+            f"runtime role {guard['runtime_role']!r} holds CREATE on schema "
+            "public"
+        )
+    if not guard["runtime_guard_execute"]:
+        violations.append(
+            f"runtime role {guard['runtime_role']!r} lacks EXECUTE on the "
+            "guard function; tenant triggers could not fire"
+        )
+    if violations:
+        raise TestLedgerGuardAuthorityError(
+            "TEST_LEDGER_GUARD_AUTHORITY: live database topology violates "
+            "the test-fixture authority contract: " + "; ".join(violations)
+        )
+
+
 async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: str) -> None:
     """Ensure tenant test schema/tables exist for S5 order+ledger integration tests."""
+    # Fail-closed authority contract BEFORE any write: no CREATE SCHEMA, no
+    # tenant DDL and no trigger DDL may run unless the live topology proves
+    # the runtime role never has to touch the migration-owned public guard.
+    await _assert_test_ledger_guard_contract(session)
+
     await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{tenant_schema}"'))
     await session.execute(text(f'SET search_path TO "{tenant_schema}", public'))
 
@@ -192,6 +296,22 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
     """))
 
     await session.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS "{tenant_schema}".catalog_products (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            name VARCHAR(255) NOT NULL,
+            description TEXT,
+            category VARCHAR(64),
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+            deleted_at TIMESTAMP WITH TIME ZONE,
+            created_by UUID,
+            updated_by UUID,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    await session.execute(text(f"""
         CREATE TABLE IF NOT EXISTS "{tenant_schema}".orders (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             wholesaler_id UUID NOT NULL,
@@ -209,11 +329,42 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
     """))
 
     await session.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS "{tenant_schema}".order_credit_holds (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            order_id UUID NOT NULL UNIQUE
+                REFERENCES "{tenant_schema}".orders(id) ON DELETE RESTRICT,
+            amount NUMERIC(12, 2) NOT NULL,
+            remaining_amount NUMERIC(12, 2) NOT NULL,
+            status VARCHAR(16) NOT NULL DEFAULT 'active',
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+            created_by UUID,
+            updated_by UUID,
+            CONSTRAINT ck_order_credit_holds_status CHECK (
+                status IN ('active', 'released', 'settled', 'converted')),
+            CONSTRAINT ck_order_credit_holds_amount_positive CHECK (amount > 0),
+            CONSTRAINT ck_order_credit_holds_remaining_cap CHECK (
+                remaining_amount <= amount),
+            CONSTRAINT ck_order_credit_holds_lifecycle_shape CHECK (
+                (status = 'active' AND remaining_amount > 0)
+                OR (status IN ('released', 'settled', 'converted')
+                    AND remaining_amount = 0))
+        )
+    """))
+    await session.execute(text(
+        f'CREATE INDEX IF NOT EXISTS ix_order_credit_holds_active '
+        f'ON "{tenant_schema}".order_credit_holds (order_id) '
+        f"WHERE status = 'active'"))
+
+    await session.execute(text(f"""
         CREATE TABLE IF NOT EXISTS "{tenant_schema}".order_items (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             order_id UUID NOT NULL REFERENCES "{tenant_schema}".orders(id) ON DELETE CASCADE,
             product_name TEXT NOT NULL,
             sku_code VARCHAR(64) NOT NULL,
+            sellable_unit_id UUID,
+            identity_status VARCHAR(32) NOT NULL DEFAULT 'legacy',
+            unit_snapshot VARCHAR(32),
             quantity INTEGER NOT NULL,
             unit_price NUMERIC(12, 2) NOT NULL,
             subtotal NUMERIC(12, 2) NOT NULL,
@@ -312,11 +463,13 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
     await session.execute(text(f"""
         CREATE TABLE IF NOT EXISTS "{tenant_schema}".skus (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            catalog_product_id UUID NOT NULL REFERENCES "{tenant_schema}".catalog_products(id) ON DELETE RESTRICT,
             sku_code VARCHAR(64) NOT NULL UNIQUE,
-            name TEXT NOT NULL,
+            name VARCHAR(255) NOT NULL,
             description TEXT,
-            unit VARCHAR(32) NOT NULL DEFAULT 'piece',
-            category VARCHAR(128),
+            unit VARCHAR(32) NOT NULL DEFAULT 'unit',
+            package_quantity NUMERIC(12, 3) NOT NULL DEFAULT 1.000,
+            category VARCHAR(64),
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
             is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
             deleted_at TIMESTAMP WITH TIME ZONE,
@@ -326,6 +479,92 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
             updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """))
+    await session.execute(text(f'''
+        ALTER TABLE "{tenant_schema}".skus
+            ALTER COLUMN name TYPE VARCHAR(255),
+            ALTER COLUMN unit TYPE VARCHAR(32),
+            ALTER COLUMN unit SET DEFAULT 'unit',
+            ALTER COLUMN category TYPE VARCHAR(64)
+    '''))
+
+    # Upgrade a pre-existing lightweight test schema without guessing SKU identity.
+    await session.execute(text(f'''
+        ALTER TABLE "{tenant_schema}".skus
+            ADD COLUMN IF NOT EXISTS catalog_product_id UUID,
+            ADD COLUMN IF NOT EXISTS package_quantity NUMERIC(12, 3) NOT NULL DEFAULT 1.000
+    '''))
+    await session.execute(text(f'''
+        INSERT INTO "{tenant_schema}".catalog_products
+            (id, name, description, category, is_active, is_deleted, deleted_at,
+             created_by, updated_by, created_at, updated_at)
+        SELECT id, name, description, category, is_active, is_deleted, deleted_at,
+               created_by, updated_by, created_at, updated_at
+          FROM "{tenant_schema}".skus
+         WHERE catalog_product_id IS NULL
+        ON CONFLICT (id) DO NOTHING
+    '''))
+    await session.execute(text(f'''
+        UPDATE "{tenant_schema}".skus
+           SET catalog_product_id = id
+         WHERE catalog_product_id IS NULL
+    '''))
+    await session.execute(text(f'''
+        ALTER TABLE "{tenant_schema}".skus
+            ALTER COLUMN catalog_product_id SET NOT NULL
+    '''))
+    await session.execute(text(f'''
+        ALTER TABLE "{tenant_schema}".order_items
+            ADD COLUMN IF NOT EXISTS sellable_unit_id UUID,
+            ADD COLUMN IF NOT EXISTS identity_status VARCHAR(32) NOT NULL DEFAULT 'legacy',
+            ADD COLUMN IF NOT EXISTS unit_snapshot VARCHAR(32)
+    '''))
+    await session.execute(text(f'''
+        DO $$ BEGIN
+            ALTER TABLE "{tenant_schema}".skus
+                ADD CONSTRAINT fk_skus_catalog_product
+                FOREIGN KEY (catalog_product_id)
+                REFERENCES "{tenant_schema}".catalog_products(id) ON DELETE RESTRICT;
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    '''))
+    await session.execute(text(f'''
+        DO $$ BEGIN
+            ALTER TABLE "{tenant_schema}".skus
+                ADD CONSTRAINT ck_skus_package_quantity_positive CHECK (package_quantity > 0);
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    '''))
+    await session.execute(text(f'''
+        DO $$ BEGIN
+            ALTER TABLE "{tenant_schema}".order_items
+                ADD CONSTRAINT fk_order_items_sellable_unit
+                FOREIGN KEY (sellable_unit_id)
+                REFERENCES "{tenant_schema}".skus(id) ON DELETE RESTRICT;
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    '''))
+    await session.execute(text(f'''
+        DO $$ BEGIN
+            ALTER TABLE "{tenant_schema}".order_items
+                ADD CONSTRAINT ck_order_items_identity_status
+                CHECK (identity_status IN ('legacy', 'linked_legacy', 'stable'));
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    '''))
+    await session.execute(text(f'''
+        DO $$ BEGIN
+            ALTER TABLE "{tenant_schema}".order_items
+                ADD CONSTRAINT ck_order_items_identity_shape CHECK (
+                    (identity_status = 'legacy' AND sellable_unit_id IS NULL) OR
+                    (identity_status = 'linked_legacy' AND sellable_unit_id IS NOT NULL) OR
+                    (identity_status = 'stable' AND sellable_unit_id IS NOT NULL AND unit_snapshot IS NOT NULL)
+                );
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    '''))
+    await session.execute(text(f'''
+        CREATE INDEX IF NOT EXISTS ix_skus_catalog_product_id
+        ON "{tenant_schema}".skus(catalog_product_id)
+    '''))
+    await session.execute(text(f'''
+        CREATE INDEX IF NOT EXISTS ix_order_items_sellable_unit_id
+        ON "{tenant_schema}".order_items(sellable_unit_id)
+    '''))
 
     await session.execute(text(f"""
         CREATE TABLE IF NOT EXISTS "{tenant_schema}".inventory_stocks (
@@ -427,26 +666,11 @@ async def _bootstrap_tenant_test_schema(session: AsyncSession, tenant_schema: st
         )
     """))
 
-    await session.execute(text("""
-        CREATE OR REPLACE FUNCTION public.prevent_ledger_modification()
-        RETURNS TRIGGER AS $$
-        BEGIN
-            IF TG_OP = 'UPDATE' THEN
-                RAISE EXCEPTION 'Ledger entries are immutable. UPDATE operations are not allowed.'
-                    USING ERRCODE = 'integrity_constraint_violation',
-                          HINT = 'Ledger entries cannot be modified after creation. Create a correction entry instead.';
-            END IF;
-
-            IF TG_OP = 'DELETE' THEN
-                RAISE EXCEPTION 'Ledger entries are immutable. DELETE operations are not allowed.'
-                    USING ERRCODE = 'integrity_constraint_violation',
-                          HINT = 'Ledger entries cannot be deleted. Create a reversal entry instead.';
-            END IF;
-
-            RETURN OLD;
-        END;
-        $$ LANGUAGE plpgsql;
-    """))
+    # The shared guard public.prevent_ledger_modification() is created by
+    # migration 010 and owned by the migration authority (the database
+    # owner).  The test runtime role must never CREATE OR REPLACE it — the
+    # read-only authority assertion above proved the migration topology
+    # already provides it; tenant triggers only ever EXECUTE it.
 
     await session.execute(text(f"""
         DROP TRIGGER IF EXISTS prevent_ledger_mod

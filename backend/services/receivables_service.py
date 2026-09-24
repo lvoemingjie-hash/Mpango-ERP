@@ -15,6 +15,8 @@ authoritative retailer balance cache.
 from __future__ import annotations
 
 import uuid
+
+from fastapi import HTTPException, status as http_status
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -23,6 +25,7 @@ from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.order import Order, OrderStatus
+from services.payment_history_contract import assert_valid_payment_history
 
 
 def calculate_age_days(created_at: datetime | None) -> int:
@@ -39,12 +42,33 @@ def calculate_age_days(created_at: datetime | None) -> int:
     return max((datetime.now(timezone.utc) - normalized).days, 0)
 
 
-def _non_negative_amount(amount: Decimal) -> Decimal:
-    return amount if amount > Decimal("0") else Decimal("0")
-
-
 def _credit_exposure(credit_amount: Decimal, collection_amount: Decimal) -> Decimal:
-    return _non_negative_amount(credit_amount - collection_amount)
+    """RAW net credit exposure. R2-R1 C4: NO zero-clamping — an
+    over-collected history (negative) is corrupt and the caller must fail
+    closed with a named integrity refusal instead of masking it as zero."""
+    return credit_amount - collection_amount
+
+
+def _assert_history_integrity(credit_amount: Decimal, collection_amount: Decimal) -> None:
+    """R2-R1 C4: corrupt effective history is a NAMED integrity refusal."""
+    if credit_amount > 0 and collection_amount > credit_amount:
+        raise HTTPException(
+            http_status.HTTP_409_CONFLICT,
+            detail={
+                "code": "PAYMENT_HISTORY_INTEGRITY",
+                "message": (
+                    "Over-collected credit history: credit "
+                    f"{credit_amount} vs collections {collection_amount}"),
+            },
+        )
+    if credit_amount < 0 or collection_amount < 0:
+        raise HTTPException(
+            http_status.HTTP_409_CONFLICT,
+            detail={
+                "code": "PAYMENT_HISTORY_INTEGRITY",
+                "message": "Negative payment history totals",
+            },
+        )
 
 
 class ReceivablesService:
@@ -129,6 +153,17 @@ class ReceivablesService:
         )
         order_rows = orders_result.all()
 
+        # R2-R1 SR1: the shared valid-payment-history contract runs over the
+        # whole read scope BEFORE any aggregation. An unknown method or
+        # status, a non-positive or non-finite amount, or a payment whose
+        # retailer differs from its order is a NAMED refusal — never a value
+        # the credit/cash buckets silently drop.
+        await assert_valid_payment_history(
+            tenant_db,
+            order_ids=[order.id for order in order_rows],
+            context="Receivables summary",
+        )
+
         # Query 3: Get credit payment totals per order (exclude from paid calculation)
         # Skip payment aggregation if no orders found to avoid empty order_ids collection
         credit_totals = {}
@@ -170,6 +205,32 @@ class ReceivablesService:
             )
             cash_totals = {row["order_id"]: Decimal(str(row["cash_total"])) for row in cash_totals_result.mappings().all()}
 
+        # R2: the unpaid track is the per-order ACTIVE CREDIT HOLD
+        # (reserved, not-yet-settled occupation), read from the tenant
+        # order_credit_holds table. The credit track stays payment-derived
+        # (per-order net exposure). The binding cache is the total
+        # occupation; drift between the cache and the derived tracks stays
+        # VISIBLE in the payload — retailer rows are never dropped to hide
+        # it.
+        holds_result = await tenant_db.execute(
+            text(
+                """
+                SELECT o.retailer_id,
+                       COALESCE(SUM(h.remaining_amount), 0) AS hold_total,
+                       COUNT(*) AS hold_count
+                FROM order_credit_holds h
+                JOIN orders o ON o.id = h.order_id AND o.is_deleted IS FALSE
+                WHERE h.status = 'active'
+                GROUP BY o.retailer_id
+                """
+            ),
+            {},
+        )
+        hold_totals = {
+            row["retailer_id"]: (Decimal(str(row["hold_total"])), int(row["hold_count"]))
+            for row in holds_result.mappings().all()
+        }
+
         # Build per-retailer breakdown
         by_retailer = []
         total_outstanding = Decimal("0")
@@ -182,43 +243,43 @@ class ReceivablesService:
             retailer_orders = [o for o in order_rows if o.retailer_id == retailer_id]
 
             retailer_credit = Decimal("0")
-            retailer_unpaid = Decimal("0")
             retailer_order_count = 0
 
             for order in retailer_orders:
                 order_id = order.id
                 credit_amt = credit_totals.get(order_id, Decimal("0"))
                 cash_amt = cash_totals.get(order_id, Decimal("0"))
+                _assert_history_integrity(credit_amt, cash_amt)
                 credit_balance = _credit_exposure(credit_amt, cash_amt)
-                balance_due = _non_negative_amount(order.total_amount - cash_amt)
 
                 # Credit receivable: orders with credit payment exposure
                 if credit_balance > 0:
                     retailer_credit += credit_balance
                     retailer_order_count += 1
 
-                # Unpaid order: confirmed/partially_paid with remaining balance
-                elif order.status in [OrderStatus.CONFIRMED, OrderStatus.PARTIALLY_PAID] and balance_due > 0:
-                    retailer_unpaid += balance_due
-                    retailer_order_count += 1
+            # R2-R1: the cache is reported RAW — a negative or drifted
+            # cache stays visible as drift, never clamped to zero.
+            binding_cache = Decimal(str(binding_info["outstanding_balance"]))
+            reserved_hold, hold_count = hold_totals.get(
+                retailer_id, (Decimal("0"), 0))
+            retailer_unpaid = reserved_hold
+            retailer_order_count += hold_count
 
-            binding_credit = _non_negative_amount(
-                Decimal(str(binding_info["outstanding_balance"]))
-            )
-            retailer_outstanding = binding_credit + retailer_unpaid
-            if retailer_outstanding <= 0:
+            # Drop the row only when NOTHING is occupied anywhere: a zero
+            # cache with non-zero derived tracks is drift and MUST surface.
+            if binding_cache == 0 and retailer_unpaid == 0 and retailer_credit == 0:
                 continue
 
             by_retailer.append({
                 "retailer_id": str(binding_info["retailer_id"]),
                 "retailer_name": binding_info["retailer_name"] or "Unknown",
-                "outstanding_balance": float(retailer_outstanding),
+                "outstanding_balance": float(binding_cache),
                 "credit_receivables": float(retailer_credit),
                 "unpaid_order_balance": float(retailer_unpaid),
                 "order_count": retailer_order_count,
             })
 
-            total_outstanding += retailer_outstanding
+            total_outstanding += binding_cache
             total_credit_receivables += retailer_credit
             total_unpaid_balance += retailer_unpaid
             total_order_count += retailer_order_count
@@ -339,6 +400,14 @@ class ReceivablesService:
 
         order_ids = [order.id for order in order_rows]
 
+        # R2-R1 SR1: same shared contract as the summary and the canonical
+        # write path — invalid live history never gets aggregated around.
+        await assert_valid_payment_history(
+            tenant_db,
+            order_ids=order_ids,
+            context="Receivables order list",
+        )
+
         # Fetch payment totals - skip if no orders to avoid empty order_ids collection
         credit_totals = {}
         cash_totals = {}
@@ -378,6 +447,23 @@ class ReceivablesService:
             )
             cash_totals = {row["order_id"]: Decimal(str(row["cash_total"])) for row in cash_result.mappings().all()}
 
+            # R2: the unpaid track per order is the ACTIVE CREDIT HOLD.
+            hold_result = await tenant_db.execute(
+                text(
+                    """
+                    SELECT h.order_id, h.remaining_amount
+                    FROM order_credit_holds h
+                    JOIN orders o ON o.id = h.order_id AND o.is_deleted IS FALSE
+                    WHERE h.status = 'active' AND h.order_id = ANY(:order_ids)
+                    """
+                ),
+                {"order_ids": order_ids},
+            )
+            hold_remaining = {
+                row["order_id"]: Decimal(str(row["remaining_amount"]))
+                for row in hold_result.mappings().all()
+            }
+
         # Get retailer names from public bindings
         retailer_ids = list(set([order.retailer_id for order in order_rows]))
         retailer_result = await tenant_db.execute(
@@ -406,8 +492,11 @@ class ReceivablesService:
             order_id = order.id
             credit_amt = credit_totals.get(order_id, Decimal("0"))
             cash_amt = cash_totals.get(order_id, Decimal("0"))
+            _assert_history_integrity(credit_amt, cash_amt)
             credit_balance = _credit_exposure(credit_amt, cash_amt)
-            balance_due = _non_negative_amount(order.total_amount - cash_amt)
+            # R2: unpaid balance_due comes from the active credit hold, not
+            # a total-minus-cash recomputation (effective history only).
+            balance_due = hold_remaining.get(order_id, Decimal("0"))
 
             # Determine classification
             order_classification = None

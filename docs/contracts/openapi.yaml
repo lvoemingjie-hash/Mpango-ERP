@@ -36,6 +36,8 @@ tags:
     description: Role management (requires roles:* permissions)
   - name: orders
     description: Sales order management (requires orders:* permissions)
+  - name: catalog-products
+    description: Tenant-local product identity and stable sellable packaging units
   - name: payments
     description: Payment management (requires payments:* permissions)
 
@@ -315,6 +317,153 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+
+  # ============================================================
+  # CATALOG PRODUCT ENDPOINTS
+  # ============================================================
+  /catalog-products:
+    get:
+      tags: [catalog-products]
+      operationId: listCatalogProducts
+      summary: List tenant catalog products and their sellable packaging units
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paginated catalog product list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogProductListResponse'
+    post:
+      tags: [catalog-products]
+      operationId: createCatalogProduct
+      summary: Create one product with one or more stable sellable units
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogProductCreate'
+      responses:
+        '201':
+          description: Catalog product created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogProductResponse'
+        '409':
+          description: A SKU code already exists or was previously retired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /catalog-products/{product_id}:
+    parameters:
+      - name: product_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [catalog-products]
+      operationId: getCatalogProduct
+      summary: Get one catalog product
+      responses:
+        '200':
+          description: Catalog product details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogProductResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [catalog-products]
+      operationId: updateCatalogProduct
+      summary: Rename, classify, activate, or deactivate a product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogProductUpdate'
+      responses:
+        '200':
+          description: Catalog product updated without rewriting order snapshots
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogProductResponse'
+
+  /catalog-products/{product_id}/sellable-units:
+    post:
+      tags: [catalog-products]
+      operationId: addSellableUnit
+      summary: Add an independently stocked packaging option
+      parameters:
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SellableUnitCreate'
+      responses:
+        '201':
+          description: Sellable unit added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogProductResponse'
+
+  /catalog-products/{product_id}/sellable-units/{sellable_unit_id}:
+    put:
+      tags: [catalog-products]
+      operationId: updateSellableUnit
+      summary: Update packaging metadata or availability; SKU code is immutable
+      parameters:
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: sellable_unit_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SellableUnitUpdate'
+      responses:
+        '200':
+          description: Sellable unit updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogProductResponse'
 
   # ============================================================
   # ORDER ENDPOINTS
@@ -979,19 +1128,21 @@ components:
 
     OrderItemCreate:
       type: object
-      required: [product_name, sku_code, quantity, unit_price]
+      required: [quantity]
+      anyOf:
+        - required: [sellable_unit_id]
+        - required: [sku_code]
       properties:
-        product_name:
+        sellable_unit_id:
           type: string
+          format: uuid
+          description: Stable tenant-local SellableUnit identity
         sku_code:
           type: string
+          description: Immutable compatibility selector; if both selectors are supplied they must match
         quantity:
           type: integer
           minimum: 1
-        unit_price:
-          type: number
-          format: float
-          minimum: 0
 
     OrderCreateRequest:
       type: object
@@ -1010,15 +1161,25 @@ components:
 
     OrderItem:
       type: object
-      required: [id, product_name, sku_code, quantity, unit_price, subtotal]
+      required: [id, identity_status, product_name, sku_code, quantity, unit_price, subtotal]
       properties:
         id:
           type: string
           format: uuid
+        sellable_unit_id:
+          type: [string, 'null']
+          format: uuid
+          description: Null only for unmapped legacy lines
+        identity_status:
+          type: string
+          enum: [legacy, linked_legacy, stable]
         product_name:
           type: string
         sku_code:
           type: string
+        unit_snapshot:
+          type: [string, 'null']
+          description: Immutable unit-of-measure snapshot captured when a stable order line is created
         quantity:
           type: integer
         unit_price:
@@ -1027,6 +1188,182 @@ components:
         subtotal:
           type: number
           format: float
+
+    # ========== Catalog Identity ==========
+    SellableUnitCreate:
+      type: object
+      additionalProperties: false
+      required: [sku_code]
+      properties:
+        sku_code:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Immutable and never reusable after creation
+        unit:
+          type: string
+          minLength: 1
+          maxLength: 32
+          default: unit
+        package_quantity:
+          type: number
+          exclusiveMinimum: 0
+          default: 1
+        is_active:
+          type: boolean
+          default: true
+
+    SellableUnitUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        unit:
+          type: string
+          minLength: 1
+          maxLength: 32
+        package_quantity:
+          type: number
+          exclusiveMinimum: 0
+        is_active:
+          type: boolean
+
+    SellableUnit:
+      type: object
+      required: [id, catalog_product_id, sku_code, unit, package_quantity, is_active, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        catalog_product_id:
+          type: string
+          format: uuid
+        sku_code:
+          type: string
+        unit:
+          type: string
+        package_quantity:
+          type: number
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CatalogProductCreate:
+      type: object
+      additionalProperties: false
+      required: [name, sellable_units]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: [string, 'null']
+        category:
+          type: [string, 'null']
+          maxLength: 64
+        is_active:
+          type: boolean
+          default: true
+        sellable_units:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/SellableUnitCreate'
+
+    CatalogProductUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: [string, 'null']
+        category:
+          type: [string, 'null']
+          maxLength: 64
+        is_active:
+          type: boolean
+
+    CatalogProduct:
+      type: object
+      required: [id, name, is_active, sellable_units, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: [string, 'null']
+        category:
+          type: [string, 'null']
+        is_active:
+          type: boolean
+        sellable_units:
+          type: array
+          items:
+            $ref: '#/components/schemas/SellableUnit'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CatalogOfferIdentity:
+      type: object
+      additionalProperties: false
+      required: [catalog_product_id, sellable_unit_id, sku_code]
+      description: Interface-only identity boundary; it is not a physical pricing or availability authority.
+      properties:
+        catalog_product_id:
+          type: string
+          format: uuid
+        sellable_unit_id:
+          type: string
+          format: uuid
+        sku_code:
+          type: string
+
+    CatalogProductResponse:
+      type: object
+      required: [success, data, timestamp]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/CatalogProduct'
+        timestamp:
+          type: string
+          format: date-time
+
+    CatalogProductListResponse:
+      type: object
+      required: [success, data, timestamp]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          required: [items, pagination]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/CatalogProduct'
+            pagination:
+              $ref: '#/components/schemas/Pagination'
+        timestamp:
+          type: string
+          format: date-time
 
     Order:
       type: object

@@ -13,6 +13,7 @@ import type { WholesalerOrderItemCreate } from '@/types/order';
 import type { RetailerPriceView } from '@/types/pricing';
 
 interface OrderLineItem {
+  sellable_unit_id: string;
   sku_code: string;
   name: string;
   quantity: number;
@@ -117,15 +118,16 @@ export function CreateOrderPage() {
   }, [retailerId]);
 
   const addProduct = (sku: SKU) => {
-    const existing = items.find((i) => i.sku_code === sku.sku_code);
+    const existing = items.find((i) => i.sellable_unit_id === sku.id);
     if (existing) {
       setItems(items.map((i) =>
-        i.sku_code === sku.sku_code
+        i.sellable_unit_id === sku.id
           ? { ...i, quantity: i.quantity + 1 }
           : i
       ));
     } else {
       setItems([...items, {
+        sellable_unit_id: sku.id,
         sku_code: sku.sku_code,
         name: sku.name,
         quantity: 1,
@@ -136,18 +138,18 @@ export function CreateOrderPage() {
     setShowPicker(false);
   };
 
-  const updateQuantity = (sku_code: string, quantity: number) => {
+  const updateQuantity = (sellableUnitId: string, quantity: number) => {
     if (quantity <= 0) {
-      setItems(items.filter((i) => i.sku_code !== sku_code));
+      setItems(items.filter((i) => i.sellable_unit_id !== sellableUnitId));
     } else {
       setItems(items.map((i) =>
-        i.sku_code === sku_code ? { ...i, quantity } : i
+        i.sellable_unit_id === sellableUnitId ? { ...i, quantity } : i
       ));
     }
   };
 
-  const removeItem = (sku_code: string) => {
-    setItems(items.filter((i) => i.sku_code !== sku_code));
+  const removeItem = (sellableUnitId: string) => {
+    setItems(items.filter((i) => i.sellable_unit_id !== sellableUnitId));
   };
 
   const calculateTotal = () => {
@@ -170,6 +172,7 @@ export function CreateOrderPage() {
 
     try {
       const orderItems: WholesalerOrderItemCreate[] = items.map((i) => ({
+        sellable_unit_id: i.sellable_unit_id,
         sku_code: i.sku_code,
         quantity: i.quantity,
       }));
@@ -261,7 +264,7 @@ export function CreateOrderPage() {
           ) : (
             <ul className="divide-y divide-gray-200">
               {items.map((item) => (
-                <li key={item.sku_code} className="flex py-4">
+                <li key={item.sellable_unit_id} className="flex py-4">
                   <div className="ml-3 flex flex-1 flex-col">
                     <div>
                       <div className="flex justify-between text-base font-medium text-gray-900">
@@ -278,7 +281,7 @@ export function CreateOrderPage() {
                           <button
                             type="button"
                             className="px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-l-md"
-                            onClick={() => updateQuantity(item.sku_code, item.quantity - 1)}
+                            onClick={() => updateQuantity(item.sellable_unit_id, item.quantity - 1)}
                           >-</button>
                           <span className="px-2 py-1 text-center min-w-[2.5rem] font-medium border-x border-gray-300">
                             {item.quantity}
@@ -286,7 +289,7 @@ export function CreateOrderPage() {
                           <button
                             type="button"
                             className="px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-r-md"
-                            onClick={() => updateQuantity(item.sku_code, item.quantity + 1)}
+                            onClick={() => updateQuantity(item.sellable_unit_id, item.quantity + 1)}
                           >+</button>
                         </div>
                         <span className={`text-xs ${item.quantity > (item.stock || 0) ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
@@ -297,7 +300,7 @@ export function CreateOrderPage() {
                       <div className="flex">
                         <button
                           type="button"
-                          onClick={() => removeItem(item.sku_code)}
+                          onClick={() => removeItem(item.sellable_unit_id)}
                           className="font-medium text-red-600 hover:text-red-500 flex items-center"
                         >
                           <TrashIcon className="h-4 w-4 mr-1" />
@@ -404,6 +407,7 @@ export function CreateOrderPage() {
                             <p className="text-sm font-medium text-gray-900">{sku.name}</p>
                             <div className="flex items-center gap-2 mt-0.5 text-xs">
                               <span className="text-gray-500 font-mono">{sku.sku_code}</span>
+                              <span className="text-gray-500">{sku.package_quantity} {sku.unit}</span>
                               <span className="text-gray-300">&bull;</span>
                               <span className={stock > 0 ? 'text-green-600' : 'text-red-600'}>
                                 {stock} in stock

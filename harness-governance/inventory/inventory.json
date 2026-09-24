@@ -34,7 +34,10 @@
       "owner": "cto",
       "evidence_sha": "",
       "status": "NOT_RUN",
-      "interaction_ids": ["CI-AUTH-INTERCEPTOR", "CI-TOKEN-REPLAY"],
+      "interaction_ids": [
+        "CI-AUTH-INTERCEPTOR",
+        "CI-TOKEN-REPLAY"
+      ],
       "notes": "J1/H2-B incident: public reset 401 was redirected by the global session interceptor before the page could render its neutral error."
     },
     {
@@ -67,7 +70,9 @@
       "owner": "cto",
       "evidence_sha": "",
       "status": "NOT_RUN",
-      "interaction_ids": ["CI-AUTH-INTERCEPTOR"]
+      "interaction_ids": [
+        "CI-AUTH-INTERCEPTOR"
+      ]
     },
     {
       "id": "TENANT-ISO-001",
@@ -100,7 +105,9 @@
       "owner": "cto",
       "evidence_sha": "",
       "status": "NOT_RUN",
-      "interaction_ids": ["CI-TENANT-ROUTING"]
+      "interaction_ids": [
+        "CI-TENANT-ROUTING"
+      ]
     },
     {
       "id": "RATE-429-001",
@@ -132,7 +139,9 @@
       "owner": "cto",
       "evidence_sha": "",
       "status": "NOT_RUN",
-      "interaction_ids": ["CI-RATE-LIMIT"]
+      "interaction_ids": [
+        "CI-RATE-LIMIT"
+      ]
     },
     {
       "id": "IDEM-PAY-001",
@@ -165,7 +174,10 @@
       "owner": "cto",
       "evidence_sha": "",
       "status": "NOT_RUN",
-      "interaction_ids": ["CI-IDEMPOTENCY", "CI-TRANSACTION-BOUNDARY"]
+      "interaction_ids": [
+        "CI-IDEMPOTENCY",
+        "CI-TRANSACTION-BOUNDARY"
+      ]
     },
     {
       "id": "IDEM-MW-001",
@@ -189,12 +201,16 @@
       "runtime": "clean-start",
       "layer": "route_api",
       "authoritative": false,
-      "source_anchors": ["backend/api/middleware/idempotency.py:55"],
+      "source_anchors": [
+        "backend/api/middleware/idempotency.py:55"
+      ],
       "mutation_id": "MUT-IDEM-MW-001",
       "owner": "cto",
       "evidence_sha": "",
       "status": "NOT_RUN",
-      "interaction_ids": ["CI-IDEMPOTENCY"]
+      "interaction_ids": [
+        "CI-IDEMPOTENCY"
+      ]
     },
     {
       "id": "TOKEN-RST-001",
@@ -227,7 +243,10 @@
       "owner": "cto",
       "evidence_sha": "",
       "status": "NOT_RUN",
-      "interaction_ids": ["CI-TOKEN-REPLAY", "CI-AUTH-INTERCEPTOR"]
+      "interaction_ids": [
+        "CI-TOKEN-REPLAY",
+        "CI-AUTH-INTERCEPTOR"
+      ]
     },
     {
       "id": "TOKEN-INV-001",
@@ -251,12 +270,16 @@
       "runtime": "clean-start",
       "layer": "route_api",
       "authoritative": true,
-      "source_anchors": ["backend/services/invitation_service.py:1"],
+      "source_anchors": [
+        "backend/services/invitation_service.py:1"
+      ],
       "mutation_id": "MUT-TOKEN-INV-001",
       "owner": "cto",
       "evidence_sha": "",
       "status": "NOT_RUN",
-      "interaction_ids": ["CI-TOKEN-REPLAY"]
+      "interaction_ids": [
+        "CI-TOKEN-REPLAY"
+      ]
     },
     {
       "id": "TXN-ROLLBACK-001",
@@ -288,7 +311,10 @@
       "owner": "cto",
       "evidence_sha": "",
       "status": "NOT_RUN",
-      "interaction_ids": ["CI-TRANSACTION-BOUNDARY", "CI-IDEMPOTENCY"]
+      "interaction_ids": [
+        "CI-TRANSACTION-BOUNDARY",
+        "CI-IDEMPOTENCY"
+      ]
     },
     {
       "id": "MOBILE-NAV-001",
@@ -322,7 +348,9 @@
       "owner": "cto",
       "evidence_sha": "",
       "status": "NOT_RUN",
-      "interaction_ids": ["CI-MOBILE-NAV"]
+      "interaction_ids": [
+        "CI-MOBILE-NAV"
+      ]
     },
     {
       "id": "MOBILE-DEV-001",
@@ -354,7 +382,9 @@
       "owner": "cto",
       "evidence_sha": "",
       "status": "BLOCKED",
-      "interaction_ids": ["CI-MOBILE-NAV"],
+      "interaction_ids": [
+        "CI-MOBILE-NAV"
+      ],
       "blocked_owner": "cto",
       "blocked_closure_condition": "VPS deployment available and real-device charter authorized per standard section 18 (After VPS Availability)"
     },
@@ -389,7 +419,10 @@
       "owner": "cto",
       "evidence_sha": "",
       "status": "NOT_RUN",
-      "interaction_ids": ["CI-AUTH-INTERCEPTOR", "CI-TOKEN-REPLAY"],
+      "interaction_ids": [
+        "CI-AUTH-INTERCEPTOR",
+        "CI-TOKEN-REPLAY"
+      ],
       "notes": "J1/H2 incident: the capability existed below the UI before it was navigable."
     },
     {
@@ -414,13 +447,252 @@
       "runtime": "clean-start",
       "layer": "route_api",
       "authoritative": false,
-      "source_anchors": ["docs/ai/HARNESS_ENGINEERING_GOVERNANCE_STANDARD.md:195"],
+      "source_anchors": [
+        "docs/ai/HARNESS_ENGINEERING_GOVERNANCE_STANDARD.md:195"
+      ],
       "mutation_id": "MUT-NEUTRAL-ORACLE-001",
       "owner": "cto",
       "evidence_sha": "",
       "status": "NOT_RUN",
       "interaction_ids": [],
       "notes": "J1/H2 incident: raw-byte equality treated a legitimate per-request timestamp as semantic drift."
+    },
+    {
+      "id": "CATALOG-ID-001",
+      "capability": "tenant-local catalog product and stable sellable-unit identity",
+      "risk": "P0",
+      "actor": "wholesaler operator",
+      "tenant_role": "wholesaler workspace",
+      "entry": "full stack: create one product with multiple packaging units and place an order",
+      "session_state": "contextual",
+      "tenant_state": "active",
+      "resource_state": "new",
+      "input_state": "valid and cross-tenant counterexample",
+      "action": "create packaging variants, stock them independently, and create an order using the selected stable UUID",
+      "response_class": "2xx/4xx",
+      "ui_oracle": "each packaging option is independently selectable and unavailable products are hidden from the retailer",
+      "navigation_oracle": "desktop and 390px catalog journeys complete through supported routes without manual URL entry",
+      "network_oracle": "order request carries sellable_unit_id; a mismatched ID and SKU code or a cross-tenant ID is rejected",
+      "session_oracle": "tenant and actor context remain unchanged throughout product and order mutations",
+      "persistence_security_oracle": "CatalogProduct owns shared presentation; each SKU UUID owns inventory; reservation and movement rows retain that UUID without code lookup",
+      "viewport": "desktop-and-mobile-390",
+      "runtime": "fresh-database",
+      "layer": "full_stack",
+      "authoritative": true,
+      "source_anchors": [
+        "backend/models/catalog_product.py:1",
+        "backend/models/__init__.py:1",
+        "backend/models/sku.py:1",
+        "backend/models/order.py:104",
+        "backend/alembic/versions/038_catalog_identity_vertical_slice.py:1",
+        "backend/scripts/bootstrap_tenant_schema.py:1530",
+        "backend/api/v1/catalog_products.py:1",
+        "backend/api/app.py:1",
+        "backend/api/v1/skus.py:1",
+        "backend/api/v1/orders.py:404",
+        "backend/api/v1/client/orders.py:126",
+        "backend/api/v1/client/products.py:90",
+        "backend/services/catalog_product_service.py:1",
+        "backend/services/sku_service.py:1",
+        "backend/services/inventory_service.py:100",
+        "backend/repositories/inventory_repository.py:1",
+        "backend/repositories/sku_repository.py:1",
+        "backend/crud/order.py:271",
+        "backend/services/import_service.py:1",
+        "backend/services/intake_apply_service.py:1",
+        "backend/scripts/seed_demo_data.py:1",
+        "backend/schemas/catalog.py:1",
+        "backend/schemas/sku.py:1",
+        "backend/schemas/order.py:80",
+        "backend/schemas/client.py:40",
+        "backend/tests/test_sku_m1_catalog_identity.py:1",
+        "backend/tests/test_sku_m1_api_rbac.py:1",
+        "backend/tests/test_sku_m1_migration_pg16.py:1",
+        "backend/tests/catalog_identity_helpers.py:1",
+        "backend/tests/conftest.py:1",
+        "backend/tests/test_phase4_pricing_safe_orders.py:1",
+        "backend/tests/test_u3c_import_apply.py:1",
+        "backend/tests/test_u3c_live_db_apply.py:1",
+        "backend/tests/test_u4ib2_intake_apply_service.py:1",
+        "backend/tests/business/test_s4_order_fulfillment_inventory_invariants.py:1",
+        "backend/tests/business/test_s4b_inventory_reversal_invariants.py:1",
+        "backend/tests/business/test_s4c_concurrent_fulfillment_oversell_invariants.py:1",
+        "backend/tests/business/test_s4d_inventory_movement_ledger_integrity.py:1",
+        "backend/tests/business/test_s4e_stock_reservation_lifecycle_audit.py:1",
+        "backend/tests/business/test_s4f_business_invariant_closeout.py:1",
+        "frontend/src/pages/skus/SKUFormModal.tsx:1",
+        "frontend/src/pages/skus/AddSellableUnitModal.tsx:1",
+        "frontend/src/pages/skus/SKUListPage.tsx:1",
+        "frontend/src/pages/orders/CreateOrderPage.tsx:1",
+        "frontend/src/pages/client/CreateOrderPage.tsx:1",
+        "frontend/src/pages/client/ProductDetailPage.tsx:1",
+        "frontend/src/services/catalogProductService.ts:1",
+        "frontend/src/services/skuService.ts:1",
+        "frontend/src/types/order.ts:1",
+        "frontend/src/types/client.ts:1",
+        "frontend/src/tests/SKUCatalogIdentity.test.tsx:1",
+        "frontend/src/tests/SKUCatalogIdentity.integration.test.tsx:1",
+        "frontend/src/tests/SKUListPage.test.tsx:1",
+        "frontend/src/tests/S5BRealUserSmoke.test.tsx:1",
+        "docs/contracts/openapi.yaml:1"
+      ],
+      "mutation_id": "MUT-CATALOG-ID-001",
+      "owner": "codex-l",
+      "evidence_sha": "",
+      "status": "NOT_RUN",
+      "interaction_ids": [
+        "CI-TENANT-ROUTING",
+        "CI-TRANSACTION-BOUNDARY"
+      ],
+      "notes": "SKU-M1 inventory addition. No protocol delta is applicable because no existing inventory node is removed, renamed, reordered, or reclassified."
+    },
+    {
+      "id": "CATALOG-HIST-001",
+      "capability": "immutable order snapshots across catalog rename and deactivation",
+      "risk": "P1",
+      "actor": "wholesaler operator",
+      "tenant_role": "wholesaler workspace",
+      "entry": "full stack: existing stable order followed by catalog mutation",
+      "session_state": "contextual",
+      "tenant_state": "active",
+      "resource_state": "historical",
+      "input_state": "rename and deactivate",
+      "action": "rename and deactivate the source product after order creation, then read and print the historical order",
+      "response_class": "2xx",
+      "ui_oracle": "historical name, SKU code, unit, quantity, price, and amount remain the captured transaction values",
+      "navigation_oracle": "historical order remains reachable after the source sellable unit is unavailable",
+      "network_oracle": "order response returns snapshots and stable source ID without replacing snapshots through a live catalog join",
+      "session_oracle": "session unchanged",
+      "persistence_security_oracle": "catalog writes do not update order_items snapshots; legacy null identities remain null unless unique reservation evidence exists",
+      "viewport": "desktop-and-mobile-390",
+      "runtime": "fresh-database-and-upgrade",
+      "layer": "full_stack",
+      "authoritative": true,
+      "source_anchors": [
+        "backend/models/order.py:104",
+        "backend/alembic/versions/038_catalog_identity_vertical_slice.py:140",
+        "backend/services/catalog_product_service.py:90",
+        "backend/api/v1/orders.py:260",
+        "backend/api/v1/client/orders.py:65",
+        "backend/tests/test_sku_m1_catalog_identity.py:40"
+      ],
+      "mutation_id": "MUT-CATALOG-HIST-001",
+      "owner": "codex-l",
+      "evidence_sha": "",
+      "status": "NOT_RUN",
+      "interaction_ids": [
+        "CI-TRANSACTION-BOUNDARY"
+      ],
+      "notes": "Migration counterexamples include no reservation, exactly one reservation identity, and conflicting reservation identities; code and name inference are forbidden."
+    },
+    {
+      "id": "ORDER-STATE-R1-001",
+      "capability": "order state authority: single locked-fresh command writer, explicit dispatch, pre-lock inventory discipline, post-commit notifications, fail-closed paid cancellation; R2 adds per-order credit holds — confirm opens a hold (binding cache += total), cancel settles and releases it, a credit payment converts it into exposure counted exactly once, full cash/transfer settles it to zero, and the 039 migration preflight proves the binding-cache identity",
+      "risk": "P1",
+      "actor": "wholesaler operator and retailer client",
+      "tenant_role": "wholesaler workspace + retailer client",
+      "entry": "direct routes: POST /api/v1/orders/{id}/confirm|cancel|fulfill|return, POST /api/v1/client/orders/{id}/cancel, pay via CanonicalPaymentService",
+      "session_state": "authenticated JWT",
+      "tenant_state": "active tenant schema",
+      "resource_state": "orders across DRAFT..RETURNED with reservations, stock, bindings credit aggregate",
+      "input_state": "valid lifecycle requests, concurrent same-order pairs, cross-order same-key payment replays, stale identity-map and swapped-pointer declarations, permission-less and cross-tenant tokens, injected non-domain faults, SQL-corrupted over-collected payment history",
+      "action": "drive the full lifecycle, race confirm/cancel/pay and fulfill/return on two orders x two SKUs with reverse item order, pay confirmed orders by credit (hold conversion) and cash/transfer (hold settlement), cancel confirmed orders (hold settle/release), inject faults after the state write and during the second per-item inventory write, attempt generic-transition bypasses and no-actor confirms",
+      "response_class": "2xx/4xx",
+      "ui_oracle": "NOT_APPLICABLE",
+      "navigation_oracle": "NOT_APPLICABLE",
+      "network_oracle": "exactly one writer endpoint per state change; generic transition refuses command-owned targets; paid/partially_paid cancel returns 409 REFUND_WORKFLOW_NOT_IMPLEMENTED; client repeated/paid cancel returns stable 409 CANCEL_NOT_ALLOWED; credit-hold contract violations (missing converted hold, remaining mismatch, over-collected or corrupt history) return 409 CREDIT_HOLD_MISMATCH / PAYMENT_HISTORY_INTEGRITY",
+      "session_oracle": "permission-less JWT denied before writes; cross-tenant request is a neutral 404",
+      "persistence_security_oracle": "confirm opens a per-order credit hold (binding cache += total) and posts zero receivable/revenue/payment ledger entries; cancel releases owned reservations with aggregate updates and settles/releases the hold exactly once; a credit payment converts the hold into actual credit exposure (one total of binding movement, never double-counted in the receivables summary); full cash/transfer settlement reduces the hold to zero; the 039 backfill follows the C3 state matrix and its preflight proves the binding cache equals the exposure-only formula; over-collected or invalid payment history is a named refusal on the write path and both receivables reads; whole-request rollback restores the exact before-vector on injected faults; notification intents dispatch only post-commit to real retailer contacts; snapshots and identity_status never rewritten",
+      "viewport": "desktop",
+      "runtime": "clean-start",
+      "layer": "route_api",
+      "authoritative": false,
+      "status": "NOT_RUN",
+      "notes": "Author-executed (ZCode under Codex-L supervision) on task PG16; independent rerun pending (KILO_OR_OPENCODE2 gate). F3: legacy-face extension — legacy DRAFT cancel is a pure status transition, legacy-with-reservations cancel derives its stock set from ACTIVE reservations (reservation.sku_id), fulfill/return reject NULL sellable identity with a controlled 409 before inventory or return-ledger effects; mutation classifier voids ANY collection/setup/teardown ERROR. R2 closes the R1 credit-hold gap: per-order holds (order_credit_holds) give cancel exactly what to settle/release, credit payment converts the same hold (exposure counted exactly once), and the 039 preflight proves the binding cache identity — the three former F1 KNOWN-RED faces are GREEN regression oracles (CREDIT_HOLD_PERSISTENCE_DECISION_REQUIRED is resolved and removed). R1 mutation runner executes strictly inside a disposable detached worktree (authoritative tree never a write target, in-memory byte+mode restore, no git-restore path). E1R1 closure: the reconcile binds populated schemas to their live tenant-registration wholesaler and rejects cross-wholesaler data, reverse-checks binding coverage (a completely missing binding row is not zero drift), and refuses populated schemas lacking the lifecycle table with zero DDL; the E1-F3 fault gate asserts the ledger vector roll-back explicitly. E1 source revision (11ecbe85): bootstrap reconcile validates per-order effective-history legality and the per-order hold lifecycle contract before any aggregate (read-only, fail-closed, no lifecycle rewrites; empty new-tenant history stays the legal positive control; the bootstrap touch surface is four read-only validation queries in _reconcile_credit_holds, registered in the commit message); canonical credit-sale collection requires exactly one effective credit on the seam shared by direct pay and declaration confirmation; the cash/transfer settlement writes the binding cache last in one transaction (the C6 'hold -> payment/receipt/ledger -> binding' phrasing is the RESOURCE partial order; the SQL statement sequence is payment INSERT -> hold UPDATE -> ledger posting -> cash/transfer batch settle -> binding UPDATE). E1R2 closure: attribution is required for ANY retained business history (soft-deleted orders and their payments included) and the registered schema name must equal the wholesaler-derived t_<UUID-hex> name, the identity 039 enforces.",
+      "source_anchors": [
+        "backend/services/order_command_service.py:76",
+        "backend/services/order_command_service.py:127",
+        "backend/services/order_command_service.py:171",
+        "backend/services/order_command_service.py:198",
+        "backend/services/order_command_service.py:247",
+        "backend/services/order_command_service.py:328",
+        "backend/services/order_command_service.py:427",
+        "backend/services/order_command_service.py:692",
+        "backend/services/order_service.py:34",
+        "backend/api/v1/orders.py:601",
+        "backend/api/v1/orders.py:792",
+        "backend/api/v1/client/orders.py:409",
+        "backend/api/middleware/auth.py:153",
+        "backend/core/domain/order_state.py:84",
+        "backend/alembic/versions/039_order_credit_holds.py:109",
+        "backend/alembic/versions/039_order_credit_holds.py:443",
+        "backend/models/order_credit_hold.py:34",
+        "backend/repositories/payment_repository.py:218",
+        "backend/scripts/bootstrap_tenant_schema.py:1551",
+        "backend/scripts/seed_demo_data.py:444",
+        "backend/services/canonical_payment_service.py:202",
+        "backend/services/payment_declaration_service.py:167",
+        "backend/services/payment_history_contract.py:96",
+        "backend/services/receivables_service.py:80",
+        "backend/tests/order_state_r1/conftest.py:1",
+        "backend/tests/order_state_r1/support.py:1",
+        "backend/tests/order_state_r1/test_baseline.py:1",
+        "backend/tests/order_state_r1/test_concurrency.py:1",
+        "backend/tests/order_state_r1/test_freshness.py:1",
+        "backend/tests/order_state_r1/test_rollback_vectors.py:1",
+        "backend/tests/order_state_r1/test_notifications.py:1",
+        "backend/tests/order_state_r1/test_static_guards.py:1",
+        "backend/tests/order_state_r1/test_access_controls.py:1",
+        "backend/tests/order_state_r1/test_f1_faces.py:1",
+        "backend/tests/order_state_r1/test_prelock.py:1",
+        "backend/tests/order_state_r1/test_f3_legacy_faces.py:1",
+        "backend/tests/order_state_r1/test_classifier.py:1",
+        "backend/tests/order_state_r1/run_mutations.py:1",
+        "backend/tests/order_state_r1/__init__.py",
+        "backend/tests/order_state_r2/conftest.py:1",
+        "backend/tests/order_state_r2/contract_helpers.py:1",
+        "backend/tests/order_state_r2/__init__.py",
+        "backend/tests/order_state_r2/support.py:1",
+        "backend/tests/order_state_r2/test_c1_collection_integrity.py:1",
+        "backend/tests/order_state_r2/test_c2_cancel_integrity.py:1",
+        "backend/tests/order_state_r2/test_c4_aggregation.py:1",
+        "backend/tests/order_state_r2/test_c6_lock_order.py:1",
+        "backend/tests/order_state_r2/test_c6_reverse_edge.py:1",
+        "backend/tests/order_state_r2/test_c7_attribution_display.py:1",
+        "backend/tests/order_state_r2/test_migration_c3.py:1",
+        "backend/tests/order_state_r2/test_r1_correction_gates.py:1",
+        "backend/tests/order_state_r2/test_sr1_closure_gates.py:1",
+        "backend/tests/order_state_r2/test_e1_source_revision_gates.py:1",
+        "backend/tests/conftest.py:1",
+        "backend/tests/business/test_financial_loop.py:1",
+        "backend/tests/business/test_s4b_inventory_reversal_invariants.py:1",
+        "backend/tests/business/test_s4c_concurrent_fulfillment_oversell_invariants.py:1",
+        "backend/tests/business/test_s4d_inventory_movement_ledger_integrity.py:1",
+        "backend/tests/business/test_s4e_stock_reservation_lifecycle_audit.py:1",
+        "backend/tests/business/test_s4f_business_invariant_closeout.py:1",
+        "backend/tests/business/test_s4_order_fulfillment_inventory_invariants.py:1",
+        "backend/tests/test_dc10g_platform_uuid_export_error_hardening.py:1",
+        "backend/tests/test_dc11d_payment_replay_concurrency_integrity.py:1",
+        "backend/tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py:1",
+        "backend/tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py:1",
+        "backend/tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py:1",
+        "backend/tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py:1",
+        "backend/tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py:1",
+        "backend/tests/test_phase5_order_payment.py:1",
+        "backend/tests/test_receivables_service.py:1",
+        "backend/tests/test_s5a_fresh_tenant_real_user_journey_gate.py:1",
+        "backend/tests/test_s5d4b_settled_cash_payment.py:1",
+        "backend/tests/test_s5d5_payment_ledger_runtime_invariant.py:1",
+        "backend/tests/test_s5d6_multi_partial_payment_state_machine.py:1",
+        "backend/tests/test_s5_ledger.py:1",
+        "backend/tests/test_s5_order_state_machine.py:1",
+        "backend/tests/test_sku_m1_migration_pg16.py:1",
+        "backend/tests/test_u6f_onboarding_auth_chain_closeout.py:1",
+        "backend/tests/test_u6i1_owner_credential_setup_schema.py:1"
+      ],
+      "mutation_id": "MUT-ORDER-STATE-R1-M1-M16; R2: MUT-ORDER-STATE-R2-M1-M8 + N1-N13 (r1-correction + sr1-closure + sr1-r1 product mutations); E1: F1-F3 source-revision gates; E1R1: registration-bound wholesaler attribution, missing-binding reverse coverage, populated-missing-table zero-DDL refusal; E1R2: non-canonical schema mapping + soft-deleted-only retained history attribution gates",
+      "owner": "codex-l",
+      "evidence_sha": ""
     }
   ]
 }

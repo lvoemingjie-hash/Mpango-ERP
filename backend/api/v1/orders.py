@@ -13,15 +13,14 @@ State Machine:
 """
 from datetime import datetime, timezone
 from math import ceil
-from typing import Annotated, Mapping, Optional
+from typing import Annotated, Optional
 import uuid
 from uuid import UUID
 from decimal import Decimal
 from fastapi import APIRouter, Depends, Header, HTTPException, status, Query
-from sqlalchemy import select, text
+from fastapi import Request
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import selectinload
 
 from api.dependencies import get_tenant_db_session
 from api.dependencies import get_current_user_context
@@ -31,19 +30,19 @@ from core.domain.order_state import (
     InvalidStateTransitionError as DomainInvalidStateTransitionError,
     OrderInvariantViolation,
 )
-from models.order import Order as OrderModel
+from core.domain.order_state import (
+    InvalidStateTransitionError,  # noqa: F401 (pay-path compatibility)
+)
 from crud.order import (
     get_order_by_id,
     get_order_for_wholesaler,
     get_orders_paginated,
     create_order as crud_create_order,
-    confirm_order as crud_confirm_order,
-    pay_order as crud_pay_order,
-    fulfill_order as crud_fulfill_order,
-    cancel_order as crud_cancel_order,
-    return_order as crud_return_order,
     batch_retailer_names,
-    InvalidStateTransitionError
+)
+from services.order_command_service import (
+    OrderCommandService,
+    REFUND_WORKFLOW_NOT_IMPLEMENTED,
 )
 from schemas.order import (
     OrderCreateRequest,
@@ -95,6 +94,11 @@ IDEMPOTENCY_KEY_ALLOWED_CHARS = set(
 # rejected at the public pay_order boundary so a direct payment can never
 # pre-occupy the declaration-confirmation idempotency slot.
 RESERVED_IDEMPOTENCY_KEY_PREFIX = "decl-confirm-"
+
+
+def _uuid_of(value) -> "UUID":
+    """Coerce asyncpg's pgproto UUID (from populate_existing) to uuid.UUID."""
+    return UUID(str(value))
 
 
 def _payment_error(status_code: int, code: str, message: str) -> HTTPException:
@@ -166,26 +170,6 @@ def _validate_payment_notes_unsupported(payment_input: PayOrderRequest) -> None:
         )
 
 
-def _same_payment_request(
-    existing_payment,
-    *,
-    order_id: str,
-    amount: Decimal,
-    method: str,
-    transaction_id: str | None,
-) -> bool:
-    return (
-        str(existing_payment["order_id"]) == str(order_id)
-        and Decimal(str(existing_payment["amount"])) == amount
-        and str(existing_payment["method"]) == method
-        and (existing_payment.get("transaction_id") or None) == (transaction_id or None)
-    )
-
-
-def _payment_mapping_or_none(candidate):
-    return candidate if isinstance(candidate, Mapping) else None
-
-
 def _payment_response_data(order, payment_record) -> dict:
     order_status = getattr(order.status, "value", order.status)
     return {
@@ -195,61 +179,6 @@ def _payment_response_data(order, payment_record) -> dict:
         "payment_amount": str(payment_record["amount"]),
         "payment_method": payment_record["method"],
     }
-
-
-async def _idempotency_replay_response(
-    db: AsyncSession,
-    *,
-    payment_record,
-) -> OrderActionResponse:
-    order = await get_order_by_id(db, str(payment_record["order_id"]))
-    if not order:
-        raise _payment_error(
-            status.HTTP_404_NOT_FOUND,
-            "ORDER_NOT_FOUND",
-            "Order for idempotent payment was not found",
-        )
-    return OrderActionResponse(
-        success=True,
-        data=_payment_response_data(order, payment_record),
-        message="Payment replayed",
-        timestamp=datetime.utcnow(),
-    )
-
-
-async def _get_order_by_id_for_update(
-    db: AsyncSession,
-    order_id: str,
-) -> OrderModel | None:
-    try:
-        order_uuid = UUID(order_id)
-    except ValueError:
-        return None
-
-    result = await db.execute(
-        select(OrderModel)
-        .where(OrderModel.id == order_uuid)
-        .where(OrderModel.is_deleted == False)
-        .options(selectinload(OrderModel.items))
-        .with_for_update()
-    )
-    return result.scalar_one_or_none()
-
-
-def _idempotency_conflict() -> HTTPException:
-    return _payment_error(
-        status.HTTP_409_CONFLICT,
-        "IDEMPOTENCY_KEY_CONFLICT",
-        "X-Idempotency-Key was already used with a different payment request",
-    )
-
-
-def _duplicate_transfer_reference() -> HTTPException:
-    return _payment_error(
-        status.HTTP_409_CONFLICT,
-        "DUPLICATE_TRANSFER_REFERENCE",
-        "Transfer transaction_id has already been recorded",
-    )
 
 
 async def _restore_tenant_search_path_after_rollback(db: AsyncSession) -> None:
@@ -271,8 +200,11 @@ def order_to_schema(order, retailer_name: str | None = None) -> OrderSchema:
         items=[
             OrderItemSchema(
                 id=str(item.id),
+                sellable_unit_id=str(item.sellable_unit_id) if item.sellable_unit_id else None,
+                identity_status=item.identity_status,
                 product_name=item.product_name,
                 sku_code=item.sku_code,
+                unit_snapshot=item.unit_snapshot,
                 quantity=item.quantity,
                 unit_price=item.unit_price,
                 subtotal=item.subtotal
@@ -397,31 +329,43 @@ async def create_order(
     # ---------------------------------------------------------------
     # Step 2: Resolve SKU data + retailer-specific pricing server-side
     # ---------------------------------------------------------------
-    sku_codes = [item.sku_code for item in request.items]
+    sku_codes = [item.sku_code for item in request.items if item.sku_code]
+    sku_ids = [item.sellable_unit_id for item in request.items if item.sellable_unit_id]
     placeholders = ", ".join([f":sku_{i}" for i in range(len(sku_codes))])
     sku_params = {f"sku_{i}": code for i, code in enumerate(sku_codes)}
+    id_placeholders = ", ".join([f":sku_id_{i}" for i in range(len(sku_ids))])
+    sku_params.update({f"sku_id_{i}": value for i, value in enumerate(sku_ids)})
+    selectors = []
+    if placeholders:
+        selectors.append(f"s.sku_code IN ({placeholders})")
+    if id_placeholders:
+        selectors.append(f"s.id::text IN ({id_placeholders})")
+    selector_sql = " OR ".join(selectors)
 
     sku_sql = f"""
         SELECT
             s.id   AS sku_id,
             s.sku_code,
-            s.name,
-            s.is_active,
+            p.name,
+            s.unit,
+            (s.is_active AND p.is_active) AS is_active,
             COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand,
             rp.price AS sell_price
         FROM skus s
+        JOIN catalog_products p ON p.id = s.catalog_product_id AND p.is_deleted IS NOT TRUE
         LEFT JOIN inventory_stocks i
             ON i.sku_id = s.id AND i.is_deleted IS NOT TRUE
         LEFT JOIN retailer_prices rp
             ON rp.sku_id = s.id
             AND rp.retailer_id = :retailer_id
             AND rp.is_deleted IS NOT TRUE
-        WHERE s.sku_code IN ({placeholders})
+        WHERE ({selector_sql})
           AND s.is_deleted IS NOT TRUE
     """
     sku_params["retailer_id"] = request.retailer_id
     result = await db.execute(sa_text(sku_sql), sku_params)
     sku_rows = {row.sku_code: row for row in result.fetchall()}
+    sku_rows_by_id = {str(row.sku_id): row for row in sku_rows.values()}
 
     # ---------------------------------------------------------------
     # Step 3: Validate each item and build server-resolved order items
@@ -429,25 +373,32 @@ async def create_order(
     errors = []
     order_items = []
     for item in request.items:
-        sku_row = sku_rows.get(item.sku_code)
+        by_id = sku_rows_by_id.get(item.sellable_unit_id) if item.sellable_unit_id else None
+        by_code = sku_rows.get(item.sku_code) if item.sku_code else None
+        if item.sellable_unit_id and item.sku_code:
+            if by_id is None or by_code is None or by_id.sku_id != by_code.sku_id:
+                errors.append("Sellable unit ID does not match SKU code")
+                continue
+        sku_row = by_id or by_code
+        selector = item.sku_code or item.sellable_unit_id
         if sku_row is None:
-            errors.append(f"Product '{item.sku_code}' not found")
+            errors.append(f"Product '{selector}' not found")
             continue
         if not sku_row.is_active:
-            errors.append(f"Product '{item.sku_code}' is no longer available")
+            errors.append(f"Product '{selector}' is no longer available")
             continue
 
         qty_available = float(sku_row.quantity_on_hand)
         if qty_available < item.quantity:
             errors.append(
-                f"Insufficient stock for '{item.sku_code}': "
+                f"Insufficient stock for '{selector}': "
                 f"requested {item.quantity}, available {int(qty_available)}"
             )
             continue
 
         if sku_row.sell_price is None:
             errors.append(
-                f"No price configured for '{item.sku_code}' for this retailer. "
+                f"No price configured for '{selector}' for this retailer. "
                 f"Set a price before creating orders."
             )
             continue
@@ -455,13 +406,15 @@ async def create_order(
         resolved_price = Decimal(str(sku_row.sell_price))
         if resolved_price <= 0:
             errors.append(
-                f"Invalid price for '{item.sku_code}'. Price must be positive."
+                f"Invalid price for '{selector}'. Price must be positive."
             )
             continue
 
         order_items.append({
+            "sellable_unit_id": sku_row.sku_id,
             "product_name": sku_row.name,
-            "sku_code": item.sku_code,
+            "sku_code": sku_row.sku_code,
+            "unit_snapshot": sku_row.unit,
             "quantity": item.quantity,
             "unit_price": resolved_price,
         })
@@ -589,6 +542,7 @@ async def print_order(
 @router.post("/{order_id}/confirm", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def confirm_order(
     order_id: str,
+    request: Request = None,
     token: TokenPayload = Depends(RequirePermission("orders:update")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
@@ -601,7 +555,6 @@ async def confirm_order(
         OrderActionResponse with updated status
     """
     order = await get_order_by_id(db, order_id)
-
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -612,20 +565,19 @@ async def confirm_order(
         )
 
     try:
-        order = await crud_confirm_order(db, order, updated_by=token.user_id)
+        from uuid import UUID as _UUID
 
-        from services.inventory_service import InventoryService
-
-        await db.refresh(order, ["items"])
-        await InventoryService().reserve_on_confirm(db, order=order)
-        await db.flush()
-    except InvalidStateTransitionError as e:
+        result = await OrderCommandService(db).confirm_order(
+            _UUID(order_id), updated_by=token.user_id
+        )
+        order = result.order
+        if request is not None:
+            request.state.osd1_notification_intents = result.notification_intents
+    except (InvalidStateTransitionError, DomainInvalidStateTransitionError,
+            OrderInvariantViolation) as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "INVALID_STATE_TRANSITION",
-                "message": str(e)
-            }
+            detail={"code": "INVALID_STATE_TRANSITION", "message": str(e)}
         )
     except HTTPException:
         await db.rollback()
@@ -685,144 +637,17 @@ async def pay_order(
     pay_amount = Decimal(str(payment_input.amount))
     idempotency_key = _validate_idempotency_key(x_idempotency_key)
 
-    from repositories.payment_repository import PaymentRepository
-
-    payment_repo = PaymentRepository()
+    # R2-R1 correction: NO route-level payment logic. State, balance,
+    # idempotency, ordering and locking all live in the single canonical
+    # locked-fresh implementation; this route only validates the request
+    # shape and delegates.
+    #
+    # R2-R1 SR1: the route holds NO idempotency fallback. Unique-constraint
+    # races are classified inside CanonicalPaymentService (precisely the
+    # two payment unique constraints, under a savepoint); every other
+    # IntegrityError propagates unchanged instead of being re-read and
+    # answered as a replay.
     canonical_payment_service = CanonicalPaymentService()
-
-    existing_payment = await payment_repo.get_by_idempotency_key(
-        db,
-        idempotency_key=idempotency_key,
-    )
-    existing_payment = _payment_mapping_or_none(existing_payment)
-    if existing_payment:
-        if _same_payment_request(
-            existing_payment,
-            order_id=order_id,
-            amount=pay_amount,
-            method=payment_method,
-            transaction_id=payment_input.transaction_id,
-        ):
-            return await _idempotency_replay_response(
-                db,
-                payment_record=existing_payment,
-            )
-        raise _idempotency_conflict()
-
-    order = await _get_order_by_id_for_update(db, order_id)
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "ORDER_NOT_FOUND",
-                "message": f"Order with ID '{order_id}' not found",
-            },
-        )
-
-    from core.domain.order_state import OrderState
-
-    existing_payment = await payment_repo.get_by_idempotency_key(
-        db,
-        idempotency_key=idempotency_key,
-    )
-    existing_payment = _payment_mapping_or_none(existing_payment)
-    if existing_payment:
-        if _same_payment_request(
-            existing_payment,
-            order_id=str(order.id),
-            amount=pay_amount,
-            method=payment_method,
-            transaction_id=payment_input.transaction_id,
-        ):
-            return await _idempotency_replay_response(
-                db,
-                payment_record=existing_payment,
-            )
-        raise _idempotency_conflict()
-
-    current_state = OrderState(order.status.value)
-    order_total = order.total_amount
-    prior_paid = await payment_repo.get_order_paid_total(db, order_id=order.id)
-    is_credit_collection = False
-
-    if current_state == OrderState.PAID:
-        if payment_method not in {"cash", "transfer"}:
-            raise _payment_error(
-                status.HTTP_409_CONFLICT,
-                "ORDER_ALREADY_PAID",
-                "Paid credit orders accept only cash or transfer collections",
-            )
-        credit_collection_exposure = await payment_repo.get_order_credit_exposure(
-            db, order_id=order.id,
-        )
-        if credit_collection_exposure <= 0:
-            raise _payment_error(
-                status.HTTP_409_CONFLICT,
-                "ORDER_ALREADY_PAID",
-                "Order has no remaining credit exposure to collect",
-            )
-        if pay_amount > credit_collection_exposure:
-            raise _payment_error(
-                status.HTTP_400_BAD_REQUEST,
-                "PAYMENT_EXCEEDS_REMAINING",
-                "Payment amount exceeds remaining credit exposure",
-            )
-        target_state = OrderState.PAID
-        is_credit_collection = True
-    else:
-        remaining_balance = order_total - prior_paid
-        if pay_amount > remaining_balance:
-            raise _payment_error(
-                status.HTTP_400_BAD_REQUEST,
-                "PAYMENT_EXCEEDS_REMAINING",
-                "Payment amount exceeds remaining balance",
-            )
-
-        if current_state not in (OrderState.CONFIRMED, OrderState.PARTIALLY_PAID):
-            raise _payment_error(
-                status.HTTP_409_CONFLICT,
-                "INVALID_STATE_TRANSITION",
-                "Order must be confirmed or partially_paid before payment",
-            )
-
-        if payment_method == "credit":
-            credit_count = await payment_repo.count_order_payments(
-                db, order_id=order.id, method="credit",
-            )
-            if credit_count > 0:
-                raise _payment_error(
-                    status.HTTP_409_CONFLICT,
-                    "DUPLICATE_CREDIT_PAYMENT",
-                    "Only one credit payment is allowed per order",
-                )
-            if prior_paid > 0:
-                raise _payment_error(
-                    status.HTTP_400_BAD_REQUEST,
-                    "CREDIT_SPLIT_TENDER_UNSUPPORTED",
-                    "Credit is allowed only on an order with no prior cash or transfer settlement",
-                )
-            if pay_amount != order_total:
-                raise _payment_error(
-                    status.HTTP_400_BAD_REQUEST,
-                    "CREDIT_AMOUNT_MISMATCH",
-                    "Credit amount must equal order total",
-                )
-
-        cumulative_after_payment = prior_paid + pay_amount
-        target_state = (
-            OrderState.PAID
-            if cumulative_after_payment >= order_total
-            else OrderState.PARTIALLY_PAID
-        )
-
-    if payment_method == "transfer" and payment_input.transaction_id:
-        existing_transfer = await payment_repo.get_by_transaction_id(
-            db,
-            transaction_id=payment_input.transaction_id,
-        )
-        existing_transfer = _payment_mapping_or_none(existing_transfer)
-        if existing_transfer:
-            raise _duplicate_transfer_reference()
 
     try:
         result = await canonical_payment_service.confirm_payment(
@@ -834,42 +659,7 @@ async def pay_order(
             idempotency_key=idempotency_key,
             created_by=token.user_id if token.user_id else None,
             force_completed=False,
-            locked_order=order,
-            target_state=target_state,
-            is_credit_collection=is_credit_collection,
-            skip_prechecks=True,
         )
-    except IntegrityError:
-        await db.rollback()
-        await _restore_tenant_search_path_after_rollback(db)
-        existing_payment = await payment_repo.get_by_idempotency_key(
-            db,
-            idempotency_key=idempotency_key,
-        )
-        existing_payment = _payment_mapping_or_none(existing_payment)
-        if existing_payment:
-            if _same_payment_request(
-                existing_payment,
-                order_id=order_id,
-                amount=pay_amount,
-                method=payment_method,
-                transaction_id=payment_input.transaction_id,
-            ):
-                return await _idempotency_replay_response(
-                    db,
-                    payment_record=existing_payment,
-                )
-            raise _idempotency_conflict()
-
-        if payment_method == "transfer" and payment_input.transaction_id:
-            existing_transfer = await payment_repo.get_by_transaction_id(
-                db,
-                transaction_id=payment_input.transaction_id,
-            )
-            existing_transfer = _payment_mapping_or_none(existing_transfer)
-            if existing_transfer:
-                raise _duplicate_transfer_reference()
-        raise
     except CanonicalPaymentMutationHttpError as exc:
         await db.rollback()
         raise exc.http_exception
@@ -880,6 +670,13 @@ async def pay_order(
             "INVALID_STATE_TRANSITION",
             "Payment cannot transition the order from its current state",
         )
+    except HTTPException:
+        # Precheck refusals from the canonical service carry zero writes;
+        # do NOT roll back here (the tenant middleware owns the HTTP-path
+        # rollback, and direct-service callers keep their transaction and
+        # search_path intact — matching the route semantics these callers
+        # were built against).
+        raise
     except Exception:
         await db.rollback()
         raise
@@ -894,6 +691,7 @@ async def pay_order(
 @router.post("/{order_id}/fulfill", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def fulfill_order(
     order_id: str,
+    request: Request = None,
     token: TokenPayload = Depends(RequirePermission("orders:update")),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
@@ -919,37 +717,12 @@ async def fulfill_order(
         )
 
     try:
-        from services.order_service import OrderService
-        from core.domain.order_state import OrderState
-
-        # Expire the preflight object so OrderService.transition() reloads the
-        # locked row from the database instead of reusing stale identity-map state.
-        order_uuid = order.id
-        db.expire(order)
-
-        order_service = OrderService(db)
-        order = await order_service.transition(
-            order_id=order_uuid,
-            target_state=OrderState.FULFILLED,
-            reason="Order fulfilled",
-            updated_by=token.user_id
+        result = await OrderCommandService(db).fulfill_order(
+            _uuid_of(order.id), updated_by=token.user_id
         )
-
-        from services.inventory_service import InventoryService
-
-        await db.refresh(order, ["items"])
-        inventory_service = InventoryService()
-        for item in order.items:
-            await inventory_service.deduct_on_fulfillment(
-                db,
-                sku_code=item.sku_code,
-                quantity=Decimal(str(item.quantity)),
-                order_id=order.id,
-                order_item_id=item.id,
-                fulfilled_by=token.user_id,
-            )
-
-        await db.flush()
+        order = result.order
+        if request is not None:
+            request.state.osd1_notification_intents = result.notification_intents
 
     except (InvalidStateTransitionError, DomainInvalidStateTransitionError, OrderInvariantViolation) as e:
         raise HTTPException(
@@ -987,6 +760,7 @@ async def fulfill_order(
 @router.post("/{order_id}/cancel", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def cancel_order(
     order_id: str,
+    request: Request = None,
     token: TokenPayload = Depends(RequirePermission("orders:update")),  # S2.5: Added RBAC
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
@@ -999,7 +773,6 @@ async def cancel_order(
         OrderActionResponse with updated status
     """
     order = await get_order_by_id(db, order_id)
-
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1009,25 +782,23 @@ async def cancel_order(
             }
         )
 
-    release_reservation = order.status.value == "confirmed"
     try:
-        order = await crud_cancel_order(db, order, updated_by=token.user_id)
-        if release_reservation:
-            from services.inventory_service import InventoryService
+        from uuid import UUID as _UUID
 
-            await db.refresh(order, ["items"])
-            await InventoryService().release_on_cancel(db, order=order)
-            await db.flush()
-    except InvalidStateTransitionError as e:
+        result = await OrderCommandService(db).cancel_order(
+            _UUID(order_id), updated_by=token.user_id
+        )
+        order = result.order
+    except (InvalidStateTransitionError, DomainInvalidStateTransitionError,
+            OrderInvariantViolation) as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "INVALID_STATE_TRANSITION",
-                "message": str(e)
-            }
+            detail={"code": "INVALID_STATE_TRANSITION", "message": str(e)}
         )
     except HTTPException:
-        await db.rollback()
+        # no endpoint rollback here: the tenant middleware rolls the whole
+        # request back on status >= 400, and rolling the session now would
+        # expire the ORM objects the caller still holds
         raise
     except Exception:
         await db.rollback()
@@ -1047,6 +818,7 @@ async def cancel_order(
 @router.post("/{order_id}/return", response_model=OrderActionResponse, status_code=status.HTTP_200_OK)
 async def return_order(
     order_id: str,
+    request: Request = None,
     token: TokenPayload = Depends(RequirePermission("orders:update")),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
@@ -1074,32 +846,10 @@ async def return_order(
         )
 
     try:
-        # Use OrderService for atomic transition + ledger posting, then restore
-        # inventory in the same DB transaction before the request commits.
-        from services.order_service import OrderService
-        from core.domain.order_state import OrderState
-        from services.inventory_service import InventoryService
-
-        order_service = OrderService(db)
-        order = await order_service.transition(
-            order_id=order.id,
-            target_state=OrderState.RETURNED,
-            reason="Full return requested",
-            updated_by=token.user_id
+        result = await OrderCommandService(db).return_order(
+            _uuid_of(order.id), updated_by=token.user_id
         )
-
-        await db.refresh(order, ["items"])
-        inventory_service = InventoryService()
-        for item in order.items:
-            await inventory_service.restock_on_return(
-                db,
-                sku_code=item.sku_code,
-                quantity=Decimal(str(item.quantity)),
-                order_id=order.id,
-                returned_by=token.user_id,
-            )
-
-        await db.flush()
+        order = result.order
     except (InvalidStateTransitionError, DomainInvalidStateTransitionError, OrderInvariantViolation) as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

@@ -221,15 +221,37 @@ class PaymentRepository:
         *,
         order_id: uuid.UUID,
     ) -> Decimal:
-        """Return credit payments less cash/transfer collections, never negative."""
+        """RAW credit exposure: credit payments minus cash/transfer
+        collections. R2-R1 C4: the value is NOT clamped — a negative result
+        is corrupt (over-collected) history that callers must refuse with a
+        named integrity error, never silently treat as zero."""
         credit_total = await self.get_order_method_total(
             db, order_id=order_id, methods=("credit",),
         )
         collection_total = await self.get_order_method_total(
             db, order_id=order_id, methods=("cash", "transfer"),
         )
-        exposure = credit_total - collection_total
-        return exposure if exposure > Decimal("0") else Decimal("0")
+        return credit_total - collection_total
+
+    async def count_payments_with_status_outside(
+        self,
+        db: AsyncSession,
+        *,
+        order_id: uuid.UUID,
+        statuses: tuple[str, ...],
+    ) -> int:
+        """Count non-deleted payment rows whose status is outside the given
+        set. R2-R1: aggregation accepts only pending/completed; anything
+        else is a named integrity refusal, not silent history."""
+        stmt = text(
+            "SELECT COUNT(*) FROM payments "
+            "WHERE order_id = :order_id AND is_deleted IS FALSE "
+            "AND status NOT IN :statuses"
+        ).bindparams(
+            bindparam("statuses", expanding=True),
+        )
+        result = await db.execute(stmt, {"order_id": order_id, "statuses": list(statuses)})
+        return int(result.scalar() or 0)
 
     async def update_cash_transfer_to_completed(
         self,

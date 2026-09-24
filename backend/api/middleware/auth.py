@@ -95,6 +95,12 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             if tenant_ctx:
                 from api.context.tenant import finalize_tenant_context
                 await finalize_tenant_context(tenant_ctx, success=response.status_code < 400)
+                # R1: notification intents are request-private and dispatched
+                # ONLY after the business transaction committed successfully.
+                # Rollback or commit failure leaves request.state without
+                # intents (the request dies with them): zero sends.
+                if response.status_code < 400:
+                    await _dispatch_notification_intents(request)
 
             return response
 
@@ -142,3 +148,78 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
             if tenant_tokens:
                 reset_current_tenant(*tenant_tokens)
+
+
+async def _dispatch_notification_intents(request: Request) -> None:
+    """Best-effort post-commit notification dispatch (R1).
+
+    Intents are request-private objects placed on ``request.state`` by the
+    order endpoints. Recipients are resolved from REAL retailer contact
+    data at dispatch time; when a retailer has no contact channel the
+    intent is skipped with a log line (no placeholder addresses or phone
+    numbers exist anywhere). A send failure is logged as a post-commit
+    delivery failure and never rolls back the already committed business
+    transaction. No job framework: one in-request best-effort pass.
+    """
+    intents = getattr(request.state, "osd1_notification_intents", None)
+    if not intents:
+        return
+    request.state.osd1_notification_intents = None
+    try:
+        from sqlalchemy import text as _text
+
+        from database.session import AsyncSessionLocal
+        from services.notification_service import notification_service
+
+        async with AsyncSessionLocal() as session:
+            for intent in intents:
+                try:
+                    row = (await session.execute(
+                        _text(
+                            "SELECT email, phone FROM public.retailers "
+                            "WHERE id = :rid AND is_deleted IS FALSE"
+                        ),
+                        {"rid": str(intent.retailer_id)},
+                    )).fetchone()
+                    if row is None:
+                        logger.warning(
+                            "post_commit_notification_skipped_no_retailer",
+                            extra={"event": intent.event,
+                                   "order_id": str(intent.order_id)},
+                        )
+                        continue
+                    if intent.event == "order_confirmed" and row.email:
+                        await notification_service.send_email(
+                            to=row.email,
+                            subject=f"Order #{str(intent.order_id)[:8]} Confirmed",
+                            body=(
+                                f"Your order #{str(intent.order_id)[:8]} has "
+                                "been confirmed. Thank you for your business!"
+                            ),
+                        )
+                    elif intent.event == "order_fulfilled" and row.phone:
+                        await notification_service.send_sms(
+                            phone=row.phone,
+                            message=(
+                                f"Order #{str(intent.order_id)[:8]} is on "
+                                "the way!"
+                            ),
+                        )
+                    else:
+                        logger.warning(
+                            "post_commit_notification_skipped_no_contact",
+                            extra={"event": intent.event,
+                                   "order_id": str(intent.order_id)},
+                        )
+                except Exception as send_exc:  # noqa: BLE001
+                    logger.warning(
+                        "post_commit_delivery_failed",
+                        extra={"event": intent.event,
+                               "order_id": str(intent.order_id),
+                               "error": str(send_exc)},
+                    )
+    except Exception as dispatch_exc:  # noqa: BLE001
+        logger.warning(
+            "post_commit_delivery_failed",
+            extra={"error": str(dispatch_exc)},
+        )

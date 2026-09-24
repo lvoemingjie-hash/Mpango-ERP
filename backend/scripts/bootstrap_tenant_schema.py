@@ -50,6 +50,214 @@ CANONICAL_ORDER_STATUSES = (
     "returned",
 )
 
+# ---------------------------------------------------------------------------
+# MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1
+#
+# Frozen architectural decision: the migration authority owns the public
+# schema and the shared security function public.prevent_ledger_modification().
+# The runtime role must never own or replace it.  Tenant bootstrap may create
+# tenant-owned objects (tables, triggers) and may only REFERENCE the existing
+# migration-owned function.
+#
+# MPANGO_MIGRATION_AUTHORITY_ROLE (optional) declares the role EXPECTED to
+# own the shared function.  The authoritative owner is always DERIVED from
+# the live catalog - the owner of the current database (pg_database.datdba;
+# on PG15+ that role also owns schema public) - never from the connected
+# role.  When the env is declared it is a consistency assertion only: it must
+# EQUAL the derived database owner or bootstrap refuses.  A single-role
+# topology (connected role == authority) is always refused: there is
+# deliberately NO connected-role fallback.
+# ---------------------------------------------------------------------------
+LEDGER_GUARD_SCHEMA = "public"
+LEDGER_GUARD_FUNCTION = "prevent_ledger_modification"
+LEDGER_GUARD_SIGNATURE = f"{LEDGER_GUARD_SCHEMA}.{LEDGER_GUARD_FUNCTION}()"
+MIGRATION_AUTHORITY_ROLE_ENV = "MPANGO_MIGRATION_AUTHORITY_ROLE"
+
+
+class LedgerGuardAuthorityError(RuntimeError):
+    """Fail-closed refusal to bootstrap without an authoritative ledger guard.
+
+    Raised before any tenant DDL is executed when the shared
+    public.prevent_ledger_modification() function is missing, has an
+    incompatible signature or owner, or is not executable by the connected
+    (runtime) role.  No tenant schema is created and no tenant is activated.
+    """
+
+
+class PublicContractError(RuntimeError):
+    """Fail-closed refusal on drifted migration-owned public contracts.
+
+    Raised before any tenant DDL is executed when a public object that
+    migrations own (e.g. the canonical wholesaler_retailer_bindings
+    outstanding-balance constraint) is missing, legacy-named, duplicated or
+    incompatible.  Bootstrap performs ZERO public DDL — the runtime role
+    deliberately holds no CREATE on schema public — so the named refusal
+    hands the repair to migrations/operator instead.
+"""
+
+
+async def _assert_ledger_guard_function_authority(db) -> None:
+    """Fail closed unless the migration-owned ledger guard is exactly intact.
+
+    Runs as the FIRST statement of every bootstrap, before CREATE SCHEMA, so a
+    refusal leaves zero partial tenant objects and no tenant can be activated.
+
+    Verified against the live catalog (never against assumptions):
+    1. Existence: public.prevent_ledger_modification() resolves to one
+       pg_proc entry.
+    2. Exact signature: zero identity arguments, RETURNS trigger, LANGUAGE
+       plpgsql, in the public schema.
+    3. Ownership: the migration authority is DERIVED from the live catalog as
+       the owner of the current database (pg_database.datdba; on PG15+ that
+       role also owns schema public).  The function owner must equal that
+       authority exactly.  There is deliberately NO fallback to the connected
+       role: a runtime role that owns the function, or a single-role
+       deployment where runtime == authority, is refused.
+    4. Separation: the connected (runtime) role must differ from the
+       authority, must not be a superuser, and must not hold membership
+       (direct or indirect, usable or not) in the authority role — no SET
+       ROLE escalation path may exist.
+    5. Privilege: the connected role holds EXECUTE on the function, so the
+       tenant trigger can fire at runtime, and holds NO CREATE on schema
+       public (R1-R2: a runtime that could create objects in public could
+       substitute the shared guard).
+
+    MPANGO_MIGRATION_AUTHORITY_ROLE, when declared, is treated as a
+    consistency assertion only: it must EQUAL the derived database owner or
+    bootstrap refuses (mis-wired deployment).
+    """
+    from sqlalchemy import text
+
+    row = (await db.execute(
+        text(
+            "SELECT to_regprocedure(:signature) IS NOT NULL AS function_exists, "
+            "format_type(p.prorettype, NULL) AS return_type, "
+            "pg_get_function_identity_arguments(p.oid) AS identity_arguments, "
+            "l.lanname AS language_name, "
+            "n.nspname AS function_schema, "
+            "pg_get_userbyid(p.proowner) AS owner_name, "
+            "current_user AS connected_role, "
+            "(SELECT pg_get_userbyid(datdba) FROM pg_database "
+            " WHERE datname = current_database()) AS database_owner, "
+            "(SELECT rolsuper FROM pg_roles "
+            " WHERE rolname = current_user) AS connected_is_superuser, "
+            "COALESCE(pg_has_role("
+            "    current_user, pg_get_userbyid(p.proowner), 'MEMBER'), "
+            "    false) AS connected_member_of_owner, "
+            "COALESCE(pg_has_role("
+            "    current_user, pg_get_userbyid(p.proowner), 'USAGE'), "
+            "    false) AS connected_usage_of_owner, "
+            "COALESCE(has_schema_privilege("
+            "    current_user, 'public', 'CREATE'), false) "
+            "    AS can_create_in_public, "
+            "has_function_privilege("
+            "    current_user, probe.func_oid, 'EXECUTE') AS can_execute "
+            "FROM (SELECT to_regprocedure(:signature) AS func_oid) probe "
+            "LEFT JOIN pg_proc p ON p.oid = probe.func_oid "
+            "LEFT JOIN pg_namespace n ON n.oid = p.pronamespace "
+            "LEFT JOIN pg_language l ON l.oid = p.prolang"
+        ),
+        {"signature": LEDGER_GUARD_SIGNATURE},
+    )).mappings().first()
+
+    if row is None or not row["function_exists"]:
+        raise LedgerGuardAuthorityError(
+            "Bootstrap precondition failed: shared ledger guard function "
+            f"{LEDGER_GUARD_SIGNATURE} does not exist. It is owned by the "
+            "migration authority and must be created by migrations "
+            "(010_s5_5_ledger_hardening), never by tenant bootstrap. "
+            "Refusing to create a partial tenant."
+        )
+
+    violations: list[str] = []
+    if _catalog_code(row["function_schema"]) != LEDGER_GUARD_SCHEMA:
+        violations.append(
+            f"function schema is {_catalog_code(row['function_schema'])!r}, "
+            f"expected {LEDGER_GUARD_SCHEMA!r}"
+        )
+    if _catalog_code(row["identity_arguments"]).strip() != "":
+        violations.append(
+            "identity arguments are "
+            f"{_catalog_code(row['identity_arguments'])!r}, expected none"
+        )
+    if _normalize_type(_catalog_code(row["return_type"]) or "") != "trigger":
+        violations.append(
+            f"return type is {_catalog_code(row['return_type'])!r}, "
+            "expected 'trigger'"
+        )
+    if _catalog_code(row["language_name"]) != "plpgsql":
+        violations.append(
+            f"language is {_catalog_code(row['language_name'])!r}, "
+            "expected 'plpgsql'"
+        )
+
+    authority = _catalog_code(row["database_owner"])
+    owner_name = _catalog_code(row["owner_name"])
+    connected_role = _catalog_code(row["connected_role"])
+    if not authority:
+        violations.append(
+            "cannot derive the migration authority: the current database has "
+            "no owner in pg_database"
+        )
+    else:
+        if owner_name != authority:
+            violations.append(
+                f"owner is {owner_name!r}, expected migration authority "
+                f"{authority!r} (the database owner)"
+            )
+        if connected_role == authority:
+            violations.append(
+                f"connected role {connected_role!r} IS the migration "
+                f"authority {authority!r} (single-role topology). The "
+                "runtime role must be a different, non-privileged role; "
+                "refusing to bootstrap in place of the authority."
+            )
+    declared_authority = os.environ.get(MIGRATION_AUTHORITY_ROLE_ENV, "").strip()
+    if declared_authority and declared_authority != authority:
+        violations.append(
+            f"declared {MIGRATION_AUTHORITY_ROLE_ENV}={declared_authority!r} "
+            f"does not match the derived database owner {authority!r}"
+        )
+    if row["connected_is_superuser"]:
+        violations.append(
+            f"connected role {connected_role!r} is a superuser; the runtime "
+            "role must be non-superuser"
+        )
+    if (
+        owner_name != connected_role
+        and (row["connected_member_of_owner"] or row["connected_usage_of_owner"])
+    ):
+        violations.append(
+            f"connected role {connected_role!r} is a member of the function "
+            f"owner {owner_name!r}; a SET ROLE escalation path must not exist"
+        )
+
+    if not row["can_execute"]:
+        violations.append(
+            f"connected role {connected_role!r} lacks EXECUTE on "
+            f"{LEDGER_GUARD_SIGNATURE}"
+        )
+
+    # R1-R2 fix 6: the runtime must hold NO CREATE on the migration-owned
+    # public schema — otherwise it could drop/recreate (substitute) the
+    # shared guard function or plant shadow objects there.  Checked BEFORE
+    # any tenant DDL so a wrong grant refuses with zero tenant objects.
+    if row["can_create_in_public"]:
+        violations.append(
+            f"connected role {connected_role!r} holds CREATE on schema "
+            "public; the runtime role must never be able to create or "
+            "substitute objects in the migration-owned public schema"
+        )
+
+    if violations:
+        violation_list = "\n  - ".join(violations)
+        raise LedgerGuardAuthorityError(
+            "Bootstrap precondition failed: shared ledger guard function "
+            f"{LEDGER_GUARD_SIGNATURE} is incompatible with the migration "
+            f"authority contract:\n  - {violation_list}\n"
+            "Refusing to create a partial tenant. No DDL has been executed."
+        )
+
 RETAILER_PRICE_COLUMNS = {
     "id": ("uuid", True),
     "retailer_id": ("uuid", True),
@@ -309,15 +517,34 @@ async def _ensure_index(
     await db.execute(text(create_sql))
 
 
-async def _ensure_public_binding_balance_constraint(db) -> None:
+async def _assert_public_binding_balance_contract(db) -> None:
+    """Read-only assertion of the migration-owned public balance contract.
+
+    ZERO DDL on schema public, fail closed on every drifted state, and it
+    runs BEFORE CREATE SCHEMA so a refusal provably leaves zero tenant
+    objects (refusal by precondition, not by transaction rollback).  The
+    canonical constraint is owned by migrations (005 creates the column,
+    035 canonicalizes the constraint name); the runtime role holds no
+    CREATE on public, so bootstrap can neither repair nor rename:
+
+      - bindings table or outstanding_balance column missing        -> refuse
+      - canonical constraint missing                                -> refuse
+      - canonical constraint present more than once (duplicate)     -> refuse
+      - legacy-named equivalent constraint (rename owed to 035)     -> refuse
+      - incompatible outstanding-balance-shaped constraint          -> refuse
+    """
     from sqlalchemy import text
 
     if not await _table_exists(db, "public", PUBLIC_BINDINGS):
-        return
+        raise PublicContractError(
+            "Bootstrap public-contract refusal: public.wholesaler_retailer_bindings "
+            "is missing — migrations own public objects and must create them "
+            "before tenant bootstrap; bootstrap performs no public DDL"
+        )
     if not await _column_exists(db, "public", PUBLIC_BINDINGS, "outstanding_balance"):
-        raise RuntimeError(
-            "Bootstrap reconcile: public.wholesaler_retailer_bindings is missing "
-            "outstanding_balance"
+        raise PublicContractError(
+            "Bootstrap public-contract refusal: public.wholesaler_retailer_bindings "
+            "is missing outstanding_balance"
         )
 
     rows = await _check_constraint_rows(db, "public", PUBLIC_BINDINGS)
@@ -326,20 +553,30 @@ async def _ensure_public_binding_balance_constraint(db) -> None:
         if row["conname"] == CK_BINDINGS_OUTSTANDING_NON_NEGATIVE
     ]
     if len(canonical_rows) > 1:
-        raise RuntimeError(
-            "Bootstrap reconcile: duplicate public binding outstanding balance constraints"
+        raise PublicContractError(
+            "Bootstrap public-contract refusal: duplicate public binding "
+            "outstanding balance constraints"
         )
     if canonical_rows:
         if not _is_outstanding_balance_non_negative_constraint(canonical_rows[0]):
-            raise RuntimeError(
-                "Bootstrap reconcile: public binding outstanding balance check "
-                "constraint is incompatible"
+            raise PublicContractError(
+                "Bootstrap public-contract refusal: public binding outstanding "
+                "balance check constraint is incompatible"
             )
         return
 
     equivalent_rows = [
         row for row in rows if _is_outstanding_balance_non_negative_constraint(row)
     ]
+    if equivalent_rows:
+        names = ", ".join(row["conname"] for row in equivalent_rows)
+        raise PublicContractError(
+            "Bootstrap public-contract refusal: legacy-named equivalent public "
+            f"binding outstanding balance constraint(s) ({names}) — the rename "
+            "to the canonical name is owned by migrations/operator repair; "
+            "bootstrap performs no public DDL"
+        )
+
     incompatible_rows = [
         row
         for row in rows
@@ -348,30 +585,17 @@ async def _ensure_public_binding_balance_constraint(db) -> None:
     ]
     if incompatible_rows:
         names = ", ".join(row["conname"] for row in incompatible_rows)
-        raise RuntimeError(
-            "Bootstrap reconcile: incompatible public binding outstanding balance "
-            f"constraints: {names}"
-        )
-    if len(equivalent_rows) > 1:
-        raise RuntimeError(
-            "Bootstrap reconcile: multiple equivalent public binding outstanding "
-            "balance constraints"
+        raise PublicContractError(
+            "Bootstrap public-contract refusal: incompatible public binding "
+            f"outstanding balance constraints: {names}"
         )
 
-    qualified_table = await _qualified_identifier(db, "public", PUBLIC_BINDINGS)
-    quoted_constraint = await _quote_ident(db, CK_BINDINGS_OUTSTANDING_NON_NEGATIVE)
-    if equivalent_rows:
-        legacy_name = await _quote_ident(db, equivalent_rows[0]["conname"])
-        await db.execute(text(
-            f"ALTER TABLE {qualified_table} RENAME CONSTRAINT {legacy_name} "
-            f"TO {quoted_constraint}"
-        ))
-        return
-
-    await db.execute(text(
-        f"ALTER TABLE {qualified_table} ADD CONSTRAINT {quoted_constraint} "
-        "CHECK (outstanding_balance >= 0)"
-    ))
+    raise PublicContractError(
+        "Bootstrap public-contract refusal: canonical public binding "
+        f"outstanding balance constraint {CK_BINDINGS_OUTSTANDING_NON_NEGATIVE!r} "
+        "is missing — migrations/operator repair owns public objects; "
+        "bootstrap performs no public DDL"
+    )
 
 
 async def _quote_ident(db, identifier: str) -> str:
@@ -1444,6 +1668,728 @@ async def _reconcile_s2b_i1(db, ts: str) -> None:
     print(f"[reconcile] {ts}: ensured DC-12R1-S3-S2B-I1 payment_declarations + receipt_sequences + receipt_number")
 
 
+# ---------------------------------------------------------------------------
+# R2 C5/C7: per-order credit hold contract (039-isomorphic, self-contained).
+# The DDL text below is a byte-for-byte sibling of the frozen 039 DDL; the
+# two files MUST NOT import each other — catalog parity is proven by test.
+# Bootstrap NEVER backfills or rewrites lifecycle rows: migration 039 owns
+# synthesis; bootstrap only creates the (empty) table for fresh tenants and
+# verifies the contract + the four-way identity for already-migrated ones.
+# ---------------------------------------------------------------------------
+
+def _normalize_definition(definition: str) -> str:
+    return " ".join(str(definition).upper().split())
+
+
+HOLD_TABLE_COLUMNS = {
+    "id": {"data_type": "uuid", "is_nullable": False, "column_default": "gen_random_uuid()"},
+    "order_id": {"data_type": "uuid", "is_nullable": False, "column_default": None},
+    "amount": {
+        "data_type": "numeric", "is_nullable": False, "column_default": None,
+        "numeric_precision": 12, "numeric_scale": 2},
+    "remaining_amount": {
+        "data_type": "numeric", "is_nullable": False, "column_default": None,
+        "numeric_precision": 12, "numeric_scale": 2},
+    "status": {
+        "data_type": "character varying", "is_nullable": False,
+        "column_default": "'active'::character varying",
+        "character_maximum_length": 16},
+    "created_at": {
+        "data_type": "timestamp with time zone", "is_nullable": False,
+        "column_default": "now()"},
+    "updated_at": {
+        "data_type": "timestamp with time zone", "is_nullable": False,
+        "column_default": "now()"},
+    "created_by": {"data_type": "uuid", "is_nullable": True, "column_default": None},
+    "updated_by": {"data_type": "uuid", "is_nullable": True, "column_default": None},
+}
+# Exact pg_get_constraintdef output of the frozen DDL (schema placeholder
+# normalized), verified against a real PG16 render of the 039 DDL. The PK
+# constraint is part of the frozen contract: the comparison is a FULL SET
+# comparison, so a table whose primary key was dropped or replaced is drift.
+HOLD_TABLE_CONSTRAINTS = {
+    "order_credit_holds_pkey": "PRIMARY KEY (ID)",
+    "uq_order_credit_holds_order_id": "UNIQUE (ORDER_ID)",
+    "ck_order_credit_holds_status": (
+        "CHECK (STATUS::TEXT = ANY (ARRAY['ACTIVE'::CHARACTER VARYING, "
+        "'RELEASED'::CHARACTER VARYING, 'SETTLED'::CHARACTER VARYING, "
+        "'CONVERTED'::CHARACTER VARYING]::TEXT[]))"),
+    "ck_order_credit_holds_amount_positive": "CHECK (AMOUNT > 0::NUMERIC)",
+    "ck_order_credit_holds_remaining_cap": "CHECK (REMAINING_AMOUNT <= AMOUNT)",
+    "ck_order_credit_holds_lifecycle_shape": (
+        "CHECK (STATUS::TEXT = 'ACTIVE'::TEXT AND REMAINING_AMOUNT > 0::NUMERIC "
+        "OR (STATUS::TEXT = ANY (ARRAY['RELEASED'::CHARACTER VARYING, "
+        "'SETTLED'::CHARACTER VARYING, 'CONVERTED'::CHARACTER VARYING]::TEXT[])) "
+        "AND REMAINING_AMOUNT = 0::NUMERIC)"),
+    "fk_order_credit_holds_order": (
+        "FOREIGN KEY (ORDER_ID) REFERENCES SCHEMA.ORDERS(ID) ON DELETE RESTRICT"),
+}
+# Full index set including the PK and UNIQUE auto-indexes PostgreSQL
+# creates for the table constraints above — a conforming table produces
+# exactly these three entries and nothing else.
+HOLD_TABLE_INDEXES = {
+    "order_credit_holds_pkey": (
+        "CREATE UNIQUE INDEX ORDER_CREDIT_HOLDS_PKEY ON "
+        "SCHEMA.ORDER_CREDIT_HOLDS USING BTREE (ID)"),
+    "uq_order_credit_holds_order_id": (
+        "CREATE UNIQUE INDEX UQ_ORDER_CREDIT_HOLDS_ORDER_ID ON "
+        "SCHEMA.ORDER_CREDIT_HOLDS USING BTREE (ORDER_ID)"),
+    "ix_order_credit_holds_active": (
+        "CREATE INDEX IX_ORDER_CREDIT_HOLDS_ACTIVE ON "
+        "SCHEMA.ORDER_CREDIT_HOLDS USING BTREE (ORDER_ID) "
+        "WHERE ((STATUS)::TEXT = 'ACTIVE'::TEXT)"),
+}
+
+HOLD_TABLE_DDL = """
+        CREATE TABLE IF NOT EXISTS {ts}.order_credit_holds (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            order_id UUID NOT NULL
+                CONSTRAINT fk_order_credit_holds_order
+                REFERENCES {ts}.orders(id) ON DELETE RESTRICT,
+            amount NUMERIC(12, 2) NOT NULL,
+            remaining_amount NUMERIC(12, 2) NOT NULL,
+            status VARCHAR(16) NOT NULL DEFAULT 'active',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            created_by UUID,
+            updated_by UUID,
+            CONSTRAINT uq_order_credit_holds_order_id UNIQUE (order_id),
+            CONSTRAINT ck_order_credit_holds_status CHECK (
+                status IN ('active', 'released', 'settled', 'converted')),
+            CONSTRAINT ck_order_credit_holds_amount_positive CHECK (
+                amount > 0),
+            CONSTRAINT ck_order_credit_holds_remaining_cap CHECK (
+                remaining_amount <= amount),
+            CONSTRAINT ck_order_credit_holds_lifecycle_shape CHECK (
+                (status = 'active' AND remaining_amount > 0)
+                OR (status IN ('released', 'settled', 'converted')
+                    AND remaining_amount = 0))
+        )
+"""
+HOLD_ACTIVE_INDEX_DDL = (
+    "CREATE INDEX IF NOT EXISTS ix_order_credit_holds_active "
+    "ON {ts}.order_credit_holds (order_id) WHERE status = 'active'"
+)
+
+
+async def _reconcile_credit_holds(db, ts: str) -> None:
+    """Fresh tenants (NO business data): create the empty lifecycle table.
+    Existing tenants: validate the frozen contract, the per-order history
+    and hold legality, the registration-bound wholesaler attribution and
+    the reverse binding coverage, then verify the four-way identity; NEVER
+    regenerate, delete, or rewrite lifecycle rows."""
+    from sqlalchemy import text
+
+    if not await _table_exists(db, ts, "order_credit_holds"):
+        # E1R1/F1: a missing lifecycle table is legal ONLY for a schema
+        # with no human business data. A populated schema without the
+        # table is a broken or partially-migrated tenant — fail closed
+        # with ZERO DDL (an empty lifecycle must never be created over
+        # existing history).
+        populated = int((await db.execute(text(
+            f'SELECT (SELECT COUNT(*) FROM "{ts}".orders) + '
+            f'(SELECT COUNT(*) FROM "{ts}".payments)'))).scalar() or 0)
+        if populated:
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts} carries business history "
+                f"({populated} order/payment row(s)) but has no "
+                "order_credit_holds table — a populated tenant cannot be "
+                "treated as fresh; zero DDL was performed (restore the "
+                "lifecycle table from the authoritative history or re-run "
+                "migration 039)")
+        await db.execute(text(HOLD_TABLE_DDL.format(ts=f'"{ts}"')))
+        await db.execute(text(HOLD_ACTIVE_INDEX_DDL.format(ts=f'"{ts}"')))
+        print(f"[reconcile] {ts}: created empty order_credit_holds (fresh)")
+        return
+
+    # R2-R1 C5 + SR1: FULL SET catalog validation — the live catalog must
+    # equal the frozen contract exactly. Names alone cannot detect a
+    # same-named but wrong object, and a definition-only check cannot see
+    # an EXTRA object; both directions are compared (columns, constraints
+    # and indexes including the PK and UNIQUE auto-indexes), and every
+    # missing, extra or mismatched object fails closed.
+    column_rows = (await db.execute(
+        text(
+            "SELECT column_name, data_type, is_nullable, column_default, "
+            "       numeric_precision, numeric_scale, "
+            "       character_maximum_length, udt_name "
+            "FROM information_schema.columns "
+            "WHERE table_schema = :s AND table_name = 'order_credit_holds'"
+        ), {"s": ts})).mappings()
+    actual_columns = {r["column_name"]: dict(r) for r in column_rows}
+    missing_columns = set(HOLD_TABLE_COLUMNS) - set(actual_columns)
+    extra_columns = set(actual_columns) - set(HOLD_TABLE_COLUMNS)
+    wrong_columns: dict[str, str] = {}
+    for name, expected in HOLD_TABLE_COLUMNS.items():
+        actual = actual_columns.get(name)
+        if actual is None:
+            continue
+        if _catalog_code(actual["data_type"]) != _catalog_code(expected["data_type"]):
+            wrong_columns[name] = (
+                f"type {actual['data_type']} != {expected['data_type']}")
+        elif bool(actual["is_nullable"] == "YES") != bool(expected["is_nullable"]):
+            wrong_columns[name] = (
+                f"nullability {actual['is_nullable']} != "
+                f"{'YES' if expected['is_nullable'] else 'NO'}")
+        elif _catalog_code(actual["column_default"] or "") != _catalog_code(expected["column_default"] or ""):
+            wrong_columns[name] = (
+                f"default {actual['column_default']!r} != "
+                f"{expected['column_default']!r}")
+        elif (expected.get("numeric_precision") is not None
+              and (int(actual["numeric_precision"] or 0) != expected["numeric_precision"]
+                   or int(actual["numeric_scale"] or 0) != expected["numeric_scale"])):
+            wrong_columns[name] = (
+                f"precision {actual['numeric_precision']},{actual['numeric_scale']} "
+                f"!= {expected['numeric_precision']},{expected['numeric_scale']}")
+        elif (expected.get("character_maximum_length") is not None
+              and int(actual["character_maximum_length"] or 0)
+              != expected["character_maximum_length"]):
+            wrong_columns[name] = (
+                f"length {actual['character_maximum_length']} != "
+                f"{expected['character_maximum_length']}")
+    if missing_columns or extra_columns or wrong_columns:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts}.order_credit_holds column contract "
+            f"drift (missing={sorted(missing_columns)}, "
+            f"extra={sorted(extra_columns)}, wrong={wrong_columns})")
+
+    constraint_rows = (await db.execute(
+        text(
+            "SELECT c.conname, c.contype, "
+            "       pg_get_constraintdef(c.oid, true) AS definition "
+            "FROM pg_constraint c "
+            "JOIN pg_class t ON t.oid = c.conrelid "
+            "JOIN pg_namespace n ON n.oid = c.connamespace "
+            "WHERE n.nspname = :s AND t.relname = 'order_credit_holds'"
+        ), {"s": ts})).mappings()
+    actual_constraints: dict[str, str] = {}
+    for row in constraint_rows:
+        # PG omits the schema qualifier for same-schema FK targets, so the
+        # comparison is schema-qualification-insensitive on both sides.
+        actual_constraints[_catalog_code(row["conname"])] = (
+            _normalize_definition(
+                _catalog_code(row["definition"]).replace(ts, "SCHEMA"))
+            .replace("SCHEMA.", ""))
+    for name, expected in HOLD_TABLE_CONSTRAINTS.items():
+        actual = actual_constraints.get(name)
+        if actual is None:
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts}.order_credit_holds is missing "
+                f"constraint {name}")
+        expected_normalized = _normalize_definition(expected).replace(
+            "SCHEMA.", "")
+        if actual != expected_normalized:
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts}.order_credit_holds constraint "
+                f"{name} has a wrong definition: {actual!r} != "
+                f"{expected_normalized!r}")
+    extra_constraints = sorted(
+        set(actual_constraints) - set(HOLD_TABLE_CONSTRAINTS))
+    if extra_constraints:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts}.order_credit_holds carries "
+            f"constraint(s) outside the frozen contract: {extra_constraints} "
+            "(the catalog must equal the contract exactly)")
+    index_rows = (await db.execute(
+        text(
+            "SELECT indexname, indexdef FROM pg_indexes "
+            "WHERE schemaname = :s AND tablename = 'order_credit_holds'"
+        ), {"s": ts})).mappings()
+    actual_indexes = {
+        _catalog_code(r["indexname"]): _normalize_definition(
+            _catalog_code(r["indexdef"]).replace(ts, "SCHEMA"))
+        for r in index_rows
+    }
+    for name, expected in HOLD_TABLE_INDEXES.items():
+        actual = actual_indexes.get(name)
+        if actual is None:
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts}.order_credit_holds is missing "
+                f"index {name}")
+        if actual != _normalize_definition(expected):
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts}.order_credit_holds index {name} "
+                f"has a wrong definition: {actual!r} != "
+                f"{_normalize_definition(expected)!r}")
+    extra_indexes = sorted(set(actual_indexes) - set(HOLD_TABLE_INDEXES))
+    if extra_indexes:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts}.order_credit_holds carries "
+            f"index(es) outside the frozen contract: {extra_indexes} "
+            "(the catalog must equal the contract exactly — the expected "
+            "set already includes the PK and UNIQUE auto-indexes)")
+
+    # E1/F1: per-order effective-history legality BEFORE any aggregate use.
+    # Aggregate identity alone cannot prove history legal: a payment
+    # attributed to ANOTHER retailer, or a hold snapshot inconsistent with
+    # the order's own lifecycle, can still sum to the "right" totals. These
+    # gates mirror the frozen 039 preflight contract (invalid effective
+    # payment rows, duplicate credit sales, the C3 lifecycle state matrix)
+    # plus the per-order hold lifecycle contract. Read-only and fail-closed:
+    # bootstrap never repairs, backfills or rewrites an existing lifecycle
+    # to make validation pass; a soft-deleted row is not effective history,
+    # and a brand-new tenant's empty history is the legal positive control.
+    bad_payment = (await db.execute(text(f"""
+        SELECT p.id::text
+          FROM "{ts}".payments p
+          LEFT JOIN "{ts}".orders o ON o.id = p.order_id
+         WHERE p.is_deleted IS FALSE
+           AND (
+               p.amount IS NULL OR p.amount <= 0
+               OR p.amount IN ('NaN'::numeric, 'Infinity'::numeric,
+                               '-Infinity'::numeric)
+               OR p.method IS NULL
+               OR p.method NOT IN ('cash', 'transfer', 'credit')
+               OR p.status IS NULL
+               OR p.status NOT IN ('pending', 'completed')
+               OR o.id IS NULL OR o.is_deleted IS TRUE
+               OR p.retailer_id IS DISTINCT FROM o.retailer_id
+           )
+         LIMIT 1
+    """))).scalar()
+    if bad_payment is not None:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts} effective payment {bad_payment} is "
+            "illegal history (zero/negative/non-finite amount, unknown "
+            "method or status, orphaned, or retailer-mismatched — totals "
+            "cannot legalize attribution)")
+
+    duplicate_credit = (await db.execute(text(f"""
+        WITH effective_payments AS (
+            SELECT p.order_id,
+                   COUNT(*) FILTER (WHERE p.method = 'credit') AS credit_rows
+              FROM "{ts}".payments p
+             WHERE p.is_deleted IS FALSE
+             GROUP BY p.order_id
+        )
+        SELECT order_id::text
+          FROM effective_payments
+         WHERE credit_rows > 1
+         LIMIT 1
+    """))).scalar()
+    if duplicate_credit is not None:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts} order {duplicate_credit} carries "
+            "duplicate effective credit sales (a split credit history is "
+            "rejected even when the totals agree)")
+
+    matrix_offender = (await db.execute(text(f"""
+        WITH effective_payments AS (
+            SELECT p.order_id,
+                   COALESCE(SUM(p.amount) FILTER (
+                       WHERE p.method IN ('cash', 'transfer')), 0) AS cash_total,
+                   COALESCE(SUM(p.amount) FILTER (
+                       WHERE p.method = 'credit'), 0) AS credit_total
+              FROM "{ts}".payments p
+             WHERE p.is_deleted IS FALSE
+             GROUP BY p.order_id
+        ),
+        classified AS (
+            SELECT o.id, o.status::text AS status, o.total_amount,
+                   COALESCE(e.cash_total, 0) AS cash_total,
+                   COALESCE(e.credit_total, 0) AS credit_total
+              FROM "{ts}".orders o
+              LEFT JOIN effective_payments e ON e.order_id = o.id
+             WHERE o.is_deleted IS FALSE
+        )
+        SELECT id::text
+          FROM classified
+         WHERE (status = ANY(ARRAY['confirmed', 'partially_paid',
+                                   'paid', 'fulfilled', 'returned'])
+                AND total_amount <= 0)
+            OR (status = 'confirmed'
+                AND (cash_total <> 0 OR credit_total <> 0))
+            OR (status = 'partially_paid'
+                AND (credit_total <> 0
+                     OR cash_total <= 0 OR cash_total >= total_amount))
+            OR (status = ANY(ARRAY['paid', 'fulfilled', 'returned'])
+                AND credit_total > 0
+                AND (credit_total <> total_amount
+                     OR cash_total < 0 OR cash_total > credit_total))
+            OR (status = ANY(ARRAY['paid', 'fulfilled', 'returned'])
+                AND credit_total = 0
+                AND cash_total <> total_amount)
+            OR (status = ANY(ARRAY['draft', 'cancelled', 'voided'])
+                AND (cash_total <> 0 OR credit_total <> 0))
+         LIMIT 1
+    """))).scalar()
+    if matrix_offender is not None:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts} order {matrix_offender} does not "
+            "fit the frozen lifecycle state matrix (per-order history is "
+            "rejected, never repaired)")
+
+    hold_offender = (await db.execute(text(f"""
+        WITH effective_payments AS (
+            SELECT p.order_id,
+                   COALESCE(SUM(p.amount) FILTER (
+                       WHERE p.method IN ('cash', 'transfer')), 0) AS cash_total,
+                   COALESCE(SUM(p.amount) FILTER (
+                       WHERE p.method = 'credit'), 0) AS credit_total
+              FROM "{ts}".payments p
+             WHERE p.is_deleted IS FALSE
+             GROUP BY p.order_id
+        ),
+        expected AS (
+            SELECT o.id::text AS order_id,
+                   o.status::text AS status,
+                   o.total_amount,
+                   CASE WHEN COALESCE(e.credit_total, 0) > 0
+                        THEN 'converted'
+                        WHEN o.status::text IN ('confirmed', 'partially_paid')
+                            THEN 'active'
+                        ELSE 'settled' END AS want_status,
+                   CASE WHEN o.status::text IN ('confirmed', 'partially_paid')
+                             AND COALESCE(e.credit_total, 0) = 0
+                        THEN o.total_amount - COALESCE(e.cash_total, 0)
+                        ELSE 0 END AS want_remaining
+              FROM "{ts}".orders o
+              LEFT JOIN effective_payments e ON e.order_id = o.id
+             WHERE o.is_deleted IS FALSE
+        ),
+        actual AS (
+            SELECT h.order_id::text AS order_id,
+                   h.amount, h.remaining_amount, h.status::text AS status
+              FROM "{ts}".order_credit_holds h
+        )
+        SELECT e.order_id
+          FROM expected e
+          LEFT JOIN actual a ON a.order_id = e.order_id
+         WHERE (
+               e.status IN ('confirmed', 'partially_paid', 'paid',
+                            'fulfilled', 'returned')
+               AND (a.order_id IS NULL
+                    OR a.status <> e.want_status
+                    OR a.remaining_amount <> e.want_remaining
+                    OR a.amount <> e.total_amount))
+            OR (e.status = 'draft' AND a.order_id IS NOT NULL)
+            OR (e.status IN ('cancelled', 'voided')
+                AND a.order_id IS NOT NULL
+                AND NOT (a.status = 'released'
+                         AND a.remaining_amount = 0
+                         AND a.amount = e.total_amount))
+         LIMIT 1
+    """))).scalar()
+    if hold_offender is not None:
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts} order {hold_offender} carries a "
+            "credit-hold lifecycle row inconsistent with the order's own "
+            "history and state (snapshot amount/remaining/status must "
+            "match the per-order contract exactly)")
+
+    # E1R1/F1: bind the schema to its AUTHORITATIVE wholesaler. The trust
+    # anchor is the live tenant registration — the same one migration 039
+    # resolves — and the registered schema name MUST equal the
+    # wholesaler-derived name (t_ + wholesaler UUID hex, no dashes), the
+    # identity 039 enforces. Attribution is required whenever the schema
+    # retains ANY business history — soft-deleted orders and their
+    # payments remain retained accounting history, so a live-order count
+    # alone must not gate this. Cross-wholesaler orders, payments and
+    # bindings that are self-consistent must not slide through on totals
+    # alone. An entirely empty schema needs no attribution.
+    ws: str | None = None
+    retained_history = int((await db.execute(text(
+        f'SELECT (SELECT COUNT(*) FROM "{ts}".orders) + '
+        f'(SELECT COUNT(*) FROM "{ts}".payments)'))).scalar() or 0)
+    if retained_history:
+        ws = (await db.execute(text(
+            "SELECT w.id::text "
+            "FROM public.tenant_registrations tr "
+            "JOIN public.wholesalers w ON w.id = tr.wholesaler_id "
+            "WHERE tr.tenant_schema = :s AND tr.is_deleted IS FALSE "
+            "  AND w.is_deleted IS FALSE "
+            "  AND tr.status = ANY(ARRAY['pending_email_verification', "
+            "                        'email_verified', 'provisioning', "
+            "                        'active', 'failed']) "
+            "  AND w.status IN ('active', 'provisioning') "
+            "LIMIT 1"), {"s": ts})).scalar()
+        if ws is None:
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts} carries retained business "
+                "history but has no live tenant registration to attribute "
+                "a wholesaler — unattributable data is rejected, never "
+                "aggregated")
+        if ts != f"t_{ws.replace('-', '')}":
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts} is registered to wholesaler "
+                f"{ws} but is not the wholesaler-derived schema name "
+                f"(t_ + wholesaler UUID hex, no dashes) — a non-canonical "
+                "schema mapping is rejected, never aggregated")
+        foreign_order = (await db.execute(text(
+            f'SELECT id::text FROM "{ts}".orders '
+            "WHERE wholesaler_id::text <> :ws "
+            "LIMIT 1"), {"ws": ws})).scalar()
+        if foreign_order is not None:
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts} order {foreign_order} belongs "
+                f"to a wholesaler other than the live registration "
+                f"({ws}) — cross-wholesaler data is rejected, never "
+                "aggregated")
+
+        # E1R1/F1: reverse binding coverage. The four-way drift query
+        # starts FROM existing bindings, so a COMPLETELY MISSING binding
+        # row would compare nothing and read as zero drift. Mirror the
+        # 039 preflight: every retailer holding an ACTIVE hold or net
+        # credit exposure under the attributed wholesaler must have a
+        # live binding.
+        binding_gap = (await db.execute(text(f"""
+            WITH effective_payments AS (
+                SELECT p.order_id,
+                       COALESCE(SUM(p.amount) FILTER (
+                           WHERE p.method = 'credit'), 0) AS credit_total
+                  FROM "{ts}".payments p
+                 WHERE p.is_deleted IS FALSE
+                 GROUP BY p.order_id
+            ),
+            exposed AS (
+                SELECT DISTINCT o.retailer_id::text AS retailer_id
+                  FROM "{ts}".orders o
+                  LEFT JOIN effective_payments e ON e.order_id = o.id
+                 WHERE o.is_deleted IS FALSE
+                   AND o.wholesaler_id::text = :ws
+                   AND (o.status::text IN ('confirmed', 'partially_paid')
+                        OR COALESCE(e.credit_total, 0) > 0)
+            )
+            SELECT retailer_id
+              FROM exposed
+             WHERE NOT EXISTS (
+                   SELECT 1
+                     FROM public.wholesaler_retailer_bindings wrb
+                    WHERE wrb.retailer_id::text = exposed.retailer_id
+                      AND wrb.wholesaler_id::text = :ws
+                      AND wrb.is_deleted IS FALSE)
+             LIMIT 1
+        """), {"ws": ws})).scalar()
+        if binding_gap is not None:
+            raise RuntimeError(
+                f"Bootstrap reconcile: {ts} retailer {binding_gap} holds "
+                f"active credit exposure under wholesaler {ws} but has no "
+                "live binding — a missing binding row is not zero drift")
+
+    # Four-way identity verification (read-only; drift fails closed —
+    # bootstrap never "repairs" a migrated tenant's financial state).
+    drift = (await db.execute(text(f"""
+        WITH effective_payments AS (
+            SELECT p.order_id,
+                   COALESCE(SUM(p.amount) FILTER (
+                       WHERE p.method IN ('cash', 'transfer')), 0) AS cash_total,
+                   COALESCE(SUM(p.amount) FILTER (
+                       WHERE p.method = 'credit'), 0) AS credit_total
+            FROM "{ts}".payments p
+            WHERE p.is_deleted IS FALSE
+            GROUP BY p.order_id
+        ),
+        holds AS (
+            SELECT o.retailer_id::text AS retailer_id,
+                   SUM(h.remaining_amount) AS hold_total
+            FROM "{ts}".order_credit_holds h
+            JOIN "{ts}".orders o ON o.id = h.order_id
+                AND o.is_deleted IS FALSE
+            WHERE h.status = 'active'
+            GROUP BY o.retailer_id
+        ),
+        exposure AS (
+            SELECT o.retailer_id::text AS retailer_id,
+                   SUM(e.credit_total - e.cash_total) AS exposure_total
+            FROM "{ts}".orders o
+            JOIN effective_payments e ON e.order_id = o.id
+            WHERE o.is_deleted IS FALSE AND e.credit_total > 0
+            GROUP BY o.retailer_id
+        )
+        SELECT COUNT(*)
+        FROM public.wholesaler_retailer_bindings wrb
+        LEFT JOIN holds h ON h.retailer_id = wrb.retailer_id::text
+        LEFT JOIN exposure x ON x.retailer_id = wrb.retailer_id::text
+        WHERE wrb.is_deleted IS FALSE
+          AND wrb.wholesaler_id::text IN (
+              SELECT DISTINCT o.wholesaler_id::text
+              FROM "{ts}".orders o WHERE o.is_deleted IS FALSE)
+          AND wrb.outstanding_balance
+              <> (COALESCE(h.hold_total, 0)
+                  + COALESCE(x.exposure_total, 0))::numeric(12, 2)
+    """))).scalar()
+    if int(drift or 0):
+        raise RuntimeError(
+            f"Bootstrap reconcile: {ts} binding cache drift detected for "
+            f"{int(drift)} binding(s) (cache != active holds + net credit "
+            "exposure); bootstrap never repairs financial state — restore "
+            "from the authoritative history or re-run migration 039.")
+    print(f"[reconcile] {ts}: order_credit_holds contract verified")
+
+
+async def _reconcile_catalog_identity(db, ts: str) -> None:
+    """Bring pre-038 bootstrap-only tenants to the SKU-M1 schema contract."""
+    from sqlalchemy import text
+
+    q = f'"{ts}"'
+    required_tables = (
+        "skus",
+        "orders",
+        "order_items",
+        "inventory_stocks",
+        "inventory_movements",
+        "inventory_reservations",
+        "catalog_products",
+    )
+    for table in required_tables:
+        if not await _table_exists(db, ts, table):
+            raise RuntimeError(f"{ts}.{table} is required for catalog identity reconciliation")
+
+    # Fail before changing identity or stock when existing inventory evidence
+    # cannot be represented by one live stock row.
+    unsafe_missing_stock = (await db.execute(text(f"""
+        SELECT s.id
+          FROM {q}.skus s
+          LEFT JOIN {q}.inventory_stocks stock ON stock.sku_id = s.id
+         WHERE s.is_deleted IS FALSE
+           AND stock.id IS NULL
+           AND (
+               EXISTS (
+                   SELECT 1 FROM {q}.inventory_movements movement
+                    WHERE movement.sku_id = s.id AND movement.is_deleted IS FALSE
+               ) OR EXISTS (
+                   SELECT 1 FROM {q}.inventory_reservations reservation
+                    WHERE reservation.sku_id = s.id AND reservation.is_deleted IS FALSE
+               )
+           )
+         LIMIT 1
+    """))).scalar()
+    if unsafe_missing_stock is not None:
+        raise RuntimeError(f"{ts}: active SKU has inventory evidence but no stock row")
+
+    deleted_stock = (await db.execute(text(f"""
+        SELECT s.id
+          FROM {q}.skus s
+          JOIN {q}.inventory_stocks stock ON stock.sku_id = s.id
+         WHERE s.is_deleted IS FALSE AND stock.is_deleted IS TRUE
+         LIMIT 1
+    """))).scalar()
+    if deleted_stock is not None:
+        raise RuntimeError(f"{ts}: active SKU has only a soft-deleted stock row")
+
+    await db.execute(text(f"""
+        ALTER TABLE {q}.skus
+            ADD COLUMN IF NOT EXISTS catalog_product_id UUID,
+            ADD COLUMN IF NOT EXISTS package_quantity NUMERIC(12,3) NOT NULL DEFAULT 1.000
+    """))
+    await db.execute(text(f"""
+        INSERT INTO {q}.catalog_products
+            (id, name, description, category, is_active, created_at, updated_at,
+             is_deleted, deleted_at, created_by, updated_by)
+        SELECT id, name, description, category, is_active, created_at, updated_at,
+               is_deleted, deleted_at, created_by, updated_by
+          FROM {q}.skus
+         WHERE catalog_product_id IS NULL
+        ON CONFLICT (id) DO NOTHING
+    """))
+    await db.execute(text(f"""
+        UPDATE {q}.skus sku
+           SET catalog_product_id = sku.id
+         WHERE sku.catalog_product_id IS NULL
+           AND EXISTS (SELECT 1 FROM {q}.catalog_products product WHERE product.id = sku.id)
+    """))
+    unresolved_identity = (await db.execute(text(
+        f"SELECT id FROM {q}.skus WHERE catalog_product_id IS NULL LIMIT 1"
+    ))).scalar()
+    if unresolved_identity is not None:
+        raise RuntimeError(f"{ts}: existing SKU cannot be mapped by stable UUID")
+
+    await db.execute(text(f"""
+        ALTER TABLE {q}.skus ALTER COLUMN catalog_product_id SET NOT NULL
+    """))
+    await db.execute(text(f"""
+        DO $$ BEGIN
+            ALTER TABLE {q}.skus ADD CONSTRAINT fk_skus_catalog_product
+                FOREIGN KEY (catalog_product_id) REFERENCES {q}.catalog_products(id) ON DELETE RESTRICT;
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    """))
+    await db.execute(text(f"""
+        DO $$ BEGIN
+            ALTER TABLE {q}.skus ADD CONSTRAINT ck_skus_package_quantity_positive
+                CHECK (package_quantity > 0);
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    """))
+    await db.execute(text(
+        f"CREATE INDEX IF NOT EXISTS ix_skus_catalog_product_id ON {q}.skus (catalog_product_id)"
+    ))
+
+    await db.execute(text(f"""
+        INSERT INTO {q}.inventory_stocks (sku_id)
+        SELECT sku.id
+          FROM {q}.skus sku
+          LEFT JOIN {q}.inventory_stocks stock ON stock.sku_id = sku.id
+         WHERE sku.is_deleted IS FALSE AND stock.id IS NULL
+    """))
+
+    await db.execute(text(f"""
+        ALTER TABLE {q}.order_items
+            ADD COLUMN IF NOT EXISTS sellable_unit_id UUID,
+            ADD COLUMN IF NOT EXISTS identity_status VARCHAR(32) NOT NULL DEFAULT 'legacy',
+            ADD COLUMN IF NOT EXISTS unit_snapshot VARCHAR(32)
+    """))
+    await db.execute(text(f"""
+        WITH reservation_proof AS (
+            SELECT order_item_id, min(sku_id::text)::uuid AS sku_id
+              FROM {q}.inventory_reservations
+             WHERE is_deleted IS FALSE
+             GROUP BY order_item_id
+            HAVING count(DISTINCT sku_id) = 1
+        )
+        UPDATE {q}.order_items item
+           SET sellable_unit_id = proof.sku_id,
+               identity_status = 'linked_legacy'
+          FROM reservation_proof proof
+          JOIN {q}.skus sku ON sku.id = proof.sku_id
+         WHERE item.id = proof.order_item_id
+           AND item.sellable_unit_id IS NULL
+           AND item.identity_status = 'legacy'
+    """))
+    await db.execute(text(f"""
+        DO $$ BEGIN
+            ALTER TABLE {q}.order_items ADD CONSTRAINT fk_order_items_sellable_unit
+                FOREIGN KEY (sellable_unit_id) REFERENCES {q}.skus(id) ON DELETE RESTRICT;
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    """))
+    await db.execute(text(f"""
+        DO $$ BEGIN
+            ALTER TABLE {q}.order_items ADD CONSTRAINT ck_order_items_identity_status
+                CHECK (identity_status IN ('legacy', 'linked_legacy', 'stable'));
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    """))
+    await db.execute(text(f"""
+        DO $$ BEGIN
+            ALTER TABLE {q}.order_items ADD CONSTRAINT ck_order_items_identity_shape CHECK (
+                (identity_status = 'legacy' AND sellable_unit_id IS NULL) OR
+                (identity_status = 'linked_legacy' AND sellable_unit_id IS NOT NULL) OR
+                (identity_status = 'stable' AND sellable_unit_id IS NOT NULL AND unit_snapshot IS NOT NULL)
+            );
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    """))
+    await db.execute(text(
+        f"CREATE INDEX IF NOT EXISTS ix_order_items_sellable_unit_id ON {q}.order_items (sellable_unit_id)"
+    ))
+
+
+async def _require_alembic_revision(db, required_revision: str) -> str:
+    """C5: bootstrap runs ONLY after `alembic upgrade head`. The current
+    public.alembic_version must be EXACTLY the required revision (the sole
+    head); anything else — older, newer, multi-row, or a missing version
+    table — is refused BEFORE any tenant object is created. bootstrap-first
+    deployment is not supported."""
+    from sqlalchemy import text
+
+    rows = (await db.execute(
+        text("SELECT version_num FROM public.alembic_version")
+    )).fetchall()
+    versions = [str(r[0]) for r in rows]
+    if versions != [required_revision]:
+        raise RuntimeError(
+            "bootstrap-first is not supported: run `alembic upgrade head` "
+            f"before bootstrapping tenant schemas (database is at "
+            f"{versions!r}, requires exactly [{required_revision!r}])")
+    return required_revision
+
+
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
     """Create tenant schema and all required tables."""
     from sqlalchemy import text
@@ -1459,9 +2405,33 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
     ts = tenant_schema
 
     async with async_session() as db:
+        # MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1 (combined-candidate resolution:
+        # both streams' preconditions retained; order = pure-Python allowlist,
+        # then the two DB preconditions, all BEFORE any tenant object exists):
+        # the shared migration-owned ledger guard function must exist, match
+        # its exact signature, be owned by the migration authority and be
+        # executable BEFORE any tenant DDL runs.  Raising here leaves zero
+        # partial tenant objects and no tenant registration can be activated.
+        #
+        # R1-R1: the tenant schema identifier is allowlist-validated here as
+        # defense in depth (callers validate too); interpolation of a
+        # rejected identifier must be impossible regardless of caller.
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", ts):
+            raise LedgerGuardAuthorityError(
+                f"Bootstrap precondition failed: tenant schema identifier "
+                f"{ts!r} is not a plain [A-Za-z0-9_] identifier "
+                "(quotes, semicolons, comments and other SQL syntax are "
+                "rejected)"
+            )
+        await _assert_ledger_guard_function_authority(db)
+        await _assert_public_binding_balance_contract(db)
+
+        # C5 deployment-order gate (Order stream): refuse BEFORE creating ANY
+        # tenant object.
+        await _require_alembic_revision(db, "039_order_credit_holds")
+
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))
-        await _ensure_public_binding_balance_constraint(db)
 
         # Enums (idempotent)
         for enum_ddl in [
@@ -1508,10 +2478,24 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             f'permission_id UUID NOT NULL REFERENCES "{ts}".permissions(id) ON DELETE CASCADE,'
             "PRIMARY KEY (role_id, permission_id))",
 
+            f'CREATE TABLE IF NOT EXISTS "{ts}".catalog_products ('
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            "name VARCHAR(255) NOT NULL, description TEXT, category VARCHAR(64),"
+            "is_active BOOLEAN NOT NULL DEFAULT true,"
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),"
+            "is_deleted BOOLEAN NOT NULL DEFAULT false, deleted_at TIMESTAMPTZ,"
+            "created_by UUID, updated_by UUID)",
+            f'CREATE INDEX IF NOT EXISTS ix_catalog_products_name ON "{ts}".catalog_products (name)',
+            f'CREATE INDEX IF NOT EXISTS ix_catalog_products_is_active ON "{ts}".catalog_products (is_active)',
+
             f'CREATE TABLE IF NOT EXISTS "{ts}".skus ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+            f'catalog_product_id UUID NOT NULL CONSTRAINT fk_skus_catalog_product '
+            f'REFERENCES "{ts}".catalog_products(id) ON DELETE RESTRICT,'
             "sku_code VARCHAR(64) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL,"
             "description TEXT, unit VARCHAR(32) NOT NULL DEFAULT 'unit',"
+            "package_quantity NUMERIC(12,3) NOT NULL DEFAULT 1.000 "
+            "CONSTRAINT ck_skus_package_quantity_positive CHECK (package_quantity > 0),"
             "category VARCHAR(64), is_active BOOLEAN NOT NULL DEFAULT true,"
             "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
             "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
@@ -1552,12 +2536,22 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             f'CREATE TABLE IF NOT EXISTS "{ts}".order_items ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
             f'order_id UUID NOT NULL REFERENCES "{ts}".orders(id) ON DELETE CASCADE,'
+            f'sellable_unit_id UUID CONSTRAINT fk_order_items_sellable_unit '
+            f'REFERENCES "{ts}".skus(id) ON DELETE RESTRICT,'
+            "identity_status VARCHAR(32) NOT NULL DEFAULT 'legacy',"
             "product_name TEXT NOT NULL, sku_code VARCHAR(64) NOT NULL,"
+            "unit_snapshot VARCHAR(32),"
             "quantity INTEGER NOT NULL, unit_price NUMERIC(12,2) NOT NULL,"
             "subtotal NUMERIC(12,2) NOT NULL,"
             "created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(),"
             "is_deleted BOOLEAN DEFAULT false, deleted_at TIMESTAMPTZ,"
-            "created_by UUID, updated_by UUID)",
+            "created_by UUID, updated_by UUID,"
+            "CONSTRAINT ck_order_items_identity_status CHECK "
+            "(identity_status IN ('legacy', 'linked_legacy', 'stable')) ,"
+            "CONSTRAINT ck_order_items_identity_shape CHECK ("
+            "(identity_status = 'legacy' AND sellable_unit_id IS NULL) OR "
+            "(identity_status = 'linked_legacy' AND sellable_unit_id IS NOT NULL) OR "
+            "(identity_status = 'stable' AND sellable_unit_id IS NOT NULL AND unit_snapshot IS NOT NULL)))",
 
             f'CREATE TABLE IF NOT EXISTS "{ts}".inventory_reservations ('
             "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -1770,16 +2764,11 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
             f'ON "{ts}".inventory_reservations(order_item_id) WHERE status = \'reserved\''
         ))
 
-        # Ledger immutability trigger
-        await db.execute(text(
-            "CREATE OR REPLACE FUNCTION public.prevent_ledger_modification() "
-            "RETURNS TRIGGER AS $$ BEGIN "
-            "IF TG_OP = 'UPDATE' THEN RAISE EXCEPTION 'Ledger immutable' "
-            "USING ERRCODE = 'integrity_constraint_violation'; END IF; "
-            "IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'Ledger immutable' "
-            "USING ERRCODE = 'integrity_constraint_violation'; END IF; "
-            "RETURN OLD; END; $$ LANGUAGE plpgsql"
-        ))
+        # Ledger immutability trigger.
+        # MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY-R1: the shared guard function is
+        # owned by the migration authority and was verified by the precondition
+        # above; the tenant bootstrap must only REFERENCE it here, never
+        # replace or re-own it.
         await db.execute(text(
             f'DROP TRIGGER IF EXISTS prevent_ledger_mod ON "{ts}".ledger_entries'
         ))
@@ -1819,6 +2808,12 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # --- DC-12R1-S3-S2B-I1: payment_declarations + receipt_sequences + receipt_number index ---
         await _reconcile_s2b_i1(db, ts)
+
+        # --- R2 C5/C7: hold contract (039-isomorphic, self-contained) ---
+        await _reconcile_credit_holds(db, ts)
+
+        # --- SKU-M1: reconcile bootstrap-only tenants that Alembic cannot see ---
+        await _reconcile_catalog_identity(db, ts)
 
         await db.commit()
 

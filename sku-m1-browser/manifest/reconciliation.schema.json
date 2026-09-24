@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "sku-m1-browser/reconciliation/1",
+  "title": "SKU B1 browser reconciliation",
+  "description": "Accounts for every frozen browser node x required viewport combination. gap must be 0.",
+  "type": "object",
+  "required": ["schema", "nodes", "accounting"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "sku-m1-browser/reconciliation/1" },
+    "nodes": {
+      "type": "object",
+      "required": [
+        "sku-m1-browser/tests/catalog-id-001.spec.ts::CATALOG-ID-001",
+        "sku-m1-browser/tests/catalog-hist-001.spec.ts::CATALOG-HIST-001"
+      ],
+      "additionalProperties": false,
+      "propertyNames": {
+        "enum": [
+          "sku-m1-browser/tests/catalog-id-001.spec.ts::CATALOG-ID-001",
+          "sku-m1-browser/tests/catalog-hist-001.spec.ts::CATALOG-HIST-001"
+        ]
+      },
+      "items": { "type": "array" }
+    },
+    "accounting": {
+      "type": "object",
+      "required": ["required_combinations", "recorded_combinations", "duplicates", "gap"],
+      "additionalProperties": false,
+      "properties": {
+        "required_combinations": { "const": 4 },
+        "recorded_combinations": { "type": "integer", "minimum": 4 },
+        "duplicates": { "const": 0 },
+        "gap": { "const": 0 }
+      }
+    }
+  }
+}

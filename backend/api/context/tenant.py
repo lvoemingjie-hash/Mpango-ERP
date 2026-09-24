@@ -1,6 +1,7 @@
 """Tenant context helpers."""
 from dataclasses import dataclass
 from typing import Optional
+from uuid import UUID
 
 from fastapi import HTTPException, Request, status
 from sqlalchemy import text
@@ -10,6 +11,13 @@ from core.security import TokenPayload
 from db.sql_safety import validate_identifier
 
 _TENANT_CONTEXT_ATTR = "tenant_context"
+
+# Wholesaler lifecycle states (models/wholesaler.py column comment, P10/P17
+# platform vocabulary). Tenant-scoped access is granted only for an explicitly
+# active tenant; every other state (suspended, deactivated, provisioning,
+# paused, archived, ...) fails closed. Shared with the refresh endpoint's
+# subject/tenant re-validation (api/v1/auth.py) so both checks cite one truth.
+TENANT_ACTIVE_STATUS = "active"
 
 
 def _http_exc(detail_code: str, message: str) -> HTTPException:
@@ -77,6 +85,31 @@ async def create_tenant_session(tenant_schema: str) -> AsyncSession:
     return session
 
 
+async def assert_tenant_active(session: AsyncSession, tenant_id: str) -> str:
+    """Fail closed (401) unless the tenant is an existing, non-deleted, active wholesaler.
+
+    R1 revocation fix: the decision reads the CURRENT public.wholesalers row,
+    not the token's claims, so tenant suspension/deletion revokes tenant-
+    scoped access for every user of that tenant on the very next request.
+    Returns the tenant's derived schema name.
+    """
+    try:
+        tenant_uuid = UUID(str(tenant_id))
+    except (TypeError, ValueError):
+        raise _http_exc("MISSING_TENANT", "Tenant id missing or invalid in token")
+    row = (
+        await session.execute(
+            text("SELECT status, is_deleted FROM public.wholesalers WHERE id = :tid"),
+            {"tid": tenant_uuid},
+        )
+    ).first()
+    if row is None or bool(row.is_deleted):
+        raise _http_exc("TENANT_NOT_FOUND", "Tenant not found or deleted")
+    if str(row.status) != TENANT_ACTIVE_STATUS:
+        raise _http_exc("TENANT_NOT_ACTIVE", "Tenant is not active")
+    return "t_" + tenant_uuid.hex
+
+
 async def resolve_tenant_context(token: TokenPayload) -> TenantContext:
     """Build tenant context from JWT claims."""
     from crud.user import get_user_with_permissions
@@ -89,8 +122,14 @@ async def resolve_tenant_context(token: TokenPayload) -> TenantContext:
         user = await get_user_with_permissions(session, token.user_id)
         if not user:
             raise _http_exc("USER_NOT_FOUND", "User not found in tenant scope")
+        if getattr(user, "is_deleted", False):
+            # R1 revocation fix: soft deletion must kill old credentials — the
+            # soft-deleted row still exists and is_active stays true, so the
+            # existence/active checks alone cannot see it.
+            raise _http_exc("USER_DELETED", "User account has been deleted")
         if not getattr(user, "is_active", True):
             raise _http_exc("USER_INACTIVE", "User account is inactive")
+        await assert_tenant_active(session, token.tenant_id)
 
         return TenantContext(
             tenant_id=token.tenant_id,

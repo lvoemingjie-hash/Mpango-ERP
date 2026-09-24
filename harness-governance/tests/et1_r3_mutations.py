@@ -173,6 +173,14 @@ def probe_launch_env_drift_deleted(mod, ctx):
                        "node_manifest_sha": r.manifest_sha,
                        "issued_at": _time.time(), "expires_at": _time.time() + 900,
                        "state_trace": list(r.trace)}
+            # R4: bind a real canonical transport file so the transport JIT
+            # gate sees pristine bytes (the probe targets backend-env drift).
+            _fd, _transport_name = tempfile.mkstemp(prefix="et1r3-transport-")
+            with os.fdopen(_fd, "wb") as _fh:
+                _fh.write(mod.canonical_transport_bytes(["x"]))
+            r.transport_path = Path(_transport_name)
+            r.transport_digest = mod.manifest_transport_digest(
+                mod.canonical_transport_bytes(["x"]))
             saved_connect = mod._pg_connect
             mod._pg_connect = lambda url: type(
                 "C", (), {"execute": lambda s, *a: type(

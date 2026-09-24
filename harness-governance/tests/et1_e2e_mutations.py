@@ -105,6 +105,10 @@ def _honest_child(nonce, collected):
         "tempdb_binding_sha": "T" * 64,
         "alembic_actual_head": "037_payment_declarations_schema",
         "collected_node_ids": list(collected),
+        # R4 bounded transport binding (digest of canonical bytes; the probes
+        # that reach the transport check target OTHER checks and must pass it)
+        "manifest_transport_sha": "K" * 64,
+        "manifest_transport_nodes_total": len(collected),
     }
 
 
@@ -135,6 +139,14 @@ def _seed_collected(mod, ctx, manifest_sha=None, candidate_sha=None, expires_del
         "state_trace": list(r.trace),
     }
     r.original_nonce = "P" * 32
+    # R4: a COLLECT_PROVEN runner is transport-bound; bind a real canonical
+    # transport file so the JIT drift gates see pristine bytes.
+    _fd, _transport_name = tempfile.mkstemp(prefix="et1e2e-transport-")
+    with os.fdopen(_fd, "wb") as _fh:
+        _fh.write(mod.canonical_transport_bytes(["tests/m.py::test_a"]))
+    r.transport_path = Path(_transport_name)
+    r.transport_digest = mod.manifest_transport_digest(
+        mod.canonical_transport_bytes(["tests/m.py::test_a"]))
     return r
 
 
@@ -166,7 +178,8 @@ def probe_actual_equals_expected(mod, ctx):
     try:
         mod.verify_child_proof(_honest_child("A" * 32, ["N1", "N2"]), "A" * 32, ["N1", "N3"],
                                redis_module_sha=E2E_MODULE_SHA, tempdb_binding_sha="T" * 64,
-                               alembic_actual_head="037_payment_declarations_schema")
+                               alembic_actual_head="037_payment_declarations_schema",
+                               transport_digest="K" * 64)
         return False  # drifted node set accepted
     except mod.TrapFired:
         return True

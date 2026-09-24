@@ -1,0 +1,18 @@
+# =============================================================================
+# DECOMMISSIONED (R1-R4,
+# CTO-AUTH-ORDER-R2-DB-AUTHORITY-INTEGRATION-R1-R4-BOUNDED-RUNTIME-CONTRACT-CORRECTION-2026-09-19)
+#
+# This production-like compose file was REMOVED from service: its legacy
+# topology (PostgreSQL 15, a maintenance-database initializer mount, a single
+# administrator identity in the backend runtime, and a setup-only reporting
+# password in the runtime environment) contradicted the accepted three-role
+# authority model, and its variable-interpolation fail-closed stub proved
+# bypassable when the blocker variable was set.
+#
+# The .decommissioned-r1r4 suffix is deliberately NOT a compose extension:
+# any `docker compose -f docker-compose.prod.yml ...` invocation fails with
+# "no such file", unconditionally, for every variable/profile/service
+# selection.  A real production deployment contract is a separately
+# authorized task.  Use docker-compose.yml with the five-stage
+# backend/scripts/setup.sh sequence.
+# =============================================================================

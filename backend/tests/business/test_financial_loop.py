@@ -22,10 +22,33 @@ from core.domain.order_state import OrderState
 from models.ledger import AccountType
 from models.order import Order, OrderStatus
 from services.ledger_service import LedgerService
+from services.order_command_service import OrderCommandService
 from services.order_service import OrderService
+from tests.order_state_r2.contract_helpers import ensure_binding as _r2_ensure_binding
 
 
 @pytest.mark.asyncio
+async def _ensure_sku_stock(db, schema: str):
+    """F1: seed catalog product + SKU + stock; returns (sku_id_hex, sku_code)."""
+    from sqlalchemy import text as _t
+    import uuid as _u
+    prod = (await db.execute(_t(
+        f'INSERT INTO "{schema}".catalog_products (name, is_active, is_deleted) '
+        "VALUES ('S5', true, false) RETURNING id"))).fetchone()
+    code = f"S5-{_u.uuid4().hex[:8]}"
+    row = (await db.execute(_t(
+        f'INSERT INTO "{schema}".skus '
+        "(sku_code, name, unit, is_active, is_deleted, catalog_product_id, package_quantity) "
+        "VALUES (:c, 'S5', 'piece', true, false, :p, 1) RETURNING id"),
+        {"c": code, "p": prod.id})).fetchone()
+    await db.execute(_t(
+        f'INSERT INTO "{schema}".inventory_stocks '
+        "(sku_id, quantity_on_hand, quantity_reserved, is_deleted) "
+        "VALUES (:s, 1000, 0, false)"), {"s": row.id})
+    await db.flush()
+    return str(row.id), code
+
+
 async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
     """Full financial loop: Order $100 → Confirm → Pay → Fulfill."""
 
@@ -40,6 +63,34 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
         total_amount=Decimal("100.00"),
         notes="QA financial loop test",
     )
+    # F1: the confirm command reserves real inventory
+    _schema = async_session.info.get("tenant_schema", "t_test")
+    _sku, _code = await _ensure_sku_stock(async_session, _schema)
+    from models.order import OrderItem as _OI
+    order.items = [_OI(
+        sellable_unit_id=__import__("uuid").UUID(_sku),
+        identity_status="stable",
+        unit_snapshot="piece",
+        product_name="Financial Loop Item",
+        sku_code=_code,
+        quantity=1,
+        unit_price=order.total_amount,
+        subtotal=order.total_amount,
+    )]
+    _schema = async_session.info.get("tenant_schema", "t_test")
+    _sku, _code = await _ensure_sku_stock(async_session, _schema)
+    from models.order import OrderItem as _OI
+    order.items = [_OI(
+        sellable_unit_id=__import__("uuid").UUID(_sku),
+        identity_status="stable",
+        unit_snapshot="piece",
+        product_name="Financial Loop Item",
+        sku_code=_code,
+        quantity=1,
+        unit_price=order.total_amount,
+        subtotal=order.total_amount,
+    )]
+    await _r2_ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
     async_session.add(order)
     await async_session.commit()
 
@@ -47,23 +98,25 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
     ledger_svc = LedgerService(async_session)
 
     # ── Step 1: DRAFT → CONFIRMED ─────────────────────────────────
-    order = await order_svc.transition(order.id, OrderState.CONFIRMED)
+    order = (await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))).order
+
     await async_session.commit()
 
     assert order.status == OrderStatus.CONFIRMED
 
-    # Ledger check: RECEIVABLE +100, REVENUE -100
+    # R1 FROZEN DECISION: confirmation posts NO receivable/revenue entries
+    # (credit reservation on the binding replaces the former posting).
     receivable_balance = await ledger_svc.get_balance(AccountType.RECEIVABLE)
     revenue_balance = await ledger_svc.get_balance(AccountType.REVENUE)
-    assert receivable_balance == Decimal("100.0000"), (
-        f"Expected RECEIVABLE +100, got {receivable_balance}"
+    assert receivable_balance == Decimal("0"), (
+        f"Confirmation must not post receivable entries, got {receivable_balance}"
     )
-    assert revenue_balance == Decimal("-100.0000"), (
-        f"Expected REVENUE -100, got {revenue_balance}"
+    assert revenue_balance == Decimal("0"), (
+        f"Confirmation must not post revenue entries, got {revenue_balance}"
     )
 
     # ── Step 2: CONFIRMED → PAID ──────────────────────────────────
-    order = await order_svc.transition(order.id, OrderState.PAID)
+    order = (await OrderCommandService(async_session).apply_payment_transition(order.id, OrderState.PAID)).order
     await async_session.commit()
 
     assert order.status == OrderStatus.PAID
@@ -74,23 +127,28 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
     assert cash_balance == Decimal("100.0000"), (
         f"Expected CASH +100, got {cash_balance}"
     )
-    assert receivable_balance == Decimal("0.0000"), (
-        f"Expected RECEIVABLE net 0, got {receivable_balance}"
+    # With no confirmation posting, the settlement's credit leg makes the
+    # receivable balance -100 (the +100 leg belongs to the future
+    # delivery-accounting task).
+    assert receivable_balance == Decimal("-100.0000"), (
+        f"Expected RECEIVABLE -100 (settlement credit leg only), got {receivable_balance}"
     )
 
     # ── Step 3: PAID → FULFILLED ──────────────────────────────────
-    order = await order_svc.transition(order.id, OrderState.FULFILLED)
+    order = (await OrderCommandService(async_session).fulfill_order(order.id)).order
+
     await async_session.commit()
 
     assert order.status == OrderStatus.FULFILLED
 
     # ── Step 4: Verify all ledger entries ─────────────────────────
     entries = await ledger_svc.get_entries_for_reference("order", order.id)
-    assert len(entries) == 4, (
-        f"Expected 4 ledger entries (2 confirm + 2 payment), got {len(entries)}"
+    assert len(entries) == 2, (
+        f"Expected 2 ledger entries (payment-settlement only under the R1 "
+        f"frozen decision), got {len(entries)}"
     )
 
-    # Verify double-entry balance: sum of all entries must be 0
+    # Double-entry holds: settlement is CASH +100 / RECEIVABLE -100.
     total = sum(e.amount for e in entries)
     assert total == Decimal("0"), (
         f"Ledger is unbalanced! Sum of all entries = {total}"
@@ -111,14 +169,39 @@ async def test_ledger_entries_are_immutable(async_session):
         total_amount=Decimal("50.00"),
         notes="Immutability test",
     )
+    _schema = async_session.info.get("tenant_schema", "t_test")
+    _sku, _code = await _ensure_sku_stock(async_session, _schema)
+    from models.order import OrderItem as _OI
+    order.items = [_OI(
+        sellable_unit_id=__import__("uuid").UUID(_sku),
+        identity_status="stable",
+        unit_snapshot="piece",
+        product_name="Financial Loop Item",
+        sku_code=_code,
+        quantity=1,
+        unit_price=order.total_amount,
+        subtotal=order.total_amount,
+    )]
+    await _r2_ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
     async_session.add(order)
     await async_session.commit()
 
     order_svc = OrderService(async_session)
-    await order_svc.transition(order.id, OrderState.CONFIRMED)
+    await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))
+
     await async_session.commit()
 
     ledger_svc = LedgerService(async_session)
+    entries = await ledger_svc.get_entries_for_reference("order", order.id)
+    assert len(entries) == 0  # R1 frozen decision: confirmation posts nothing
+
+    # Create a real entry via the preserved payment path so the trigger
+    # actually has a row to guard.
+    await ledger_svc.post_payment_received(
+        order_id=order.id,
+        amount=Decimal("50.00"),
+        description="Immutability probe",
+    )
     entries = await ledger_svc.get_entries_for_reference("order", order.id)
     assert len(entries) == 2
 
@@ -153,15 +236,31 @@ async def test_inventory_deduction_gap_documented(async_session):
         total_amount=Decimal("100.00"),
         notes="Inventory gap test",
     )
+    _schema = async_session.info.get("tenant_schema", "t_test")
+    _sku, _code = await _ensure_sku_stock(async_session, _schema)
+    from models.order import OrderItem as _OI
+    order.items = [_OI(
+        sellable_unit_id=__import__("uuid").UUID(_sku),
+        identity_status="stable",
+        unit_snapshot="piece",
+        product_name="Financial Loop Item",
+        sku_code=_code,
+        quantity=1,
+        unit_price=order.total_amount,
+        subtotal=order.total_amount,
+    )]
+    await _r2_ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
     async_session.add(order)
     await async_session.commit()
 
     order_svc = OrderService(async_session)
-    await order_svc.transition(order.id, OrderState.CONFIRMED)
+    await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))
+
     await async_session.commit()
-    await order_svc.transition(order.id, OrderState.PAID)
+    (await OrderCommandService(async_session).apply_payment_transition(order.id, OrderState.PAID)).order
     await async_session.commit()
-    order = await order_svc.transition(order.id, OrderState.FULFILLED)
+    order = (await OrderCommandService(async_session).fulfill_order(order.id)).order
+
     await async_session.commit()
 
     assert order.status == OrderStatus.FULFILLED
@@ -173,7 +272,7 @@ async def test_inventory_deduction_gap_documented(async_session):
     ledger_svc = LedgerService(async_session)
     entries = await ledger_svc.get_entries_for_reference("order", order.id)
 
-    # Only 4 entries (confirm + pay), no fulfillment/inventory entries
-    assert len(entries) == 4, (
-        f"Expected 4 entries (no inventory entries yet), got {len(entries)}"
+    # Only 2 entries (pay settlement), no confirmation or inventory entries
+    assert len(entries) == 2, (
+        f"Expected 2 entries (payment-settlement only), got {len(entries)}"
     )

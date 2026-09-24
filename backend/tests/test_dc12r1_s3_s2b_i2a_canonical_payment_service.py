@@ -17,7 +17,7 @@ from services.canonical_payment_service import (
     CanonicalPaymentResult,
     CanonicalPaymentService,
 )
-from services.order_service import OrderService
+from services.order_command_service import OrderCommandService
 from services.payment_service import PaymentService
 from tests.test_dc11d_payment_replay_concurrency_integrity import (
     _Token,
@@ -112,7 +112,7 @@ async def test_route_uses_canonical_payment_service_with_behavior_preserving_def
         "repositories.payment_repository.PaymentRepository.get_order_paid_total",
         new=AsyncMock(return_value=Decimal("0.00")),
     ), patch(
-        "api.v1.orders._get_order_by_id_for_update",
+        "services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update",
         new=AsyncMock(return_value=locked_order),
     ):
         response = await pay_order(
@@ -131,13 +131,22 @@ async def test_route_uses_canonical_payment_service_with_behavior_preserving_def
 
 
 @pytest.mark.asyncio
-async def test_service_does_not_commit_or_rollback_calls():
+async def test_service_does_not_commit_or_rollback_calls(
+    monkeypatch,):
     order_id = uuid.uuid4()
     retailer_id = uuid.uuid4()
     wholesaler_id = uuid.uuid4()
     created_by = str(uuid.uuid4())
     payment_id = uuid.uuid4()
     service = CanonicalPaymentService()
+
+    # R2: the hold verification touches the session; this fake-session
+    # unit test bypasses it (integration suites cover the real path).
+    from unittest.mock import AsyncMock as _AsyncMock
+    monkeypatch.setattr(CanonicalPaymentService, "_lock_hold_rows", _AsyncMock(return_value=[]))
+    monkeypatch.setattr(CanonicalPaymentService, "_verify_hold_contract", _AsyncMock())
+    monkeypatch.setattr(CanonicalPaymentService, "_convert_hold", _AsyncMock())
+    monkeypatch.setattr(CanonicalPaymentService, "_reduce_hold", _AsyncMock())
 
     class _DB:
         async def commit(self):
@@ -148,6 +157,30 @@ async def test_service_does_not_commit_or_rollback_calls():
 
         async def refresh(self, _obj):
             return None
+
+        def begin_nested(self):
+            # SR1: the payment INSERT runs inside a savepoint so a unique
+            # race can be classified without losing the caller's lock.
+            db = self
+
+            class _Savepoint:
+                async def __aenter__(self):
+                    return db
+
+                async def __aexit__(self, *_exc):
+                    return False
+
+            return _Savepoint()
+
+        async def execute(self, _query, *args, **kwargs):
+            # R2: the settlement's binding update runs inside the service;
+            # return a rowcount=1 result so the flow completes without I/O.
+            # SR1: the shared payment-history contract also issues a grouped
+            # aggregate through this session — model it as "no invalid rows".
+            return SimpleNamespace(
+                rowcount=1,
+                mappings=lambda: SimpleNamespace(all=lambda: []),
+            )
 
     service._get_order_by_id_for_update = AsyncMock(
         side_effect=[
@@ -163,6 +196,7 @@ async def test_service_does_not_commit_or_rollback_calls():
     service._get_order_for_payment_record = AsyncMock(return_value=_result_order(order_id, "partially_paid"))
     service._repo.get_by_idempotency_key = AsyncMock(return_value=None)
     service._repo.get_order_paid_total = AsyncMock(return_value=Decimal("0.00"))
+    service._repo.count_payments_with_status_outside = AsyncMock(return_value=0)
     service._repo.get_by_transaction_id = AsyncMock(return_value=None)
     service._repo.create = AsyncMock(
         return_value={
@@ -184,7 +218,7 @@ async def test_service_does_not_commit_or_rollback_calls():
     )
     service._repo.update_cash_transfer_to_completed = AsyncMock(return_value=0)
 
-    with patch.object(OrderService, "transition", new=AsyncMock(return_value=_result_order(order_id, "partially_paid"))):
+    with patch.object(OrderCommandService, "_apply_payment_transition_for_locked", new=AsyncMock(return_value=SimpleNamespace(order=_result_order(order_id, "partially_paid")))):
         result = await service.confirm_payment(
             db=_DB(),
             order_id=str(order_id),
@@ -536,6 +570,7 @@ async def _cross_tenant_residue_guard(async_session):
     the test transaction; the test session is rolled back first (idempotent —
     the async_session fixture repeats it) so its locks cannot block cleanup.
     """
+
     first_tenant_id = str(_tenant_id(async_session))
     async with AsyncSessionLocal() as snapshot_session:
         snap = await _snapshot_public_tenant(
@@ -736,18 +771,20 @@ async def test_service_failures_after_mutation_stages_rollback_all_effects(
         ),
     )
 
-    service_delta = CanonicalPaymentService()
-    original_delta = PaymentService._apply_outstanding_balance_delta
+    # R2: credit no longer applies a binding delta (cache-neutral
+    # conversion); the equivalent mutation stage is the hold conversion.
+    service_convert = CanonicalPaymentService()
+    original_convert = service_convert._convert_hold
 
-    async def _failing_delta(self, tenant_db, *, wholesaler_id, retailer_id, delta):
-        await original_delta(self, tenant_db, wholesaler_id=wholesaler_id, retailer_id=retailer_id, delta=delta)
-        raise RuntimeError("after-delta")
+    async def _failing_convert(db, holds, actor):
+        await original_convert(db, holds, actor)
+        raise RuntimeError("after-convert")
 
-    monkeypatch.setattr(PaymentService, "_apply_outstanding_balance_delta", _failing_delta)
+    monkeypatch.setattr(service_convert, "_convert_hold", _failing_convert)
     await _assert_stage_rollback(
         order_credit,
         retailer_credit,
-        lambda: service_delta.confirm_payment(
+        lambda: service_convert.confirm_payment(
             db=async_session,
             order_id=str(order_credit),
             amount=Decimal("100.00"),
@@ -758,15 +795,15 @@ async def test_service_failures_after_mutation_stages_rollback_all_effects(
         ),
     )
 
-    monkeypatch.setattr(PaymentService, "_apply_outstanding_balance_delta", original_delta)
+    monkeypatch.setattr(service_convert, "_convert_hold", original_convert)
     service_transition = CanonicalPaymentService()
-    original_transition = OrderService.transition
+    original_transition = OrderCommandService._apply_payment_transition_for_locked
 
     async def _failing_transition(self, *args, **kwargs):
         await original_transition(self, *args, **kwargs)
         raise RuntimeError("after-transition")
 
-    monkeypatch.setattr(OrderService, "transition", _failing_transition)
+    monkeypatch.setattr(OrderCommandService, "_apply_payment_transition_for_locked", _failing_transition)
     await _assert_stage_rollback(
         order_transition,
         retailer_transition,
@@ -781,7 +818,7 @@ async def test_service_failures_after_mutation_stages_rollback_all_effects(
         ),
     )
 
-    monkeypatch.setattr(OrderService, "transition", original_transition)
+    monkeypatch.setattr(OrderCommandService, "_apply_payment_transition_for_locked", original_transition)
     service_complete = CanonicalPaymentService()
     original_complete = service_complete._repo.update_cash_transfer_to_completed
 
@@ -899,17 +936,29 @@ async def test_r3_nan_and_infinity_rejected_without_500(async_session, bad_amoun
 
 @pytest.mark.asyncio
 async def test_r3_skip_prechecks_cannot_bypass_amount_guard():
+    """R2-R1: the precheck bypass parameters NO LONGER EXIST on the canonical
+    entry — the public API is closed, and the amount guard itself still
+    refuses non-positive amounts on the unified path."""
     order_id = uuid.uuid4()
-    locked_order = SimpleNamespace(
-        id=order_id,
-        status=_status("confirmed"),
-        total_amount=Decimal("100.00"),
-        wholesaler_id=uuid.uuid4(),
-        retailer_id=uuid.uuid4(),
-    )
     db = AsyncMock()
     service = CanonicalPaymentService()
 
+    # The bypass keywords must be rejected by the signature itself.
+    with pytest.raises(TypeError) as sig_info:
+        await service.confirm_payment(
+            db=db,
+            order_id=str(order_id),
+            amount=Decimal("100.00"),
+            method="cash",
+            transaction_id=None,
+            idempotency_key="i2a-r3-sig-closed",
+            created_by=str(uuid.uuid4()),
+            skip_prechecks=True,
+        )
+    assert "skip_prechecks" in str(sig_info.value), sig_info.value
+
+    # And the amount guard fires on the unified path before any lock use.
+    db.reset_mock()
     with pytest.raises(HTTPException) as exc_info:
         await service.confirm_payment(
             db=db,
@@ -917,16 +966,12 @@ async def test_r3_skip_prechecks_cannot_bypass_amount_guard():
             amount=Decimal("-50.00"),
             method="cash",
             transaction_id=None,
-            idempotency_key="i2a-r3-skip-bypass",
+            idempotency_key="i2a-r3-negative",
             created_by=str(uuid.uuid4()),
-            locked_order=locked_order,
-            target_state=SimpleNamespace(value="paid"),
-            is_credit_collection=False,
-            skip_prechecks=True,
         )
-
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail["code"] == "INVALID_PAYMENT_AMOUNT"
+
 
 
 @pytest.mark.asyncio

@@ -21,7 +21,30 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy import text
 
 from core.domain.order_state import OrderState
+import pytest as _pytest
+
 from schemas.order import PayOrderRequest
+
+
+@_pytest.fixture(autouse=True)
+def _bypass_r2_hold_verification(monkeypatch, request):
+    if "async_session" in request.fixturenames:
+        # real-database lifecycle test: the R2 hold path must run for real
+        yield
+        return
+    """Unit suite for the settle/rollback ROUTE mechanics: the R2 hold
+    lifecycle is covered by the integration suites (order_state_r2, dc11d,
+    declarations); here the hold verification is bypassed so the mocked
+    repository doubles can drive the route flow."""
+    from unittest.mock import AsyncMock as _AsyncMock
+
+    from services.canonical_payment_service import CanonicalPaymentService as _CPS
+
+    monkeypatch.setattr(_CPS, "_lock_hold_rows", _AsyncMock(return_value=[]))
+    monkeypatch.setattr(_CPS, "_verify_hold_contract", _AsyncMock())
+    monkeypatch.setattr(_CPS, "_convert_hold", _AsyncMock())
+    monkeypatch.setattr(_CPS, "_reduce_hold", _AsyncMock())
+    yield
 from repositories.payment_repository import PaymentRepository
 from database.session import AsyncSessionLocal
 from tests.test_dc11d_payment_replay_concurrency_integrity import (
@@ -193,7 +216,14 @@ def _make_mock_db():
     mock_db.flush = AsyncMock()
     mock_db.refresh = AsyncMock()
 
-    async def fake_execute(stmt):
+    # SR1: the payment INSERT runs inside a savepoint so a unique-constraint
+    # race can be classified without losing the caller's order lock.
+    mock_savepoint = AsyncMock()
+    mock_savepoint.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_savepoint.__aexit__ = AsyncMock(return_value=False)
+    mock_db.begin_nested = MagicMock(return_value=mock_savepoint)
+
+    async def fake_execute(stmt, params=None):
         r = MagicMock()
         r.scalar_one_or_none.return_value = None
         return r
@@ -207,7 +237,7 @@ def _payment_key(name: str) -> str:
 
 def _patch_payment_route(mock_order):
     return patch(
-        "api.v1.orders._get_order_by_id_for_update",
+        "services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update",
         new_callable=AsyncMock,
         return_value=mock_order,
     )
@@ -226,20 +256,21 @@ async def test_api_full_cash_settles_payment_to_completed():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         repo_instance.update_cash_transfer_to_completed = AsyncMock(return_value=1)
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
-        ))
+        )))
         MockOS.return_value = svc_instance
 
         resp = await pay_order(
@@ -270,22 +301,23 @@ async def test_api_proposed_paid_but_returned_non_paid_does_not_settle():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         repo_instance.update_cash_transfer_to_completed = AsyncMock(return_value=1)
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id,
             status=OrderState.PARTIALLY_PAID,
             total_amount=mock_order.total_amount,
-        ))
+        )))
         MockOS.return_value = svc_instance
 
         resp = await pay_order(
@@ -317,20 +349,21 @@ async def test_api_partial_cash_does_not_settle():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         repo_instance.update_cash_transfer_to_completed = AsyncMock(return_value=0)
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PARTIALLY_PAID, total_amount=mock_order.total_amount
-        ))
+        )))
         MockOS.return_value = svc_instance
 
         resp = await pay_order(
@@ -363,21 +396,22 @@ async def test_api_second_partial_completes_and_settles():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
         repo_instance = AsyncMock()
         # Prior partial of 2000 already recorded; this 3000 completes the 5000 total
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("2000"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         repo_instance.update_cash_transfer_to_completed = AsyncMock(return_value=2)
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
-        ))
+        )))
         MockOS.return_value = svc_instance
 
         resp = await pay_order(
@@ -410,20 +444,21 @@ async def test_api_transfer_full_payment_settle_called():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         repo_instance.update_cash_transfer_to_completed = AsyncMock(return_value=0)
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
-        ))
+        )))
         MockOS.return_value = svc_instance
 
         resp = await pay_order(
@@ -456,12 +491,13 @@ async def test_api_credit_paid_settle_targets_cash_transfer_only():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.count_order_payments = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         # Returns 0: the credit row is method='credit', excluded by the SQL filter
@@ -469,9 +505,9 @@ async def test_api_credit_paid_settle_targets_cash_transfer_only():
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(return_value=MagicMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
             id=mock_order.id, status=OrderState.PAID, total_amount=mock_order.total_amount
-        ))
+        )))
         MockOS.return_value = svc_instance
 
         resp = await pay_order(
@@ -508,18 +544,19 @@ async def test_api_failed_transition_no_settle():
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
          _patch_payment_route(mock_order), \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
 
         repo_instance = AsyncMock()
         repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
+        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
         repo_instance.create = AsyncMock(return_value=payment_dict)
         repo_instance.update_cash_transfer_to_completed = AsyncMock(return_value=0)
         MockRepo.return_value = repo_instance
 
         svc_instance = AsyncMock()
-        svc_instance.transition = AsyncMock(
+        svc_instance._apply_payment_transition_for_locked = AsyncMock(
             side_effect=InvalidStateTransitionError(OrderState.CONFIRMED, OrderState.PAID, "forced")
         )
         MockOS.return_value = svc_instance
@@ -552,9 +589,9 @@ async def test_api_legacy_pay_no_settle():
     mock_db = _make_mock_db()
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock) as get_order_mock, \
-         patch("api.v1.orders._get_order_by_id_for_update", new_callable=AsyncMock) as lock_mock, \
+         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock) as lock_mock, \
          patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_service.OrderService") as MockOS, \
+         patch("services.order_command_service.OrderCommandService") as MockOS, \
          patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock) as balance_mock:
         with pytest.raises(HTTPException) as exc_info:
             await pay_order(
@@ -648,6 +685,28 @@ async def test_route_settlement_failure_rolls_back_payment_order_balance_and_led
             """
         ),
         {"order_id": order_id, "tenant_id": tenant_id, "retailer_id": retailer_id},
+    )
+    # R2 contract: the confirmed order carries the active hold for its
+    # unsettled remainder (total 100 - allocated pending cash 40) and the
+    # cache includes it.
+    await async_session.execute(
+        text(
+            """
+            INSERT INTO order_credit_holds (order_id, amount, remaining_amount, status)
+            VALUES (:order_id, 100.00, 60.00, 'active')
+            """
+        ),
+        {"order_id": order_id},
+    )
+    await async_session.execute(
+        text(
+            """
+            UPDATE public.wholesaler_retailer_bindings
+            SET outstanding_balance = outstanding_balance + 60.00, updated_at = now()
+            WHERE wholesaler_id = :tenant_id AND retailer_id = :retailer_id
+            """
+        ),
+        {"tenant_id": tenant_id, "retailer_id": retailer_id},
     )
     await async_session.execute(
         text(
@@ -770,11 +829,14 @@ async def test_route_settlement_failure_rolls_back_payment_order_balance_and_led
             )
         ).mappings().one()
 
+    # R2: the seeded confirmed order carries an active hold of 60.00
+    # (total 100 - allocated pending cash 40), included in the cache.
+    seeded_balance = starting_balance + Decimal("60.00")
     assert dict(before_snapshot) == {
         "order_status": "confirmed",
         "payment_count": 1,
         "existing_payment_status": "pending",
-        "balance": starting_balance,
+        "balance": seeded_balance,
         "ledger_count": 2,
         "ledger_sum": Decimal("0.0000"),
     }

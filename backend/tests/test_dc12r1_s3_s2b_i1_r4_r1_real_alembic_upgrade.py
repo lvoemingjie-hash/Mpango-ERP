@@ -1,6 +1,6 @@
 """DC-12R1-S3-S2B-I1-R4-R1: Real Alembic Upgrade Proof + Exact Fail-Closed Catalog.
 
-Replaces helper-only evidence with actual ``alembic upgrade head`` (036 -> 037)
+Replaces helper-only evidence with actual ``alembic upgrade head`` (036 -> 038 via 037)
 execution against real PostgreSQL 16.
 
 Every RED test:
@@ -15,7 +15,7 @@ Every RED test:
 
 Every GREEN test:
   8. Repair the malformation.
-  9. Run ``alembic upgrade head`` again — reaches sole head 037.
+  9. Run ``alembic upgrade head`` again — reaches sole head 038.
  10. Run a second upgrade — no-op, fingerprint unchanged.
 
 Also includes:
@@ -49,6 +49,8 @@ ALEMBIC_INI = BACKEND_DIR / "alembic.ini"
 ALEMBIC_DIR = BACKEND_DIR / "alembic"
 REV_036 = "036_retailer_mvp_identity"
 REV_037 = "037_payment_declarations_schema"
+REV_038 = "038_catalog_identity_vertical_slice"
+REV_HEAD = "039_order_credit_holds"  # R2: current sole head
 
 DECL = "payment_declarations"
 RECEIPT = "receipt_sequences"
@@ -237,13 +239,32 @@ async def _bootstrap_and_revert_to_036(schema: str, db_url: str) -> None:
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy.orm import sessionmaker
 
+    # R2 C5: bootstrap refuses to run below alembic 039. This harness needs a
+    # GENUINE 036-baseline tenant schema, so the version gate is temporarily
+    # satisfied, and the 039 additions (order_credit_holds) are dropped again
+    # together with the 037/038 reverts below — the alembic_version row is
+    # restored to 036 so the migration chain under test is unchanged.
+    async_db_url = _async_url(db_url)
+    gate_engine = create_async_engine(async_db_url, echo=False)
+    gate_session = sessionmaker(gate_engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with gate_session() as db:
+            await db.execute(text(
+                "CREATE TABLE IF NOT EXISTS public.alembic_version "
+                "(version_num VARCHAR(128) NOT NULL PRIMARY KEY)"))
+            await db.execute(text(
+                "UPDATE public.alembic_version SET version_num = '039_order_credit_holds'"))
+            await db.commit()
+    finally:
+        await gate_engine.dispose()
+
     await bootstrap_schema(schema, db_url)
 
-    async_db_url = _async_url(db_url)
     engine = create_async_engine(async_db_url, echo=False)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with async_session() as db:
+            await db.execute(text(f'DROP TABLE IF EXISTS "{schema}".order_credit_holds CASCADE'))
             await db.execute(text(f'DROP TABLE IF EXISTS "{schema}".{DECL} CASCADE'))
             await db.execute(text(f'DROP TABLE IF EXISTS "{schema}".{RECEIPT}'))
             await db.execute(text(f'DROP INDEX IF EXISTS "{schema}".{UX_RECEIPT}'))
@@ -261,6 +282,20 @@ async def _bootstrap_and_revert_to_036(schema: str, db_url: str) -> None:
                 f"UPDATE \"{schema}\".permissions SET code = 'client:payments:create' "
                 f"WHERE code = 'client:payments:declare'"
             ))
+            # Revert the 038 catalog-identity additions so the tenant is a
+            # GENUINE pre-038 tenant: Alembic 038 must later reconcile it.
+            await db.execute(text(
+                f'ALTER TABLE "{schema}".order_items '
+                'DROP COLUMN IF EXISTS sellable_unit_id CASCADE, '
+                'DROP COLUMN IF EXISTS identity_status CASCADE, '
+                'DROP COLUMN IF EXISTS unit_snapshot CASCADE'))
+            await db.execute(text(
+                f'ALTER TABLE "{schema}".skus '
+                'DROP COLUMN IF EXISTS catalog_product_id CASCADE, '
+                'DROP COLUMN IF EXISTS package_quantity CASCADE'))
+            await db.execute(text(f'DROP TABLE IF EXISTS "{schema}".catalog_products CASCADE'))
+            await db.execute(text(
+                "UPDATE public.alembic_version SET version_num = '036_retailer_mvp_identity'"))
             await db.commit()
     finally:
         await engine.dispose()
@@ -379,8 +414,8 @@ class TestRealAlembicUpgradeFailClosed:
                             'ALTER COLUMN transaction_id TYPE VARCHAR(64)'))
                     run_alembic_upgrade(config, "head")
                     with eng.connect() as conn:
-                        assert _current_revision(conn) == REV_037
-                        assert _script_heads(config) == [REV_037]
+                        assert _current_revision(conn) == REV_HEAD
+                        assert _script_heads(config) == [REV_HEAD]
             finally:
                 eng.dispose()
 
@@ -421,7 +456,7 @@ class TestRealAlembicUpgradeFailClosed:
                             "WHERE code = 'client:payments:declare'"))
                     run_alembic_upgrade(config, "head")
                     with eng.connect() as conn:
-                        assert _current_revision(conn) == REV_037
+                        assert _current_revision(conn) == REV_HEAD
             finally:
                 eng.dispose()
 
@@ -441,7 +476,7 @@ class TestRealAlembicUpgradeFailClosed:
                     # First do a successful upgrade to 037 so the tables exist
                     run_alembic_upgrade(config, "head")
                     with eng.connect() as conn:
-                        assert _current_revision(conn) == REV_037
+                        assert _current_revision(conn) == REV_HEAD
 
                     # Now malform receipt_sequences: add an extra column
                     with eng.begin() as conn:
@@ -478,7 +513,7 @@ class TestRealAlembicUpgradeFailClosed:
                     # First successful upgrade to create the tables
                     run_alembic_upgrade(config, "head")
                     with eng.connect() as conn:
-                        assert _current_revision(conn) == REV_037
+                        assert _current_revision(conn) == REV_HEAD
 
                     # Malform: replace status CHECK with a weakened version
                     with eng.begin() as conn:
@@ -519,7 +554,7 @@ class TestRealAlembicUpgradeFailClosed:
                     # First successful upgrade
                     run_alembic_upgrade(config, "head")
                     with eng.connect() as conn:
-                        assert _current_revision(conn) == REV_037
+                        assert _current_revision(conn) == REV_HEAD
 
                     # Malform: change order_id FK to CASCADE
                     with eng.begin() as conn:
@@ -568,7 +603,7 @@ class TestRealAlembicUpgradeFailClosed:
                     # First successful upgrade
                     run_alembic_upgrade(config, "head")
                     with eng.connect() as conn:
-                        assert _current_revision(conn) == REV_037
+                        assert _current_revision(conn) == REV_HEAD
 
                     # Malform: drop and recreate with wrong keys
                     with eng.begin() as conn:
@@ -605,7 +640,7 @@ class TestRealAlembicUpgradeFailClosed:
 
                     run_alembic_upgrade(config, "head")
                     with eng.connect() as conn:
-                        assert _current_revision(conn) == REV_037
+                        assert _current_revision(conn) == REV_HEAD
 
                     # Malform: weaken > 0 to >= 0
                     with eng.begin() as conn:
@@ -644,7 +679,7 @@ class TestRealAlembicUpgradeFailClosed:
 
                     run_alembic_upgrade(config, "head")
                     with eng.connect() as conn:
-                        assert _current_revision(conn) == REV_037
+                        assert _current_revision(conn) == REV_HEAD
 
                     # Malform: drop DEFAULT on status
                     with eng.begin() as conn:
@@ -679,7 +714,7 @@ class TestRealAlembicUpgradeFailClosed:
 
                     run_alembic_upgrade(config, "head")
                     with eng.connect() as conn:
-                        assert _current_revision(conn) == REV_037
+                        assert _current_revision(conn) == REV_HEAD
 
                     # Malform: change next_seq default to 10
                     with eng.begin() as conn:
@@ -714,7 +749,7 @@ class TestRealAlembicUpgradeFailClosed:
 
                     run_alembic_upgrade(config, "head")
                     with eng.connect() as conn:
-                        assert _current_revision(conn) == REV_037
+                        assert _current_revision(conn) == REV_HEAD
 
                     # Malform: move method CHECK to a different column
                     with eng.begin() as conn:
@@ -997,7 +1032,7 @@ class TestRealAlembicUpgradeFailClosed:
     # ------------------------------------------------------------------
     # GREEN path: canonical upgrade, second run no-op
     # ------------------------------------------------------------------
-    def test_canonical_upgrade_reaches_037_and_second_run_noops(self):
+    def test_canonical_upgrade_reaches_head_038_and_second_run_noops(self):
         source = os.environ["TEST_DATABASE_URL"]
         with temporary_database_url(source, "r4r1ok") as db_url:
             config = _alembic_config(db_url)
@@ -1013,15 +1048,15 @@ class TestRealAlembicUpgradeFailClosed:
                     # First upgrade to 037
                     run_alembic_upgrade(config, "head")
                     with eng.connect() as conn:
-                        assert _current_revision(conn) == REV_037
-                        assert _script_heads(config) == [REV_037]
+                        assert _current_revision(conn) == REV_HEAD
+                        assert _script_heads(config) == [REV_HEAD]
                         fp_after_first = _catalog_fingerprint(conn, schema)
 
                     # Second upgrade — no-op
                     run_alembic_upgrade(config, "head")
                     with eng.connect() as conn:
-                        assert _current_revision(conn) == REV_037
-                        assert _script_heads(config) == [REV_037]
+                        assert _current_revision(conn) == REV_HEAD
+                        assert _script_heads(config) == [REV_HEAD]
                         fp_after_second = _catalog_fingerprint(conn, schema)
                         assert fp_after_first == fp_after_second, "second upgrade mutated catalog"
             finally:
@@ -1052,8 +1087,11 @@ class TestExactCatalogShapeBypass:
                 schema = _register_tenant(conn, prefix="r4r3")
             run_coroutine(_bootstrap_and_revert_to_036(schema, db_url))
 
-            # 3. First upgrade to 037 (tables need to exist for some malformations)
-            run_alembic_upgrade(config, "head")
+            # 3. First upgrade to EXACTLY 037 (tables need to exist for some
+            #    malformations). "head" would install 038, making the tenant
+            #    038-shaped before the malformation cycle — 038 then could not
+            #    re-run at step 8. The tenant must stay pre-038 here.
+            run_alembic_upgrade(config, REV_037)
             with eng.connect() as conn:
                 assert _current_revision(conn) == REV_037
 
@@ -1083,14 +1121,14 @@ class TestExactCatalogShapeBypass:
             # 8. Upgrade to sole head 037
             run_alembic_upgrade(config, "head")
             with eng.connect() as conn:
-                assert _current_revision(conn) == REV_037
-                assert _script_heads(config) == [REV_037]
+                assert _current_revision(conn) == REV_HEAD
+                assert _script_heads(config) == [REV_HEAD]
                 fp_green = _catalog_fingerprint(conn, schema)
 
             # 9. Second upgrade — no-op
             run_alembic_upgrade(config, "head")
             with eng.connect() as conn:
-                assert _current_revision(conn) == REV_037
+                assert _current_revision(conn) == REV_HEAD
                 fp_noop = _catalog_fingerprint(conn, schema)
                 assert fp_green == fp_noop, "second upgrade mutated catalog"
 

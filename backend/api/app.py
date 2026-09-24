@@ -100,7 +100,7 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     # Routers
     from api.v1 import (
         auth, users, roles, orders, health, invitations,
-        retailers, skus, inventory, metrics, payments, prometheus,
+        retailers, skus, catalog_products, inventory, metrics, payments, prometheus,
         wholesalers,
         public_join,  # DC-12R1-MVP-L1-J1-H2-A-R1: public dual-entry join
         profiling_test,  # S3-A Part 4
@@ -131,6 +131,7 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(roles.router, prefix="/api/v1/roles", tags=["roles"])
     app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
     app.include_router(skus.router, prefix="/api/v1/skus", tags=["skus"])
+    app.include_router(catalog_products.router, prefix="/api/v1/catalog-products", tags=["catalog-products"])
     # U3-B2: SKU import preview + validate (write to import_runs only)
     app.include_router(sku_imports.router, prefix="/api/v1/skus/import", tags=["sku-imports"])
     # U4-C: internal-login-only intake workspace skeleton

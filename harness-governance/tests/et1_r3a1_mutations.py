@@ -150,18 +150,18 @@ def probe_env_override_wired(mod_runner, ctx):
 
 
 def probe_child_alembic_recheck_deleted(mod_plugin, ctx):
-    """The child sessionstart must surface alembic:* problems when the
-    declared lineage is violated; deleting the recheck hides them."""
+    """A5: against the REAL 038 candidate tree, a child still bound to the
+    H2C/037 expected head deterministically reports the alembic mismatch;
+    deleting the child recheck (A107) hides it."""
     import json as _json
 
     with tempfile.TemporaryDirectory() as tmp:
         env = {
-            "ET1_RUNNER_ALEMBIC_EXPECTED": SKU,
-            "ET1_RUNNER_ALEMBIC_PARENT": H2C,
+            "ET1_RUNNER_ALEMBIC_EXPECTED": H2C,
         }
         gate = mod_plugin.sessionstart_gate(env)
         problems = gate.get("problems", [])
-        return any(p.startswith("alembic:") for p in problems)
+        return any(p == "alembic:alembic_head_mismatch" for p in problems)
 
 
 def probe_actual_head_drift_accepted(mod_runner, ctx):
@@ -269,6 +269,14 @@ def probe_profile_sha_binding_deleted(mod, ctx):
                    "issued_at": _time.time(),
                    "expires_at": _time.time() + 900,
                    "state_trace": list(r.trace)}
+        # R4: bind a real canonical transport file so the transport JIT gate
+        # sees pristine bytes (the probe targets profile drift, not transport).
+        _fd, _transport_name = tempfile.mkstemp(prefix="et1r3a1-transport-")
+        with os.fdopen(_fd, "wb") as _fh:
+            _fh.write(mod.canonical_transport_bytes(["tests/m.py::test_a"]))
+        r.transport_path = Path(_transport_name)
+        r.transport_digest = mod.manifest_transport_digest(
+            mod.canonical_transport_bytes(["tests/m.py::test_a"]))
         # drift the profile bytes AFTER binding, BEFORE the single authorize
         profile_path.write_text(
             _json.dumps({"schema_version": "1", "profiles": []}) + "\n",

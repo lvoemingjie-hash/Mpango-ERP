@@ -143,10 +143,15 @@ def parse_db_url(url: str) -> tuple[str, str, str, int, str]:
     return user, password, host, port, database
 
 
-def parse_redis_url(url: str) -> tuple[str, int]:
-    """Return (host, port) from a REDIS_URL.  Rejects credentials — the
-    current Compose Redis service is no-auth, so a credentialed URL cannot
-    connect and must fail closed."""
+def parse_redis_url(url: str) -> tuple[str, int, int]:
+    """Return (host, port, logical_database_index) from a REDIS_URL.
+
+    Documented identity policy (R1-R4): the URL must use scheme redis, carry
+    NO credentials, NO query string and NO fragment, and MUST include an
+    explicit numeric logical database index in the path (for example /0).
+    The index is part of the Redis identity the host setup context and the
+    container runtime context must share, so any malformed, index-less,
+    query-bearing or fragment-bearing form fails closed."""
     try:
         u = urlparse(url)
     except Exception:
@@ -155,17 +160,52 @@ def parse_redis_url(url: str) -> tuple[str, int]:
         _fail("REDIS_URL scheme is not redis")
     if u.username or u.password:
         _fail("REDIS_URL must not carry credentials (Compose Redis is no-auth)")
+    if u.query:
+        _fail("REDIS_URL must not carry a query string")
+    if u.fragment:
+        _fail("REDIS_URL must not carry a fragment")
     host = u.hostname or ""
     try:
         port = u.port if u.port is not None else 6379
     except (ValueError, TypeError):
         _fail("REDIS_URL has an invalid port")
-    return host, port
+    index = u.path.lstrip("/")
+    if not index.isdigit():
+        _fail("REDIS_URL must include a numeric logical database index "
+              "(for example /0)")
+    return host, port, int(index)
 
 
 # ---------------------------------------------------------------------------
 # Compose port-object validator
 # ---------------------------------------------------------------------------
+def parse_public_frontend_url(value):
+    """R1-R6: stdlib-only shape validation of the PUBLIC_FRONTEND_URL runtime
+    input.  Mirrors the SHAPE rules of the authoritative production Settings
+    validator (absolute https origin; no credentials/query/fragment; origin
+    only, where a single trailing slash is accepted and stripped) WITHOUT
+    importing product Settings.  Returns (origin, None) on success or
+    (None, error) with a FIXED neutral message that never echoes the value.
+    """
+    if not isinstance(value, str) or value == "":
+        return None, "PUBLIC_FRONTEND_URL not found in backend/.env"
+    from urllib.parse import urlsplit
+    parts = urlsplit(value)
+    if parts.scheme != "https":
+        return None, "PUBLIC_FRONTEND_URL must use https"
+    if not parts.netloc:
+        return None, "PUBLIC_FRONTEND_URL must include a host"
+    if parts.username or parts.password:
+        return None, "PUBLIC_FRONTEND_URL must not contain credentials"
+    if parts.query:
+        return None, "PUBLIC_FRONTEND_URL must not contain a query string"
+    if parts.fragment:
+        return None, "PUBLIC_FRONTEND_URL must not contain a fragment"
+    if parts.path and parts.path != "/":
+        return None, "PUBLIC_FRONTEND_URL must be an origin only (no path)"
+    return value.rstrip("/"), None
+
+
 def _validate_port_entry(
     services: dict, svc_name: str, target_int: int, published_int: int,
     require_env: bool = True,
@@ -223,21 +263,28 @@ def run_initial(env_path: str) -> None:
     # R15-R1: an empty-but-present process REPORTING_USER_PASSWORD is also a conflict.
     proc_db = os.environ.get("DATABASE_URL", "")
     proc_redis = os.environ.get("REDIS_URL", "")
+    proc_db_ct = os.environ.get("DATABASE_URL_CONTAINER", "")
+    proc_redis_ct = os.environ.get("REDIS_URL_CONTAINER", "")
     if proc_db and proc_db != file_db:
         _fail("DATABASE_URL conflict: process env differs from backend/.env")
     if proc_redis and proc_redis != file_redis:
         _fail("REDIS_URL conflict: process env differs from backend/.env")
+    file_db_ct = env.get("DATABASE_URL_CONTAINER", "")
+    file_redis_ct = env.get("REDIS_URL_CONTAINER", "")
+    if proc_db_ct and file_db_ct and proc_db_ct != file_db_ct:
+        _fail("DATABASE_URL_CONTAINER conflict: process env differs from backend/.env")
+    if proc_redis_ct and file_redis_ct and proc_redis_ct != file_redis_ct:
+        _fail("REDIS_URL_CONTAINER conflict: process env differs from backend/.env")
     if "REPORTING_USER_PASSWORD" in os.environ and os.environ["REPORTING_USER_PASSWORD"] != file_rup:
         _fail("REPORTING_USER_PASSWORD conflict: process env differs from backend/.env")
 
     db_user, db_pass, db_host, db_port, db_name = parse_db_url(file_db)
-    rd_host, rd_port = parse_redis_url(file_redis)
+    rd_host, rd_port, rd_db_index = parse_redis_url(file_redis)
 
     if not _is_loopback(db_host):
         _fail("DATABASE_URL host must be local")
     if not _is_loopback(rd_host):
         _fail("REDIS_URL host must be local")
-
     try:
         cfg = json.load(sys.stdin)
     except Exception:
@@ -258,12 +305,92 @@ def run_initial(env_path: str) -> None:
     pg_env = _validate_port_entry(services, "postgres", 5432, db_port)
     _validate_port_entry(services, "redis", 6379, rd_port, require_env=False)
 
-    if db_user != pg_env.get("POSTGRES_USER", ""):
-        _fail("DATABASE_URL username does not match Compose POSTGRES_USER")
-    if db_pass != pg_env.get("POSTGRES_PASSWORD", ""):
-        _fail("DATABASE_URL password does not match Compose POSTGRES_PASSWORD")
-    if db_name != pg_env.get("POSTGRES_DB", ""):
-        _fail("DATABASE_URL database does not match Compose POSTGRES_DB")
+    # ------------------------------------------------------------------
+    # Two-role DB authority (MPANGO-TENANT-BOOTSTRAP-DB-AUTHORITY R1):
+    # DATABASE_URL binds the RUNTIME role; MPANGO_DB_ADMIN_URL binds the
+    # cluster administrator (the Compose postgres account) and is setup-time
+    # only; MPANGO_DB_MIGRATE_URL binds the migration authority.  The three
+    # roles must be pairwise distinct (a single-role configuration is
+    # rejected here, before any side effect), all three must target one
+    # endpoint/database, and the provisioning passwords must equal the
+    # passwords embedded in the runtime/migration URLs so the provisioned
+    # roles are exactly the roles those URLs will use.
+    admin_url = env.get("MPANGO_DB_ADMIN_URL", "")
+    migrate_url = env.get("MPANGO_DB_MIGRATE_URL", "")
+    app_password = env.get("MPANGO_DB_APP_PASSWORD", "")
+    migrate_password = env.get("MPANGO_DB_MIGRATE_PASSWORD", "")
+    if not admin_url:
+        _fail("MPANGO_DB_ADMIN_URL not found in backend/.env")
+    if not migrate_url:
+        _fail("MPANGO_DB_MIGRATE_URL not found in backend/.env")
+    if not app_password:
+        _fail("MPANGO_DB_APP_PASSWORD not found in backend/.env")
+    if not migrate_password:
+        _fail("MPANGO_DB_MIGRATE_PASSWORD not found in backend/.env")
+    if not env.get("DATABASE_URL_CONTAINER"):
+        _fail("DATABASE_URL_CONTAINER not found in backend/.env")
+    if not env.get("REDIS_URL_CONTAINER"):
+        _fail("REDIS_URL_CONTAINER not found in backend/.env")
+    admin_user, admin_pass, admin_host, admin_port, admin_db = parse_db_url(admin_url)
+    mig_user, mig_pass, mig_host, mig_port, mig_db = parse_db_url(migrate_url)
+    if not _is_loopback(admin_host):
+        _fail("MPANGO_DB_ADMIN_URL host must be local")
+    if not _is_loopback(mig_host):
+        _fail("MPANGO_DB_MIGRATE_URL host must be local")
+    if admin_user == db_user or mig_user == db_user or admin_user == mig_user:
+        _fail("single-role configuration rejected: admin, migration and "
+              "runtime URLs must bind three distinct roles")
+    if (admin_host, admin_port) != (db_host, db_port) or             (mig_host, mig_port) != (db_host, db_port):
+        _fail("admin, migration and runtime URLs must target one endpoint")
+    if mig_db != db_name:
+        _fail("migration and runtime URLs must target the application database")
+    if app_password != db_pass:
+        _fail("MPANGO_DB_APP_PASSWORD does not match the runtime DATABASE_URL "
+              "password")
+    if migrate_password != mig_pass:
+        _fail("MPANGO_DB_MIGRATE_PASSWORD does not match the migration URL "
+              "password")
+    # The Compose postgres account is the ADMIN of the two-role contract, not
+    # the application identity: the runtime DATABASE_URL must NOT name it.
+    if admin_user != pg_env.get("POSTGRES_USER", ""):
+        _fail("MPANGO_DB_ADMIN_URL username does not match Compose POSTGRES_USER")
+    if admin_pass != pg_env.get("POSTGRES_PASSWORD", ""):
+        _fail("MPANGO_DB_ADMIN_URL password does not match Compose POSTGRES_PASSWORD")
+    if admin_db != pg_env.get("POSTGRES_DB", ""):
+        _fail("MPANGO_DB_ADMIN_URL database does not match Compose POSTGRES_DB")
+    # ------------------------------------------------------------------
+    # Container runtime context (R1-R3): DATABASE_URL_CONTAINER and
+    # REDIS_URL_CONTAINER are what the rendered backend service receives.
+    # They must bind the SAME role/database/password identity as their host
+    # counterparts, translated ONLY to the Compose service DNS name and the
+    # container target port.  Host loopback addresses inside the container
+    # context, unknown service names, wrong target ports and any
+    # role/database/password drift all fail closed.
+    container_db = env.get("DATABASE_URL_CONTAINER", "")
+    container_redis = env.get("REDIS_URL_CONTAINER", "")
+    ct_user, ct_pass, ct_host, ct_port, ct_database = parse_db_url(container_db)
+    rd_ct_host, rd_ct_port, rd_ct_db_index = parse_redis_url(container_redis)
+    if ct_host in ("localhost", "127.0.0.1", "::1"):
+        _fail("DATABASE_URL_CONTAINER host must be the Compose service name, "
+              "not a loopback host (the backend container cannot reach the "
+              "host loopback)")
+    if ct_host != "postgres":
+        _fail("DATABASE_URL_CONTAINER host must be the Compose postgres "
+              "service")
+    if ct_port != 5432:
+        _fail("DATABASE_URL_CONTAINER port must be the postgres container "
+              "target port")
+    if (ct_user, ct_pass, ct_database) != (db_user, db_pass, db_name):
+        _fail("container runtime URL does not bind the same role, password "
+              "and database identity as the host runtime DATABASE_URL")
+    if rd_ct_host != "redis":
+        _fail("REDIS_URL_CONTAINER host must be the Compose redis service")
+    if rd_ct_port != 6379:
+        _fail("REDIS_URL_CONTAINER port must be the redis container target "
+              "port")
+    if rd_ct_db_index != rd_db_index:
+        _fail("host and container Redis URLs must use the same logical "
+              "database index")
 
     # R15-R1: the rendered backend service MUST exist and carry a string
     # REPORTING_USER_PASSWORD that exactly matches .env. Missing service,
@@ -275,14 +402,107 @@ def run_initial(env_path: str) -> None:
     _backend_env = _backend.get("environment")
     if not isinstance(_backend_env, dict):
         _fail("backend environment must be a dict")
-    _backend_rup = _backend_env.get("REPORTING_USER_PASSWORD")
-    if not isinstance(_backend_rup, str):
-        _fail("backend REPORTING_USER_PASSWORD must be a string")
-    if _backend_rup != file_rup:
-        _fail(
-            "REPORTING_USER_PASSWORD conflict: "
-            "Compose backend differs from backend/.env"
-        )
+    # The rendered backend service receives ONLY the runtime DATABASE_URL.
+    # Every setup-only credential (admin/migration URLs, role passwords,
+    # reporting-user password) is refused here: those are consumed by the
+    # setup phases from backend/.env and must never reach the runtime
+    # environment.
+    # Only the five setup-only credentials are banned BY KEY.  The runtime
+    # DATABASE_URL/REDIS_URL keys must exist under exactly those names (the
+    # application reads settings.DATABASE_URL), but their VALUES must be the
+    # container context — enforced by the equality checks against
+    # DATABASE_URL_CONTAINER / REDIS_URL_CONTAINER below, which is what
+    # rejects a host-loopback URL leaking into the container environment.
+    for _setup_key in (
+        "MPANGO_DB_ADMIN_URL",
+        "MPANGO_DB_MIGRATE_URL",
+        "MPANGO_DB_MIGRATE_PASSWORD",
+        "MPANGO_DB_APP_PASSWORD",
+        "REPORTING_USER_PASSWORD",
+    ):
+        if _setup_key in _backend_env:
+            _fail(f"backend service environment must not contain {_setup_key}")
+    # the rendered KEY names stay DATABASE_URL/REDIS_URL (the application
+    # reads settings.DATABASE_URL); the VALUES must be the container context
+    _backend_url = _backend_env.get("DATABASE_URL")
+    if not isinstance(_backend_url, str):
+        _fail("backend service must carry the runtime DATABASE_URL")
+    if _backend_url != container_db:
+        _fail("backend service DATABASE_URL does not match the container "
+              "runtime context in backend/.env (DATABASE_URL_CONTAINER)")
+    _backend_redis = _backend_env.get("REDIS_URL")
+    if not isinstance(_backend_redis, str):
+        _fail("backend service must carry the runtime REDIS_URL")
+    if _backend_redis != container_redis:
+        _fail("backend service REDIS_URL does not match the container "
+              "runtime context in backend/.env (REDIS_URL_CONTAINER)")
+
+    # R1-R6: PUBLIC_FRONTEND_URL is an explicit required runtime input.
+    # backend/.env is authoritative; the rendered backend service must carry
+    # the exact same value.  The shape rules mirrored here (stdlib only) are
+    # enforced authoritatively by production Settings at application import.
+    _pfu_value = env.get("PUBLIC_FRONTEND_URL", "")
+    _pfu_origin, _pfu_err = parse_public_frontend_url(_pfu_value)
+    if _pfu_err:
+        _fail(_pfu_err)
+    _rendered_pfu = _backend_env.get("PUBLIC_FRONTEND_URL")
+    if _rendered_pfu is None:
+        _fail("backend service environment must carry PUBLIC_FRONTEND_URL")
+    if not isinstance(_rendered_pfu, str):
+        _fail("backend service PUBLIC_FRONTEND_URL must be a string")
+    if _rendered_pfu != _pfu_value:
+        _fail("backend service PUBLIC_FRONTEND_URL does not match backend/.env")
+
+    # R1-R7: explicit reporting runtime DSN (container context).  The
+    # reporting engine binds reporting_user; the DECODED password must equal
+    # the setup-only REPORTING_USER_PASSWORD so the migration-created login
+    # and the runtime reporting connection cannot drift.  REPORTING_USER_PASSWORD
+    # itself remains setup-only and must never reach the rendered environment.
+    _rep_container = env.get("REPORTING_DATABASE_URL_CONTAINER", "")
+    if not _rep_container:
+        _fail("REPORTING_DATABASE_URL_CONTAINER not found in backend/.env")
+    try:
+        _rp = urlparse(_rep_container)
+    except Exception:
+        _fail("REPORTING_DATABASE_URL_CONTAINER is malformed")
+    if _rp.scheme not in _DB_SCHEMES:
+        _fail("REPORTING_DATABASE_URL_CONTAINER scheme is not postgresql")
+    if _rp.fragment:
+        _fail("REPORTING_DATABASE_URL_CONTAINER must not contain a fragment")
+    if _rp.query:
+        _fail("REPORTING_DATABASE_URL_CONTAINER must not contain a query string")
+    _rep_user = unquote(_rp.username) if _rp.username else ""
+    if _rep_user != "reporting_user":
+        _fail("REPORTING_DATABASE_URL_CONTAINER must bind the reporting_user identity")
+    _rep_pass = unquote(_rp.password) if _rp.password else ""
+    if not _rep_pass:
+        _fail("REPORTING_DATABASE_URL_CONTAINER must contain a password")
+    _rup = env.get("REPORTING_USER_PASSWORD", "")
+    if not _rup or _rep_pass != _rup:
+        _fail("REPORTING_DATABASE_URL_CONTAINER password does not match "
+              "REPORTING_USER_PASSWORD")
+    if (_rp.hostname or "") != "postgres":
+        _fail("REPORTING_DATABASE_URL_CONTAINER host must be the Compose "
+              "postgres service")
+    try:
+        _rep_port = _rp.port if _rp.port is not None else 5432
+    except (ValueError, TypeError):
+        _fail("REPORTING_DATABASE_URL_CONTAINER has an invalid port")
+    if _rep_port != 5432:
+        _fail("REPORTING_DATABASE_URL_CONTAINER port must be the postgres "
+              "container target port")
+    _rep_db = _rp.path.lstrip("/") or ""
+    if _rep_db != db_name:
+        _fail("REPORTING_DATABASE_URL_CONTAINER must target the application "
+              "database")
+    _rendered_rep = _backend_env.get("REPORTING_DATABASE_URL")
+    if _rendered_rep is None:
+        _fail("backend service environment must carry REPORTING_DATABASE_URL")
+    if not isinstance(_rendered_rep, str):
+        _fail("backend service REPORTING_DATABASE_URL must be a string")
+    if _rendered_rep != _rep_container:
+        _fail("backend service REPORTING_DATABASE_URL does not match "
+              "backend/.env (REPORTING_DATABASE_URL_CONTAINER)")
 
     print("OK")
 

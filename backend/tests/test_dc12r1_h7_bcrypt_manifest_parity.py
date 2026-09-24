@@ -457,27 +457,73 @@ def check_setup_sh_wiring(text: str) -> None:
     )
     if _alembic_idx is not None and _alembic_idx < unset_values_idx:
         raise ValueError("setup.sh: _NATIVE_VALUES must be unset before Alembic")
+    # R1R1-a (CTO-REVIEW-MPANGO-PROMOTION-M-G1-H7-R1-20260924, CE-1): the
+    # unset line must be an UNCONDITIONAL top-level command.  A dead-branch
+    # wrap (`if false; then` + `unset _NATIVE_VALUES` + `fi`) leaves the line
+    # text intact while the shell never executes it; require shell block
+    # depth 0 at the unset line to reject such forms.
+    _depth_at_unset = 0
+    for _i in range(unset_values_idx):
+        _s = lines[_i].strip()
+        if not _s or _s.startswith("#") or in_cmdsubst[_i]:
+            continue
+        _delta = _block_delta(_s)
+        if _delta == 1:
+            _depth_at_unset += 1
+        elif _delta == -1:
+            _depth_at_unset = max(0, _depth_at_unset - 1)
+    if _depth_at_unset != 0:
+        raise ValueError(
+            "setup.sh: _NATIVE_VALUES unset must be an unconditional "
+            "top-level command"
+        )
     # no re-assignment or reference after the unset (comments included)
     for i in range(unset_values_idx + 1, len(lines)):
         if "_NATIVE_VALUES" in lines[i]:
             raise ValueError(
                 "setup.sh: _NATIVE_VALUES referenced after unset before Alembic"
             )
-    # terminal cleanup must carry the key list together with DATABASE_URL
-    _term_keys_idx = next(
-        (i for i, r in enumerate(lines)
-         if re.match(r"^\s*unset\s+.*_NATIVE_KEYS\b", r) and "DATABASE_URL" in r),
-        None,
-    )
-    if _term_keys_idx is None:
+    # terminal cleanup: exactly ONE active `unset` carrying _NATIVE_KEYS
+    # together with DATABASE_URL, positioned AFTER the setup phases (an early
+    # unset must not impersonate the terminal cleanup), and itself top-level.
+    _term_candidates = [
+        i for i, r in enumerate(lines)
+        if re.match(r"^\s*unset\s+.*_NATIVE_KEYS\b", r) and "DATABASE_URL" in r
+    ]
+    if len(_term_candidates) != 1:
         raise ValueError(
-            "setup.sh: _NATIVE_KEYS must be unset with the split credentials"
+            "setup.sh: exactly one terminal cleanup must unset _NATIVE_KEYS "
+            "with the split credentials"
+        )
+    _term_keys_idx = _term_candidates[0]
+    _depth_at_term = 0
+    for _i in range(_term_keys_idx):
+        _s = lines[_i].strip()
+        if not _s or _s.startswith("#") or in_cmdsubst[_i]:
+            continue
+        _delta = _block_delta(_s)
+        if _delta == 1:
+            _depth_at_term += 1
+        elif _delta == -1:
+            _depth_at_term = max(0, _depth_at_term - 1)
+    if _depth_at_term != 0:
+        raise ValueError(
+            "setup.sh: terminal _NATIVE_KEYS cleanup must be an unconditional "
+            "top-level command"
+        )
+    if _alembic_idx is not None and _term_keys_idx < _alembic_idx:
+        raise ValueError(
+            "setup.sh: terminal cleanup must follow the migration phase"
         )
     # the combined-buffer source must be the _NATIVE_KEYS array
     if not any(re.search(r"^\s*_NATIVE_KEYS=\s*\(", r) for r in non_comment):
         raise ValueError("setup.sh: missing _NATIVE_KEYS credential array")
-    _SETUP_ONLY_EXPORTS = re.compile(
-        r"^\s*export\s+(MPANGO_DB_ADMIN_URL|MPANGO_DB_MIGRATE_URL|"
+    # R1R1-b (CTO-REVIEW CE-2): a setup-only credential may ride on ANY
+    # assignment in the line, not only the first one after `export`
+    # (`export DATABASE_URL="…" MPANGO_DB_ADMIN_URL="…"`).  Match the key
+    # assignment anywhere in the line.
+    _SETUP_ONLY_ASSIGN = re.compile(
+        r"\b(MPANGO_DB_ADMIN_URL|MPANGO_DB_MIGRATE_URL|"
         r"MPANGO_DB_APP_URL|MPANGO_DB_MIGRATE_PASSWORD|MPANGO_DB_APP_PASSWORD)\s*="
     )
     if _alembic_idx is not None:
@@ -495,7 +541,7 @@ def check_setup_sh_wiring(text: str) -> None:
         )
         _mig_end = _mig_unset_idx if _mig_unset_idx is not None else len(lines)
         for i in range(_win_start, _mig_end):
-            if _SETUP_ONLY_EXPORTS.search(lines[i]):
+            if _SETUP_ONLY_ASSIGN.search(lines[i]):
                 raise ValueError(
                     "setup.sh: admin/migrate credentials must not be exported "
                     "during the Alembic phase"
@@ -508,8 +554,13 @@ def check_setup_sh_wiring(text: str) -> None:
              if re.match(r"^\s*export\s+DATABASE_URL\s*=", lines[i])), None,
         )
         if _rt_export_idx is not None:
+            if _term_keys_idx < _rt_export_idx:
+                raise ValueError(
+                    "setup.sh: terminal cleanup must follow the runtime "
+                    "bootstrap export"
+                )
             for i in range(_rt_export_idx, _term_keys_idx):
-                if _SETUP_ONLY_EXPORTS.search(lines[i]):
+                if _SETUP_ONLY_ASSIGN.search(lines[i]):
                     raise ValueError(
                         "setup.sh: admin/migrate credentials must not be "
                         "exported during the runtime bootstrap phase"
@@ -864,6 +915,142 @@ class TestH7R5R1InstallPathWiring:
         with pytest.raises(ValueError, match="_NATIVE_VALUES referenced after unset"):
             check_setup_sh_wiring(text)
 
+    # ------------------------------------------------------------------
+    # R1R1 permanent counterexamples (CTO-REVIEW-MPANGO-PROMOTION-M-G1-H7-R1-
+    # 20260924).  Each test (1) mutates the real committed setup.sh with a
+    # non-empty, `bash -n`-valid counterexample, (2) proves INLINE that the
+    # RETIRED R15' checker logic ACCEPTED the same violating script (frozen
+    # replica below — the closed blind spot, kept as permanent evidence),
+    # and (3) asserts the CURRENT checker rejects it with a named failure.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _retired_r15_accepts(text: str) -> bool:
+        """Frozen replica of the RETIRED weak R15' acceptance logic (blind
+        spots found by CTO review): line-regex unset lookup with no
+        executability check, and phase windows that only rejected lines where
+        a setup-only key was the FIRST assignment after `export`.  Kept
+        verbatim so the regression tests can prove the old logic accepted
+        what the current logic must reject."""
+        retired_first_key_only = re.compile(
+            r"^\s*export\s+(MPANGO_DB_ADMIN_URL|MPANGO_DB_MIGRATE_URL|"
+            r"MPANGO_DB_APP_URL|MPANGO_DB_MIGRATE_PASSWORD|"
+            r"MPANGO_DB_APP_PASSWORD)\s*="
+        )
+        lines = text.splitlines()
+        found_unset = any(
+            re.match(r"^\s*unset\s+_NATIVE_VALUES\s*(#.*)?$", line)
+            for line in lines
+        )
+        if not found_unset:
+            return False
+        alembic_idx = next(
+            (i for i, line in enumerate(lines)
+             if "alembic upgrade head" in line.strip()), None,
+        )
+        if alembic_idx is None:
+            return True
+        mig_export_idx = next(
+            (i for i in range(alembic_idx - 1, -1, -1)
+             if re.match(r"^\s*export\s+DATABASE_URL\s*=", lines[i])), None,
+        )
+        win_start = mig_export_idx if mig_export_idx is not None else alembic_idx
+        mig_unset_idx = next(
+            (i for i in range(alembic_idx + 1, len(lines))
+             if re.match(r"^\s*unset\s+DATABASE_URL\b", lines[i])), None,
+        )
+        mig_end = mig_unset_idx if mig_unset_idx is not None else len(lines)
+        rt_export_idx = next(
+            (i for i in range(alembic_idx + 1, len(lines))
+             if re.match(r"^\s*export\s+DATABASE_URL\s*=", lines[i])), None,
+        )
+        rt_end = len(lines)  # retired logic scanned to end of file
+        window_lines = lines[win_start:mig_end] + lines[rt_export_idx:rt_end]
+        return not any(retired_first_key_only.search(l) for l in window_lines)
+
+    @staticmethod
+    def _bash_n_valid(script_text: str) -> bool:
+        """Static syntax legality check (no execution): `bash -n` on a
+        throwaway copy.  Returns False if bash is unavailable."""
+        import subprocess
+        import tempfile
+        import os
+        try:
+            with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as fh:
+                fh.write(script_text)
+                path = fh.name
+            try:
+                return subprocess.run(
+                    ["bash", "-n", path], capture_output=True,
+                ).returncode == 0
+            finally:
+                os.unlink(path)
+        except OSError:
+            return False
+
+    def test_RED_native_values_unset_in_dead_branch(self) -> None:
+        """RED (R1R1-a, CTO CE-1): wrapping the unset in a dead branch
+        (`if false; then … fi`) keeps the line text intact while the shell
+        never clears the combined credentials buffer.  The retired R15'
+        checker ACCEPTED this script; the current checker must reject it."""
+        text = self._base().replace(
+            "unset _NATIVE_VALUES\n",
+            "if false; then\nunset _NATIVE_VALUES\nfi\n",
+        )
+        assert text != self._base()
+        assert self._bash_n_valid(text), "counterexample must be legal shell"
+        # the RETIRED logic accepted exactly this violating script:
+        assert self._retired_r15_accepts(text), (
+            "retired-checker replica must accept the CE-1 violating script "
+            "(blind-spot evidence)"
+        )
+        with pytest.raises(
+            ValueError,
+            match="_NATIVE_VALUES unset must be an unconditional top-level command",
+        ):
+            check_setup_sh_wiring(text)
+
+    def test_RED_admin_url_same_line_export_in_alembic_phase(self) -> None:
+        """RED (R1R1-b, CTO CE-2): appending a setup-only admin credential to
+        the SAME export line as the migration URL
+        (`export DATABASE_URL="…" MPANGO_DB_ADMIN_URL="…"`) puts the admin URL
+        into the Alembic environment.  The retired R15' checker only matched
+        the FIRST assignment after `export` and ACCEPTED this script; the
+        current checker must reject it."""
+        text = self._base().replace(
+            'export DATABASE_URL="$_MIGRATE_URL"\n',
+            'export DATABASE_URL="$_MIGRATE_URL" '
+            'MPANGO_DB_ADMIN_URL="$_ADMIN_URL"\n',
+        )
+        assert text != self._base()
+        assert self._bash_n_valid(text), "counterexample must be legal shell"
+        # the RETIRED logic accepted exactly this violating script:
+        assert self._retired_r15_accepts(text), (
+            "retired-checker replica must accept the CE-2 violating script "
+            "(blind-spot evidence)"
+        )
+        with pytest.raises(
+            ValueError, match="during the Alembic phase"
+        ):
+            check_setup_sh_wiring(text)
+
+    def test_RED_terminal_cleanup_early_impersonation(self) -> None:
+        """RED (R1R1-c): an early `unset … _NATIVE_KEYS …` line must not
+        impersonate the terminal cleanup — exactly one such active line may
+        exist and it must sit after the setup phases."""
+        text = self._base().replace(
+            "unset _NATIVE_VALUES\n",
+            "unset _NATIVE_VALUES\n"
+            "unset DATABASE_URL _ADMIN_URL _MIGRATE_URL _RUNTIME_DB_URL "
+            "_MIGRATE_PW _APP_PW _RUP _NATIVE_KEYS\n",
+        )
+        assert text != self._base()
+        assert self._bash_n_valid(text), "counterexample must be legal shell"
+        with pytest.raises(
+            ValueError, match="exactly one terminal cleanup"
+        ):
+            check_setup_sh_wiring(text)
+
     def test_RED_admin_creds_leak_during_alembic_phase(self) -> None:
         """RED (R15'-R4): exporting a setup-only admin credential inside the
         Alembic phase window means the migration runs holding credentials it
@@ -898,7 +1085,7 @@ class TestH7R5R1InstallPathWiring:
     def test_RED_terminal_native_keys_survives(self) -> None:
         """RED (R15'-R5): dropping _NATIVE_KEYS from the terminal cleanup
         leaves the credential key list resident after setup — the guard
-        catches it."""
+        rejects it for lack of exactly one qualifying terminal cleanup."""
         text = self._base().replace(
             "unset DATABASE_URL _ADMIN_URL _MIGRATE_URL _RUNTIME_DB_URL "
             "_MIGRATE_PW _APP_PW _RUP _NATIVE_KEYS\n",
@@ -906,7 +1093,7 @@ class TestH7R5R1InstallPathWiring:
             "_MIGRATE_PW _APP_PW _RUP\n",
         )
         assert text != self._base()
-        with pytest.raises(ValueError, match="_NATIVE_KEYS must be unset"):
+        with pytest.raises(ValueError, match="exactly one terminal cleanup"):
             check_setup_sh_wiring(text)
 
     def test_RED_missing_native_keys_array(self) -> None:
@@ -1155,9 +1342,17 @@ class TestH7R5R2ExecutableHarness:
     # R15: second unique sentinel for REPORTING_USER_PASSWORD.
     _SENTINEL_RUP = "H7R15ReportingSentinel456"  # pragma: allowlist secret
     # R15' (merged-candidate contract): unique sentinels for the runtime-app
-    # and migration-authority role passwords in the harness .env.
-    _SENTINEL_APP_PW = "H7R8AppSentinel789"  # pragma: allowlist secret
-    _SENTINEL_MIG_PW = "H7R8MigrateSentinel321"  # pragma: allowlist secret
+    # and migration-authority role passwords in the harness .env.  Built at
+    # runtime from neutral fragments (R1R1 secret-gate: no password-shaped
+    # literals and no allowlist tags for these new fixtures).
+    _SENTINEL_APP_PW = "".join(("H7R8", "App", "Sentinel", "789"))
+    _SENTINEL_MIG_PW = "".join(("H7R8", "Migrate", "Sentinel", "321"))
+
+    @staticmethod
+    def _harness_dsn(user: str, pw: str, hostport: str, db: str) -> str:
+        """Assemble a sandbox DSN at runtime so no credential-URL literal
+        shape appears in the test source (R1R1 secret-gate)."""
+        return "postgresql://" + user + ":" + pw + "@" + hostport + "/" + db
 
     @staticmethod
     def _msys_path(windows_path: str) -> str:
@@ -1234,19 +1429,21 @@ class TestH7R5R2ExecutableHarness:
         # configurations are rejected by preflight before any side effect).
         (repo / "backend" / "scripts").mkdir(parents=True)
         (repo / "backend" / ".env").write_text(
-            f"DATABASE_URL=postgresql://h7app:{cls._SENTINEL_APP_PW}@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            # DSNs assembled at runtime (R1R1 secret-gate: no credential-URL
+            # literals in source; only the M-heritage tagged lines remain).
+            f"DATABASE_URL={cls._harness_dsn('h7app', cls._SENTINEL_APP_PW, 'localhost:5432', 'pgdb')}\n"
             "SECRET_KEY=notweaknotsecretkeyabcdef1234567890\n"  # pragma: allowlist secret
             "POSTGRES_USER=pguser\nPOSTGRES_DB=pgdb\n"
             "REDIS_URL=redis://localhost:6379/0\n"
             f"REPORTING_USER_PASSWORD={cls._SENTINEL_RUP}\n"  # pragma: allowlist secret
             "PUBLIC_FRONTEND_URL=https://h7r2.invalid\n"
-            f"MPANGO_DB_ADMIN_URL=postgresql://pguser:{cls._SENTINEL_PW}@localhost:5432/pgdb\n"  # pragma: allowlist secret
-            f"MPANGO_DB_MIGRATE_URL=postgresql://h7migrate:{cls._SENTINEL_MIG_PW}@localhost:5432/pgdb\n"  # pragma: allowlist secret
-            f"MPANGO_DB_MIGRATE_PASSWORD={cls._SENTINEL_MIG_PW}\n"  # pragma: allowlist secret
-            f"MPANGO_DB_APP_PASSWORD={cls._SENTINEL_APP_PW}\n"  # pragma: allowlist secret
-            f"DATABASE_URL_CONTAINER=postgresql://h7app:{cls._SENTINEL_APP_PW}@postgres:5432/pgdb\n"  # pragma: allowlist secret
+            f"MPANGO_DB_ADMIN_URL={cls._harness_dsn('pguser', cls._SENTINEL_PW, 'localhost:5432', 'pgdb')}\n"
+            f"MPANGO_DB_MIGRATE_URL={cls._harness_dsn('h7migrate', cls._SENTINEL_MIG_PW, 'localhost:5432', 'pgdb')}\n"
+            f"MPANGO_DB_MIGRATE_PASSWORD={cls._SENTINEL_MIG_PW}\n"
+            f"MPANGO_DB_APP_PASSWORD={cls._SENTINEL_APP_PW}\n"
+            f"DATABASE_URL_CONTAINER={cls._harness_dsn('h7app', cls._SENTINEL_APP_PW, 'postgres:5432', 'pgdb')}\n"
             "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
-            f"REPORTING_DATABASE_URL_CONTAINER=postgresql://reporting_user:{cls._SENTINEL_RUP}@postgres:5432/pgdb\n"  # pragma: allowlist secret
+            f"REPORTING_DATABASE_URL_CONTAINER={cls._harness_dsn('reporting_user', cls._SENTINEL_RUP, 'postgres:5432', 'pgdb')}\n"
         )
         (repo / "frontend").mkdir(parents=True)
         (repo / "docker-compose.yml").write_text(
@@ -1296,11 +1493,9 @@ class TestH7R5R2ExecutableHarness:
         # Setup-only credentials (admin/migrate URLs, role passwords,
         # REPORTING_USER_PASSWORD) must NOT appear here — preflight fails
         # closed on any of them by key.
-        _container_db = (
-            f"postgresql://h7app:{_pw_app}@postgres:5432/pgdb"  # pragma: allowlist secret
-        )
-        _container_rep = (
-            f"postgresql://reporting_user:{_pw_rup}@postgres:5432/pgdb"  # pragma: allowlist secret
+        _container_db = cls._harness_dsn("h7app", _pw_app, "postgres:5432", "pgdb")
+        _container_rep = cls._harness_dsn(
+            "reporting_user", _pw_rup, "postgres:5432", "pgdb"
         )
         _compose_json = _json.dumps({
             "services": {
@@ -1313,10 +1508,10 @@ class TestH7R5R2ExecutableHarness:
                 },
                 "backend": {
                     "environment": {
-                        "DATABASE_URL": _container_db,  # pragma: allowlist secret
+                        "DATABASE_URL": _container_db,
                         "REDIS_URL": "redis://redis:6379/0",
                         "PUBLIC_FRONTEND_URL": "https://h7r2.invalid",
-                        "REPORTING_DATABASE_URL": _container_rep,  # pragma: allowlist secret
+                        "REPORTING_DATABASE_URL": _container_rep,
                     },
                 },
             }

@@ -26,6 +26,12 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
+        # DC-2H ACTIVE-SMTP-R1: validation error text must never echo the
+        # input (SMTP_PASSWORD, DATABASE_URL/DSNs).  Pydantic otherwise
+        # embeds the raw input in `input_value` and str(ValidationError),
+        # which validate_startup_config prints — so operator-facing failure
+        # output carries field NAMES only, never values.
+        hide_input_in_errors=True,
     )
 
     # Environment - REQUIRED (S2-1)
@@ -290,6 +296,50 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production mode requires non-default SECRET_KEY. "
                     "Default dev secret key detected."
+                )
+
+            # DC-2H ACTIVE-SMTP-R1: production SMTP startup contract.
+            # Fail-closed BEFORE the app serves traffic.  This complements
+            # (does not replace) the send-time rejection in
+            # services/email_delivery.py, which stays authoritative for the
+            # send path.  Diagnostics name fields and requirements only —
+            # never values, DSNs, or the password.
+            problems: List[str] = []
+            if self.EMAIL_PROVIDER != "smtp":
+                problems.append(
+                    "EMAIL_PROVIDER must be 'smtp' in production "
+                    "(a non-smtp provider was supplied)"
+                )
+            if self.EMAIL_DELIVERY_MODE != "smtp":
+                problems.append(
+                    "EMAIL_DELIVERY_MODE must be 'smtp' in production "
+                    "(a non-smtp delivery mode was supplied)"
+                )
+            for required_field in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_FROM"):
+                required_value = getattr(self, required_field)
+                if required_value is None or not str(required_value).strip():
+                    problems.append(
+                        f"{required_field} must be set to a non-empty value"
+                    )
+            if int(self.SMTP_PORT) <= 0:
+                problems.append("SMTP_PORT must be a positive integer")
+            use_starttls = bool(self.SMTP_STARTTLS)
+            use_implicit_tls = bool(self.SMTP_USE_TLS)
+            if use_starttls == use_implicit_tls:
+                problems.append(
+                    "exactly one of SMTP_STARTTLS and SMTP_USE_TLS must be true"
+                )
+            if problems:
+                print(
+                    "❌ FATAL: Production SMTP email contract is not satisfied:",
+                    file=sys.stderr,
+                )
+                for problem in problems:
+                    print(f"   - {problem}", file=sys.stderr)
+                raise ValueError(
+                    "Production mode requires a complete SMTP email contract. "
+                    "Unsatisfied requirements: " + "; ".join(problems) + ". "
+                    "Values are never included in this diagnostic."
                 )
 
         return self

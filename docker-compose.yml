@@ -113,6 +113,21 @@ services:
       # MPANGO_DB_MIGRATE_URL, role passwords, REPORTING_USER_PASSWORD).
       # The reporting password is a setup-time secret consumed by Alembic
       # migration 011 only; setup_preflight refuses it in this environment.
+      # Email delivery (DC-2H): the nine operator-supplied SMTP keys are
+      # REQUIRED interpolation of same-named external variables with NO
+      # defaults — `docker compose config` refuses to render (before any
+      # container or database operation) until all nine are set.  Values are
+      # never committed here; Settings rejects an incomplete SMTP contract at
+      # startup in production.
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:?EMAIL_PROVIDER must be set}
+      - EMAIL_DELIVERY_MODE=${EMAIL_DELIVERY_MODE:?EMAIL_DELIVERY_MODE must be set}
+      - SMTP_HOST=${SMTP_HOST:?SMTP_HOST must be set}
+      - SMTP_PORT=${SMTP_PORT:?SMTP_PORT must be set}
+      - SMTP_USER=${SMTP_USER:?SMTP_USER must be set}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:?SMTP_PASSWORD must be set}
+      - EMAIL_FROM=${EMAIL_FROM:?EMAIL_FROM must be set}
+      - SMTP_STARTTLS=${SMTP_STARTTLS:?SMTP_STARTTLS must be set}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:?SMTP_USE_TLS must be set}
       # Pool & Timeout
       - REQUEST_TIMEOUT_SECONDS=${REQUEST_TIMEOUT_SECONDS:-30}
       - DB_POOL_SIZE=${DB_POOL_SIZE:-5}

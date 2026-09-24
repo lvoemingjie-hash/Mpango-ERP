@@ -1,4 +1,17 @@
-"""DC-2H static production SMTP compose wiring tests."""
+"""DC-2H production SMTP compose wiring tests.
+
+CTO-AUTH-MPANGO-PROMOTION-M-G1-DC2H-ACTIVE-SMTP-R1-20260924: the earlier
+DC-2H draft bound the RETIRED docker-compose.prod.yml; that path is
+decommissioned (R1-R4) and must stay absent.  The production entry is the
+ACTIVE docker-compose.yml (with its default override), so the contract is
+bound there:
+
+1. the backend service carries EXACTLY the nine SMTP keys, each as required
+   same-named `${KEY:?...}` interpolation with NO `:-` fallback;
+2. no other EMAIL_*/SMTP_* mapping reaches the backend service;
+3. no literal provider host or credential appears in the wiring;
+4. the retired prod compose stays absent (audit artifact retained).
+"""
 
 from __future__ import annotations
 
@@ -9,7 +22,11 @@ import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-COMPOSE_FILE = REPO_ROOT / "docker-compose.prod.yml"
+COMPOSE_FILE = REPO_ROOT / "docker-compose.yml"
+RETIRED_COMPOSE_FILE = REPO_ROOT / "docker-compose.prod.yml"
+DECOMMISSIONED_ARTIFACT = RETIRED_COMPOSE_FILE.with_name(
+    RETIRED_COMPOSE_FILE.name + ".decommissioned-r1r4"
+)
 
 EXPECTED_SMTP_ENV = {
     "EMAIL_PROVIDER": "${EMAIL_PROVIDER:?EMAIL_PROVIDER must be set}",
@@ -68,6 +85,18 @@ def test_dc2h_backend_environment_contains_exact_smtp_keys() -> None:
     assert actual == EXPECTED_SMTP_ENV
 
 
+def test_dc2h_backend_receives_no_other_email_or_smtp_keys() -> None:
+    """Of the EMAIL_*/SMTP_* namespace the backend service must receive
+    EXACTLY the nine contracted keys — no aliases, no extras, no
+    setup-only credential keys smuggled under the email namespace."""
+    environment = _backend_environment()
+    email_namespace_keys = {
+        key for key in environment
+        if key.startswith("EMAIL_") or key.startswith("SMTP_")
+    }
+    assert email_namespace_keys == set(EXPECTED_SMTP_ENV)
+
+
 def test_dc2h_smtp_values_are_env_refs_only_and_fail_closed() -> None:
     environment = _backend_environment()
 
@@ -90,3 +119,13 @@ def test_dc2h_compose_contains_no_literal_smtp_provider_or_credentials() -> None
         assert EMAIL_LITERAL_RE.search(line) is None
         assert "password=" not in lowered or line.startswith("- SMTP_PASSWORD=${SMTP_PASSWORD:?")
         assert "token=" not in lowered
+
+
+def test_dc2h_retired_prod_compose_stays_absent() -> None:
+    """The R1-R4 decommissioned path must never come back; the wiring lives
+    only on the ACTIVE compose.  Locale-independent facts: the original
+    path is absent, the decommissioned audit artifact remains."""
+    assert not RETIRED_COMPOSE_FILE.exists(), (
+        "docker-compose.prod.yml must stay decommissioned")
+    assert DECOMMISSIONED_ARTIFACT.is_file(), (
+        "the decommissioned audit artifact must remain as the audit trail")

@@ -436,30 +436,84 @@ def check_setup_sh_wiring(text: str) -> None:
     # R11: setup.sh must NOT overwrite a caller-provided COMPOSE_PROJECT_NAME
     if any(re.search(r"^\s*COMPOSE_PROJECT_NAME\s*=", r) for r in lines):
         raise ValueError("setup.sh: must not set/overwrite COMPOSE_PROJECT_NAME")
-    # R15-R1/R15-R2/R15-R3: _NATIVE_CREDS must be unset by an EXACT active
-    # command `unset _NATIVE_CREDS` (no options, no other variables, no
-    # compound commands; trailing comment OK). It must precede Alembic, and
-    # no re-assignment or reference may appear between the unset and Alembic.
-    unset_creds_idx = next(
+    # R15' (merged-candidate contract, CTO-AUTH-MPANGO-PROMOTION-M-G1-TEST-
+    # CONTRACT-R1-20260924): the combined native-credentials buffer
+    # `_NATIVE_VALUES` (holding the admin/migrate/runtime URLs and the role
+    # passwords) must be destroyed by an EXACT active `unset _NATIVE_VALUES`
+    # (no options, no other variables, no compound commands; trailing comment
+    # OK) immediately after the mapfile split and BEFORE any setup phase —
+    # and therefore before Alembic.  No reference may appear after the unset.
+    # The Alembic phase and the runtime bootstrap phase must not (re-)import
+    # setup-only credentials, and the terminal cleanup must unset
+    # `_NATIVE_KEYS` together with the split variables and DATABASE_URL.
+    unset_values_idx = next(
         (i for i, r in enumerate(lines)
-         if re.match(r"^\s*unset\s+_NATIVE_CREDS\s*(#.*)?$", r)), None,
+         if re.match(r"^\s*unset\s+_NATIVE_VALUES\s*(#.*)?$", r)), None,
     )
-    if unset_creds_idx is None:
-        raise ValueError("setup.sh: _NATIVE_CREDS must be unset before Alembic")
+    if unset_values_idx is None:
+        raise ValueError("setup.sh: _NATIVE_VALUES must be unset before Alembic")
     _alembic_idx = next(
         (i for i, r in enumerate(lines) if "alembic upgrade head" in r.strip()), None,
     )
-    if _alembic_idx is not None and _alembic_idx < unset_creds_idx:
-        raise ValueError("setup.sh: _NATIVE_CREDS must be unset before Alembic")
-    # R15-R3: no re-assignment or reference between unset and Alembic
-    for i in range(unset_creds_idx + 1, len(lines)):
-        s = lines[i].strip()
-        if "alembic upgrade head" in s:
-            break
-        if "_NATIVE_CREDS" in s:
+    if _alembic_idx is not None and _alembic_idx < unset_values_idx:
+        raise ValueError("setup.sh: _NATIVE_VALUES must be unset before Alembic")
+    # no re-assignment or reference after the unset (comments included)
+    for i in range(unset_values_idx + 1, len(lines)):
+        if "_NATIVE_VALUES" in lines[i]:
             raise ValueError(
-                "setup.sh: _NATIVE_CREDS referenced after unset before Alembic"
+                "setup.sh: _NATIVE_VALUES referenced after unset before Alembic"
             )
+    # terminal cleanup must carry the key list together with DATABASE_URL
+    _term_keys_idx = next(
+        (i for i, r in enumerate(lines)
+         if re.match(r"^\s*unset\s+.*_NATIVE_KEYS\b", r) and "DATABASE_URL" in r),
+        None,
+    )
+    if _term_keys_idx is None:
+        raise ValueError(
+            "setup.sh: _NATIVE_KEYS must be unset with the split credentials"
+        )
+    # the combined-buffer source must be the _NATIVE_KEYS array
+    if not any(re.search(r"^\s*_NATIVE_KEYS=\s*\(", r) for r in non_comment):
+        raise ValueError("setup.sh: missing _NATIVE_KEYS credential array")
+    _SETUP_ONLY_EXPORTS = re.compile(
+        r"^\s*export\s+(MPANGO_DB_ADMIN_URL|MPANGO_DB_MIGRATE_URL|"
+        r"MPANGO_DB_APP_URL|MPANGO_DB_MIGRATE_PASSWORD|MPANGO_DB_APP_PASSWORD)\s*="
+    )
+    if _alembic_idx is not None:
+        # Alembic phase window: from the phase's `export DATABASE_URL=` (the
+        # start of the migration export block) up to the phase's
+        # `unset DATABASE_URL` — setup-only credentials must stay unset here.
+        _mig_export_idx = next(
+            (i for i in range(_alembic_idx - 1, -1, -1)
+             if re.match(r"^\s*export\s+DATABASE_URL\s*=", lines[i])), None,
+        )
+        _win_start = _mig_export_idx if _mig_export_idx is not None else _alembic_idx
+        _mig_unset_idx = next(
+            (i for i in range(_alembic_idx + 1, len(lines))
+             if re.match(r"^\s*unset\s+DATABASE_URL\b", lines[i])), None,
+        )
+        _mig_end = _mig_unset_idx if _mig_unset_idx is not None else len(lines)
+        for i in range(_win_start, _mig_end):
+            if _SETUP_ONLY_EXPORTS.search(lines[i]):
+                raise ValueError(
+                    "setup.sh: admin/migrate credentials must not be exported "
+                    "during the Alembic phase"
+                )
+        # Runtime bootstrap phase window: from the post-Alembic
+        # `export DATABASE_URL=` up to the terminal cleanup — admin/migrate
+        # credentials must stay unset here too.
+        _rt_export_idx = next(
+            (i for i in range(_alembic_idx + 1, len(lines))
+             if re.match(r"^\s*export\s+DATABASE_URL\s*=", lines[i])), None,
+        )
+        if _rt_export_idx is not None:
+            for i in range(_rt_export_idx, _term_keys_idx):
+                if _SETUP_ONLY_EXPORTS.search(lines[i]):
+                    raise ValueError(
+                        "setup.sh: admin/migrate credentials must not be "
+                        "exported during the runtime bootstrap phase"
+                    )
     # R12: no Compose config operation may run before the --env-file-bearing
     # array is constructed (a premature config probe without --env-file would
     # fail interpolation and silently reject a standalone docker-compose).
@@ -735,61 +789,137 @@ class TestH7R5R1InstallPathWiring:
             check_setup_sh_wiring(text)
 
     def test_RED_missing_bootstrap_database_url(self) -> None:
-        text = self._base().replace('export DATABASE_URL="$_NATIVE_DB_URL"\n', "")
+        # Merged-candidate shape: setup.sh exports DATABASE_URL twice (the
+        # migration phase and the runtime bootstrap phase).  Removing both
+        # leaves the canonical bootstrap without a database URL — the guard
+        # must reject it.
+        text = (
+            self._base()
+            .replace('export DATABASE_URL="$_MIGRATE_URL"\n', "")
+            .replace('export DATABASE_URL="$_RUNTIME_DB_URL"\n', "")
+        )
+        assert text != self._base()
         with pytest.raises(ValueError, match="(?i)database"):
             check_setup_sh_wiring(text)
 
     def test_RED_native_creds_not_cleared_before_alembic(self) -> None:
-        """RED (R15-R1): removing the _NATIVE_CREDS unset means the combined
-        buffer holding both secrets survives past Alembic — the guard catches it."""
+        """RED (R15'-R1): removing the _NATIVE_VALUES unset means the combined
+        buffer holding the setup-only credentials survives past the split and
+        into the phases — the guard catches it."""
         text = self._base().replace(
-            "unset _NATIVE_CREDS  # R15-R1: clear the combined buffer immediately after split\n",
+            "unset _NATIVE_VALUES\n",
             "",
         )
-        with pytest.raises(ValueError, match="_NATIVE_CREDS must be unset before Alembic"):
+        assert text != self._base()
+        with pytest.raises(ValueError, match="_NATIVE_VALUES must be unset before Alembic"):
             check_setup_sh_wiring(text)
 
     @pytest.mark.parametrize(
         "inert",
         [
-            'echo unset _NATIVE_CREDS',
-            '# unset _NATIVE_CREDS',
-            ': unset _NATIVE_CREDS',
-            'true unset _NATIVE_CREDS',
-            'unset -f _NATIVE_CREDS',             # R15-R3: option flag
-            'unset OTHER_VAR # _NATIVE_CREDS',    # R15-R3: comment-only reference
+            'echo unset _NATIVE_VALUES',
+            '# unset _NATIVE_VALUES',
+            ': unset _NATIVE_VALUES',
+            'true unset _NATIVE_VALUES',
+            'unset -f _NATIVE_VALUES',             # option flag form
+            'unset OTHER_VAR # _NATIVE_VALUES',    # comment-only reference
         ],
     )
     def test_RED_native_creds_inert_unset_rejected(self, inert: str) -> None:
-        """RED (R15-R2/R15-R3): echo / comment / colon / true / option-flag /
+        """RED (R15'-R2/R15'-R3): echo / comment / colon / true / option-flag /
         comment-reference forms must NOT satisfy the guard — only an EXACT
-        active `unset _NATIVE_CREDS` command is accepted."""
+        active `unset _NATIVE_VALUES` command is accepted."""
         text = self._base().replace(
-            "unset _NATIVE_CREDS  # R15-R1: clear the combined buffer immediately after split\n",
+            "unset _NATIVE_VALUES\n",
             inert + "\n",
         )
-        with pytest.raises(ValueError, match="_NATIVE_CREDS must be unset"):
+        assert text != self._base()
+        with pytest.raises(ValueError, match="_NATIVE_VALUES must be unset"):
             check_setup_sh_wiring(text)
 
     def test_RED_native_creds_unset_after_alembic_rejected(self) -> None:
-        """RED (R15-R2): moving the unset AFTER `alembic upgrade head` leaves
+        """RED (R15'-R2): moving the unset AFTER `alembic upgrade head` leaves
         the combined buffer alive during Alembic — the guard catches the ordering."""
         text = self._base().replace(
-            "unset _NATIVE_CREDS  # R15-R1: clear the combined buffer immediately after split\n",
+            "unset _NATIVE_VALUES\n",
             "",
-        ).replace("alembic upgrade head", "alembic upgrade head\nunset _NATIVE_CREDS")
-        with pytest.raises(ValueError, match="_NATIVE_CREDS must be unset"):
+        ).replace(
+            "alembic upgrade head",
+            "alembic upgrade head\nunset _NATIVE_VALUES",
+            1,
+        )
+        assert text != self._base()
+        with pytest.raises(ValueError, match="_NATIVE_VALUES must be unset"):
             check_setup_sh_wiring(text)
 
     def test_RED_native_creds_reassigned_after_unset(self) -> None:
-        """RED (R15-R3): re-assigning _NATIVE_CREDS after the unset but before
-        Alembic defeats the lifecycle claim — the guard catches the reference."""
+        """RED (R15'-R3): re-assigning _NATIVE_VALUES after the unset defeats
+        the lifecycle claim — the guard catches the reference."""
         text = self._base().replace(
-            "unset _NATIVE_CREDS  # R15-R1: clear the combined buffer immediately after split\n",
-            "unset _NATIVE_CREDS  # R15-R1: clear the combined buffer immediately after split\n"
-            "_NATIVE_CREDS=something\n",
+            "unset _NATIVE_VALUES\n",
+            "unset _NATIVE_VALUES\n"
+            "_NATIVE_VALUES=something\n",
         )
-        with pytest.raises(ValueError, match="_NATIVE_CREDS referenced after unset"):
+        assert text != self._base()
+        with pytest.raises(ValueError, match="_NATIVE_VALUES referenced after unset"):
+            check_setup_sh_wiring(text)
+
+    def test_RED_admin_creds_leak_during_alembic_phase(self) -> None:
+        """RED (R15'-R4): exporting a setup-only admin credential inside the
+        Alembic phase window means the migration runs holding credentials it
+        must never need — the guard catches the cross-phase leak."""
+        text = self._base().replace(
+            "alembic upgrade head\n",
+            'export MPANGO_DB_ADMIN_URL="$_ADMIN_URL"\nalembic upgrade head\n',
+            1,
+        )
+        assert text != self._base()
+        with pytest.raises(
+            ValueError, match="during the Alembic phase"
+        ):
+            check_setup_sh_wiring(text)
+
+    def test_RED_admin_creds_leak_during_bootstrap_phase(self) -> None:
+        """RED (R15'-R4): exporting a setup-only admin credential inside the
+        runtime bootstrap phase window (after the runtime DATABASE_URL export,
+        before the terminal cleanup) — the guard catches the leak."""
+        text = self._base().replace(
+            'export DATABASE_URL="$_RUNTIME_DB_URL"\n',
+            'export DATABASE_URL="$_RUNTIME_DB_URL"\n'
+            'export MPANGO_DB_ADMIN_URL="$_ADMIN_URL"\n',
+            1,
+        )
+        assert text != self._base()
+        with pytest.raises(
+            ValueError, match="admin/migrate credentials must not be"
+        ):
+            check_setup_sh_wiring(text)
+
+    def test_RED_terminal_native_keys_survives(self) -> None:
+        """RED (R15'-R5): dropping _NATIVE_KEYS from the terminal cleanup
+        leaves the credential key list resident after setup — the guard
+        catches it."""
+        text = self._base().replace(
+            "unset DATABASE_URL _ADMIN_URL _MIGRATE_URL _RUNTIME_DB_URL "
+            "_MIGRATE_PW _APP_PW _RUP _NATIVE_KEYS\n",
+            "unset DATABASE_URL _ADMIN_URL _MIGRATE_URL _RUNTIME_DB_URL "
+            "_MIGRATE_PW _APP_PW _RUP\n",
+        )
+        assert text != self._base()
+        with pytest.raises(ValueError, match="_NATIVE_KEYS must be unset"):
+            check_setup_sh_wiring(text)
+
+    def test_RED_missing_native_keys_array(self) -> None:
+        """RED (R15'-R5): the combined buffer must be sourced from the
+        _NATIVE_KEYS array; removing the array defeats the split contract."""
+        text = self._base().replace(
+            "_NATIVE_KEYS=(MPANGO_DB_ADMIN_URL MPANGO_DB_MIGRATE_URL "
+            "DATABASE_URL MPANGO_DB_MIGRATE_PASSWORD MPANGO_DB_APP_PASSWORD "
+            "REPORTING_USER_PASSWORD)\n",
+            "",
+        )
+        assert text != self._base()
+        with pytest.raises(ValueError, match="_NATIVE_KEYS credential array"):
             check_setup_sh_wiring(text)
 
     def test_RED_missing_database_url_resolution(self) -> None:
@@ -1024,6 +1154,10 @@ class TestH7R5R2ExecutableHarness:
     _SENTINEL_PW = "H7R8HarnessSentinel123"  # pragma: allowlist secret
     # R15: second unique sentinel for REPORTING_USER_PASSWORD.
     _SENTINEL_RUP = "H7R15ReportingSentinel456"  # pragma: allowlist secret
+    # R15' (merged-candidate contract): unique sentinels for the runtime-app
+    # and migration-authority role passwords in the harness .env.
+    _SENTINEL_APP_PW = "H7R8AppSentinel789"  # pragma: allowlist secret
+    _SENTINEL_MIG_PW = "H7R8MigrateSentinel321"  # pragma: allowlist secret
 
     @staticmethod
     def _msys_path(windows_path: str) -> str:
@@ -1090,14 +1224,29 @@ class TestH7R5R2ExecutableHarness:
         bin_dir.mkdir(parents=True)
         log_str = str(log_file).replace("\\", "/")
 
-        # minimal disposable repo structure
+        # minimal disposable repo structure.  The .env models the FULL
+        # three-role supply contract accepted by setup_preflight.run_initial:
+        #   admin  = the Compose postgres account (pguser / _SENTINEL_PW)
+        #   migrate= h7migrate / _SENTINEL_MIG_PW (same endpoint + database)
+        #   runtime= h7app / _SENTINEL_APP_PW (host context; the container
+        #            context re-binds the same identity to the service DNS)
+        # The three role usernames are pairwise distinct (single-role
+        # configurations are rejected by preflight before any side effect).
         (repo / "backend" / "scripts").mkdir(parents=True)
         (repo / "backend" / ".env").write_text(
-            f"DATABASE_URL=postgresql://pguser:{cls._SENTINEL_PW}@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            f"DATABASE_URL=postgresql://h7app:{cls._SENTINEL_APP_PW}@localhost:5432/pgdb\n"  # pragma: allowlist secret
             "SECRET_KEY=notweaknotsecretkeyabcdef1234567890\n"  # pragma: allowlist secret
             "POSTGRES_USER=pguser\nPOSTGRES_DB=pgdb\n"
             "REDIS_URL=redis://localhost:6379/0\n"
             f"REPORTING_USER_PASSWORD={cls._SENTINEL_RUP}\n"  # pragma: allowlist secret
+            "PUBLIC_FRONTEND_URL=https://h7r2.invalid\n"
+            f"MPANGO_DB_ADMIN_URL=postgresql://pguser:{cls._SENTINEL_PW}@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            f"MPANGO_DB_MIGRATE_URL=postgresql://h7migrate:{cls._SENTINEL_MIG_PW}@localhost:5432/pgdb\n"  # pragma: allowlist secret
+            f"MPANGO_DB_MIGRATE_PASSWORD={cls._SENTINEL_MIG_PW}\n"  # pragma: allowlist secret
+            f"MPANGO_DB_APP_PASSWORD={cls._SENTINEL_APP_PW}\n"  # pragma: allowlist secret
+            f"DATABASE_URL_CONTAINER=postgresql://h7app:{cls._SENTINEL_APP_PW}@postgres:5432/pgdb\n"  # pragma: allowlist secret
+            "REDIS_URL_CONTAINER=redis://redis:6379/0\n"
+            f"REPORTING_DATABASE_URL_CONTAINER=postgresql://reporting_user:{cls._SENTINEL_RUP}@postgres:5432/pgdb\n"  # pragma: allowlist secret
         )
         (repo / "frontend").mkdir(parents=True)
         (repo / "docker-compose.yml").write_text(
@@ -1139,7 +1288,20 @@ class TestH7R5R2ExecutableHarness:
         # R15: backend also carries the REPORTING_USER_PASSWORD sentinel.
         _pw = cls._SENTINEL_PW
         _pw_rup = cls._SENTINEL_RUP
+        _pw_app = cls._SENTINEL_APP_PW
         import json as _json
+        # The rendered backend service carries ONLY the container-context
+        # runtime identity: DATABASE_URL/REDIS_URL (equal to the *_CONTAINER
+        # values in backend/.env), PUBLIC_FRONTEND_URL and the reporting DSN.
+        # Setup-only credentials (admin/migrate URLs, role passwords,
+        # REPORTING_USER_PASSWORD) must NOT appear here — preflight fails
+        # closed on any of them by key.
+        _container_db = (
+            f"postgresql://h7app:{_pw_app}@postgres:5432/pgdb"  # pragma: allowlist secret
+        )
+        _container_rep = (
+            f"postgresql://reporting_user:{_pw_rup}@postgres:5432/pgdb"  # pragma: allowlist secret
+        )
         _compose_json = _json.dumps({
             "services": {
                 "postgres": {
@@ -1150,7 +1312,12 @@ class TestH7R5R2ExecutableHarness:
                     "ports": [{"host_ip": "127.0.0.1", "target": 6379, "published": 6379, "protocol": "tcp", "mode": "ingress"}],
                 },
                 "backend": {
-                    "environment": {"REPORTING_USER_PASSWORD": _pw_rup},  # pragma: allowlist secret
+                    "environment": {
+                        "DATABASE_URL": _container_db,  # pragma: allowlist secret
+                        "REDIS_URL": "redis://redis:6379/0",
+                        "PUBLIC_FRONTEND_URL": "https://h7r2.invalid",
+                        "REPORTING_DATABASE_URL": _container_rep,  # pragma: allowlist secret
+                    },
                 },
             }
         }, separators=(",", ":"))
@@ -1184,9 +1351,10 @@ exit 0
 ''',
             "alembic": f'''#!/bin/bash
 echo "alembic $*" >> "{log_str}"
-# R14/R15: alembic must receive BOTH DATABASE_URL and REPORTING_USER_PASSWORD
-# from backend/.env (no alembic.ini fallback). Fail closed on mismatch.
-_exp_db="$(grep -E '^DATABASE_URL=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
+# R15' (merged-candidate contract): Alembic (the migration phase) must
+# receive the MIGRATION-authority URL and REPORTING_USER_PASSWORD, and must
+# NOT hold any setup-only admin/app credential. Fail closed otherwise.
+_exp_db="$(grep -E '^MPANGO_DB_MIGRATE_URL=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
 _exp_rup="$(grep -E '^REPORTING_USER_PASSWORD=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
 if [ -z "${{DATABASE_URL:-}}" ] || [ "$DATABASE_URL" != "$_exp_db" ]; then
     exit 2
@@ -1194,19 +1362,32 @@ fi
 if [ -z "${{REPORTING_USER_PASSWORD:-}}" ] || [ "$REPORTING_USER_PASSWORD" != "$_exp_rup" ]; then
     exit 4
 fi
+if [ -n "${{MPANGO_DB_ADMIN_URL:-}}" ] || [ -n "${{MPANGO_DB_APP_PASSWORD:-}}" ] || [ -n "${{MPANGO_DB_MIGRATE_PASSWORD:-}}" ]; then
+    exit 6
+fi
 exit {_ev("alembic")}
 ''',
             "python": f'''#!/bin/bash
 echo "python $*" >> "{log_str}"
+if echo "$*" | grep -q "provision_runtime_db_roles"; then
+    # R15' (merged-candidate contract): the provisioner phases (provision /
+    # apply-grants / verify) run as logged no-ops in the DB-free harness;
+    # their admin URL env is provided by setup.sh for the phase only.
+    exit {_ev("provision")}
+fi
 if echo "$*" | grep -q "bootstrap_tenant_schema"; then
-    # R14/R15: bootstrap uses the SAME DATABASE_URL; REPORTING_USER_PASSWORD
-    # must NOT survive into bootstrap (setup.sh unsets it before bootstrap).
+    # R14/R15': bootstrap uses the runtime DATABASE_URL; REPORTING_USER_PASSWORD
+    # and every setup-only admin/migrate credential must NOT survive into the
+    # runtime bootstrap phase (setup.sh unsets them before bootstrap).
     _exp_db="$(grep -E '^DATABASE_URL=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
     if [ -z "${{DATABASE_URL:-}}" ] || [ "$DATABASE_URL" != "$_exp_db" ]; then
         exit 3
     fi
     if [ -n "${{REPORTING_USER_PASSWORD:-}}" ]; then
         exit 5
+    fi
+    if [ -n "${{MPANGO_DB_ADMIN_URL:-}}" ] || [ -n "${{MPANGO_DB_MIGRATE_URL:-}}" ] || [ -n "${{MPANGO_DB_MIGRATE_PASSWORD:-}}" ] || [ -n "${{MPANGO_DB_APP_PASSWORD:-}}" ]; then
+        exit 6
     fi
     exit {_ev("bootstrap")}
 fi
@@ -1320,8 +1501,12 @@ esac
             "exec -T postgres",          # pg readiness
             "exec -T redis",             # redis readiness
             "pip install -r requirements.txt",
-            "alembic upgrade head",
-            "bootstrap_tenant_schema.py",
+            # R15' five-phase authority sequence:
+            "provision_runtime_db_roles.py --provision",      # phase 1 (admin)
+            "alembic upgrade head",                           # phase 2 (migration authority)
+            "provision_runtime_db_roles.py --apply-grants",   # phase 3 (migration authority)
+            "provision_runtime_db_roles.py --verify",         # phase 4 (read-only)
+            "bootstrap_tenant_schema.py",                     # phase 5 (runtime role)
             "pnpm install --frozen-lockfile",
         ]
         indexes = []
@@ -1384,6 +1569,12 @@ esac
         combined = r.stdout + r.stderr
         assert self._SENTINEL_PW not in combined
         assert "postgresql://pguser" not in combined
+        # R15': the runtime-app and migration-authority role passwords must
+        # never surface in the setup transcript either.
+        assert self._SENTINEL_APP_PW not in combined
+        assert self._SENTINEL_MIG_PW not in combined
+        assert "postgresql://h7app" not in combined
+        assert "postgresql://h7migrate" not in combined
 
     def test_idempotent_second_run(self, tmp_path: Path) -> None:
         h = self._build_harness(tmp_path)
@@ -1788,34 +1979,37 @@ esac
             assert sentinel not in r.stderr
 
     def test_mutation_remove_db_url_export_fails(self, tmp_path: Path) -> None:
-        """RED (R14): removing the DATABASE_URL export leaves Alembic without
-        the validated URL (alembic.ini fallback) — the enforcing fake fails."""
+        """RED (R14/R15'): removing the migration-phase DATABASE_URL export
+        leaves Alembic without the validated migrate URL (alembic.ini
+        fallback) — the enforcing fake fails."""
         r = self._run_mutated(
             tmp_path,
-            lambda t: t.replace('export DATABASE_URL="$_NATIVE_DB_URL"\n', ""),
+            lambda t: t.replace('export DATABASE_URL="$_MIGRATE_URL"\n', ""),
         )
         assert r.returncode != 0
         assert "Setup complete" not in r.stdout
 
     def test_mutation_db_url_export_after_alembic_fails(self, tmp_path: Path) -> None:
-        """RED (R14): exporting DATABASE_URL only AFTER `alembic upgrade head`
-        leaves Alembic without the URL — fails before completion."""
+        """RED (R14/R15'): exporting DATABASE_URL only AFTER
+        `alembic upgrade head` leaves Alembic without the URL — fails before
+        completion."""
         text_mut = lambda t: (
-            t.replace('export DATABASE_URL="$_NATIVE_DB_URL"\n', "")
+            t.replace('export DATABASE_URL="$_MIGRATE_URL"\n', "")
              .replace("alembic upgrade head",
-                      'alembic upgrade head\nexport DATABASE_URL="$_NATIVE_DB_URL"')
+                      'alembic upgrade head\nexport DATABASE_URL="$_MIGRATE_URL"', 1)
         )
         r = self._run_mutated(tmp_path, text_mut)
         assert r.returncode != 0
         assert "Setup complete" not in r.stdout
 
     def test_mutation_wrong_db_url_alembic_fails(self, tmp_path: Path) -> None:
-        """RED (R14): exporting a DATABASE_URL that differs from backend/.env
-        makes the enforcing Alembic fake reject the connection."""
+        """RED (R14/R15'): exporting a DATABASE_URL that differs from the
+        migration URL in backend/.env makes the enforcing Alembic fake reject
+        the connection."""
         r = self._run_mutated(
             tmp_path,
             lambda t: t.replace(
-                'export DATABASE_URL="$_NATIVE_DB_URL"',
+                'export DATABASE_URL="$_MIGRATE_URL"',
                 'export DATABASE_URL="postgresql://wrong:h7r14wrong@localhost:5432/wrong"',  # pragma: allowlist secret
             ),
         )
@@ -1854,22 +2048,22 @@ esac
     # ---- R15: REPORTING_USER_PASSWORD dual-secret tests -----------------
 
     def test_mutation_remove_rup_export_fails(self, tmp_path: Path) -> None:
-        """RED (R15): removing the REPORTING_USER_PASSWORD export leaves
+        """RED (R15/R15'): removing the REPORTING_USER_PASSWORD export leaves
         Alembic without the reporting password — the enforcing fake fails."""
         r = self._run_mutated(
             tmp_path,
-            lambda t: t.replace('export REPORTING_USER_PASSWORD="$_NATIVE_RUP"\n', ""),
+            lambda t: t.replace('export REPORTING_USER_PASSWORD="$_RUP"\n', ""),
         )
         assert r.returncode != 0
         assert "Setup complete" not in r.stdout
 
     def test_mutation_wrong_rup_fails(self, tmp_path: Path) -> None:
-        """RED (R15): exporting a REPORTING_USER_PASSWORD that differs from
+        """RED (R15/R15'): exporting a REPORTING_USER_PASSWORD that differs from
         backend/.env makes the enforcing Alembic fake reject it."""
         r = self._run_mutated(
             tmp_path,
             lambda t: t.replace(
-                'export REPORTING_USER_PASSWORD="$_NATIVE_RUP"',
+                'export REPORTING_USER_PASSWORD="$_RUP"',
                 'export REPORTING_USER_PASSWORD="wrong_rup_value"',  # pragma: allowlist secret
             ),
         )

@@ -1275,9 +1275,13 @@ def _r2f_restore_reporting(admin_url, prestate, errors):
             errors.append("temporary database residue remains: "
                           + ", ".join(databases))
         if observed != prestate:
+            from tests.test_combined_setup_authority_contract import (
+                _rpt_state_diff_diagnostic,
+            )
             errors.append(
                 "reporting identity is not item-by-item equal to the "
-                f"pre-state (pre={prestate!r} post={observed!r})")
+                "pre-state: "
+                + _rpt_state_diff_diagnostic(prestate, observed))
     except Exception as exc:
         errors.append(
             f"post-teardown verification: {type(exc).__name__}: {exc}")

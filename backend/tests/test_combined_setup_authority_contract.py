@@ -783,6 +783,42 @@ def _rpt_restore_role(cur, name, prestate):
             "setting(s) restored")
 
 
+def _rpt_state_diff_diagnostic(prestate, observed) -> str:
+    """Credential-free per-dimension diagnostic for reporting-state
+    verification failures (R1R1).  The equality comparison itself stays
+    exact - tuple equality including the pg_authid verifier - but only
+    this rendering may reach test output: field names, role existence and
+    per-field equality verdicts.  Verifier, DSN and password values are
+    never rendered, and pytest assertions never expand the raw states."""
+    lines = []
+    for name in sorted(set(prestate["roles"]) | set(observed["roles"])):
+        pre = prestate["roles"].get(name)
+        post = observed["roles"].get(name)
+        if pre is None or post is None:
+            lines.append(f"{name}: existed_before={pre is not None} "
+                         f"exists_after={post is not None}")
+            continue
+        if pre[0] != post[0]:
+            lines.append(f"{name}.verifier: differs")
+        if pre[1] != post[1]:
+            lines.append(f"{name}.rolconfig: differs "
+                         f"(before_keys={sorted(k.split('=')[0] for k in (pre[1] or []))} "
+                         f"after_keys={sorted(k.split('=')[0] for k in (post[1] or []))})")
+        if tuple(pre[2:]) != tuple(post[2:]):
+            lines.append(f"{name}.attributes: differs")
+    pre_m = prestate["membership"]
+    post_m = observed["membership"]
+    if pre_m != post_m:
+        lines.append(f"membership rows: before={len(pre_m)} after={len(post_m)}")
+        for row in sorted(set(pre_m) - set(post_m)):
+            lines.append(f"membership only-before: grantor={row[0]} "
+                         f"admin={row[1]} inherit={row[2]} set={row[3]}")
+        for row in sorted(set(post_m) - set(pre_m)):
+            lines.append(f"membership only-after: grantor={row[0]} "
+                         f"admin={row[1]} inherit={row[2]} set={row[3]}")
+    return "; ".join(lines) or "states differ in an uncategorized dimension"
+
+
 def _teardown_two_role_lifecycle(server, sandbox_db, app_role, mig_role,
                                  prestate, errors):
     """Unconditional restore of the shared reporting identity plus removal of
@@ -864,7 +900,8 @@ def _teardown_two_role_lifecycle(server, sandbox_db, app_role, mig_role,
         if observed != prestate:
             errors.append(
                 "reporting identity is not item-by-item equal to the "
-                f"pre-state (pre={prestate!r} post={observed!r})")
+                "pre-state: "
+                + _rpt_state_diff_diagnostic(prestate, observed))
     except Exception as exc:
         errors.append(
             f"post-teardown verification: {type(exc).__name__}: {exc}")

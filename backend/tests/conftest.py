@@ -71,6 +71,15 @@ def _build_test_reporting_database_url(database_url: str) -> str:
 _load_test_env_defaults()
 os.environ["DATABASE_URL"] = _resolve_test_database_url()
 os.environ.setdefault("REPORTING_USER_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "postgres"))
+# R1R1: an explicitly-empty canonical reporting credential is a named,
+# write-free, echo-free suite-level refusal - it must surface as itself,
+# not as a downstream DSN parse failure (negative control: CE).
+if os.environ["REPORTING_USER_PASSWORD"] == "":
+    raise RuntimeError(
+        "TEST_REPORTING_PREAUTH_REFUSED_EMPTY_CREDENTIAL: "
+        "REPORTING_USER_PASSWORD is explicitly empty; refusing to build the "
+        "reporting DSN or run any test against an unset credential - this "
+        "suite never alters roles and never echoes credential values")
 os.environ["REPORTING_DATABASE_URL"] = os.environ.get(
     "TEST_REPORTING_DATABASE_URL",
     _build_test_reporting_database_url(os.environ["DATABASE_URL"]),
@@ -182,8 +191,19 @@ async def ensure_reporting_user_password():
     connection re-proves the same credential - a read-only net-zero drift
     check, still without altering anything."""
     reporting_password = os.environ.get("REPORTING_USER_PASSWORD")
-    if not reporting_password:
-        return
+    if reporting_password is None:
+        raise RuntimeError(
+            "TEST_REPORTING_PREAUTH_REFUSED_UNSET: REPORTING_USER_PASSWORD "
+            "is not set; the canonical reporting credential must be "
+            "provisioned (migration 011 / the task environment) before any "
+            "reporting test runs - this fixture is read-only and never "
+            "alters roles")
+    if reporting_password == "":
+        raise RuntimeError(
+            "TEST_REPORTING_PREAUTH_REFUSED_EMPTY_CREDENTIAL: "
+            "REPORTING_USER_PASSWORD is explicitly empty; refusing to run "
+            "against an unset credential - this fixture is read-only and "
+            "never alters roles")
     _assert_reporting_role_repair_test_db_guard()
 
     _prove_reporting_credentials("preauth")

@@ -116,19 +116,6 @@ def _strip_sku_m1_schema(connection, schema: str) -> None:
     connection.execute(text(f"DROP TABLE {q}.catalog_products CASCADE"))
 
 
-def _satisfy_bootstrap_gate(connection) -> None:
-    """R2 C5: bootstrap refuses to run below alembic 039. This harness builds
-    GENUINE pre-039 tenant baselines, so the version row is temporarily moved
-    to 039 for the bootstrap call and restored afterwards; the 039 holds
-    table is dropped so the baseline stays genuine."""
-    connection.execute(text(
-        "CREATE TABLE IF NOT EXISTS public.alembic_version "
-        "(version_num VARCHAR(128) NOT NULL PRIMARY KEY)"))
-    connection.execute(text(
-        "UPDATE public.alembic_version SET version_num = '039_order_credit_holds'"))
-    connection.commit()
-
-
 def _restore_pre039_version(connection, revision: str) -> None:
     connection.execute(text(
         f"UPDATE public.alembic_version SET version_num = '{revision}'"))
@@ -140,11 +127,63 @@ def _drop_hold_table(connection, schema: str) -> None:
         f'DROP TABLE IF EXISTS "{schema}".order_credit_holds CASCADE'))
 
 
+def _ensure_runtime_grants(db_url) -> None:
+    """Confer the product-minimum runtime grants on the disposable database
+    (migration authority -> runtime app role) before any app-side DML."""
+    from tests.order_state_r2.test_migration_c3 import _grant_product_minimum
+
+    grant_engine = create_engine(_sync_url(db_url), future=True)
+    try:
+        _grant_product_minimum(grant_engine)
+    finally:
+        grant_engine.dispose()
+
+
+def _satisfy_bootstrap_gate(connection) -> None:
+    """R2 C5: bootstrap refuses to run below alembic 039. This harness builds
+    GENUINE pre-039 tenant baselines, so the version row is temporarily moved
+    to 039 for the bootstrap call and restored afterwards; the 039 holds
+    table is dropped so the baseline stays genuine.
+
+    Three-identity: public.alembic_version is migration-owned, so this
+    helper opens its own migration-authority connection when the caller
+    hands it a runtime connection."""
+    if connection is None:
+        raise RuntimeError("_satisfy_bootstrap_gate requires a connection")
+    connection.execute(text(
+        "CREATE TABLE IF NOT EXISTS public.alembic_version "
+        "(version_num VARCHAR(128) NOT NULL PRIMARY KEY)"))
+    connection.execute(text(
+        "UPDATE public.alembic_version SET version_num = '039_order_credit_holds'"))
+    connection.commit()
+
+
+def _migration_connection(db_url):
+    """A migration-authority connection for public-schema DDL the runtime
+    app role is contractually forbidden to perform."""
+    return create_engine(_sync_url(db_url), future=True).connect()
+
+
+def _bootstrap_as_runtime(schema: str, db_url) -> None:
+    """Three-identity (CTO-AUTH-...-R2C): bootstrap runs as the runtime app
+    role on the migration-owned disposable database.  The migration
+    authority (this yielded URL's identity, the database owner) confers the
+    product-minimum runtime grants first — mirroring the product
+    provisioner — then bootstrap connects with the app identity."""
+    _ensure_runtime_grants(db_url)
+    run_coroutine(bootstrap(schema, db_url.app_url))
+
+
 def _prepare_old_tenant(connection, db_url: str, *, prefix: str) -> tuple[uuid.UUID, str]:
+    _ensure_runtime_grants(db_url)
     wholesaler_id, schema = _register_tenant(connection, prefix=prefix)
     connection.commit()
-    _satisfy_bootstrap_gate(connection)
-    run_coroutine(bootstrap(schema, _async_url(db_url)))
+    gate_connection = _migration_connection(db_url)
+    try:
+        _satisfy_bootstrap_gate(gate_connection)
+    finally:
+        gate_connection.close()
+    _bootstrap_as_runtime(schema, db_url)
     connection.rollback()
     _strip_sku_m1_schema(connection, schema)
     _drop_hold_table(connection, schema)
@@ -335,7 +374,10 @@ def test_real_pg16_two_tenant_upgrade_preserves_identity_snapshots_and_stock() -
         config = _alembic_config(db_url)
         with _database_url_env(db_url):
             run_alembic_upgrade(config, REV_037)
-            engine = create_engine(_sync_url(db_url), future=True)
+            # Data/fixture engine runs as the runtime app identity (tenant
+            # objects are app-owned); alembic above keeps the migration
+            # identity through _database_url_env(db_url).
+            engine = create_engine(_sync_url(db_url.app_url), future=True)
             try:
                 with engine.connect() as connection:
                     wholesaler_id, existing_schema = _prepare_old_tenant(
@@ -400,10 +442,15 @@ def test_real_pg16_two_tenant_upgrade_preserves_identity_snapshots_and_stock() -
                 run_alembic_upgrade(config, REV_038)
 
                 reference_schema = f"t_{uuid.uuid4().hex}"
+                _ensure_runtime_grants(db_url)
                 connection = engine.connect()
-                _satisfy_bootstrap_gate(connection)
+                gate_connection = _migration_connection(db_url)
+                try:
+                    _satisfy_bootstrap_gate(gate_connection)
+                finally:
+                    gate_connection.close()
                 connection.commit()
-                run_coroutine(bootstrap(reference_schema, _async_url(db_url)))
+                _bootstrap_as_runtime(reference_schema, db_url)
                 _drop_hold_table(connection, reference_schema)
                 _restore_pre039_version(connection, REV_038)
                 connection.commit()
@@ -487,7 +534,10 @@ def test_real_pg16_preflight_failure_causes_global_zero_tenant_mutation() -> Non
         config = _alembic_config(db_url)
         with _database_url_env(db_url):
             run_alembic_upgrade(config, REV_037)
-            engine = create_engine(_sync_url(db_url), future=True)
+            # Data/fixture engine runs as the runtime app identity (tenant
+            # objects are app-owned); alembic above keeps the migration
+            # identity through _database_url_env(db_url).
+            engine = create_engine(_sync_url(db_url.app_url), future=True)
             try:
                 with engine.connect() as connection:
                     _, valid_schema = _prepare_old_tenant(connection, db_url, prefix="valid")
@@ -532,12 +582,19 @@ def test_real_pg16_bootstrap_reconciles_unregistered_pre038_tenant() -> None:
         config = _alembic_config(db_url)
         with _database_url_env(db_url):
             run_alembic_upgrade(config, REV_037)
-            engine = create_engine(_sync_url(db_url), future=True)
+            # Data/fixture engine runs as the runtime app identity (tenant
+            # objects are app-owned); alembic above keeps the migration
+            # identity through _database_url_env(db_url).
+            engine = create_engine(_sync_url(db_url.app_url), future=True)
             schema = "t_dev"
             try:
-                connection = engine.connect()
-                _satisfy_bootstrap_gate(connection)
-                run_coroutine(bootstrap(schema, _async_url(db_url)))
+                _ensure_runtime_grants(db_url)
+                gate_connection = _migration_connection(db_url)
+                try:
+                    _satisfy_bootstrap_gate(gate_connection)
+                finally:
+                    gate_connection.close()
+                _bootstrap_as_runtime(schema, db_url)
                 with engine.connect() as connection:
                     _strip_sku_m1_schema(connection, schema)
                     _drop_hold_table(connection, schema)
@@ -554,11 +611,16 @@ def test_real_pg16_bootstrap_reconciles_unregistered_pre038_tenant() -> None:
                         {"schema": schema},
                     ).scalar_one() == 0
 
+                _ensure_runtime_grants(db_url)
                 connection = engine.connect()
-                _satisfy_bootstrap_gate(connection)
+                gate_connection = _migration_connection(db_url)
+                try:
+                    _satisfy_bootstrap_gate(gate_connection)
+                finally:
+                    gate_connection.close()
                 connection.commit()
                 connection.close()
-                run_coroutine(bootstrap(schema, _async_url(db_url)))
+                _bootstrap_as_runtime(schema, db_url)
                 with engine.connect() as connection:
                     _drop_hold_table(connection, schema)
                     _restore_pre039_version(connection, REV_037)
@@ -606,12 +668,19 @@ def test_real_pg16_bootstrap_rolls_back_unsafe_missing_stock_reconciliation() ->
         config = _alembic_config(db_url)
         with _database_url_env(db_url):
             run_alembic_upgrade(config, REV_037)
-            engine = create_engine(_sync_url(db_url), future=True)
+            # Data/fixture engine runs as the runtime app identity (tenant
+            # objects are app-owned); alembic above keeps the migration
+            # identity through _database_url_env(db_url).
+            engine = create_engine(_sync_url(db_url.app_url), future=True)
             schema = "t_dev"
             try:
-                connection = engine.connect()
-                _satisfy_bootstrap_gate(connection)
-                run_coroutine(bootstrap(schema, _async_url(db_url)))
+                _ensure_runtime_grants(db_url)
+                gate_connection = _migration_connection(db_url)
+                try:
+                    _satisfy_bootstrap_gate(gate_connection)
+                finally:
+                    gate_connection.close()
+                _bootstrap_as_runtime(schema, db_url)
                 with engine.connect() as connection:
                     _strip_sku_m1_schema(connection, schema)
                     _drop_hold_table(connection, schema)
@@ -629,12 +698,23 @@ def test_real_pg16_bootstrap_rolls_back_unsafe_missing_stock_reconciliation() ->
                     )
                     connection.commit()
 
+                _ensure_runtime_grants(db_url)
                 connection = engine.connect()
-                _satisfy_bootstrap_gate(connection)
+                gate_connection = _migration_connection(db_url)
+                try:
+                    _satisfy_bootstrap_gate(gate_connection)
+                finally:
+                    gate_connection.close()
                 connection.commit()
                 connection.close()
                 with pytest.raises(RuntimeError, match="inventory evidence but no stock row"):
-                    run_coroutine(bootstrap(schema, _async_url(db_url)))
+                    _bootstrap_as_runtime(schema, db_url)
+                # The refused bootstrap leaves its async engine unreachable
+                # (product refusal path returns before dispose): a
+                # deterministic collect closes the leaked runtime-side
+                # session so owner-only teardown stays meaningful.
+                import gc as _gc
+                _gc.collect()
                 connection = engine.connect()
                 _restore_pre039_version(connection, REV_037)
                 connection.commit()
@@ -688,8 +768,19 @@ def test_real_pg16_demo_seeder_uses_canonical_catalog_identity() -> None:
             run_alembic_upgrade(config, "head")
 
         env = os.environ.copy()
-        env["DATABASE_URL"] = db_url
+        env["DATABASE_URL"] = db_url.app_url.replace(
+            "postgresql+asyncpg://", "postgresql://", 1)
         env["MPANGO_ENV"] = "test"
+        # Three-identity: the demo seeder's internal bootstrap runs as the
+        # runtime app role; the migration authority confers the
+        # product-minimum grants on the disposable database first.
+        from tests.order_state_r2.test_migration_c3 import _grant_product_minimum
+
+        grant_engine = create_engine(_sync_url(db_url), future=True)
+        try:
+            _grant_product_minimum(grant_engine)
+        finally:
+            grant_engine.dispose()
         result = subprocess.run(
             [sys.executable, "scripts/seed_demo_data.py"],
             cwd=BACKEND_DIR,
@@ -706,7 +797,10 @@ def test_real_pg16_demo_seeder_uses_canonical_catalog_identity() -> None:
             f"--- seeder stderr (sanitized tail) ---\n{_sanitized_stream_tail(result.stderr)}"
         )
 
-        engine = create_engine(_sync_url(db_url), future=True)
+        # The seeder's tenant data lives in an app-owned schema, so the
+        # verification reads it with the runtime app identity (the tenant's
+        # own role); the assertions themselves are unchanged.
+        engine = create_engine(_sync_url(db_url.app_url), future=True)
         schema = "t_a0000000000040008000000000000001"
         try:
             with engine.connect() as connection:
@@ -739,7 +833,10 @@ def test_real_pg16_non_live_registered_tenant_fails_before_any_mutation() -> Non
         config = _alembic_config(db_url)
         with _database_url_env(db_url):
             run_alembic_upgrade(config, REV_037)
-            engine = create_engine(_sync_url(db_url), future=True)
+            # Data/fixture engine runs as the runtime app identity (tenant
+            # objects are app-owned); alembic above keeps the migration
+            # identity through _database_url_env(db_url).
+            engine = create_engine(_sync_url(db_url.app_url), future=True)
             try:
                 with engine.connect() as connection:
                     active_id, active_schema = _prepare_old_tenant(

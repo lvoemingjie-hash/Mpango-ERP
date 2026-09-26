@@ -110,6 +110,38 @@ def _upgrade_to_038(db_url: str) -> None:
     _run_in_fresh_loop(job)
 
 
+def _grant_product_minimum(engine) -> None:
+    """Confer the product-minimum runtime grants on the app role.
+
+    Mirrors scripts/provision_runtime_db_roles.py templates: the migration
+    authority (database owner) is the only identity that may grant; the
+    runtime app role receives exactly public USAGE/DML/sequences/default
+    privileges, EXECUTE on the shared ledger guard, and database-scoped
+    CONNECT + CREATE (the sole schema-creation authority)."""
+    app_role = "mpango_app"
+    with engine.begin() as conn:
+        database = conn.execute(text("SELECT current_database()")).scalar()
+        conn.execute(text(f'GRANT USAGE ON SCHEMA public TO "{app_role}"'))
+        conn.execute(text(
+            f'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public '
+            f'TO "{app_role}"'))
+        conn.execute(text(
+            f'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "{app_role}"'))
+        conn.execute(text(
+            f'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, '
+            f'UPDATE, DELETE ON TABLES TO "{app_role}"'))
+        conn.execute(text(
+            f'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON '
+            f'SEQUENCES TO "{app_role}"'))
+        conn.execute(text(
+            f'GRANT EXECUTE ON FUNCTION public.prevent_ledger_modification() '
+            f'TO "{app_role}"'))
+        conn.execute(text(
+            f'GRANT CONNECT ON DATABASE "{database}" TO "{app_role}"'))
+        conn.execute(text(
+            f'GRANT CREATE ON DATABASE "{database}" TO "{app_role}"'))
+
+
 def _register_tenant(engine, wholesaler_id: uuid.UUID) -> str:
     schema = f"t_{wholesaler_id.hex}"
     with engine.begin() as conn:
@@ -423,6 +455,7 @@ def test_c5_bootstrap_before_039_refuses_before_tenant_objects():
     with temporary_database_url(source, "r2c5gate") as db_url:
         engine = _engine(db_url)
         _upgrade_to_038(db_url)
+        _grant_product_minimum(engine)
 
         spec = importlib.util.spec_from_file_location(
             "r2_bootstrap_module", BOOTSTRAP_SCRIPT)
@@ -438,7 +471,7 @@ def test_c5_bootstrap_before_039_refuses_before_tenant_objects():
         ws = uuid.uuid4()
         try:
             _run_in_fresh_loop(asyncio_run, bootstrap_module.bootstrap(
-                f"t_{ws.hex}", db_url))
+                f"t_{ws.hex}", db_url.app_url))
         except Exception as exc:
             assert not str(exc).isspace(), exc
             import re as _re
@@ -456,6 +489,15 @@ def test_c5_bootstrap_before_039_refuses_before_tenant_objects():
         assert int(schemas_after) == int(schemas_before), (
             "bootstrap-first created tenant objects before refusing")
 
+        # The refused bootstrap's async engine is unreachable and the
+        # product refusal path returns before its dispose (product code is
+        # untouchable here): a deterministic collect closes the leaked
+        # runtime-side session so teardown's owner-only termination
+        # contract stays meaningful (probed empirically: one collect
+        # closes the leaked connection).
+        import gc as _gc
+        _gc.collect()
+
 
 def test_c5_catalog_parity_migration_vs_bootstrap():
     """The 039 DDL and the bootstrap DDL must produce catalog-identical
@@ -467,6 +509,7 @@ def test_c5_catalog_parity_migration_vs_bootstrap():
         ws_mig = uuid.uuid4()
         schema_mig = _register_tenant(engine, ws_mig)
         _upgrade_to_head(db_url)
+        _grant_product_minimum(engine)
 
         spec = importlib.util.spec_from_file_location(
             "r2_bootstrap_module_parity", BOOTSTRAP_SCRIPT)
@@ -474,14 +517,25 @@ def test_c5_catalog_parity_migration_vs_bootstrap():
         spec.loader.exec_module(bootstrap_module)
         ws_boot = uuid.uuid4()
         _run_in_fresh_loop(asyncio_run, bootstrap_module.bootstrap(
-            f"t_{ws_boot.hex}", db_url))
+            f"t_{ws_boot.hex}", db_url.app_url))
 
         def _catalog(schema: str) -> tuple:
             with engine.connect() as conn:
+                # pg_catalog, not information_schema: the observing engine
+                # carries the migration identity, and information_schema
+                # columns are privilege-filtered — the bootstrap-side tenant
+                # tables are owned by the runtime role and would be
+                # invisible.  pg_attribute/pg_class report the same catalog
+                # facts to every role; both sides use the identical
+                # renderer, so parity comparison semantics are unchanged.
                 cols = conn.execute(text(
-                    "SELECT column_name, data_type, is_nullable FROM "
-                    "information_schema.columns WHERE table_schema = :s AND "
-                    "table_name = 'order_credit_holds' ORDER BY column_name"),
+                    "SELECT a.attname, format_type(a.atttypid, a.atttypmod),"
+                    " NOT a.attnotnull FROM pg_attribute a"
+                    " JOIN pg_class t ON t.oid = a.attrelid"
+                    " JOIN pg_namespace n ON n.oid = t.relnamespace"
+                    " WHERE n.nspname = :s AND t.relname = 'order_credit_holds'"
+                    " AND a.attnum > 0 AND NOT a.attisdropped"
+                    " ORDER BY a.attname"),
                     {"s": schema}).fetchall()
                 cons = conn.execute(text(
                     "SELECT conname, contype, pg_get_constraintdef(c.oid, true) "

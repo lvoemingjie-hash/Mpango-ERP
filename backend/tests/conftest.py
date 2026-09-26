@@ -118,46 +118,79 @@ def _assert_reporting_role_repair_test_db_guard() -> None:
         raise RuntimeError(_REPORTING_ROLE_REPAIR_REFUSED)
 
 
+def _prove_reporting_credentials(phase: str) -> None:
+    """Read-only proof that the canonical reporting DSN authenticates.
+
+    Connects as reporting_user with REPORTING_USER_PASSWORD to the runtime
+    database and proves current_user.  No role is ever altered: provisioning
+    reporting_user with the canonical credential is the migration 011 /
+    task-environment contract, not a test-side write.  Failures are named
+    refusals and never contain credential values.
+    """
+    import psycopg2
+
+    reporting_password = os.environ["REPORTING_USER_PASSWORD"]
+    runtime_parsed = urlparse(
+        os.environ.get("DATABASE_URL", "").replace(
+            "postgresql+asyncpg://", "postgresql://", 1)
+    )
+    host = runtime_parsed.hostname or "postgres"
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    if runtime_parsed.port is not None:
+        host = f"{host}:{runtime_parsed.port}"
+    dsn = (
+        f"postgresql://reporting_user:{quote_plus(reporting_password)}@"
+        f"{host}/{runtime_parsed.path.lstrip('/')}"
+    )
+    try:
+        conn = psycopg2.connect(dsn, connect_timeout=10)
+    except Exception as exc:
+        raise RuntimeError(
+            f"TEST_REPORTING_PREAUTH_{phase.upper()}_FAILED: the canonical "
+            "reporting DSN did not authenticate ("
+            f"{type(exc).__name__}); reporting_user must be provisioned with "
+            "REPORTING_USER_PASSWORD by migration 011 / the task environment "
+            "- this fixture is read-only and never alters roles"
+        ) from exc
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT current_user")
+            (proved_user,) = cursor.fetchone()
+    finally:
+        conn.close()
+    if proved_user != "reporting_user":
+        raise RuntimeError(
+            f"TEST_REPORTING_PREAUTH_{phase.upper()}_FAILED: the canonical "
+            f"reporting DSN authenticated as {proved_user!r}, not "
+            "'reporting_user'"
+        )
+
+
 @pytest_asyncio.fixture(scope="session")
-async def ensure_reporting_user_password() -> None:
-    """Align local test reporting_user password with REPORTING_USER_PASSWORD."""
+async def ensure_reporting_user_password():
+    """Prove the canonical reporting credential - never write it.
+
+    Read-only pre-authentication (CTO-AUTH-...-R2C-R1): before any test
+    runs, the task's canonical reporting DSN must already authenticate as
+    reporting_user against the runtime database.  The fixture performs NO
+    global role write of any kind; when tests legitimately mutate the
+    shared reporting identity they own its capture/restore themselves
+    (test_combined_setup_authority_contract / test_runtime_readiness_gate
+    restore the original pg_authid verifier byte-for-byte through the
+    short-lived task cluster-admin connection).  At session end a fresh
+    connection re-proves the same credential - a read-only net-zero drift
+    check, still without altering anything."""
     reporting_password = os.environ.get("REPORTING_USER_PASSWORD")
     if not reporting_password:
         return
     _assert_reporting_role_repair_test_db_guard()
 
-    async with AsyncSessionLocal() as session:
-        try:
-            await session.execute(
-                text("SELECT set_config('mpango.reporting_user_password', :password, false)"),
-                {"password": reporting_password},
-            )
-            await session.execute(
-                text(
-                    """
-                    DO $$
-                    BEGIN
-                        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'reporting_user') THEN
-                            EXECUTE format(
-                                'ALTER ROLE reporting_user WITH PASSWORD %L',
-                                current_setting('mpango.reporting_user_password')
-                            );
-                        END IF;
-                    END $$;
-                    """
-                )
-            )
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-    await async_engine.dispose()
-    try:
-        from database.reporting_session import reporting_engine
+    _prove_reporting_credentials("preauth")
 
-        await reporting_engine.dispose()
-    except ImportError:
-        pass
+    yield
+
+    _prove_reporting_credentials("postsession")
 
 
 class TestLedgerGuardAuthorityError(RuntimeError):

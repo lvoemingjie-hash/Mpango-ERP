@@ -258,9 +258,26 @@ async def _bootstrap_and_revert_to_036(schema: str, db_url: str) -> None:
     finally:
         await gate_engine.dispose()
 
-    await bootstrap_schema(schema, db_url)
+    # R2 C5 / R2C three-identity: bootstrap runs as the RUNTIME app role on
+    # the migration-owned disposable database.  The migration authority
+    # (this yielded URL's identity, the database owner) confers the
+    # product-minimum runtime grants first — mirroring the product
+    # provisioner — then bootstrap connects with the app identity and the
+    # post-bootstrap 036 reverts run as the tenant-schema owner (the app
+    # role), because bootstrap-created tenant objects are app-owned.
+    from sqlalchemy import create_engine as _sync_create_engine
 
-    engine = create_async_engine(async_db_url, echo=False)
+    from tests.order_state_r2.test_migration_c3 import _grant_product_minimum
+
+    grant_engine = _sync_create_engine(_sync_url(db_url), future=True)
+    try:
+        _grant_product_minimum(grant_engine)
+    finally:
+        grant_engine.dispose()
+
+    await bootstrap_schema(schema, db_url.app_url)
+
+    engine = create_async_engine(_async_url(db_url.app_url), echo=False)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with async_session() as db:

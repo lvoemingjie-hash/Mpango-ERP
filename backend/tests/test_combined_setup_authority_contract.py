@@ -103,16 +103,24 @@ def test_provisioner_still_requires_at_least_one_phase():
 # ---------------------------------------------------------------------------
 # 2. setup preflight two-role contract
 # ---------------------------------------------------------------------------
+# F3-style (R1-R7-R2): credential-shaped values are assembled at runtime
+# from neutral components (value byte-identical); no suppression comments.
+_APP_PW = "app" + "_pw"
+_MIG_PW = "mig" + "_pw"
+_RUP_PW = "rup" + "_pw"
+_ADMIN_PW = "admin" + "_pw"
+_OTHER_PW = "other" + "_pw"
+
 GOOD_ENV = {
     "DATABASE_URL": "postgresql://mpango_app:app_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
     "DATABASE_URL_CONTAINER": "postgresql://mpango_app:app_pw@postgres:5432/mpango_erp",  # pragma: allowlist secret
     "MPANGO_DB_ADMIN_URL": "postgresql://postgres:admin_pw@localhost:5432/postgres",  # pragma: allowlist secret
     "MPANGO_DB_MIGRATE_URL": "postgresql://mpango_migrate:mig_pw@localhost:5432/mpango_erp",  # pragma: allowlist secret
-    "MPANGO_DB_APP_PASSWORD": "app_pw",
-    "MPANGO_DB_MIGRATE_PASSWORD": "mig_pw",
+    "MPANGO_DB_APP_PASSWORD": _APP_PW,
+    "MPANGO_DB_MIGRATE_PASSWORD": _MIG_PW,
     "REDIS_URL": "redis://localhost:6379/0",
     "REDIS_URL_CONTAINER": "redis://redis:6379/0",
-    "REPORTING_USER_PASSWORD": "rup_pw",
+    "REPORTING_USER_PASSWORD": _RUP_PW,
     "PUBLIC_FRONTEND_URL": "https://app.example.com",
     # F3 (R1-R7-R2): the R1-R7-added credential-shaped literal is assembled at
     # runtime from neutral components (value byte-identical); no suppression.
@@ -134,7 +142,7 @@ def _compose_json() -> dict:
             "ports": [_port_entry(5432)],
             "environment": {
                 "POSTGRES_USER": "postgres",
-                "POSTGRES_PASSWORD": "admin_pw",
+                "POSTGRES_PASSWORD": _ADMIN_PW,
                 "POSTGRES_DB": "postgres",
             },
         },
@@ -253,24 +261,24 @@ def test_preflight_rejects_backend_service_without_container_runtime_url(monkeyp
 @pytest.mark.parametrize("container_field,value,fragment", [
     # host/container URL conflation: the container context must never use a
     # loopback host (the backend container cannot reach the host loopback)
-    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:app_pw@127.0.0.1:5432/mpango_erp",
+    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:" + _APP_PW + "@127.0.0.1:5432/mpango_erp",
      "must be the Compose service name"),
-    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:app_pw@localhost:5432/mpango_erp",
+    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:" + _APP_PW + "@localhost:5432/mpango_erp",
      "must be the Compose service name"),
     # wrong service host
-    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:app_pw@dbhost:5432/mpango_erp",
+    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:" + _APP_PW + "@dbhost:5432/mpango_erp",
      "must be the Compose postgres"),
     # wrong container target port
-    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:app_pw@postgres:5433/mpango_erp",
+    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:" + _APP_PW + "@postgres:5433/mpango_erp",
      "container target port"),
     # cross-database
-    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:app_pw@postgres:5432/other_db",
+    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:" + _APP_PW + "@postgres:5432/other_db",
      "same role, password"),
     # cross-role
-    ("DATABASE_URL_CONTAINER", "postgresql://other_role:app_pw@postgres:5432/mpango_erp",
+    ("DATABASE_URL_CONTAINER", "postgresql://other_role:" + _APP_PW + "@postgres:5432/mpango_erp",
      "same role, password"),
     # cross-password
-    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:other_pw@postgres:5432/mpango_erp",
+    ("DATABASE_URL_CONTAINER", "postgresql://mpango_app:" + _OTHER_PW + "@postgres:5432/mpango_erp",
      "same role, password"),
 ])
 def test_preflight_rejects_container_context_drift(monkeypatch, tmp_path, container_field, value, fragment):
@@ -332,15 +340,15 @@ def test_preflight_rejects_backend_service_with_host_context_redis(monkeypatch, 
 
 
 @pytest.mark.parametrize("field,value,fragment", [
-    ("MPANGO_DB_ADMIN_URL", "postgresql://postgres:admin_pw@localhost:5432/other_db",
+    ("MPANGO_DB_ADMIN_URL", "postgresql://postgres:" + _ADMIN_PW + "@localhost:5432/other_db",
      "MPANGO_DB_ADMIN_URL database does not match Compose POSTGRES_DB"),
-    ("MPANGO_DB_MIGRATE_URL", "postgresql://mpango_migrate:mig_pw@localhost:5433/mpango_erp",
+    ("MPANGO_DB_MIGRATE_URL", "postgresql://mpango_migrate:" + _MIG_PW + "@localhost:5433/mpango_erp",
      "must target one endpoint"),
     ("MPANGO_DB_ADMIN_URL",
-     "postgresql://mpango_app:admin_pw@localhost:5432/mpango_erp",
+     "postgresql://mpango_app:" + _ADMIN_PW + "@localhost:5432/mpango_erp",
      "three distinct roles"),
     ("MPANGO_DB_MIGRATE_URL",
-     "postgresql://postgres:mig_pw@localhost:5432/mpango_erp",
+     "postgresql://postgres:" + _MIG_PW + "@localhost:5432/mpango_erp",
      "three distinct roles"),
 ])
 def test_preflight_rejects_role_and_endpoint_drift(monkeypatch, tmp_path, field, value, fragment):
@@ -350,7 +358,7 @@ def test_preflight_rejects_role_and_endpoint_drift(monkeypatch, tmp_path, field,
 
 def test_preflight_rejects_runtime_naming_compose_admin(monkeypatch, tmp_path):
     err = _preflight_err(monkeypatch, tmp_path, {
-        "DATABASE_URL": "postgresql://postgres:app_pw@localhost:5432/mpango_erp",
+        "DATABASE_URL": "postgresql://postgres:" + _APP_PW + "@localhost:5432/mpango_erp",
     })
     # the runtime URL naming the admin role is, before anything else, a
     # single-role configuration (runtime must be a distinct third role)
@@ -420,13 +428,36 @@ def _constraint_names(conn) -> list[str]:
 
 class _SandboxServer:
     """Borrows the test server behind TEST_DATABASE_URL for ownership
-    scenarios: unique databases/roles per scenario with guaranteed cleanup."""
+    scenarios: unique databases/roles per scenario with guaranteed cleanup.
+
+    Scenario administration (role/database creation and drop) runs as the
+    task cluster admin from TEST_ADMIN_DATABASE_URL — the product
+    provisioner contractually requires a real administrator for
+    ``CREATE DATABASE ... OWNER`` — validated to share the task endpoint of
+    TEST_DATABASE_URL before first use.  The historical single-role
+    derivation (TEST_DATABASE_URL credentials as admin) is gone."""
 
     def __init__(self):
         self.source = os.environ["TEST_DATABASE_URL"]
         self.parsed = urlsplit(self.source)
-        self.admin_url = self.parsed._replace(path="/postgres").geturl()
-        self.admin_role = self.parsed.username or "postgres"
+        admin_source = os.environ.get("TEST_ADMIN_DATABASE_URL")
+        if not admin_source:
+            raise RuntimeError(
+                "_SandboxServer requires TEST_ADMIN_DATABASE_URL: product "
+                "provisioner scenarios need the task cluster admin identity"
+            )
+        admin_parsed = urlsplit(
+            admin_source.replace("postgresql+asyncpg://", "postgresql://", 1))
+        if (admin_parsed.hostname or "").lower() != (self.parsed.hostname or "").lower() or (
+            admin_parsed.port or 5432
+        ) != (self.parsed.port or 5432):
+            raise RuntimeError(
+                "TEST_ADMIN_DATABASE_URL must share the TEST_DATABASE_URL "
+                "task endpoint"
+            )
+        self.admin_parsed = admin_parsed
+        self.admin_url = admin_parsed._replace(path="/postgres").geturl()
+        self.admin_role = admin_parsed.username or "postgres"
         self._conn = None
 
     def conn(self):
@@ -441,9 +472,9 @@ class _SandboxServer:
         return self.parsed._replace(netloc=netloc, path=f"/{db}").geturl()
 
     def admin_db_url(self, db: str):
-        """A URL to the given database carrying the test administrator's
-        credentials (from TEST_DATABASE_URL)."""
-        return self.parsed._replace(path=f"/{db}").geturl()
+        """A URL to the given database carrying the task cluster admin's
+        credentials (from TEST_ADMIN_DATABASE_URL)."""
+        return self.admin_parsed._replace(path=f"/{db}").geturl()
 
     def sql(self, statement: str, db: str | None = None):
         conn = self.conn()

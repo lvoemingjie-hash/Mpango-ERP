@@ -19,10 +19,27 @@ TEST_SOURCE_URL = "postgresql://test_runner@127.0.0.1:55448/test_dc11t2_source"
 
 
 def _authorize_temp_db(monkeypatch, source_url=TEST_SOURCE_URL):
+    """Arm the guard env for the three-identity topology: one endpoint, one
+    test source database, pairwise-distinct app/migration/operator users."""
+    parsed = urlparse(source_url)
+    base = (
+        f"postgresql://{{user}}@{parsed.hostname}:{parsed.port or 5432}"
+        f"{parsed.path}"
+    )
     monkeypatch.setenv("MPANGO_ENV", "test")
     monkeypatch.setenv("MPANGO_ALLOW_TEMP_DB_CREATE", "1")
-    monkeypatch.setenv("MPANGO_TEMP_DB_ALLOWED_PORTS", "55448")
+    monkeypatch.setenv("MPANGO_TEMP_DB_ALLOWED_PORTS", str(parsed.port or 5432))
     monkeypatch.setenv("TEST_DATABASE_URL", source_url)
+    monkeypatch.setenv(
+        "TEST_MIGRATION_DATABASE_URL", base.format(user="test_migration_runner")
+    )
+    monkeypatch.setenv(
+        "TEST_OPERATOR_DATABASE_URL", base.format(user="test_operator_runner")
+    )
+    # The optional cluster-admin key belongs to the runner profile, not to
+    # these unit fixtures: neutralize it so only the synthetic identities
+    # above are cross-checked.
+    monkeypatch.delenv("TEST_ADMIN_DATABASE_URL", raising=False)
     monkeypatch.delenv("MPANGO_TEMP_DB_ALLOWED_HOSTS", raising=False)
 
 
@@ -89,11 +106,13 @@ def test_alembic_downgrade_restores_current_loop(monkeypatch, isolated_event_loo
 def test_temp_db_guard_accepts_explicit_loopback_test_source(monkeypatch):
     _authorize_temp_db(monkeypatch)
 
-    parsed = async_test_utils._validate_temporary_database_source(TEST_SOURCE_URL)
+    identities, parsed = async_test_utils._validate_temporary_database_source(
+        TEST_SOURCE_URL)
 
     assert parsed.hostname == "127.0.0.1"
     assert parsed.port == 55448
     assert parsed.path == "/test_dc11t2_source"
+    assert set(identities) == {"app", "migration", "operator"}
 
 
 @pytest.mark.parametrize(
@@ -116,9 +135,19 @@ def test_temp_db_guard_rejects_missing_positive_authorization(
 
 def test_temp_db_guard_rejects_source_not_matching_test_database_url(monkeypatch):
     _authorize_temp_db(monkeypatch)
+    # The whole topology moves to the other database so the invariant under
+    # test is precisely the source/key mismatch, not a source-db mismatch.
     monkeypatch.setenv(
         "TEST_DATABASE_URL",
         "postgresql://test_runner@127.0.0.1:55448/test_other_source",
+    )
+    monkeypatch.setenv(
+        "TEST_MIGRATION_DATABASE_URL",
+        "postgresql://test_migration_runner@127.0.0.1:55448/test_other_source",
+    )
+    monkeypatch.setenv(
+        "TEST_OPERATOR_DATABASE_URL",
+        "postgresql://test_operator_runner@127.0.0.1:55448/test_other_source",
     )
 
     with pytest.raises(RuntimeError, match="must match TEST_DATABASE_URL"):
@@ -157,6 +186,65 @@ def test_temporary_database_context_refuses_without_positive_guard(monkeypatch):
     with pytest.raises(RuntimeError, match="explicit opt-in"):
         with async_test_utils.temporary_database_url(TEST_SOURCE_URL, "dc11t2"):
             pytest.fail("an unauthorized temporary database was created")
+
+    # Three-identity topology refusals (CTO R2C): every missing key, wrong
+    # endpoint, duplicated identity and operator-as-source misuse is a named
+    # rejection raised BEFORE any write.
+    monkeypatch.setenv("MPANGO_ALLOW_TEMP_DB_CREATE", "1")
+    monkeypatch.setenv("MPANGO_TEMP_DB_ALLOWED_PORTS", "55448")
+    monkeypatch.delenv("TEST_ADMIN_DATABASE_URL", raising=False)
+    monkeypatch.setenv("TEST_DATABASE_URL", TEST_SOURCE_URL)
+    monkeypatch.setenv(
+        "TEST_MIGRATION_DATABASE_URL",
+        "postgresql://test_migration_runner@127.0.0.1:55448/test_dc11t2_source",
+    )
+    monkeypatch.setenv(
+        "TEST_OPERATOR_DATABASE_URL",
+        "postgresql://test_operator_runner@127.0.0.1:55448/test_dc11t2_source",
+    )
+
+    monkeypatch.delenv("TEST_OPERATOR_DATABASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="missing: the operator identity"):
+        async_test_utils._validate_temporary_database_source(TEST_SOURCE_URL)
+    monkeypatch.setenv(
+        "TEST_OPERATOR_DATABASE_URL",
+        "postgresql://test_operator_runner@127.0.0.1:55448/test_dc11t2_source",
+    )
+
+    monkeypatch.delenv("TEST_MIGRATION_DATABASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="missing: the migration identity"):
+        async_test_utils._validate_temporary_database_source(TEST_SOURCE_URL)
+    monkeypatch.setenv(
+        "TEST_MIGRATION_DATABASE_URL",
+        "postgresql://test_migration_runner@127.0.0.1:55448/test_dc11t2_source",
+    )
+
+    monkeypatch.setenv(
+        "TEST_OPERATOR_DATABASE_URL",
+        "postgresql://test_operator_runner@localhost:55448/test_dc11t2_source",
+    )
+    with pytest.raises(RuntimeError, match="one task endpoint"):
+        async_test_utils._validate_temporary_database_source(TEST_SOURCE_URL)
+    monkeypatch.setenv(
+        "TEST_OPERATOR_DATABASE_URL",
+        "postgresql://test_operator_runner@127.0.0.1:55448/test_dc11t2_source",
+    )
+
+    monkeypatch.setenv(
+        "TEST_MIGRATION_DATABASE_URL",
+        "postgresql://test_runner@127.0.0.1:55448/test_dc11t2_source",
+    )
+    with pytest.raises(RuntimeError, match="pairwise-distinct"):
+        async_test_utils._validate_temporary_database_source(TEST_SOURCE_URL)
+    monkeypatch.setenv(
+        "TEST_MIGRATION_DATABASE_URL",
+        "postgresql://test_migration_runner@127.0.0.1:55448/test_dc11t2_source",
+    )
+
+    with pytest.raises(RuntimeError, match="must not be the operator identity"):
+        async_test_utils._validate_temporary_database_source(
+            "postgresql://test_operator_runner@127.0.0.1:55448/test_dc11t2_source"
+        )
 
 
 def test_temporary_database_context_rejects_untrusted_prefix(monkeypatch):
@@ -266,7 +354,14 @@ def _authorize_real_temp_db(monkeypatch) -> str:
 
 
 def _admin_connection() -> psycopg2.extensions.connection:
-    parsed = urlparse(_real_source_url())
+    """One-shot operator connection for role supply and residue proofs.
+
+    The historical single-role admin (same login as TEST_DATABASE_URL) is
+    gone: role creation/drop now runs as the operator identity while the
+    runtime identity never gains CREATEROLE."""
+    operator_url = os.environ["TEST_OPERATOR_DATABASE_URL"].replace(
+        "postgresql+asyncpg://", "postgresql://", 1)
+    parsed = urlparse(operator_url)
     admin = psycopg2.connect(
         f"postgresql://{parsed.username}:{parsed.password}@"
         f"{parsed.hostname}:{parsed.port or 5432}/postgres"
@@ -285,6 +380,23 @@ def _database_of(url: str) -> str:
     return urlparse(url).path.lstrip("/")
 
 
+def _owner_connection() -> psycopg2.extensions.connection:
+    """Migration-authority (database owner) connection.
+
+    Only the owner may drop a migration-owned temporary database; the
+    operator creates them but DROP DATABASE requires ownership (probed
+    empirically on the task PG16)."""
+    migration_url = os.environ["TEST_MIGRATION_DATABASE_URL"].replace(
+        "postgresql+asyncpg://", "postgresql://", 1)
+    parsed = urlparse(migration_url)
+    owner = psycopg2.connect(
+        f"postgresql://{parsed.username}:{parsed.password}@"
+        f"{parsed.hostname}:{parsed.port or 5432}/postgres"
+    )
+    owner.autocommit = True
+    return owner
+
+
 def _wait_until_gone_then_drop(admin, database: str) -> None:
     for _ in range(100):
         with admin.cursor() as cursor:
@@ -297,8 +409,12 @@ def _wait_until_gone_then_drop(admin, database: str) -> None:
         if not remaining:
             break
         time.sleep(0.1)
-    with admin.cursor() as cursor:
-        cursor.execute(f'DROP DATABASE IF EXISTS "{database}"')
+    owner = _owner_connection()
+    try:
+        with owner.cursor() as cursor:
+            cursor.execute(f'DROP DATABASE IF EXISTS "{database}"')
+    finally:
+        owner.close()
 
 
 @pytest.fixture()

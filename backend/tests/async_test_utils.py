@@ -24,6 +24,25 @@ _TEMP_DATABASE_PREFIX = re.compile(r"^[a-z][a-z0-9_]{2,40}$")
 _TEMP_DB_SESSION_WAIT_SECONDS = 5.0
 _TEMP_DB_SESSION_POLL_SECONDS = 0.05
 
+# Three-identity test topology (CTO-AUTH-MPANGO-PROMOTION-A180050-G1-R2C-
+# TEST-CONTRACT-20260925):
+#   TEST_DATABASE_URL           runtime app identity (never gains CREATEDB/
+#                               CREATEROLE/public CREATE)
+#   TEST_MIGRATION_DATABASE_URL migration authority (database owner; Alembic
+#                               and migration DDL run under this identity)
+#   TEST_OPERATOR_DATABASE_URL  one-shot operator for precise create/drop of
+#                               disposable databases and task role supply
+#   TEST_ADMIN_DATABASE_URL     optional task cluster admin for product
+#                               provisioner scenarios that contractually
+#                               require a real administrator; never a test
+#                               data source
+# All keys must share one task endpoint, one test_-marked source database
+# and pairwise-distinct users; a missing required key, a wrong endpoint or a
+# wrong identity is rejected by name BEFORE any write.
+_MIGRATION_URL_ENV = "TEST_MIGRATION_DATABASE_URL"
+_OPERATOR_URL_ENV = "TEST_OPERATOR_DATABASE_URL"
+_ADMIN_URL_ENV = "TEST_ADMIN_DATABASE_URL"
+
 
 def _current_or_new_loop() -> asyncio.AbstractEventLoop:
     policy = asyncio.get_event_loop_policy()
@@ -79,24 +98,8 @@ def _connection_identity(url: str) -> tuple[object, ...]:
     )
 
 
-def _validate_temporary_database_source(source_url: str):
-    """Require positive authorization before destructive database operations."""
-    if os.environ.get("MPANGO_ENV") not in {"test", "testing"}:
-        raise RuntimeError("temporary database creation requires a test environment")
-    if os.environ.get("MPANGO_ALLOW_TEMP_DB_CREATE") != "1":
-        raise RuntimeError("temporary database creation requires explicit opt-in")
-
-    configured_url = os.environ.get("TEST_DATABASE_URL")
-    if not configured_url:
-        raise RuntimeError("temporary database creation requires TEST_DATABASE_URL")
-    if _connection_identity(configured_url) != _connection_identity(source_url):
-        raise RuntimeError("temporary database source must match TEST_DATABASE_URL")
-
-    sync_url = source_url.replace("postgresql+asyncpg://", "postgresql://", 1)
-    parsed = urlparse(sync_url)
-    if parsed.scheme != "postgresql":
-        raise RuntimeError("temporary database source must use PostgreSQL")
-
+def _per_url_shape_checks(parsed, label: str, *, require_test_name: bool = True) -> str:
+    """Apply the per-URL safety shape rules to one sanctioned identity URL."""
     allowed_hosts = set(_LOOPBACK_HOSTS)
     allowed_hosts.update(
         host.strip().lower()
@@ -104,7 +107,7 @@ def _validate_temporary_database_source(source_url: str):
         if host.strip()
     )
     if (parsed.hostname or "").lower() not in allowed_hosts:
-        raise RuntimeError("temporary database source host is not explicitly allowed")
+        raise RuntimeError(f"{label} host is not explicitly allowed")
 
     port = parsed.port or 5432
     allowed_ports = {
@@ -113,15 +116,134 @@ def _validate_temporary_database_source(source_url: str):
         if value.strip()
     }
     if str(port) not in allowed_ports:
-        raise RuntimeError("temporary database source port is not explicitly allowed")
+        raise RuntimeError(f"{label} port is not explicitly allowed")
 
     source_database = parsed.path.lstrip("/").lower()
-    if not _TEST_DATABASE_NAME.fullmatch(source_database):
-        raise RuntimeError("temporary database source must have an explicit test name")
+    if require_test_name and not _TEST_DATABASE_NAME.fullmatch(source_database):
+        raise RuntimeError(f"{label} must have an explicit test name")
     username = (parsed.username or "").lower()
     if username == "mpango" or "prod" in username:
-        raise RuntimeError("temporary database source user is not test-safe")
-    return parsed
+        raise RuntimeError(f"{label} user is not test-safe")
+    return username
+
+
+def _sanctioned_test_identities() -> dict[str, tuple[object, str]]:
+    """Resolve and cross-check the sanctioned test identities.
+
+    Returns {"app": (parsed, raw), "migration": ..., "operator": ...[, "admin"]:
+    ...} where parsed is the sync-style urlparse of each key.  Every failure
+    mode is a named refusal raised BEFORE any write.
+    """
+    raws = {
+        "app": os.environ.get("TEST_DATABASE_URL"),
+        "migration": os.environ.get(_MIGRATION_URL_ENV),
+        "operator": os.environ.get(_OPERATOR_URL_ENV),
+        "admin": os.environ.get(_ADMIN_URL_ENV),
+    }
+    required = ("app", "migration", "operator")
+    for label in required:
+        if not raws[label]:
+            raise RuntimeError(
+                "temporary database topology requires TEST_DATABASE_URL, "
+                f"{_MIGRATION_URL_ENV} and {_OPERATOR_URL_ENV} to be set "
+                f"(missing: the {label} identity)"
+            )
+    raws = {label: raw for label, raw in raws.items() if raw}
+
+    identities: dict[str, tuple[object, str]] = {}
+    for label, raw in raws.items():
+        sync_url = raw.replace("postgresql+asyncpg://", "postgresql://", 1)
+        parsed = urlparse(sync_url)
+        if parsed.scheme != "postgresql":
+            raise RuntimeError(f"{label} identity must use PostgreSQL")
+        if label == "admin":
+            # The cluster admin targets the maintenance database; it is
+            # never a test data source, so the test-name rule does not
+            # apply, but an explicit maintenance target is mandatory.
+            if parsed.path.lstrip("/") != "postgres":
+                raise RuntimeError(
+                    "admin identity must target the /postgres maintenance "
+                    "database"
+                )
+            _per_url_shape_checks(
+                parsed, f"{label} identity", require_test_name=False)
+        else:
+            _per_url_shape_checks(parsed, f"{label} identity")
+        identities[label] = (parsed, raw)
+
+    endpoints = {
+        label: ((parsed.hostname or "").lower(), parsed.port or 5432)
+        for label, (parsed, _) in identities.items()
+    }
+    if len(set(endpoints.values())) != 1:
+        raise RuntimeError(
+            "temporary database topology requires one task endpoint: the "
+            "app, migration and operator identities disagree on host/port"
+        )
+    databases = {
+        parsed.path.lstrip("/").lower()
+        for label, (parsed, _) in identities.items()
+        if label != "admin"
+    }
+    if len(databases) != 1:
+        raise RuntimeError(
+            "temporary database topology requires one test source database: "
+            "the app, migration and operator identities name different "
+            "databases"
+        )
+    users = {
+        label: (parsed.username or "").lower()
+        for label, (parsed, _) in identities.items()
+    }
+    if len(set(users.values())) != len(users):
+        raise RuntimeError(
+            "temporary database topology requires pairwise-distinct users: "
+            "app, migration authority, operator and cluster admin must be "
+            "different roles"
+        )
+    return identities
+
+
+def _validate_temporary_database_source(source_url: str):
+    """Require positive authorization before destructive database operations."""
+    if os.environ.get("MPANGO_ENV") not in {"test", "testing"}:
+        raise RuntimeError("temporary database creation requires a test environment")
+    if os.environ.get("MPANGO_ALLOW_TEMP_DB_CREATE") != "1":
+        raise RuntimeError("temporary database creation requires explicit opt-in")
+
+    identities = _sanctioned_test_identities()
+
+    admin_raw = os.environ.get(_ADMIN_URL_ENV)
+    if admin_raw and _connection_identity(source_url) == _connection_identity(
+        admin_raw
+    ):
+        raise RuntimeError(
+            "temporary database source must not be the cluster-admin "
+            "identity: the admin serves product provisioner scenarios, it "
+            "is never a test data source"
+        )
+    if _connection_identity(source_url) == _connection_identity(
+        os.environ[_OPERATOR_URL_ENV]
+    ):
+        raise RuntimeError(
+            "temporary database source must not be the operator identity: "
+            "the operator creates and drops databases, it is never a test "
+            "data source"
+        )
+    sanctioned_sources = {
+        _connection_identity(os.environ["TEST_DATABASE_URL"]),
+        _connection_identity(os.environ[_MIGRATION_URL_ENV]),
+    }
+    if _connection_identity(source_url) not in sanctioned_sources:
+        raise RuntimeError(
+            "temporary database source must match TEST_DATABASE_URL or "
+            f"{_MIGRATION_URL_ENV}"
+        )
+
+    parsed = urlparse(source_url.replace("postgresql+asyncpg://", "postgresql://", 1))
+    if parsed.scheme != "postgresql":
+        raise RuntimeError("temporary database source must use PostgreSQL")
+    return identities, parsed
 
 
 class TemporaryDatabaseTeardownError(RuntimeError):
@@ -187,39 +309,81 @@ def _teardown_temporary_database(admin, database: str) -> None:
             )
 
 
+class TemporaryDatabaseURL(str):
+    """Migration-authority URL of a disposable, migration-owned database.
+
+    The ``str`` value carries the MIGRATION identity (the database owner) so
+    existing consumers that run Alembic / migration DDL on the yielded URL
+    keep working unchanged.  ``app_url`` carries the runtime app identity
+    (asyncpg scheme) on the same database for bootstrap/runtime consumers.
+    """
+
+    app_url: str
+
+    def __new__(cls, migration_url: str, app_url: str) -> "TemporaryDatabaseURL":
+        self = super().__new__(cls, migration_url)
+        self.app_url = app_url
+        return self
+
+
 @contextmanager
 def temporary_database_url(source_url: str, prefix: str):
-    """Create and remove a disposable database on an explicit test server.
+    """Create and remove a disposable migration-owned database.
 
-    If the test body raises and cleanup also fails, both exact exception
-    objects are delivered in one BaseExceptionGroup so the original test
-    failure is never masked. The admin connection always closes.
+    The one-shot operator creates the database with ``OWNER <migration
+    authority>``; the yielded URL is the migration identity on that database
+    (``.app_url`` is the runtime identity).  Teardown runs as the migration
+    authority — the database owner — so DROP DATABASE needs no privilege
+    escalation.  If the test body raises and cleanup also fails, both exact
+    exception objects are delivered in one BaseExceptionGroup so the original
+    test failure is never masked.  The admin connections always close.
     """
     import psycopg2
     from psycopg2 import sql
 
-    parsed = _validate_temporary_database_source(source_url)
+    identities, parsed = _validate_temporary_database_source(source_url)
     if not _TEMP_DATABASE_PREFIX.fullmatch(prefix):
         raise RuntimeError("temporary database prefix is invalid")
 
+    migration_parsed = identities["migration"][0]
+    app_parsed = identities["app"][0]
+    migration_user = (migration_parsed.username or "").lower()
+
     database = f"test_{prefix}_{uuid4().hex[:12]}"
-    admin_url = urlunparse(parsed._replace(path="/postgres"))
-    admin = psycopg2.connect(admin_url)
-    admin.autocommit = True
+    operator_admin_url = urlunparse(identities["operator"][0]._replace(path="/postgres"))
+    migration_admin_url = urlunparse(migration_parsed._replace(path="/postgres"))
+
+    operator = psycopg2.connect(operator_admin_url)
+    operator.autocommit = True
     created = False
     try:
-        with admin.cursor() as cursor:
-            cursor.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database)))
+        with operator.cursor() as cursor:
+            cursor.execute(
+                sql.SQL("CREATE DATABASE {} OWNER {}").format(
+                    sql.Identifier(database), sql.Identifier(migration_user)
+                )
+            )
         created = True
+        migration_url = urlunparse(migration_parsed._replace(path=f"/{database}"))
+        app_url = urlunparse(
+            app_parsed._replace(
+                scheme="postgresql+asyncpg", path=f"/{database}"
+            )
+        )
         body_exc: BaseException | None = None
         try:
-            yield urlunparse(parsed._replace(path=f"/{database}"))
+            yield TemporaryDatabaseURL(migration_url, app_url)
         except BaseException as exc:
             body_exc = exc
         cleanup_exc: BaseException | None = None
         try:
             if created:
-                _teardown_temporary_database(admin, database)
+                owner = psycopg2.connect(migration_admin_url)
+                owner.autocommit = True
+                try:
+                    _teardown_temporary_database(owner, database)
+                finally:
+                    owner.close()
         except BaseException as exc:
             cleanup_exc = exc
         if body_exc is not None and cleanup_exc is not None:
@@ -232,4 +396,4 @@ def temporary_database_url(source_url: str, prefix: str):
         if cleanup_exc is not None:
             raise cleanup_exc
     finally:
-        admin.close()
+        operator.close()

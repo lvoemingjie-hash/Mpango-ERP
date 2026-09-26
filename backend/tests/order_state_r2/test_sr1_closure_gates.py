@@ -1158,12 +1158,33 @@ async def test_sr1_f4_soft_deleted_invalid_row_is_not_history(
 
 
 def _r2f_admin_url(source: str) -> str:
-    """The maintenance-database URL carrying the same credentials as
-    TEST_DATABASE_URL: the shared reporting pre-state is cluster-global and
-    is read and restored through the maintenance database."""
+    """The maintenance-database URL carrying the short-lived task cluster
+    admin credentials (TEST_ADMIN_DATABASE_URL): the shared reporting
+    pre-state is cluster-global and its capture/restore reads and writes
+    the pg_authid verifier, which only the task-dedicated disposable
+    cluster's admin may do (CTO-AUTH-...-R2C-R1 sanctioned path: explicit,
+    short-lived, never injected into app/runtime, only the two synthetic
+    reporting roles, never printing values)."""
+    import os
     from urllib.parse import urlsplit
 
-    return urlsplit(source)._replace(path="/postgres").geturl()
+    admin_url = os.environ.get("TEST_ADMIN_DATABASE_URL")
+    if not admin_url:
+        raise RuntimeError(
+            "reporting pre-state capture requires TEST_ADMIN_DATABASE_URL "
+            "(the short-lived task cluster admin identity)")
+    admin_url = admin_url.replace(
+        "postgresql+asyncpg://", "postgresql://", 1)
+    admin_parsed = urlsplit(admin_url)
+    source_parsed = urlsplit(source.replace(
+        "postgresql+asyncpg://", "postgresql://", 1))
+    if (admin_parsed.hostname or "").lower() != (source_parsed.hostname or "").lower() or (
+        admin_parsed.port or 5432
+    ) != (source_parsed.port or 5432):
+        raise RuntimeError(
+            "TEST_ADMIN_DATABASE_URL must share the TEST_DATABASE_URL "
+            "task endpoint")
+    return admin_parsed._replace(path="/postgres").geturl()
 
 
 def _r2f_connect(admin_url: str):
@@ -1358,15 +1379,16 @@ def test_sr1_f4_039_preflight_rejects_non_finite_amounts():
     message and zero writes.
 
     R2F (CTO-AUTH-ORDER-R2-DBAUTH-R2F-SR1F4-REPORTING-STATE-ISOLATION-
-    2026-09-21): the alembic run executes as the administrator named by
-    TEST_DATABASE_URL, so migration 011 creates the CLUSTER-GLOBAL
-    reporting_role and reporting_user when they are absent - with the
-    running session as the membership grantor.  The shared pre-state is
-    therefore captured read-only BEFORE the temporary database is created,
-    and an unconditional restore puts it back AFTER the temporary database
-    has been dropped: an absent pre-state is restored as absence, an
-    existing identity item by item.  A body failure and a restore failure
-    are both surfaced, never one at the cost of the other."""
+    2026-09-21): the alembic run executes as the migration authority
+    (TEST_MIGRATION_DATABASE_URL identity on the disposable database), so
+    migration 011 creates the CLUSTER-GLOBAL reporting_role and
+    reporting_user when they are absent - with the running session as the
+    membership grantor.  The shared pre-state is therefore captured
+    read-only BEFORE the temporary database is created (by the one-shot
+    operator), and an unconditional restore puts it back AFTER the
+    temporary database has been dropped: an absent pre-state is restored
+    as absence, an existing identity item by item.  A body failure and a
+    restore failure are both surfaced, never one at the cost of the other."""
     import os
 
     if os.environ.get("MPANGO_ALLOW_TEMP_DB_CREATE") != "1":

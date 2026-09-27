@@ -41,9 +41,25 @@ R1-R3 hardening:
   The refusal is proven by intercepting-spy tests: admin/migrate/app
   endpoint mismatches each produce ZERO asyncpg.connect calls.
 
+G1-R2E-P1 tenant DDL authority capability (CTO-AUTH-MPANGO-PROMOTION-G1-R2E-
+P1-AUTHORITY-20260926):
+- Migrations 037/038 must read and alter app-owned tenant tables.  The
+  migration authority stays the database/public-schema owner and gains ONLY
+  a one-way, non-inheriting, SET-only membership in the runtime role:
+  ``GRANT app TO migrate WITH INHERIT FALSE, SET TRUE`` (admin-executed in
+  phase 1, idempotent, read-only verifiable via ``--verify``).
+- ``INHERIT FALSE`` keeps the membership invisible to privilege-filtered
+  views and grants nothing by default; the migrations open the narrowest
+  explicit ``SET ROLE`` windows around tenant reads/DDL and must restore the
+  migration identity afterwards (SET ROLE survives transaction rollback).
+- The reverse membership (runtime member of the migration authority) is
+  never created and is verified absent; the runtime role keeps
+  NOCREATEROLE/NOSUPERUSER and no CREATE on schema public.
+
 Topology (fresh PG15+/PG16 cluster):
     step 1 (admin, superuser): create roles + application database
-                               owned by the migration authority
+                               owned by the migration authority + the
+                               one-way tenant-DDL capability membership
     step 2 (migration authority): run `alembic upgrade head`  (not this tool)
     step 3 (migration authority): apply minimum object grants (--apply-grants)
     step 4 (any operator):        --verify
@@ -163,6 +179,20 @@ MINIMUM_GRANT_STATEMENTS: tuple[str, ...] = (
 DATABASE_SCOPE_GRANT_TEMPLATES: tuple[str, ...] = (
     'GRANT CONNECT ON DATABASE "{database}" TO "{app_role}"',
     'GRANT CREATE ON DATABASE "{database}" TO "{app_role}"',
+)
+
+# G1-R2E-P1: the ONE-WAY tenant-DDL capability.  Executed by the ADMIN only,
+# idempotent (re-issuing normalizes the membership options), and read-only
+# verifiable through --verify.  Direction is frozen: the migration authority
+# is a MEMBER OF the runtime role (migrate may SET ROLE app to touch
+# app-owned tenant objects inside explicit migration windows); the runtime
+# role never becomes a member of the migration authority, never gains
+# CREATEROLE/SUPERUSER/public CREATE, and never receives tenant ownership.
+# INHERIT FALSE keeps the membership non-inheriting: privilege-filtered
+# views stay blind for the migration identity and no runtime privilege is
+# conferred by default.  SET TRUE is what the narrow migration windows use.
+MIGRATION_TENANT_AUTHORITY_GRANT_TEMPLATE = (
+    'GRANT "{app_role}" TO "{migrate_role}" WITH INHERIT FALSE, SET TRUE'
 )
 
 
@@ -523,6 +553,48 @@ class Provisioner:
             f"(NOSUPERUSER NOCREATEDB {attribute_summary})"
         )
 
+    async def _ensure_tenant_authority_capability(self, admin) -> None:
+        """Apply the one-way tenant-DDL capability membership (admin-executed,
+        idempotent).
+
+        ``GRANT app TO migrate WITH INHERIT FALSE, SET TRUE`` — never the
+        reverse direction, never inheriting, never with ADMIN/GRANT options.
+        A pre-existing membership with exactly these options is left as-is;
+        one with different options is normalized by re-issuing the GRANT
+        (PostgreSQL updates membership options in place).
+        """
+        capability = MIGRATION_TENANT_AUTHORITY_GRANT_TEMPLATE.format(
+            app_role=self.app_role, migrate_role=self.migrate_role,
+        )
+        _assert_sanctioned_sql(capability)
+        existing = await admin.fetchrow(
+            "SELECT am.admin_option, am.inherit_option, am.set_option "
+            "FROM pg_auth_members am "
+            "JOIN pg_roles g ON g.oid = am.roleid "
+            "JOIN pg_roles m ON m.oid = am.member "
+            "WHERE g.rolname = $1 AND m.rolname = $2",
+            self.app_role, self.migrate_role,
+        )
+        if existing is not None and (
+            not existing["admin_option"]
+            and not existing["inherit_option"]
+            and existing["set_option"]
+        ):
+            print(
+                f"[capability] one-way tenant-DDL membership "
+                f"{self.migrate_role} member of {self.app_role} already "
+                f"exists (INHERIT FALSE, SET TRUE)"
+            )
+            return
+        await admin.execute(capability)
+        normalized = "normalized options for" if existing else "created"
+        print(
+            f"[capability] {normalized} one-way tenant-DDL membership: "
+            f"{self.migrate_role} is a member of {self.app_role} with "
+            f"INHERIT FALSE, SET TRUE (default non-inheriting; migrations "
+            f"use explicit SET ROLE windows)"
+        )
+
     async def create_roles_and_database(self, app_password: str | None,
                                         migrate_password: str | None) -> None:
         import asyncpg
@@ -570,6 +642,7 @@ class Provisioner:
                 admin, self.app_role, app_password,
                 RUNTIME_ROLE_DDL_TEMPLATE,
             )
+            await self._ensure_tenant_authority_capability(admin)
             if db_state["database_exists"]:
                 print(f"[database] {self.database} already exists "
                       f"(owned by the migration authority)")
@@ -694,6 +767,63 @@ class Provisioner:
                 db_row is not None and db_row["owner"] == self.migrate_role,
                 owner=db_row["owner"] if db_row else None,
             )
+            # G1-R2E-P1: read-only proof of the one-way tenant-DDL capability
+            # (pure pg_auth_members/pg_has_role catalog reads; PG16 exposes
+            # inherit_option/set_option on membership rows).
+            capability_row = await admin.fetchrow(
+                "SELECT am.admin_option, am.inherit_option, am.set_option, "
+                "pg_has_role($2, $1, 'SET') AS migrate_can_set, "
+                "pg_has_role($2, $1, 'USAGE') AS migrate_inherits "
+                "FROM pg_auth_members am "
+                "JOIN pg_roles g ON g.oid = am.roleid "
+                "JOIN pg_roles m ON m.oid = am.member "
+                "WHERE g.rolname = $1 AND m.rolname = $2",
+                self.app_role, self.migrate_role,
+            )
+            capability_ok = (
+                capability_row is not None
+                and not capability_row["admin_option"]
+                and not capability_row["inherit_option"]
+                and bool(capability_row["set_option"])
+                and bool(capability_row["migrate_can_set"])
+                and not bool(capability_row["migrate_inherits"])
+            )
+            _record(
+                "migration_tenant_authority_capability",
+                capability_ok,
+                membership=(
+                    dict(capability_row) if capability_row is not None else None
+                ),
+                reason=(
+                    "" if capability_ok
+                    else "one-way migration->runtime membership with INHERIT "
+                         "FALSE, SET TRUE is missing or malformed (re-run "
+                         "phase 1 provisioning)"
+                ),
+            )
+            reverse = await admin.fetchrow(
+                "SELECT pg_has_role($1, $2, 'MEMBER') AS member, "
+                "pg_has_role($1, $2, 'USAGE') AS usage, "
+                "pg_has_role($1, $2, 'SET') AS set_role",
+                self.app_role, self.migrate_role,
+            )
+            reverse_ok = (
+                reverse is not None
+                and not bool(reverse["member"])
+                and not bool(reverse["usage"])
+                and not bool(reverse["set_role"])
+            )
+            _record(
+                "runtime_no_reverse_authority_membership",
+                reverse_ok,
+                reverse=dict(reverse) if reverse is not None else None,
+                reason=(
+                    "" if reverse_ok
+                    else "reverse membership detected: the runtime role must "
+                         "never hold MEMBER/USAGE/SET privileges of the "
+                         "migration authority"
+                ),
+            )
         finally:
             await admin.close()
         db_owner = db_row["owner"] if db_row else None
@@ -780,7 +910,8 @@ class Provisioner:
             )
             member_of_authority = await app.fetchval(
                 "SELECT pg_has_role($1, $2, 'MEMBER') "
-                "OR pg_has_role($1, $2, 'USAGE')",
+                "OR pg_has_role($1, $2, 'USAGE') "
+                "OR pg_has_role($1, $2, 'SET')",
                 self.app_role, self.migrate_role,
             )
             _record(

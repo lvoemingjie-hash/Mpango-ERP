@@ -734,6 +734,129 @@ def _verify_receipt_sequences_catalog(bind, schema: str, failures: list[str]) ->
 
 
 # ---------------------------------------------------------------------------
+# G1-R2E-P1 tenant DDL authority windows
+# ---------------------------------------------------------------------------
+
+TENANT_AUTHORITY_ROLE = "mpango_app"
+
+
+class TenantDDLAuthorityError(RuntimeError):
+    """Named refusal: the migration identity cannot lawfully read or alter
+    app-owned tenant objects (missing one-way capability, mixed tenant
+    ownership, or a SET ROLE leaked from an earlier window)."""
+
+
+def _open_tenant_ddl_authority(bind, schemas: list[str], purpose: str):
+    """Open the narrowest SET ROLE window for tenant reads/DDL.
+
+    Returns the pre-window ``current_user`` (the window token) when the
+    one-way capability window is required, or ``None`` when the current
+    identity already holds direct CREATE authority on every listed tenant
+    schema (legacy single-role / superuser shapes) and needs no window.
+
+    Fails closed with a NAMED error before touching any tenant object when
+    a previous window's SET ROLE leaked (``current_user != session_user``),
+    when tenant schema ownership is mixed, or when the admin-provisioned
+    one-way capability (GRANT app TO migrate WITH INHERIT FALSE, SET TRUE)
+    is absent.
+    """
+    identity = bind.execute(sa.text("SELECT current_user, session_user")).fetchone()
+    current_user, session_user = identity[0], identity[1]
+    if current_user != session_user:
+        raise TenantDDLAuthorityError(
+            f"tenant DDL authority window for {purpose!r} refused: "
+            f"current_user {current_user!r} != session_user "
+            f"{session_user!r} — a SET ROLE from an earlier window leaked "
+            "and must be reset before any further tenant work"
+        )
+    authority = bind.execute(sa.text(
+        "SELECT n.nspname, has_schema_privilege(current_user, n.nspname, "
+        "'CREATE') FROM pg_catalog.pg_namespace n "
+        "WHERE n.nspname = ANY(:schemas) ORDER BY n.nspname"
+    ), {"schemas": list(schemas)}).fetchall()
+    if not authority:
+        raise TenantDDLAuthorityError(
+            f"tenant DDL authority window for {purpose!r} refused: none of "
+            f"the tenant schemas {sorted(schemas)} exist in pg_namespace "
+            "(registry/catalog drift)"
+        )
+    without_create = [row[0] for row in authority if not row[1]]
+    if not without_create:
+        return None
+    with_create = [row[0] for row in authority if row[1]]
+    if with_create:
+        raise TenantDDLAuthorityError(
+            f"tenant DDL authority window for {purpose!r} refused: mixed "
+            f"tenant ownership — CREATE held on {with_create} but not on "
+            f"{without_create}; sanctioned topologies are uniformly owned"
+        )
+    can_set = bind.execute(sa.text(
+        "SELECT pg_has_role(current_user, :role, 'SET')"
+    ), {"role": TENANT_AUTHORITY_ROLE}).scalar()
+    if not can_set:
+        raise TenantDDLAuthorityError(
+            f"tenant DDL authority for {purpose!r} refused: identity "
+            f"{current_user!r} holds no CREATE on tenant schema(s) "
+            f"{without_create} and cannot SET ROLE "
+            f"{TENANT_AUTHORITY_ROLE!r} — the one-way migration tenant-DDL "
+            f"capability (GRANT {TENANT_AUTHORITY_ROLE} TO {current_user} "
+            "WITH INHERIT FALSE, SET TRUE, applied by the admin in "
+            "provisioning phase 1) is absent on this deployment"
+        )
+    bind.execute(sa.text(f'SET ROLE "{TENANT_AUTHORITY_ROLE}"'))
+    bound = bind.execute(sa.text("SELECT current_user")).scalar()
+    if bound != TENANT_AUTHORITY_ROLE:
+        raise TenantDDLAuthorityError(
+            f"tenant DDL authority window for {purpose!r} refused: SET ROLE "
+            f"bound current_user {bound!r}, expected "
+            f"{TENANT_AUTHORITY_ROLE!r}"
+        )
+    return current_user
+
+
+def _close_tenant_ddl_authority(bind, token, purpose: str) -> None:
+    """Close the window: RESET ROLE and prove the migration identity is back.
+
+    Called from ``finally`` — SET ROLE survives transaction rollback, so the
+    reset must run even when the window body failed.
+    """
+    if token is None:
+        return
+    bind.execute(sa.text("RESET ROLE"))
+    restored = bind.execute(sa.text("SELECT current_user")).scalar()
+    if restored != token:
+        raise TenantDDLAuthorityError(
+            f"tenant DDL authority window for {purpose!r} failed to restore "
+            f"current_user {token!r} (now {restored!r})"
+        )
+
+
+def _tenant_ddl_authority_window(bind, schemas: list[str], purpose: str, body) -> None:
+    """Run ``body()`` under the narrowest tenant-authority window.
+
+    The body runs inside a SAVEPOINT so that a body failure leaves the
+    enclosing Alembic transaction in a usable state for the mandatory
+    identity reset (a plain RESET ROLE is refused with 25P02 inside an
+    aborted transaction); the original exception is always re-raised and
+    Alembic's outer rollback still discards every partial write.
+    """
+    token = _open_tenant_ddl_authority(bind, schemas, purpose)
+    if token is None:
+        body()
+        return
+    try:
+        nested = bind.begin_nested()
+        try:
+            body()
+            nested.commit()
+        except Exception:
+            nested.rollback()
+            raise
+    finally:
+        _close_tenant_ddl_authority(bind, token, purpose)
+
+
+# ---------------------------------------------------------------------------
 # per-tenant mutations
 # ---------------------------------------------------------------------------
 
@@ -897,20 +1020,32 @@ def _reconcile_permissions(bind, schema: str) -> None:
 # upgrade / downgrade
 # ---------------------------------------------------------------------------
 
+def _apply_tenant_mutations(bind, schema: str) -> None:
+    _widen_transaction_id(bind, schema)
+    _add_receipt_number(bind, schema)
+    _create_payment_declarations(bind, schema)
+    _create_receipt_sequences(bind, schema)
+    _reconcile_permissions(bind, schema)
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     _ensure_registry_tables_exist(bind)
     rows = _registered_tenants(bind)
     _validate_registry_rows(bind, rows)
-    _preflight_semantic(bind, rows)
 
+    tenant_schemas = [row["tenant_schema"] for row in rows]
+    if tenant_schemas:
+        _tenant_ddl_authority_window(
+            bind, tenant_schemas, "037 semantic preflight tenant reads",
+            lambda: _preflight_semantic(bind, rows),
+        )
     for row in rows:
         schema = row["tenant_schema"]
-        _widen_transaction_id(bind, schema)
-        _add_receipt_number(bind, schema)
-        _create_payment_declarations(bind, schema)
-        _create_receipt_sequences(bind, schema)
-        _reconcile_permissions(bind, schema)
+        _tenant_ddl_authority_window(
+            bind, [schema], f"037 tenant mutations {schema}",
+            lambda schema=schema: _apply_tenant_mutations(bind, schema),
+        )
 
 
 def downgrade() -> None:

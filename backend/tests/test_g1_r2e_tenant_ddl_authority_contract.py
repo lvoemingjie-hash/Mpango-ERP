@@ -1,0 +1,760 @@
+"""G1-R2E-P1 tenant-DDL authority contract (new file, existing tests untouched).
+
+Authorization: CTO-AUTH-MPANGO-PROMOTION-G1-R2E-P1-AUTHORITY-20260926.
+
+Contract under test (037/038 + provisioner one-way capability):
+  1. existence probes read pg_catalog, so genuinely-missing tenant tables are
+     rejected BY NAME and never confused with privilege-filtered blindness;
+  2. the migration authority reaches app-owned tenant objects ONLY through
+     the admin-provisioned one-way membership (GRANT mpango_app TO
+     mpango_migrate WITH INHERIT FALSE, SET TRUE) exercised inside the
+     narrowest SET ROLE windows, which restore the migration identity after
+     every window end AND after exception rollback (SET ROLE survives
+     ROLLBACK — proven directly on a live connection);
+  3. the capability must NOT confer anything by default: privilege-filtered
+     views stay blind and tenant reads stay 42501 for the bare migration
+     identity; the runtime role gains nothing (no SET ROLE escalation to the
+     authority, no public CREATE, no reverse membership).
+
+Every scenario runs in its own disposable migration-owned database via the
+sanctioned three-identity temporary-database harness; cluster-global
+mutations (capability revocation, reverse membership) are always restored
+through the PRODUCT provisioner path in ``finally`` blocks.
+"""
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
+
+import pytest
+from sqlalchemy import create_engine, text
+
+from tests.async_test_utils import temporary_database_url
+
+BACKEND = Path(__file__).resolve().parents[1]
+PROVISIONER = BACKEND / "scripts" / "provision_runtime_db_roles.py"
+MIGRATION_038 = BACKEND / "alembic" / "versions" / "038_catalog_identity_vertical_slice.py"
+REV_036 = "036_retailer_mvp_identity"
+REV_038 = "038_catalog_identity_vertical_slice"
+MIGRATE_ROLE = "mpango_migrate"
+APP_ROLE = "mpango_app"
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("MPANGO_ALLOW_TEMP_DB_CREATE") != "1",
+    reason="set MPANGO_ALLOW_TEMP_DB_CREATE=1 for migration database tests",
+)
+
+
+def _admin_url() -> str:
+    url = os.environ.get("TEST_ADMIN_DATABASE_URL")
+    if not url:
+        pytest.fail(
+            "this contract requires TEST_ADMIN_DATABASE_URL (cluster admin on "
+            "the maintenance database) for the product provisioner phases")
+    return url
+
+
+def _retarget(url: str, database: str) -> str:
+    parsed = urlsplit(url.replace("postgresql+asyncpg://", "postgresql://", 1))
+    return urlunsplit(parsed._replace(path=f"/{database}"))
+
+
+def _db_name(db_url) -> str:
+    return urlsplit(str(db_url).replace(
+        "postgresql+asyncpg://", "postgresql://", 1)).path.lstrip("/")
+
+
+def _run(argv: list[str], env_extra: dict[str, str], cwd: str | None = None) -> dict:
+    env = dict(os.environ)
+    env.update(env_extra)
+    proc = subprocess.run(
+        argv, cwd=cwd, env=env, capture_output=True, text=True, timeout=600)
+    return {"rc": proc.returncode,
+            "stdout": proc.stdout, "stderr": proc.stderr}
+
+
+def _provisioner_env_for_name(database: str) -> dict[str, str]:
+    """Provisioner URLs targeting a NAMED database (bootstrap/restore runs)."""
+    return {
+        "MPANGO_DB_ADMIN_URL": _admin_url(),
+        "MPANGO_DB_MIGRATE_URL": _retarget(
+            os.environ["TEST_MIGRATION_DATABASE_URL"], database),
+        "MPANGO_DB_APP_URL": _retarget(
+            os.environ["TEST_DATABASE_URL"], database),
+    }
+
+
+def _provisioner_env(db_url) -> dict[str, str]:
+    """Provisioner URLs for an existing disposable database (the harness
+    yields the migration-identity URL; .app_url carries the runtime)."""
+    return {
+        "MPANGO_DB_ADMIN_URL": _admin_url(),
+        "MPANGO_DB_MIGRATE_URL": str(db_url).replace(
+            "postgresql+asyncpg://", "postgresql://", 1),
+        "MPANGO_DB_APP_URL": str(db_url.app_url).replace(
+            "postgresql+asyncpg://", "postgresql://", 1),
+    }
+
+
+def _alembic_env(db_url) -> dict[str, str]:
+    return {"DATABASE_URL": str(db_url).replace(
+        "postgresql://", "postgresql+asyncpg://", 1)}
+
+
+def _alembic(db_url, revision: str) -> dict:
+    return _run(
+        [sys.executable, "-m", "alembic", "upgrade", revision],
+        _alembic_env(db_url), cwd=str(BACKEND))
+
+
+def _engine(url: str):
+    return create_engine(
+        str(url).replace("postgresql+asyncpg://", "postgresql://", 1),
+        future=True)
+
+
+def _admin_engine(db_url):
+    return create_engine(
+        _retarget(_admin_url(), _db_name(db_url)), future=True)
+
+
+def _build_036_tenant(admin_conn, schema: str, wholesaler: uuid.UUID, *,
+                      sentinel: bool) -> None:
+    """Register a wholesaler/tenant and create the 036-era tenant shape AS
+    the runtime role (admin SET ROLE), so every tenant object is genuinely
+    app-owned — the product ownership topology under test.  ``schema`` must
+    be ``t_<wholesaler.hex>`` (the registry-derived identity 037/038
+    validate)."""
+    admin_conn.execute(text(
+        "INSERT INTO public.wholesalers (id, code, name, status, is_deleted) "
+        "VALUES (:id, :code, :name, 'active', false)"),
+        {"id": wholesaler,
+         "code": f"G1R2E{wholesaler.hex[:8].upper()}",
+         "name": f"G1R2E {schema[:12]}"})
+    admin_conn.execute(text(
+        "INSERT INTO public.tenant_registrations ("
+        "id, company_name, country, owner_email, status, email_verified_at, "
+        "provisioning_started_at, password_hash_cleared_at, wholesaler_id, "
+        "tenant_schema, expires_at, is_deleted) VALUES ("
+        ":id, :company, 'KE', :email, 'active', now(), now(), now(), "
+        ":wholesaler, :schema, now() + interval '1 day', false)"),
+        {"id": uuid.uuid4(), "company": f"co {schema[:12]}",
+         "email": f"g1r2e_{wholesaler.hex[:6]}@example.com",
+         "wholesaler": wholesaler, "schema": schema})
+    admin_conn.execute(text(f'SET ROLE "{APP_ROLE}"'))
+    try:
+        admin_conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+        admin_conn.execute(text(f"""
+            DO $$ BEGIN
+              CREATE TYPE "{schema}".order_status AS ENUM
+              ('draft','confirmed','partially_paid','paid','fulfilled',
+               'cancelled','voided','returned');
+            EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+            CREATE TABLE "{schema}".orders (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                wholesaler_id UUID NOT NULL,
+                retailer_id UUID NOT NULL,
+                status "{schema}".order_status NOT NULL DEFAULT 'draft',
+                total_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now(),
+                is_deleted BOOLEAN DEFAULT FALSE,
+                deleted_at TIMESTAMPTZ,
+                created_by UUID, updated_by UUID);
+            CREATE TABLE "{schema}".payments (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                order_id UUID NOT NULL,
+                retailer_id UUID NOT NULL,
+                transaction_id VARCHAR(64),
+                amount NUMERIC(12,2) NOT NULL,
+                method VARCHAR(50) NOT NULL DEFAULT 'cash',
+                status VARCHAR(50) NOT NULL DEFAULT 'completed',
+                idempotency_key VARCHAR(64),
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now(),
+                is_deleted BOOLEAN DEFAULT FALSE,
+                deleted_at TIMESTAMPTZ,
+                created_by UUID, updated_by UUID);
+            CREATE TABLE "{schema}".permissions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                code VARCHAR(128) NOT NULL UNIQUE,
+                description VARCHAR(255));
+            CREATE TABLE "{schema}".roles (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name VARCHAR(64) NOT NULL UNIQUE);
+            CREATE TABLE "{schema}".role_permissions (
+                role_id UUID NOT NULL REFERENCES "{schema}".roles(id),
+                permission_id UUID NOT NULL REFERENCES "{schema}".permissions(id),
+                PRIMARY KEY (role_id, permission_id));
+            CREATE TABLE "{schema}".skus (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                sku_code VARCHAR(64) NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                category VARCHAR(64),
+                is_active BOOLEAN NOT NULL DEFAULT true,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                is_deleted BOOLEAN NOT NULL DEFAULT false,
+                deleted_at TIMESTAMPTZ,
+                created_by UUID, updated_by UUID);
+            CREATE TABLE "{schema}".order_items (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                order_id UUID NOT NULL,
+                sku_id UUID NOT NULL,
+                quantity NUMERIC(12,3) NOT NULL DEFAULT 1,
+                unit_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                is_deleted BOOLEAN NOT NULL DEFAULT false);
+            CREATE TABLE "{schema}".inventory_stocks (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                sku_id UUID NOT NULL,
+                quantity NUMERIC(12,3) NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                is_deleted BOOLEAN NOT NULL DEFAULT false);
+            CREATE TABLE "{schema}".inventory_movements (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                sku_id UUID NOT NULL,
+                delta NUMERIC(12,3) NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                is_deleted BOOLEAN NOT NULL DEFAULT false);
+            CREATE TABLE "{schema}".inventory_reservations (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                order_item_id UUID NOT NULL,
+                sku_id UUID NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                is_deleted BOOLEAN NOT NULL DEFAULT false);
+        """))
+        admin_conn.execute(text(
+            f'INSERT INTO "{schema}".permissions (code, description) VALUES '
+            f"('client:payments:create', 'Retailer: create payment')"))
+        admin_conn.execute(text(
+            f'INSERT INTO "{schema}".roles (name) VALUES '
+            f"('admin'), ('retailer_operator')"))
+        admin_conn.execute(text(
+            f'INSERT INTO "{schema}".role_permissions (role_id, permission_id) '
+            f'SELECT r.id, p.id FROM "{schema}".roles r, '
+            f'"{schema}".permissions p WHERE r.name = \'retailer_operator\' '
+            f"AND p.code = 'client:payments:create'"))
+        if sentinel:
+            retailer, order, sku, item = (uuid.uuid4() for _ in range(4))
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".orders (id, wholesaler_id, '
+                f'retailer_id, status, total_amount, is_deleted) VALUES '
+                f"(:id, :w, :r, 'confirmed', 15000.00, false)"),
+                {"id": order, "w": wholesaler, "r": retailer})
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".payments (order_id, retailer_id, '
+                f'transaction_id, amount, method, status, is_deleted) VALUES '
+                f"(:o, :r, 'TX-SENTINEL-0001', 5000.00, 'cash', 'completed', "
+                f"false)"),
+                {"o": order, "r": retailer})
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".skus (id, sku_code, name, is_active, '
+                f'is_deleted) VALUES (:s, :code, :name, true, false)'),
+                {"s": sku, "code": f"SKU-{schema[:10]}", "name": "Sentinel SKU"})
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".inventory_stocks (sku_id, quantity, '
+                f'is_deleted) VALUES (:s, 100, false)'), {"s": sku})
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".inventory_movements (sku_id, delta, '
+                f'is_deleted) VALUES (:s, 100, false)'), {"s": sku})
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".order_items (id, order_id, sku_id, '
+                f'quantity, unit_price, is_deleted) VALUES '
+                f'(:i, :o, :s, 5, 250.00, false)'),
+                {"i": item, "o": order, "s": sku})
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".inventory_reservations '
+                f'(order_item_id, sku_id, is_deleted) VALUES '
+                f'(:i, :s, false)'), {"i": item, "s": sku})
+    finally:
+        admin_conn.execute(text("RESET ROLE"))
+
+
+def _prepare_036_with_tenant(db_url: str, *, sentinel: bool = True) -> str:
+    """Bring the disposable database to the 036 pre-state with product
+    grants and one app-owned tenant; returns the tenant schema."""
+    assert _alembic(db_url, REV_036)["rc"] == 0
+    grants = _run(
+        [sys.executable, str(PROVISIONER), "--apply-grants"],
+        _provisioner_env(db_url))
+    assert grants["rc"] == 0, grants["stderr"][-800:]
+    wholesaler = uuid.uuid4()
+    schema = f"t_{wholesaler.hex}"
+    engine = _admin_engine(db_url)
+    try:
+        with engine.begin() as conn:
+            _build_036_tenant(conn, schema, wholesaler, sentinel=sentinel)
+    finally:
+        engine.dispose()
+    return schema
+
+
+def _fetchone(engine, sql, params=None):
+    with engine.connect() as conn:
+        return conn.execute(text(sql), params or {}).fetchone()
+
+
+def _load_038():
+    spec = importlib.util.spec_from_file_location(
+        "g1r2e_migration_038", MIGRATION_038)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# ---------------------------------------------------------------------------
+# cluster-global capability fixture (product path; always restored)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def product_capability():
+    """Ensure the one-way capability exists cluster-wide via PRODUCT phase 1
+    against a disposable bootstrap database, and drop that database."""
+    boot = f"test_g1r2e_boot_{uuid.uuid4().hex[:8]}"
+    prov = _run(
+        [sys.executable, str(PROVISIONER), "--provision"],
+        _provisioner_env_for_name(boot))
+    assert prov["rc"] == 0, prov["stderr"][-800:]
+    admin = create_engine(_admin_url(), isolation_level="AUTOCOMMIT")
+    try:
+        with admin.connect() as conn:
+            conn.exec_driver_sql(f'DROP DATABASE IF EXISTS "{boot}"')
+    finally:
+        admin.dispose()
+    yield True
+
+
+# ---------------------------------------------------------------------------
+# 1. capability absent -> named refusal, zero residue (negative control)
+# ---------------------------------------------------------------------------
+
+def test_capability_absent_named_refusal_and_zero_residue(product_capability):
+    admin_maintenance = create_engine(_admin_url())
+    try:
+        with admin_maintenance.begin() as conn:
+            conn.exec_driver_sql(f'REVOKE "{APP_ROLE}" FROM "{MIGRATE_ROLE}"')
+    finally:
+        admin_maintenance.dispose()
+    try:
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "g1r2eneg") as db_url:
+            schema = _prepare_036_with_tenant(db_url, sentinel=True)
+            run = _alembic(db_url, REV_038)
+            assert run["rc"] != 0
+            assert "TenantDDLAuthorityError" in run["stderr"], run["stderr"][-800:]
+            assert "capability" in run["stderr"]
+            assert "is missing" not in run["stderr"]
+            engine = _admin_engine(db_url)
+            try:
+                assert _fetchone(engine,
+                                 "SELECT version_num FROM public.alembic_version"
+                                 )[0] == REV_036
+                assert _fetchone(engine, (
+                    "SELECT format_type(a.atttypid, a.atttypmod) "
+                    "FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = :s AND c.relname = 'payments' "
+                    "AND a.attname = 'transaction_id'"),
+                    {"s": schema})[0] == "character varying(64)"
+                assert _fetchone(engine, (
+                    "SELECT 1 FROM pg_class c JOIN pg_namespace n "
+                    "ON n.oid = c.relnamespace WHERE n.nspname = :s "
+                    "AND c.relname = 'payment_declarations'"),
+                    {"s": schema}) is None
+                assert _fetchone(engine, (
+                    f'SELECT code FROM "{schema}".permissions LIMIT 1'
+                    ))[0] == "client:payments:create"
+                assert _fetchone(engine, (
+                    f'SELECT amount::text FROM "{schema}".payments LIMIT 1'
+                    ))[0] == "5000.00"
+            finally:
+                engine.dispose()
+    finally:
+        boot = f"test_g1r2e_res_{uuid.uuid4().hex[:8]}"
+        restore = _run(
+            [sys.executable, str(PROVISIONER), "--provision"],
+            _provisioner_env_for_name(boot))
+        assert restore["rc"] == 0, restore["stderr"][-800:]
+        admin_maintenance = create_engine(
+            _admin_url(), isolation_level="AUTOCOMMIT")
+        try:
+            with admin_maintenance.connect() as conn:
+                conn.exec_driver_sql(f'DROP DATABASE IF EXISTS "{boot}"')
+        finally:
+            admin_maintenance.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 2. capability present -> full 036->038 pass, app-owned, data preserved
+# ---------------------------------------------------------------------------
+
+def test_capability_present_full_pass_app_owned(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2epos") as db_url:
+        schema = _prepare_036_with_tenant(db_url, sentinel=True)
+        pre_oid = _fetchone(_admin_engine(db_url), (
+            "SELECT c.oid::bigint FROM pg_class c JOIN pg_namespace n "
+            "ON n.oid = c.relnamespace WHERE n.nspname = :s "
+            "AND c.relname = 'payments'"), {"s": schema})[0]
+        run = _alembic(db_url, REV_038)
+        assert run["rc"] == 0, run["stderr"][-1200:]
+        engine = _admin_engine(db_url)
+        try:
+            assert _fetchone(engine,
+                             "SELECT version_num FROM public.alembic_version"
+                             )[0] == REV_038
+            assert _fetchone(engine, (
+                "SELECT format_type(a.atttypid, a.atttypmod) "
+                "FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = :s AND c.relname = 'payments' "
+                "AND a.attname = 'transaction_id'"),
+                {"s": schema})[0] == "character varying(128)"
+            for table in ("payment_declarations", "receipt_sequences",
+                          "catalog_products"):
+                owner = _fetchone(engine, (
+                    "SELECT pg_get_userbyid(c.relowner) FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = :s AND c.relname = :t"),
+                    {"s": schema, "t": table})
+                assert owner is not None and owner[0] == APP_ROLE, table
+            assert _fetchone(engine, (
+                "SELECT c.oid::bigint FROM pg_class c JOIN pg_namespace n "
+                "ON n.oid = c.relnamespace WHERE n.nspname = :s "
+                "AND c.relname = 'payments'"), {"s": schema})[0] == pre_oid
+            assert _fetchone(engine, (
+                f'SELECT code FROM "{schema}".permissions LIMIT 1'
+                ))[0] == "client:payments:declare"
+            assert _fetchone(engine, (
+                f'SELECT count(*) FROM "{schema}".catalog_products'
+                ))[0] == 1
+            assert _fetchone(engine, (
+                f'SELECT amount::text FROM "{schema}".payments LIMIT 1'
+                ))[0] == "5000.00"
+            assert _fetchone(engine, (
+                f'SELECT identity_status FROM "{schema}".order_items LIMIT 1'
+                ))[0] == "linked_legacy"
+        finally:
+            engine.dispose()
+        verify = _run(
+            [sys.executable, str(PROVISIONER), "--verify"],
+            _provisioner_env(db_url))
+        assert verify["rc"] == 0, verify["stdout"][-800:]
+        report = json.loads(verify["stdout"][verify["stdout"].index("{"):])
+        assert report["ok"] is True
+        assert report["checks"]["migration_tenant_authority_capability"]["ok"]
+        assert report["checks"][
+            "runtime_no_reverse_authority_membership"]["ok"]
+
+
+# ---------------------------------------------------------------------------
+# 3. genuinely missing tenant table -> named rejection, not blindness
+# ---------------------------------------------------------------------------
+
+def test_genuinely_missing_table_named_rejection(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2emiss") as db_url:
+        schema = _prepare_036_with_tenant(db_url, sentinel=True)
+        admin = _admin_engine(db_url)
+        try:
+            with admin.begin() as conn:
+                conn.execute(text(
+                    f'DROP TABLE "{schema}".inventory_movements'))
+        finally:
+            admin.dispose()
+        run = _alembic(db_url, REV_038)
+        assert run["rc"] != 0
+        assert "inventory_movements is missing" in run["stderr"], \
+            run["stderr"][-800:]
+        assert "TenantDDLAuthorityError" not in run["stderr"]
+        engine = _admin_engine(db_url)
+        try:
+            assert _fetchone(engine,
+                             "SELECT version_num FROM public.alembic_version"
+                             )[0] == REV_036
+        finally:
+            engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 4. leaked SET ROLE -> the NEXT window refuses by name; and the window
+#    restores identity after an in-window exception + transaction rollback
+# ---------------------------------------------------------------------------
+
+def test_role_leak_refused_and_exception_restores_identity(product_capability):
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2eleak") as db_url:
+        schema = _prepare_036_with_tenant(db_url, sentinel=True)
+        module = _load_038()
+
+        engine = _engine(db_url)  # migration identity
+        try:
+            # (a) leaked SET ROLE: the first window must refuse by name
+            with engine.connect() as conn:
+                conn.execute(text(f'SET ROLE "{APP_ROLE}"'))
+                conn.commit()
+                context = MigrationContext.configure(conn)
+                operations = Operations(context)
+                original_op = module.op
+                module.op = operations
+                try:
+                    with pytest.raises(RuntimeError) as err:
+                        module.upgrade()
+                    assert err.value.__class__.__name__ == \
+                        "TenantDDLAuthorityError"
+                    assert "leaked" in str(err.value)
+                finally:
+                    module.op = original_op
+                conn.rollback()
+                conn.execute(text("RESET ROLE"))
+                conn.commit()
+
+            # (b) in-window failure: identity restored after rollback
+            admin = _admin_engine(db_url)
+            try:
+                with admin.begin() as conn:
+                    # poison the tenant so 038's data-quality check fails
+                    # INSIDE the preflight window (after SET ROLE app):
+                    # an active SKU with a movement but no stock row
+                    poison = uuid.uuid4()
+                    conn.execute(text(
+                        f'INSERT INTO "{schema}".skus (id, sku_code, name, '
+                        f'is_active, is_deleted) VALUES ('
+                        f":id, 'POISON', 'poison', true, false)"),
+                        {"id": poison})
+                    conn.execute(text(
+                        f'INSERT INTO "{schema}".inventory_movements '
+                        f'(sku_id, delta, is_deleted) VALUES '
+                        f"(:id, 5, false)"), {"id": poison})
+            finally:
+                admin.dispose()
+            with engine.connect() as conn:
+                context = MigrationContext.configure(conn)
+                operations = Operations(context)
+                original_op = module.op
+                module.op = operations
+                try:
+                    with pytest.raises(RuntimeError) as err:
+                        with conn.begin():
+                            module.upgrade()
+                    assert err.value.__class__.__name__ == "PreflightFailure"
+                    assert "inventory evidence but no stock row" in \
+                        str(err.value)
+                finally:
+                    module.op = original_op
+                # same connection, after the rolled-back transaction: the
+                # window's finally-reset must have restored the identity
+                assert conn.execute(text("SELECT current_user")).scalar() \
+                    == MIGRATE_ROLE
+                assert conn.execute(text("SELECT session_user")).scalar() \
+                    == MIGRATE_ROLE
+                # zero residue from the failed run
+                assert conn.execute(text(
+                    "SELECT count(*) FROM pg_class c JOIN pg_namespace n "
+                    "ON n.oid = c.relnamespace WHERE n.nspname = :s "
+                    "AND c.relname = 'catalog_products'"),
+                    {"s": schema}).scalar() == 0
+        finally:
+            engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 5. default non-inheritance + runtime gains nothing (probe mirror)
+# ---------------------------------------------------------------------------
+
+def test_default_non_inheritance_and_runtime_gains_nothing(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2enonin") as db_url:
+        schema = _prepare_036_with_tenant(db_url, sentinel=True)
+
+        engine = _engine(db_url)  # migration identity
+        try:
+            with engine.connect() as conn:
+                assert conn.execute(text(
+                    "SELECT count(*) FROM information_schema.tables "
+                    "WHERE table_schema = :s"), {"s": schema}).scalar() == 0
+                assert conn.execute(text(
+                    "SELECT count(*) FROM pg_catalog.pg_class c "
+                    "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = :s AND c.relkind IN ('r','p')"),
+                    {"s": schema}).scalar() > 0
+                assert conn.execute(text(
+                    "SELECT pg_has_role(current_user, :r, 'MEMBER')"),
+                    {"r": APP_ROLE}).scalar() is True
+                assert conn.execute(text(
+                    "SELECT pg_has_role(current_user, :r, 'USAGE')"),
+                    {"r": APP_ROLE}).scalar() is False
+                with pytest.raises(Exception) as err:
+                    conn.execute(text(
+                        f'SELECT count(*) FROM "{schema}".payments'))
+                assert "42501" in str(err.value) or \
+                    "permission denied" in str(err.value).lower()
+                conn.rollback()
+                # explicit window: reads and DDL succeed, then identity back
+                conn.execute(text(f'SET ROLE "{APP_ROLE}"'))
+                assert conn.execute(text(
+                    f'SELECT count(*) FROM "{schema}".payments')).scalar() == 1
+                conn.execute(text("RESET ROLE"))
+                assert conn.execute(
+                    text("SELECT current_user")).scalar() == MIGRATE_ROLE
+        finally:
+            engine.dispose()
+
+        app_engine = _engine(
+            db_url.app_url)
+        try:
+            with app_engine.connect() as conn:
+                assert conn.execute(
+                    text("SELECT current_user")).scalar() == APP_ROLE
+                with pytest.raises(Exception) as err:
+                    conn.execute(text(f'SET ROLE "{MIGRATE_ROLE}"'))
+                assert "42501" in str(err.value) or \
+                    "permission denied" in str(err.value).lower()
+                conn.rollback()
+                with pytest.raises(Exception) as err:
+                    conn.execute(text(
+                        "CREATE TABLE public.should_fail(id int)"))
+                assert "42501" in str(err.value) or \
+                    "permission denied" in str(err.value).lower()
+                conn.rollback()
+        finally:
+            app_engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 6. reverse membership -> product --verify named RED, restore -> GREEN
+# ---------------------------------------------------------------------------
+
+def test_reverse_membership_named_red_then_green(product_capability):
+    admin_maintenance = create_engine(_admin_url())
+    try:
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "g1r2erev") as db_url:
+            assert _alembic(db_url, REV_036)["rc"] == 0
+            grants = _run(
+                [sys.executable, str(PROVISIONER), "--apply-grants"],
+                _provisioner_env(db_url))
+            assert grants["rc"] == 0, grants["stderr"][-800:]
+
+            def _verify():
+                run = _run(
+                    [sys.executable, str(PROVISIONER), "--verify"],
+                    _provisioner_env(db_url))
+                payload = json.loads(
+                    run["stdout"][run["stdout"].index("{"):])
+                return run["rc"], payload
+
+            rc, report = _verify()
+            assert rc == 0 and report["ok"] is True
+
+            # PostgreSQL refuses circular memberships, so the forward
+            # capability is revoked first; the reverse membership is then the
+            # ONLY cross-role relationship while the RED proof runs.
+            with admin_maintenance.begin() as conn:
+                conn.exec_driver_sql(f'REVOKE "{APP_ROLE}" FROM "{MIGRATE_ROLE}"')
+                conn.exec_driver_sql(
+                    f'GRANT "{MIGRATE_ROLE}" TO "{APP_ROLE}"')
+            try:
+                rc, report = _verify()
+                assert rc == 2 and report["ok"] is False
+                reverse_checks = [
+                    name for name, check in report["checks"].items()
+                    if name in ("runtime_not_member_of_authority",
+                                "runtime_no_reverse_authority_membership")
+                    and not check["ok"]
+                ]
+                assert reverse_checks, report["checks"].keys()
+            finally:
+                with admin_maintenance.begin() as conn:
+                    conn.exec_driver_sql(
+                        f'REVOKE "{MIGRATE_ROLE}" FROM "{APP_ROLE}"')
+
+            # restore the forward capability through the PRODUCT path
+            boot = f"test_g1r2e_rev_{uuid.uuid4().hex[:8]}"
+            restore = _run(
+                [sys.executable, str(PROVISIONER), "--provision"],
+                _provisioner_env_for_name(boot))
+            assert restore["rc"] == 0, restore["stderr"][-800:]
+            dropper = create_engine(
+                _admin_url(), isolation_level="AUTOCOMMIT")
+            try:
+                with dropper.connect() as conn:
+                    conn.exec_driver_sql(f'DROP DATABASE IF EXISTS "{boot}"')
+            finally:
+                dropper.dispose()
+
+            rc, report = _verify()
+            assert rc == 0 and report["ok"] is True
+    finally:
+        admin_maintenance.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 7. provisioner capability idempotency and option normalization
+# ---------------------------------------------------------------------------
+
+def test_provisioner_capability_idempotent_and_normalizing(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2eidem") as db_url:
+        # --verify reads the migration-owned guard function and the
+        # runtime grants, so the disposable database needs the real 036
+        # pre-state plus phase-3 grants first.
+        assert _alembic(db_url, REV_036)["rc"] == 0
+        grants = _run(
+            [sys.executable, str(PROVISIONER), "--apply-grants"],
+            _provisioner_env(db_url))
+        assert grants["rc"] == 0, grants["stderr"][-800:]
+        env = _provisioner_env(db_url)
+        # The capability already exists cluster-wide (module fixture);
+        # provisioning must be idempotent and report it as already present.
+        first = _run([sys.executable, str(PROVISIONER), "--provision"], env)
+        assert first["rc"] == 0, first["stderr"][-800:]
+        assert "already exists (INHERIT FALSE, SET TRUE)" in first["stdout"]
+
+        # Corrupt the options cluster-wide, then let the PRODUCT provisioner
+        # normalize them back; --verify must pass again afterwards.
+        admin_maintenance = create_engine(_admin_url())
+        try:
+            with admin_maintenance.begin() as conn:
+                conn.exec_driver_sql(
+                    f'GRANT "{APP_ROLE}" TO "{MIGRATE_ROLE}" '
+                    "WITH INHERIT TRUE, SET FALSE")
+        finally:
+            admin_maintenance.dispose()
+        try:
+            verify_bad = _run(
+                [sys.executable, str(PROVISIONER), "--verify"],
+                _provisioner_env(db_url))
+            payload = json.loads(
+                verify_bad["stdout"][verify_bad["stdout"].index("{"):])
+            assert payload["checks"][
+                "migration_tenant_authority_capability"]["ok"] is False
+
+            normalized = _run(
+                [sys.executable, str(PROVISIONER), "--provision"], env)
+            assert normalized["rc"] == 0, normalized["stderr"][-800:]
+
+            verify_good = _run(
+                [sys.executable, str(PROVISIONER), "--verify"],
+                _provisioner_env(db_url))
+            payload = json.loads(
+                verify_good["stdout"][verify_good["stdout"].index("{"):])
+            assert payload["ok"] is True
+            assert payload["checks"][
+                "migration_tenant_authority_capability"]["ok"] is True
+        finally:
+            # belt and braces: product path re-normalizes if anything failed
+            _run([sys.executable, str(PROVISIONER), "--provision"], env)

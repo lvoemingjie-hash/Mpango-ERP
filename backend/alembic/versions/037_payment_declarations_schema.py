@@ -740,9 +740,18 @@ def _verify_receipt_sequences_catalog(bind, schema: str, failures: list[str]) ->
 def _widen_transaction_id(bind, schema: str) -> None:
     """Widen payments.transaction_id to VARCHAR(128)."""
     payments_t = _qualified(bind, schema, PAYMENTS)
+    # pg_catalog probe, not information_schema: the migration authority must
+    # read the exact varchar length of app-owned tenant columns even though
+    # privilege-filtered views hide them (G1-R2E-P1 authority contract).
     ti_len = bind.execute(sa.text(
-        "SELECT character_maximum_length FROM information_schema.columns "
-        "WHERE table_schema = :s AND table_name = 'payments' AND column_name = 'transaction_id'"
+        "SELECT CASE WHEN a.atttypid = 'varchar'::regtype "
+        "THEN a.atttypmod - 4 ELSE NULL END "
+        "FROM pg_catalog.pg_attribute a "
+        "JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+        "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+        "WHERE n.nspname = :s AND c.relname = 'payments' "
+        "AND a.attname = 'transaction_id' AND a.attnum > 0 "
+        "AND NOT a.attisdropped"
     ), {"s": schema}).scalar()
     if ti_len is not None and ti_len < 128:
         bind.execute(sa.text(
@@ -912,15 +921,22 @@ def downgrade() -> None:
 
 
 # ---------------------------------------------------------------------------
-# catalog helpers (verbatim from 035/036)
+# catalog helpers (verbatim from 035/036, with the G1-R2E-P1 authority
+# correction: existence probes read pg_catalog instead of the
+# privilege-filtered information_schema views so the migration authority
+# cannot misjudge app-owned tenant tables as absent; genuinely absent
+# objects are still rejected by name through the same call sites)
 # ---------------------------------------------------------------------------
 
 def _column_exists(bind, schema: str, table_name: str, column_name: str) -> bool:
     return bool(bind.execute(
         sa.text(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_schema = :schema AND table_name = :table_name "
-            "AND column_name = :column_name"
+            "SELECT 1 FROM pg_catalog.pg_attribute a "
+            "JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+            "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = :schema AND c.relname = :table_name "
+            "AND a.attname = :column_name "
+            "AND a.attnum > 0 AND NOT a.attisdropped"
         ),
         {"schema": schema, "table_name": table_name, "column_name": column_name},
     ).first())
@@ -929,8 +945,10 @@ def _column_exists(bind, schema: str, table_name: str, column_name: str) -> bool
 def _table_exists(bind, schema: str, table_name: str) -> bool:
     return bool(bind.execute(
         sa.text(
-            "SELECT 1 FROM information_schema.tables "
-            "WHERE table_schema = :schema AND table_name = :table_name"
+            "SELECT 1 FROM pg_catalog.pg_class c "
+            "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = :schema AND c.relname = :table_name "
+            "AND c.relkind IN ('r', 'p', 'v', 'f')"
         ),
         {"schema": schema, "table_name": table_name},
     ).first())

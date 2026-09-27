@@ -33,11 +33,17 @@ class PreflightFailure(RuntimeError):
 
 
 def _table_exists(bind, schema: str, table: str) -> bool:
+    # pg_catalog, not information_schema: the migration authority must see
+    # app-owned tenant tables even though privilege-filtered views hide them
+    # (G1-R2E-P1 authority contract; genuinely absent tables are still
+    # rejected by name through the same call sites).
     return bool(
         bind.execute(
             sa.text(
-                "SELECT 1 FROM information_schema.tables "
-                "WHERE table_schema=:schema AND table_name=:table"
+                "SELECT 1 FROM pg_catalog.pg_class c "
+                "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname=:schema AND c.relname=:table "
+                "AND c.relkind IN ('r', 'p', 'v', 'f')"
             ),
             {"schema": schema, "table": table},
         ).scalar()
@@ -48,8 +54,12 @@ def _column_exists(bind, schema: str, table: str, column: str) -> bool:
     return bool(
         bind.execute(
             sa.text(
-                "SELECT 1 FROM information_schema.columns "
-                "WHERE table_schema=:schema AND table_name=:table AND column_name=:column"
+                "SELECT 1 FROM pg_catalog.pg_attribute a "
+                "JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+                "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname=:schema AND c.relname=:table "
+                "AND a.attname=:column "
+                "AND a.attnum > 0 AND NOT a.attisdropped"
             ),
             {"schema": schema, "table": table, "column": column},
         ).scalar()

@@ -143,9 +143,13 @@ def _handshake_discard_error(bind, purpose: str,
         detail = ("the migration connection was invalidated and must not be "
                   "reused under any identity")
     except Exception as invalidate_exc:
+        # the underlying message is deliberately NOT interpolated: it is
+        # outside this boundary's control and could carry a credential or DSN
+        # fragment into Alembic stderr / JUnit.  Only fixed neutral wording
+        # and the safe exception TYPE identifier are reported (G1-R2E-P1R1R3)
         detail = (
             "invalidation FAILED "
-            f"({type(invalidate_exc).__name__}: {str(invalidate_exc)[:80]}); "
+            f"(exception type {type(invalidate_exc).__name__}); "
             "the connection was NOT discarded and must not be reused under "
             "any identity")
     return TenantDDLAuthorityError(

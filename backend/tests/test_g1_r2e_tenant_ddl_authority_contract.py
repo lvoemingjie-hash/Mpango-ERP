@@ -2102,7 +2102,11 @@ def _r2_cleanup_fault_case(which, prefix):
         # (3) the identity cannot be restored AND invalidate() fails
         rec = _r2_cleanup_fault_probe(db_url, which,
                                       {"identity", "invalidate"})
-        assert "injected invalidate failure" in " | ".join(rec["chain"]), rec
+        # the cleanup failure must stay visible WITHOUT echoing the
+        # underlying exception text: the diagnostic names its safe TYPE
+        # identifier instead of the message (G1-R2E-P1R1R3R1)
+        assert "invalidation FAILED" in rec["raised_message"], rec
+        assert "exception type RuntimeError" in rec["raised_message"], rec
         assert rec["invalidate_attempts"] >= 1, rec
         _r2_assert_cleanup_visibility(
             rec, "failed to restore current_user", expect_discard=False)
@@ -2118,3 +2122,126 @@ def test_038_cleanup_failures_keep_both_errors_visible(product_capability):
 
 def test_039_cleanup_failures_keep_both_errors_visible(product_capability):
     _r2_cleanup_fault_case("039", "g1r2e039cl")
+
+
+# ===========================================================================
+# G1-R2E-P1R1R3 diagnostic-leak canaries (appended 2026-09-28; every node above
+# is byte-identical).  Authorization:
+# CTO-DIR-G1-R2E-P1R1R3-NEUTRAL-DIAGNOSTIC-20260928.
+#
+# The connection-discard diagnostic used to interpolate the underlying
+# exception message, which is outside the boundary's control and could carry a
+# credential or DSN fragment into Alembic stderr / JUnit.  Each canary below
+# injects an invalidate() failure whose message carries a SYNTHETIC,
+# credential-shaped sentinel and requires that the sentinel appears NOWHERE the
+# candidate can make public, while the neutral truthful diagnostic and the
+# original handshake failure stay visible.
+#
+# The sentinel is assembled at runtime from separate literals so the committed
+# test file contains no credential-shaped value; it only ever surfaces in the
+# rejected (private) RED artifact of the unfixed BASE.
+# ===========================================================================
+
+_CANARY_TOKEN = "SYNTHETIC" + "-CANARY" + "-NOT-A-REAL-CREDENTIAL"
+_CANARY_DSN = "postgresql://canary:" + _CANARY_TOKEN + "@h/c"   # 61 chars < 80
+
+
+class _R3CanaryInvalidateBind(_R2CleanupFaultBind):
+    """R2 fault bind whose invalidate() failure carries the synthetic sentinel
+    in its message (it is a stand-in for any driver error text)."""
+
+    def invalidate(self):
+        self.invalidate_attempts += 1
+        raise RuntimeError(_CANARY_DSN)
+
+
+def _r3_canary_probe(db_url, which):
+    """Handshake with: a Python-exception injection, an identity that cannot be
+    restored, and an invalidate() failure carrying the canary."""
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    module = _r2_load(which)
+    engine = _engine(db_url)
+    record = {"which": which}
+    real_sa = module.sa
+    try:
+        with engine.connect() as conn:
+            injector = _HandshakeProbeInjector(real_sa, "python_exception")
+            bind = _R3CanaryInvalidateBind(conn, {"identity"})
+            module.sa = injector
+            module.op = Operations(MigrationContext.configure(bind))
+            try:
+                try:
+                    module.upgrade()
+                    record["raised"] = None
+                except BaseException as exc:      # noqa: BLE001
+                    record["raised"] = type(exc).__name__
+                    record["raised_message"] = str(exc)
+                    record["chain"] = _r2_walk_exception_chain(exc)
+                record["invalidate_attempts"] = bind.invalidate_attempts
+                conn.rollback()
+                record["version"] = conn.execute(text(
+                    "SELECT version_num FROM public.alembic_version")).scalar()
+            finally:
+                module.sa = real_sa
+                module.op = None
+    finally:
+        engine.dispose()
+    return record
+
+
+def _r3_assert_no_echo(record, db_url, tenant_schema, artifact):
+    assert record["raised"] == "TenantDDLAuthorityError", record
+    message = record["raised_message"]
+    chain = " | ".join(record.get("chain") or [])
+    assert record["invalidate_attempts"] >= 1, record
+    # the sentinel must not reach anything the candidate can make public,
+    # including anything propagated through the exception chain
+    assert _CANARY_TOKEN not in message, record
+    assert _CANARY_TOKEN not in chain, record
+    # the neutral diagnostic is still named and still truthful
+    assert "invalidation FAILED" in message, record
+    assert "exception type RuntimeError" in message, record
+    assert "was invalidated and must not be reused" not in message, record
+    # the ORIGINAL handshake failure stays traceable through the chain
+    assert "injected Python failure" in chain, record
+    # no head advance and no artifact left behind
+    assert record["version"] == REV_036, record
+    engine = _admin_engine(db_url)
+    try:
+        assert _fetchone(engine, (
+            "SELECT count(*) FROM pg_class c JOIN pg_namespace n "
+            "ON n.oid=c.relnamespace WHERE n.nspname=:s AND c.relname=:t"),
+            {"s": tenant_schema, "t": artifact})[0] == 0, record
+    finally:
+        engine.dispose()
+
+
+def _r3_canary_case(which, prefix):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, prefix) as db_url:
+        tenant_schema = _prepare_036_with_tenant(db_url, sentinel=True)
+        record = _r3_canary_probe(db_url, which)
+        record["tenant_schema"] = tenant_schema
+        _r3_assert_no_echo(record, db_url, tenant_schema,
+                           _R2_ARTIFACTS[which])
+
+
+# ---------------------------------------------------------------------------
+# 32-34. one canary per migration
+# ---------------------------------------------------------------------------
+
+def test_037_discard_diagnostic_does_not_echo_underlying_message(
+        product_capability):
+    _r3_canary_case("037", "g1r2e037leak")
+
+
+def test_038_discard_diagnostic_does_not_echo_underlying_message(
+        product_capability):
+    _r3_canary_case("038", "g1r2e038leak")
+
+
+def test_039_discard_diagnostic_does_not_echo_underlying_message(
+        product_capability):
+    _r3_canary_case("039", "g1r2e039leak")

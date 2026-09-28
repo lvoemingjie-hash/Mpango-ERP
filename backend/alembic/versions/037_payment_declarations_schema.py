@@ -746,6 +746,60 @@ class TenantDDLAuthorityError(RuntimeError):
     ownership, or a SET ROLE leaked from an earlier window)."""
 
 
+def _abort_handshake_window(bind, savepoint, entry_user: str,
+                            purpose: str) -> None:
+    """Fail-closed cleanup for the SET-success .. token-return gap.
+
+    ``RESET ROLE`` alone is NOT an executable boundary in that gap: when the
+    token probe fails SERVER-side the transaction is aborted and every
+    statement except ROLLBACK/ROLLBACK TO SAVEPOINT is refused with 25P02, so
+    a bare reset would itself raise and restore nothing (G1-R2E-P1R1R1,
+    measured on PostgreSQL 16.15).  Rolling the handshake savepoint back
+    first restores a usable transaction and the migration identity; only then
+    is the reset executed and verified on the SAME live connection.  If the
+    migration identity cannot be proven restored, the transaction is rolled
+    back and the connection is invalidated so it can never be reused under
+    the app identity.  The original handshake failure is never swallowed --
+    it stays visible through chaining -- and no replacement connection is
+    opened to fake a recovery.
+    """
+
+    def _discard(reason: str) -> TenantDDLAuthorityError:
+        try:
+            bind.invalidate()
+        except Exception:
+            # the caller must treat this connection as unusable regardless
+            pass
+        return TenantDDLAuthorityError(
+            f"tenant DDL authority window for {purpose!r}: {reason}; the "
+            "migration connection was invalidated and must not be reused "
+            "under the app identity"
+        )
+
+    try:
+        savepoint.rollback()
+    except Exception:
+        try:
+            bind.rollback()
+        except Exception:
+            raise _discard("the failed SET ROLE handshake left an unusable "
+                           "transaction") from None
+    try:
+        bind.execute(sa.text("RESET ROLE"))
+        restored = bind.execute(sa.text("SELECT current_user")).scalar()
+    except Exception:
+        try:
+            bind.rollback()
+            restored = bind.execute(sa.text("SELECT current_user")).scalar()
+        except Exception:
+            raise _discard("the migration identity could not be restored "
+                           "after a failed SET ROLE handshake") from None
+    if restored != entry_user:
+        raise _discard(
+            f"failed to restore current_user {entry_user!r} after a failed "
+            f"SET ROLE handshake (now {restored!r})")
+
+
 def _open_tenant_ddl_authority(bind, schemas: list[str], purpose: str):
     """Open the narrowest SET ROLE window for tenant reads/DDL.
 
@@ -803,14 +857,26 @@ def _open_tenant_ddl_authority(bind, schemas: list[str], purpose: str):
             "WITH INHERIT FALSE, SET TRUE, applied by the admin in "
             "provisioning phase 1) is absent on this deployment"
         )
-    bind.execute(sa.text(f'SET ROLE "{TENANT_AUTHORITY_ROLE}"'))
-    bound = bind.execute(sa.text("SELECT current_user")).scalar()
-    if bound != TENANT_AUTHORITY_ROLE:
-        raise TenantDDLAuthorityError(
-            f"tenant DDL authority window for {purpose!r} refused: SET ROLE "
-            f"bound current_user {bound!r}, expected "
-            f"{TENANT_AUTHORITY_ROLE!r}"
-        )
+    # The SET-success .. token-return gap needs its own exception-safe
+    # boundary: the enclosing _tenant_ddl_authority_window ``finally`` is not
+    # reached while this function raises, and a bare RESET ROLE cannot run
+    # once a server-side handshake error has aborted the transaction.  The
+    # handshake therefore runs inside a SAVEPOINT whose rollback restores
+    # both transaction usability and the migration identity (G1-R2E-P1R1R1).
+    savepoint = bind.begin_nested()
+    try:
+        bind.execute(sa.text(f'SET ROLE "{TENANT_AUTHORITY_ROLE}"'))
+        bound = bind.execute(sa.text("SELECT current_user")).scalar()
+        if bound != TENANT_AUTHORITY_ROLE:
+            raise TenantDDLAuthorityError(
+                f"tenant DDL authority window for {purpose!r} refused: SET ROLE "
+                f"bound current_user {bound!r}, expected "
+                f"{TENANT_AUTHORITY_ROLE!r}"
+            )
+        savepoint.commit()
+    except BaseException:
+        _abort_handshake_window(bind, savepoint, current_user, purpose)
+        raise
     return current_user
 
 

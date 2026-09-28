@@ -1489,3 +1489,253 @@ def test_039_catalog_probe_privilege_independent(product_capability):
                     conn, "t_" + "0" * 32, "orders") is False
         finally:
             engine.dispose()
+
+
+# ===========================================================================
+# G1-R2E-P1R1R1 token-handshake fail-closed closure (appended 2026-09-28; the
+# nineteen nodes above are byte-identical).
+# Authorization: CTO-DIR-G1-R2E-P1R1R1-SET-ROLE-HANDSHAKE-20260928.
+#
+# Kilo F-001 (HIGH): 037/038 could leave current_user=mpango_app usable on the
+# live migration connection when the token probe failed after a successful SET
+# ROLE, because the enclosing window's ``finally`` is unreachable while
+# ``_open_tenant_ddl_authority`` raises.  Each node below injects one failure
+# class exactly in that gap — a Python exception before the probe reaches
+# PostgreSQL, a REAL server-side SQL error (SQLSTATE 22012) that aborts the
+# transaction, and a wrong identity returned by the server — and then inspects
+# the SAME live connection *before* any outer rollback: the migration identity
+# must already be back and the transaction must still be usable.
+# ===========================================================================
+
+REV_037 = "037_payment_declarations_schema"
+MIGRATION_037 = BACKEND / "alembic" / "versions" / "037_payment_declarations_schema.py"
+
+HANDSHAKE_MODES = ("python_exception", "sql_error", "wrong_identity")
+_SQL_ERROR_STATEMENT = "SELECT current_user, 1 / 0"
+_WRONG_IDENTITY_STATEMENT = "SELECT 'not_mpango_app'::text"
+
+
+def _load_037():
+    spec = importlib.util.spec_from_file_location(
+        "g1r2e_p1r1r1_migration_037", MIGRATION_037)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _pgcode(exc):
+    return getattr(getattr(exc, "orig", None), "pgcode", None)
+
+
+class _HandshakeProbeInjector:
+    """Proxy over a migration module's ``sa`` helper.
+
+    The first ``SELECT current_user`` clause built AFTER the ``SET ROLE``
+    clause is replaced by the configured fault payload, which places every
+    injection exactly between SET-ROLE success and the window token being
+    returned.  ``saw_reset_role`` records whether the failing path still went
+    on to issue an executable reset on that same connection; everything after
+    the injection passes through untouched.
+    """
+
+    def __init__(self, real_sa, mode):
+        assert mode in HANDSHAKE_MODES, mode
+        self._sa = real_sa
+        self._mode = mode
+        self._set_role_seen = False
+        self.fired = False
+        self.saw_reset_role = False
+
+    def __getattr__(self, name):
+        return getattr(self._sa, name)
+
+    def text(self, sql, *args, **kwargs):
+        stripped = sql.strip()
+        if stripped.startswith("SET ROLE"):
+            self._set_role_seen = True
+        elif stripped.startswith("RESET ROLE"):
+            self.saw_reset_role = True
+        elif (self._set_role_seen and not self.fired
+              and stripped == "SELECT current_user"):
+            self.fired = True
+            if self._mode == "python_exception":
+                raise RuntimeError(
+                    "injected Python failure between SET ROLE success and the "
+                    "token probe reaching PostgreSQL")
+            if self._mode == "sql_error":
+                return self._sa.text(_SQL_ERROR_STATEMENT)
+            if self._mode == "wrong_identity":
+                return self._sa.text(_WRONG_IDENTITY_STATEMENT)
+        return self._sa.text(sql, *args, **kwargs)
+
+
+def _probe_after_failure(conn):
+    """Inspect the SAME live connection right after the injected failure and
+    before any outer rollback: identity, transaction usability, SQLSTATE."""
+    out = {}
+    try:
+        row = conn.execute(text("SELECT current_user, session_user")).fetchone()
+        out["current_user"], out["session_user"] = row[0], row[1]
+        out["identity_already_migration"] = (row[0] == MIGRATE_ROLE
+                                            and row[1] == MIGRATE_ROLE)
+    except Exception as exc:
+        out["identity_already_migration"] = False
+        out["identity_probe_pgcode"] = _pgcode(exc)
+    try:
+        out["tx_still_usable"] = conn.execute(text("SELECT 1")).scalar() == 1
+    except Exception as exc:
+        out["tx_still_usable"] = False
+        out["tx_probe_pgcode"] = _pgcode(exc)
+    return out
+
+
+def _inject_handshake(db_url, which, mode):
+    """Drive one migration's ``upgrade()`` with the handshake fault injected
+    and collect the fail-closed evidence."""
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    module = _load_037() if which == "037" else _load_038()
+    engine = _engine(db_url)          # migration identity
+    record = {"which": which, "mode": mode}
+    real_sa = module.sa
+    try:
+        with engine.connect() as conn:
+            injector = _HandshakeProbeInjector(real_sa, mode)
+            module.sa = injector
+            module.op = Operations(MigrationContext.configure(conn))
+            try:
+                with pytest.raises(BaseException) as err:
+                    with conn.begin():
+                        module.upgrade()
+                record["raised_type"] = type(err.value).__name__
+                record["raised_message"] = str(err.value)[:400]
+                record["raised_pgcode"] = _pgcode(err.value)
+                record["injection_fired"] = injector.fired
+                record["reset_issued"] = injector.saw_reset_role
+                # BEFORE any outer rollback: same-connection state
+                record.update(_probe_after_failure(conn))
+                if mode == "sql_error":
+                    naive = {}
+                    try:
+                        conn.execute(text(f'SET ROLE "{APP_ROLE}"'))
+                        try:
+                            conn.execute(text("SELECT 1 / 0"))
+                        except Exception as exc:
+                            naive["error_pgcode"] = _pgcode(exc)
+                        try:
+                            conn.execute(text("RESET ROLE"))
+                            naive["naive_reset_executed"] = True
+                        except Exception as exc:
+                            naive["naive_reset_executed"] = False
+                            naive["naive_reset_pgcode"] = _pgcode(exc)
+                        conn.rollback()
+                        naive["identity_after_rollback"] = conn.execute(
+                            text("SELECT current_user")).scalar()
+                    except Exception as exc:
+                        # only reachable when the boundary did NOT leave a
+                        # usable transaction (the unfixed candidate)
+                        naive["demo_unavailable_pgcode"] = _pgcode(exc)
+                        conn.rollback()
+                    record["naive_reset_counter_demo"] = naive
+                conn.rollback()
+                record["current_user_after_rollback"] = conn.execute(
+                    text("SELECT current_user")).scalar()
+                record["version"] = conn.execute(text(
+                    "SELECT version_num FROM public.alembic_version")).scalar()
+            finally:
+                module.sa = real_sa
+                module.op = None
+    finally:
+        engine.dispose()
+    return record
+
+
+def _assert_handshake_closure(record, db_url, tenant_schema, artifact):
+    """Every §4.2 requirement for one injected handshake failure."""
+    assert record["injection_fired"] is True, record
+    # the failing path itself must have issued the reset ...
+    assert record["reset_issued"] is True, record
+    # ... and it must already be effective on the SAME connection, before any
+    # outer rollback could mask the leak (this is F-001's discriminator)
+    assert record["identity_already_migration"] is True, record
+    assert record["tx_still_usable"] is True, record
+    assert record["current_user_after_rollback"] == MIGRATE_ROLE, record
+    # no head advance, no persistent artifact, no business-row drift
+    assert record["version"] == REV_036, record
+    engine = _admin_engine(db_url)
+    try:
+        assert _fetchone(engine, (
+            "SELECT count(*) FROM pg_class c JOIN pg_namespace n "
+            "ON n.oid=c.relnamespace WHERE n.nspname=:s AND c.relname=:t"),
+            {"s": tenant_schema, "t": artifact})[0] == 0, record
+        assert _fetchone(engine, (
+            f'SELECT status::text, total_amount::text FROM '
+            f'"{tenant_schema}".orders')) == ("confirmed", "15000.00")
+        assert _fetchone(engine, (
+            f'SELECT amount::text FROM "{tenant_schema}".payments'))[0] == \
+            "5000.00"
+    finally:
+        engine.dispose()
+    if record["mode"] == "python_exception":
+        assert record["raised_type"] == "RuntimeError", record
+        assert "injected Python failure" in record["raised_message"], record
+    if record["mode"] == "sql_error":
+        assert record["raised_pgcode"] == "22012", record
+        naive = record["naive_reset_counter_demo"]
+        assert naive.get("error_pgcode") == "22012", naive
+        assert naive.get("naive_reset_executed") is False, naive
+        assert naive.get("naive_reset_pgcode") == "25P02", naive
+        assert naive.get("identity_after_rollback") == MIGRATE_ROLE, naive
+    if record["mode"] == "wrong_identity":
+        # the named refusal survives the boundary and stays visible
+        assert record["raised_type"] == "TenantDDLAuthorityError", record
+        assert "expected" in record["raised_message"], record
+        assert "not_mpango_app" in record["raised_message"], record
+
+
+def _handshake_case(which, mode, prefix):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, prefix) as db_url:
+        tenant_schema = _prepare_036_with_tenant(db_url, sentinel=True)
+        record = _inject_handshake(db_url, which, mode)
+        record["tenant_schema"] = tenant_schema
+        artifact = ("payment_declarations" if which == "037"
+                    else "catalog_products")
+        _assert_handshake_closure(record, db_url, tenant_schema, artifact)
+
+
+# ---------------------------------------------------------------------------
+# 20-22. 037 token-handshake gap: Python exception / real SQL error / wrong
+#        identity injected between SET-ROLE success and token return
+# ---------------------------------------------------------------------------
+
+def test_037_handshake_python_exception_restores_identity(product_capability):
+    _handshake_case("037", "python_exception", "g1r2e037hs_py")
+
+
+def test_037_handshake_server_sql_error_restores_identity(product_capability):
+    _handshake_case("037", "sql_error", "g1r2e037hs_sq")
+
+
+def test_037_handshake_wrong_identity_named_refusal_restores_identity(
+        product_capability):
+    _handshake_case("037", "wrong_identity", "g1r2e037hs_id")
+
+
+# ---------------------------------------------------------------------------
+# 23-25. the same three failure classes for 038
+# ---------------------------------------------------------------------------
+
+def test_038_handshake_python_exception_restores_identity(product_capability):
+    _handshake_case("038", "python_exception", "g1r2e038hs_py")
+
+
+def test_038_handshake_server_sql_error_restores_identity(product_capability):
+    _handshake_case("038", "sql_error", "g1r2e038hs_sq")
+
+
+def test_038_handshake_wrong_identity_named_refusal_restores_identity(
+        product_capability):
+    _handshake_case("038", "wrong_identity", "g1r2e038hs_id")

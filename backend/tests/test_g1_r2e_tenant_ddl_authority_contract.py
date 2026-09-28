@@ -758,3 +758,734 @@ def test_provisioner_capability_idempotent_and_normalizing(product_capability):
         finally:
             # belt and braces: product path re-normalizes if anything failed
             _run([sys.executable, str(PROVISIONER), "--provision"], env)
+
+
+# ===========================================================================
+# G1-R2E-P1R1-039 authority closure (appended 2026-09-28; the seven original
+# nodes above are byte-identical). Authorization:
+# CTO-AUTH-MPANGO-PROMOTION-G1-R2E-P1R1-039-AUTHORITY-20260928.
+#
+# New coverage: 039 positive value-chain on two app-owned tenants (036-era
+# pre-state, one valid non-empty tenant + one empty), same-connection
+# identity restoration across a full in-process 036->039 upgrade, and the
+# named fail-closed refusals specific to the 039 phases (capability absence
+# from 038, reverse membership, mixed ownership, old confirmed+cash shape,
+# missing live binding, stale P14 cache, genuinely-missing orders after
+# 038, injected window-body failure, and the SET-success..token-return
+# handshake gap).
+# ===========================================================================
+
+REV_039 = "039_order_credit_holds"
+MIGRATION_039 = BACKEND / "alembic" / "versions" / "039_order_credit_holds.py"
+
+
+def _load_039():
+    spec = importlib.util.spec_from_file_location(
+        "g1r2e_p1r1_migration_039", MIGRATION_039)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _build_036_positive_tenant(admin_conn, schema, wholesaler, *, shape):
+    """036-era app-owned tenant with the R2-valid business shapes:
+    'positive' (partially_paid 15000 + cash 5000 + live binding at the 038
+    exposure-only cache value 0.00 + inventory sentinels), 'positive_nobind'
+    (no public binding rows), 'positive_stale_cache' (binding drifted to
+    500.00), 'empty' (registry + tables only)."""
+    admin_conn.execute(text(
+        "INSERT INTO public.wholesalers (id, code, name, status, is_deleted) "
+        "VALUES (:id, :code, :name, 'active', false)"),
+        {"id": wholesaler, "code": f"R2E039{wholesaler.hex[:8].upper()}",
+         "name": f"R2E039 {schema[:14]}"})
+    admin_conn.execute(text(
+        "INSERT INTO public.tenant_registrations ("
+        "id, company_name, country, owner_email, status, email_verified_at, "
+        "provisioning_started_at, password_hash_cleared_at, wholesaler_id, "
+        "tenant_schema, expires_at, is_deleted) VALUES ("
+        ":id, :company, 'KE', :email, 'active', now(), now(), now(), "
+        ":wholesaler, :schema, now() + interval '1 day', false)"),
+        {"id": uuid.uuid4(), "company": f"co {schema[:12]}",
+         "email": f"r2e039_{wholesaler.hex[:6]}@example.com",
+         "wholesaler": wholesaler, "schema": schema})
+    admin_conn.execute(text(f'SET ROLE "{APP_ROLE}"'))
+    try:
+        admin_conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+        admin_conn.execute(text(f"""
+            DO $$ BEGIN
+              CREATE TYPE "{schema}".order_status AS ENUM
+              ('draft','confirmed','partially_paid','paid','fulfilled',
+               'cancelled','voided','returned');
+            EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+            CREATE TABLE "{schema}".orders (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                wholesaler_id UUID NOT NULL,
+                retailer_id UUID NOT NULL,
+                status "{schema}".order_status NOT NULL DEFAULT 'draft',
+                total_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now(),
+                is_deleted BOOLEAN DEFAULT FALSE,
+                deleted_at TIMESTAMPTZ,
+                created_by UUID, updated_by UUID);
+            CREATE TABLE "{schema}".payments (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                order_id UUID NOT NULL,
+                retailer_id UUID NOT NULL,
+                transaction_id VARCHAR(64),
+                amount NUMERIC(12,2) NOT NULL,
+                method VARCHAR(50) NOT NULL DEFAULT 'cash',
+                status VARCHAR(50) NOT NULL DEFAULT 'completed',
+                idempotency_key VARCHAR(64),
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now(),
+                is_deleted BOOLEAN DEFAULT FALSE,
+                deleted_at TIMESTAMPTZ,
+                created_by UUID, updated_by UUID);
+            CREATE TABLE "{schema}".permissions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                code VARCHAR(128) NOT NULL UNIQUE,
+                description VARCHAR(255));
+            CREATE TABLE "{schema}".roles (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name VARCHAR(64) NOT NULL UNIQUE);
+            CREATE TABLE "{schema}".role_permissions (
+                role_id UUID NOT NULL REFERENCES "{schema}".roles(id),
+                permission_id UUID NOT NULL REFERENCES "{schema}".permissions(id),
+                PRIMARY KEY (role_id, permission_id));
+            CREATE TABLE "{schema}".skus (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                sku_code VARCHAR(64) NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                category VARCHAR(64),
+                is_active BOOLEAN NOT NULL DEFAULT true,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                is_deleted BOOLEAN NOT NULL DEFAULT false,
+                deleted_at TIMESTAMPTZ,
+                created_by UUID, updated_by UUID);
+            CREATE TABLE "{schema}".order_items (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                order_id UUID NOT NULL,
+                sku_id UUID NOT NULL,
+                quantity NUMERIC(12,3) NOT NULL DEFAULT 1,
+                unit_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                is_deleted BOOLEAN NOT NULL DEFAULT false);
+            CREATE TABLE "{schema}".inventory_stocks (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                sku_id UUID NOT NULL,
+                quantity NUMERIC(12,3) NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                is_deleted BOOLEAN NOT NULL DEFAULT false);
+            CREATE TABLE "{schema}".inventory_movements (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                sku_id UUID NOT NULL,
+                delta NUMERIC(12,3) NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                is_deleted BOOLEAN NOT NULL DEFAULT false);
+            CREATE TABLE "{schema}".inventory_reservations (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                order_item_id UUID NOT NULL,
+                sku_id UUID NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                is_deleted BOOLEAN NOT NULL DEFAULT false);
+        """))
+        admin_conn.execute(text(
+            f'INSERT INTO "{schema}".permissions (code, description) VALUES '
+            f"('client:payments:create', 'Retailer: create payment')"))
+        admin_conn.execute(text(
+            f'INSERT INTO "{schema}".roles (name) VALUES '
+            f"('admin'), ('retailer_operator')"))
+        admin_conn.execute(text(
+            f'INSERT INTO "{schema}".role_permissions (role_id, permission_id) '
+            f'SELECT r.id, p.id FROM "{schema}".roles r, '
+            f'"{schema}".permissions p WHERE r.name = \'retailer_operator\' '
+            f"AND p.code = 'client:payments:create'"))
+        if shape != "empty":
+            retailer, order, sku, item = (uuid.uuid4() for _ in range(4))
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".orders (id, wholesaler_id, '
+                f'retailer_id, status, total_amount, is_deleted) VALUES '
+                f"(:id, :w, :r, 'partially_paid', 15000.00, false)"),
+                {"id": order, "w": wholesaler, "r": retailer})
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".payments (order_id, retailer_id, '
+                f'transaction_id, amount, method, status, is_deleted) '
+                f"VALUES (:o, :r, 'TX-039-0001', 5000.00, 'cash', "
+                f"'completed', false)"),
+                {"o": order, "r": retailer})
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".skus (id, sku_code, name, '
+                f'is_active, is_deleted) VALUES (:s, :code, '
+                f"'039 Sentinel SKU', true, false)"),
+                {"s": sku, "code": f"SKU-039-{schema[:8]}"})
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".inventory_stocks (sku_id, quantity, '
+                f'is_deleted) VALUES (:s, 100, false)'), {"s": sku})
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".inventory_movements (sku_id, delta, '
+                f'is_deleted) VALUES (:s, 100, false)'), {"s": sku})
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".order_items (id, order_id, sku_id, '
+                f'quantity, unit_price, is_deleted) VALUES '
+                f"(:i, :o, :s, 5, 250.00, false)"),
+                {"i": item, "o": order, "s": sku})
+            admin_conn.execute(text(
+                f'INSERT INTO "{schema}".inventory_reservations '
+                f'(order_item_id, sku_id, is_deleted) VALUES '
+                f"(:i, :s, false)"), {"i": item, "s": sku})
+            if shape != "positive_nobind":
+                cache = "500.00" if shape == "positive_stale_cache" else "0.00"
+                admin_conn.execute(text("RESET ROLE"))
+                admin_conn.execute(text(
+                    "INSERT INTO public.retailers (id, phone, name, "
+                    "is_deleted) VALUES (:r, :phone, '039 Retailer', false)"),
+                    {"r": retailer, "phone": f"r039-{retailer.hex[:20]}"})
+                admin_conn.execute(text(
+                    "INSERT INTO public.wholesaler_retailer_bindings "
+                    "(wholesaler_id, retailer_id, status, "
+                    "outstanding_balance, is_deleted) VALUES "
+                    "(:w, :r, 'active', CAST(:cache AS numeric(12,2)), "
+                    "false)"),
+                    {"w": wholesaler, "r": retailer, "cache": cache})
+                admin_conn.execute(text(f'SET ROLE "{APP_ROLE}"'))
+    finally:
+        try:
+            admin_conn.execute(text("RESET ROLE"))
+        except Exception:
+            # a failed statement aborted the transaction; reset needs a
+            # usable transaction first (25P02), the outer context still
+            # rolls the partial build back
+            admin_conn.rollback()
+            admin_conn.execute(text("RESET ROLE"))
+
+
+def _prepare_036_tenants(db_url, shapes):
+    """036 pre-state + product grants + one app-owned tenant per entry
+    (key -> shape). Returns key -> schema mapping."""
+    assert _alembic(db_url, REV_036)["rc"] == 0
+    grants = _run(
+        [sys.executable, str(PROVISIONER), "--apply-grants"],
+        _provisioner_env(db_url))
+    assert grants["rc"] == 0, grants["stderr"][-800:]
+    out = {}
+    engine = _admin_engine(db_url)
+    try:
+        with engine.begin() as conn:
+            for key, shape in shapes.items():
+                wholesaler = uuid.uuid4()
+                schema = f"t_{wholesaler.hex}"
+                _build_036_positive_tenant(conn, schema, wholesaler,
+                                           shape=shape)
+                out[key] = schema
+    finally:
+        engine.dispose()
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 8. 039 positive value-chain: two app-owned tenants, single 036->039
+# ---------------------------------------------------------------------------
+
+def test_039_full_pass_two_app_owned_tenants_value_chain(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2e039pos") as db_url:
+        schemas = _prepare_036_tenants(
+            db_url, {"alpha": "positive", "beta": "empty"})
+        alpha, beta = schemas["alpha"], schemas["beta"]
+        run = _alembic(db_url, "head")
+        assert run["rc"] == 0, run["stderr"][-1500:]
+        engine = _admin_engine(db_url)
+        try:
+            assert _fetchone(engine,
+                             "SELECT version_num FROM public.alembic_version"
+                             )[0] == REV_039
+            for s in (alpha, beta):
+                owner = _fetchone(engine, (
+                    "SELECT pg_get_userbyid(c.relowner) FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid=c.relnamespace "
+                    "WHERE n.nspname=:s AND c.relname='order_credit_holds'"),
+                    {"s": s})
+                assert owner and owner[0] == APP_ROLE, s
+            hold = _fetchone(engine, (
+                f'SELECT h.amount::text, h.remaining_amount::text, h.status, '
+                f'h.created_by::text FROM "{alpha}".order_credit_holds h '
+                f'JOIN "{alpha}".orders o ON o.id=h.order_id'))
+            assert hold == ("15000.00", "10000.00", "active", None), hold
+            assert _fetchone(engine, (
+                f'SELECT count(*) FROM "{alpha}".order_credit_holds'
+                ))[0] == 1  # one lifecycle row per order
+            assert _fetchone(engine, (
+                f'SELECT count(*) FROM "{beta}".order_credit_holds'))[0] == 0
+            # legal cache change: 038 exposure-only 0.00 -> holds + exposure
+            assert _fetchone(engine, (
+                "SELECT outstanding_balance::text FROM "
+                "public.wholesaler_retailer_bindings "
+                "WHERE is_deleted IS FALSE"))[0] == "10000.00"
+            # conservation of the original business/financial rows
+            assert _fetchone(engine, (
+                f'SELECT status::text, total_amount::text, is_deleted '
+                f'FROM "{alpha}".orders')) ==                 ("partially_paid", "15000.00", False)
+            assert _fetchone(engine, (
+                f'SELECT amount::text, method, is_deleted FROM '
+                f'"{alpha}".payments')) == ("5000.00", "cash", False)
+            assert _fetchone(engine, (
+                f'SELECT st.quantity::text FROM "{alpha}".inventory_stocks st '
+                f'JOIN "{alpha}".skus s ON s.id=st.sku_id'))[0] == "100.000"
+            assert _fetchone(engine, (
+                f'SELECT count(*) FROM "{alpha}".inventory_reservations '
+                f'WHERE is_deleted IS FALSE'))[0] == 1
+            assert _fetchone(engine, (
+                f'SELECT quantity::text, unit_price::text FROM '
+                f'"{alpha}".order_items')) == ("5.000", "250.00")
+            # 037 rename happened on the way through (create is gone)
+            with engine.connect() as codes_conn:
+                codes = {r[0] for r in codes_conn.execute(text(
+                    f'SELECT code FROM "{alpha}".permissions'))}
+            assert "client:payments:declare" in codes
+            assert "client:payments:create" not in codes
+        finally:
+            engine.dispose()
+        verify = _run(
+            [sys.executable, str(PROVISIONER), "--verify"],
+            _provisioner_env(db_url))
+        assert verify["rc"] == 0, verify["stdout"][-800:]
+
+
+# ---------------------------------------------------------------------------
+# 9. full in-process 036->039: identity restored on the SAME connection
+# ---------------------------------------------------------------------------
+
+def test_039_upgrade_restores_identity_on_same_connection(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2e039ident") as db_url:
+        schemas = _prepare_036_tenants(db_url, {"alpha": "positive"})
+        module = _load_039()
+        engine = _engine(db_url)  # migration identity
+        try:
+            with engine.connect() as conn:
+                from alembic.migration import MigrationContext
+                from alembic.operations import Operations
+                original_op = module.op
+                module.op = Operations(MigrationContext.configure(conn))
+                try:
+                    with conn.begin():
+                        module.upgrade()
+                finally:
+                    module.op = original_op
+                # same live connection, after the committed upgrade: every
+                # window must have RESET ROLEd back to the migration identity
+                assert conn.execute(
+                    text("SELECT current_user")).scalar() == MIGRATE_ROLE
+                assert conn.execute(
+                    text("SELECT session_user")).scalar() == MIGRATE_ROLE
+                # a direct module.upgrade() does not stamp alembic_version;
+                # prove the migration effect via the ADMIN identity — after
+                # the reset the migration identity must be 42501-blind to
+                # app-owned tenant tables again (by design)
+                admin = _admin_engine(db_url)
+                try:
+                    assert _fetchone(admin, (
+                        f'SELECT count(*) FROM "{schemas["alpha"]}".'
+                        f'order_credit_holds'))[0] == 1
+                    assert _fetchone(admin, (
+                        'SELECT outstanding_balance::text FROM '
+                        'public.wholesaler_retailer_bindings '
+                        'WHERE is_deleted IS FALSE'))[0] == "10000.00"
+                finally:
+                    admin.dispose()
+                with pytest.raises(Exception) as err:
+                    conn.execute(text(
+                        f'SELECT count(*) FROM "{schemas["alpha"]}".'
+                        f'order_credit_holds'))
+                assert "42501" in str(err.value) or                     "permission denied" in str(err.value).lower()
+                conn.rollback()
+        finally:
+            engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 10. capability absent (from 038) -> 039 named refusal, zero residue
+# ---------------------------------------------------------------------------
+
+def test_039_capability_absent_named_refusal_from_038(product_capability):
+    admin_maintenance = create_engine(_admin_url())
+    try:
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "g1r2e039cap") as db_url:
+            schemas = _prepare_036_tenants(db_url, {"alpha": "positive"})
+            up38 = _alembic(db_url, REV_038)
+            assert up38["rc"] == 0, up38["stderr"][-800:]
+            # revoke ONLY after 038 is reached: the 039 window alone must
+            # refuse (037/038 already needed the capability on the way up)
+            with admin_maintenance.begin() as conn:
+                conn.exec_driver_sql(
+                    f'REVOKE "{APP_ROLE}" FROM "{MIGRATE_ROLE}"')
+            try:
+                run = _alembic(db_url, "head")
+                assert run["rc"] != 0
+                assert "TenantDDLAuthorityError" in run["stderr"],                     run["stderr"][-800:]
+                assert "capability" in run["stderr"]
+                assert "is missing" not in run["stderr"]
+                engine = _admin_engine(db_url)
+                try:
+                    assert _fetchone(engine,
+                                     "SELECT version_num FROM public.alembic_"
+                                     "version")[0] == REV_038
+                    assert _fetchone(engine, (
+                        "SELECT count(*) FROM pg_class c JOIN pg_namespace n "
+                        "ON n.oid=c.relnamespace WHERE n.nspname=:s AND "
+                        "c.relname='order_credit_holds'"),
+                        {"s": schemas["alpha"]})[0] == 0
+                    assert _fetchone(engine, (
+                        f'SELECT amount::text FROM '
+                        f'"{schemas["alpha"]}".payments'))[0] == "5000.00"
+                finally:
+                    engine.dispose()
+            finally:
+                # restore the capability through the PRODUCT path even when
+                # an assertion fails (cluster-global grant is what matters)
+                boot = f"test_g1r2e039_res_{uuid.uuid4().hex[:8]}"
+                restore = _run(
+                    [sys.executable, str(PROVISIONER), "--provision"],
+                    _provisioner_env_for_name(boot))
+                assert restore["rc"] == 0, restore["stderr"][-800:]
+                dropper = create_engine(
+                    _admin_url(), isolation_level="AUTOCOMMIT")
+                try:
+                    with dropper.connect() as conn:
+                        conn.exec_driver_sql(
+                            f'DROP DATABASE IF EXISTS "{boot}"')
+                finally:
+                    dropper.dispose()
+    finally:
+        admin_maintenance.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 11. reverse membership -> 039 fail-closed and product --verify RED
+# ---------------------------------------------------------------------------
+
+def test_039_reverse_membership_fail_closed(product_capability):
+    admin_maintenance = create_engine(_admin_url())
+    try:
+        source = os.environ["TEST_DATABASE_URL"]
+        with temporary_database_url(source, "g1r2e039rev") as db_url:
+            schemas = _prepare_036_tenants(db_url, {"alpha": "positive"})
+            up38 = _alembic(db_url, REV_038)
+            assert up38["rc"] == 0, up38["stderr"][-800:]
+            # PG refuses circular memberships: forward revoked first, the
+            # reverse membership is then the only cross-role relationship.
+            with admin_maintenance.begin() as conn:
+                conn.exec_driver_sql(
+                    f'REVOKE "{APP_ROLE}" FROM "{MIGRATE_ROLE}"')
+                conn.exec_driver_sql(
+                    f'GRANT "{MIGRATE_ROLE}" TO "{APP_ROLE}"')
+            try:
+                run = _alembic(db_url, "head")
+                assert run["rc"] != 0
+                assert "TenantDDLAuthorityError" in run["stderr"], \
+                    run["stderr"][-800:]
+                engine = _admin_engine(db_url)
+                try:
+                    assert _fetchone(engine,
+                                     "SELECT version_num FROM public.alembic_"
+                                     "version")[0] == REV_038
+                finally:
+                    engine.dispose()
+            finally:
+                with admin_maintenance.begin() as conn:
+                    conn.exec_driver_sql(
+                        f'REVOKE "{MIGRATE_ROLE}" FROM "{APP_ROLE}"')
+                boot = f"test_g1r2e039_rev_{uuid.uuid4().hex[:8]}"
+                restore = _run(
+                    [sys.executable, str(PROVISIONER), "--provision"],
+                    _provisioner_env_for_name(boot))
+                assert restore["rc"] == 0, restore["stderr"][-800:]
+                dropper = create_engine(
+                    _admin_url(), isolation_level="AUTOCOMMIT")
+                try:
+                    with dropper.connect() as conn:
+                        conn.exec_driver_sql(f'DROP DATABASE IF EXISTS "{boot}"')
+                finally:
+                    dropper.dispose()
+    finally:
+        admin_maintenance.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 12. mixed tenant ownership -> named refusal before any write
+# ---------------------------------------------------------------------------
+
+def test_039_mixed_tenant_ownership_refused(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2e039mix") as db_url:
+        schemas = _prepare_036_tenants(
+            db_url, {"alpha": "positive", "gamma": "positive"})
+        up38 = _alembic(db_url, REV_038)
+        assert up38["rc"] == 0, up38["stderr"][-800:]
+        admin = _admin_engine(db_url)
+        try:
+            with admin.begin() as conn:
+                conn.execute(text(
+                    f'ALTER SCHEMA "{schemas["gamma"]}" '
+                    f'OWNER TO "{MIGRATE_ROLE}"'))
+        finally:
+            admin.dispose()
+        run = _alembic(db_url, "head")
+        assert run["rc"] != 0
+        assert "mixed tenant ownership" in run["stderr"], run["stderr"][-800:]
+        engine = _admin_engine(db_url)
+        try:
+            assert _fetchone(engine,
+                             "SELECT version_num FROM public.alembic_version"
+                             )[0] == REV_038
+            for s in schemas.values():
+                assert _fetchone(engine, (
+                    "SELECT count(*) FROM pg_class c JOIN pg_namespace n "
+                    "ON n.oid=c.relnamespace WHERE n.nspname=:s AND "
+                    "c.relname='order_credit_holds'"),
+                    {"s": s})[0] == 0
+        finally:
+            engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 13. old confirmed+cash sentinel -> named C3 refusal (erratum, permanent)
+# ---------------------------------------------------------------------------
+
+def test_039_old_confirmed_cash_shape_named_c3_refusal(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2e039c3old") as db_url:
+        schema = _prepare_036_with_tenant(db_url, sentinel=True)
+        run = _alembic(db_url, "head")
+        assert run["rc"] != 0
+        assert "C3" in run["stderr"], run["stderr"][-800:]
+        assert "migration state matrix" in run["stderr"]
+        assert "is missing" not in run["stderr"]
+        engine = _admin_engine(db_url)
+        try:
+            assert _fetchone(engine,
+                             "SELECT version_num FROM public.alembic_version"
+                             )[0] == REV_036
+            assert _fetchone(engine, (
+                f'SELECT status::text, total_amount::text FROM '
+                f'"{schema}".orders')) == ("confirmed", "15000.00")
+            assert _fetchone(engine, (
+                f'SELECT amount::text FROM "{schema}".payments'))[0] == \
+                "5000.00"
+        finally:
+            engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 14. missing live binding -> named P12 refusal
+# ---------------------------------------------------------------------------
+
+def test_039_missing_live_binding_named_p12_refusal(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2e039p12") as db_url:
+        schemas = _prepare_036_tenants(db_url, {"alpha": "positive_nobind"})
+        run = _alembic(db_url, "head")
+        assert run["rc"] != 0
+        assert "lack a live binding" in run["stderr"], run["stderr"][-800:]
+        engine = _admin_engine(db_url)
+        try:
+            assert _fetchone(engine,
+                             "SELECT version_num FROM public.alembic_version"
+                             )[0] == REV_036
+            assert _fetchone(engine, (
+                "SELECT count(*) FROM pg_class c JOIN pg_namespace n "
+                "ON n.oid=c.relnamespace WHERE n.nspname=:s AND "
+                "c.relname='order_credit_holds'"),
+                {"s": schemas["alpha"]})[0] == 0
+        finally:
+            engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 15. stale 038 cache -> named P14 refusal (never silently repaired)
+# ---------------------------------------------------------------------------
+
+def test_039_stale_binding_cache_named_p14_refusal(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2e039p14") as db_url:
+        schemas = _prepare_036_tenants(
+            db_url, {"alpha": "positive_stale_cache"})
+        run = _alembic(db_url, "head")
+        assert run["rc"] != 0
+        assert "P14 cache proof failed" in run["stderr"], run["stderr"][-800:]
+        engine = _admin_engine(db_url)
+        try:
+            assert _fetchone(engine,
+                             "SELECT version_num FROM public.alembic_version"
+                             )[0] == REV_036
+            # the drifted cache is NOT repaired by the failed run
+            assert _fetchone(engine, (
+                "SELECT outstanding_balance::text FROM "
+                "public.wholesaler_retailer_bindings "
+                "WHERE is_deleted IS FALSE"))[0] == "500.00"
+        finally:
+            engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 16. genuinely missing tenant orders (after 038) -> named refusal
+# ---------------------------------------------------------------------------
+
+def test_039_true_missing_orders_after_038_refused(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2e039miss") as db_url:
+        schemas = _prepare_036_tenants(db_url, {"alpha": "positive"})
+        up38 = _alembic(db_url, REV_038)
+        assert up38["rc"] == 0, up38["stderr"][-800:]
+        admin = _admin_engine(db_url)
+        try:
+            with admin.begin() as conn:
+                conn.execute(text(
+                    f'DROP TABLE "{schemas["alpha"]}".orders CASCADE'))
+        finally:
+            admin.dispose()
+        run = _alembic(db_url, "head")
+        assert run["rc"] != 0
+        assert "orders is missing" in run["stderr"], run["stderr"][-800:]
+        assert "TenantDDLAuthorityError" not in run["stderr"]
+        engine = _admin_engine(db_url)
+        try:
+            assert _fetchone(engine,
+                             "SELECT version_num FROM public.alembic_version"
+                             )[0] == REV_038
+        finally:
+            engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 17. injected window-body failure -> identity restored, zero residue
+# ---------------------------------------------------------------------------
+
+def test_039_window_body_interruption_restores_identity(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2e039body") as db_url:
+        schemas = _prepare_036_tenants(db_url, {"alpha": "positive"})
+        up38 = _alembic(db_url, REV_038)
+        assert up38["rc"] == 0, up38["stderr"][-800:]
+        module = _load_039()
+        original_backfill = module._backfill_holds
+
+        def exploding_backfill(bind, schema):
+            raise RuntimeError("injected body failure inside the B window")
+
+        module._backfill_holds = exploding_backfill
+        engine = _engine(db_url)  # migration identity
+        try:
+            from alembic.migration import MigrationContext
+            from alembic.operations import Operations
+            with engine.connect() as conn:
+                module.op = Operations(MigrationContext.configure(conn))
+                try:
+                    with pytest.raises(RuntimeError) as err:
+                        with conn.begin():
+                            module.upgrade()
+                    assert "injected body failure" in str(err.value)
+                finally:
+                    module.op = None
+                    module._backfill_holds = original_backfill
+                # same connection after the aborted upgrade: identity back
+                assert conn.execute(
+                    text("SELECT current_user")).scalar() == MIGRATE_ROLE
+                assert conn.execute(
+                    text("SELECT session_user")).scalar() == MIGRATE_ROLE
+                conn.rollback()
+                assert conn.execute(text(
+                    "SELECT version_num FROM public.alembic_version")
+                ).scalar() == REV_038
+                assert conn.execute(text(
+                    "SELECT count(*) FROM pg_class c JOIN pg_namespace n "
+                    "ON n.oid=c.relnamespace WHERE n.nspname=:s AND "
+                    "c.relname='order_credit_holds'"),
+                    {"s": schemas["alpha"]}).scalar() == 0
+                assert conn.execute(text(
+                    "SELECT outstanding_balance::text FROM "
+                    "public.wholesaler_retailer_bindings "
+                    "WHERE is_deleted IS FALSE")).scalar() == "0.00"
+        finally:
+            engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 18. SET-success .. token-return handshake gap still resets the identity
+# ---------------------------------------------------------------------------
+
+class _HandshakeInterruptingBind:
+    """Delegates to the real connection but fails the FIRST current_user
+    probe after the SET ROLE, simulating a failure between SET ROLE success
+    and the window token returning."""
+
+    def __init__(self, conn):
+        self._conn = conn
+        self._seen_set_role = False
+
+    def execute(self, *a, **kw):
+        sql = str(a[0]) if a else ""
+        if "SET ROLE" in sql:
+            self._seen_set_role = True
+        elif self._seen_set_role and "current_user" in sql:
+            raise RuntimeError("injected handshake failure after SET ROLE")
+        return self._conn.execute(*a, **kw)
+
+
+def test_039_set_handshake_failure_still_resets(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2e039hs") as db_url:
+        schemas = _prepare_036_tenants(db_url, {"alpha": "positive"})
+        module = _load_039()
+        engine = _engine(db_url)  # migration identity
+        try:
+            with engine.connect() as conn:
+                wrapper = _HandshakeInterruptingBind(conn)
+                with pytest.raises(RuntimeError) as err:
+                    module._open_tenant_ddl_authority(
+                        wrapper, [schemas["alpha"]], "039 handshake-gap test")
+                assert "injected handshake failure" in str(err.value)
+                # the except boundary RESET ROLEd through the wrapper
+                assert conn.execute(
+                    text("SELECT current_user")).scalar() == MIGRATE_ROLE
+                assert conn.execute(
+                    text("SELECT session_user")).scalar() == MIGRATE_ROLE
+        finally:
+            engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 19. 039 catalog probes are privilege-INDEPENDENT (pg_catalog, not the
+#     privilege-filtered information_schema view) — exercised DIRECTLY on a
+#     migration-identity connection outside any SET ROLE window
+# ---------------------------------------------------------------------------
+
+def test_039_catalog_probe_privilege_independent(product_capability):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, "g1r2e039cat") as db_url:
+        schemas = _prepare_036_tenants(db_url, {"alpha": "positive"})
+        schema = schemas["alpha"]
+        module = _load_039()
+        engine = _engine(db_url)  # migration identity, NO window
+        try:
+            with engine.connect() as conn:
+                # blindness baseline on the same connection: the
+                # privilege-filtered view hides every app-owned tenant table
+                assert conn.execute(text(
+                    "SELECT count(*) FROM information_schema.tables "
+                    "WHERE table_schema=:s"), {"s": schema}).scalar() == 0
+                # the 039 probe must see the app-owned tenant table anyway
+                assert module._table_exists(conn, schema, "orders") is True
+                # genuinely absent objects stay absent (no false positives)
+                assert module._table_exists(
+                    conn, schema, "order_credit_holds") is False
+                assert module._table_exists(
+                    conn, "t_" + "0" * 32, "orders") is False
+        finally:
+            engine.dispose()

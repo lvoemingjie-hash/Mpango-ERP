@@ -4,6 +4,7 @@ Revision ID: 039_order_credit_holds
 Revises: 038_catalog_identity_vertical_slice
 
 CTO-AUTH-ORDER-STATE-R2-PER-ORDER-CREDIT-HOLD-IMPLEMENTATION-2026-09-17.
+Tenant-authority closure: CTO-AUTH-MPANGO-PROMOTION-G1-R2E-P1R1-039-AUTHORITY-20260928.
 
 Self-contained: imports only stdlib/alembic/sqlalchemy — never a runtime
 module (historical migrations must not drift with code edits).
@@ -21,6 +22,17 @@ Phases inside Alembic's single transactional-DDL transaction:
         SUM(active hold remaining) + SUM(per-order net credit exposure)
      (per-order aggregation first, retailer SUM second — no MAX).
   V  row-level + aggregate-level verification (interlocked with P14).
+
+Authority windows (G1-R2E-P1R1): app-owned tenant objects (orders/payments
+reads, order_credit_holds DDL/backfill, cache rebuild joins, verification)
+are reached ONLY through the narrowest ``SET ROLE mpango_app`` windows built
+on the admin-provisioned one-way capability (GRANT mpango_app TO
+mpango_migrate WITH INHERIT FALSE, SET TRUE); every window end — normal,
+body-failed, or token-handshake-failed — RESET ROLEs and proves the
+migration identity on the same live connection. Catalog existence probes
+read pg_catalog, never privilege-filtered information_schema. The public
+registry/binding-cache formulae, the C3/P12/P14 semantics and every named
+refusal message are unchanged.
 
 Downgrade: forward-only. The lifecycle rows and their audit timestamps are
 NOT reconstructible after DROP; restoring pre-039 state requires a backup.
@@ -106,33 +118,175 @@ class PreflightFailure(RuntimeError):
     pass
 
 
+TENANT_AUTHORITY_ROLE = "mpango_app"
+
+
+class TenantDDLAuthorityError(RuntimeError):
+    """Named refusal: the migration identity cannot lawfully read or alter
+    app-owned tenant objects (missing one-way capability, mixed tenant
+    ownership, or a SET ROLE leaked from an earlier window)."""
+
+
+def _open_tenant_ddl_authority(bind, schemas: list[str], purpose: str):
+    """Open the narrowest SET ROLE window for tenant reads/DDL/backfill.
+
+    Returns the pre-window ``current_user`` (the window token) when the
+    one-way capability window is required, or ``None`` when the current
+    identity already holds direct CREATE authority on every listed tenant
+    schema (legacy single-role / superuser shapes) and needs no window.
+
+    Fails closed with a NAMED error before touching any tenant object when
+    a previous window's SET ROLE leaked (``current_user != session_user``),
+    when tenant schema ownership is mixed, or when the admin-provisioned
+    one-way capability (GRANT app TO migrate WITH INHERIT FALSE, SET TRUE)
+    is absent.
+    """
+    identity = bind.execute(sa.text("SELECT current_user, session_user")).fetchone()
+    current_user, session_user = identity[0], identity[1]
+    if current_user != session_user:
+        raise TenantDDLAuthorityError(
+            f"tenant DDL authority window for {purpose!r} refused: "
+            f"current_user {current_user!r} != session_user "
+            f"{session_user!r} — a SET ROLE from an earlier window leaked "
+            "and must be reset before any further tenant work"
+        )
+    authority = bind.execute(sa.text(
+        "SELECT n.nspname, has_schema_privilege(current_user, n.nspname, "
+        "'CREATE') FROM pg_catalog.pg_namespace n "
+        "WHERE n.nspname = ANY(:schemas) ORDER BY n.nspname"
+    ), {"schemas": list(schemas)}).fetchall()
+    if not authority:
+        raise TenantDDLAuthorityError(
+            f"tenant DDL authority window for {purpose!r} refused: none of "
+            f"the tenant schemas {sorted(schemas)} exist in pg_namespace "
+            "(registry/catalog drift)"
+        )
+    without_create = [row[0] for row in authority if not row[1]]
+    if not without_create:
+        return None
+    with_create = [row[0] for row in authority if row[1]]
+    if with_create:
+        raise TenantDDLAuthorityError(
+            f"tenant DDL authority window for {purpose!r} refused: mixed "
+            f"tenant ownership — CREATE held on {with_create} but not on "
+            f"{without_create}; sanctioned topologies are uniformly owned"
+        )
+    can_set = bind.execute(sa.text(
+        "SELECT pg_has_role(current_user, :role, 'SET')"
+    ), {"role": TENANT_AUTHORITY_ROLE}).scalar()
+    if not can_set:
+        raise TenantDDLAuthorityError(
+            f"tenant DDL authority for {purpose!r} refused: identity "
+            f"{current_user!r} holds no CREATE on tenant schema(s) "
+            f"{without_create} and cannot SET ROLE "
+            f"{TENANT_AUTHORITY_ROLE!r} — the one-way migration tenant-DDL "
+            f"capability (GRANT {TENANT_AUTHORITY_ROLE} TO {current_user} "
+            "WITH INHERIT FALSE, SET TRUE, applied by the admin in "
+            "provisioning phase 1) is absent on this deployment"
+        )
+    bind.execute(sa.text(f'SET ROLE "{TENANT_AUTHORITY_ROLE}"'))
+    try:
+        bound = bind.execute(sa.text("SELECT current_user")).scalar()
+        if bound != TENANT_AUTHORITY_ROLE:
+            raise TenantDDLAuthorityError(
+                f"tenant DDL authority window for {purpose!r} refused: SET ROLE "
+                f"bound current_user {bound!r}, expected "
+                f"{TENANT_AUTHORITY_ROLE!r}"
+            )
+    except Exception:
+        # The SET succeeded but the token handshake failed: the reset
+        # boundary must already cover this gap (SET-success .. token-return).
+        bind.execute(sa.text("RESET ROLE"))
+        raise
+    return current_user
+
+
+def _close_tenant_ddl_authority(bind, token, purpose: str) -> None:
+    """Close the window: RESET ROLE and prove the migration identity is back.
+
+    Called from ``finally`` — SET ROLE survives transaction rollback, so the
+    reset must run even when the window body failed.
+    """
+    if token is None:
+        return
+    bind.execute(sa.text("RESET ROLE"))
+    restored = bind.execute(sa.text("SELECT current_user")).scalar()
+    if restored != token:
+        raise TenantDDLAuthorityError(
+            f"tenant DDL authority window for {purpose!r} failed to restore "
+            f"current_user {token!r} (now {restored!r})"
+        )
+
+
+def _tenant_ddl_authority_window(bind, schemas: list[str], purpose: str, body) -> None:
+    """Run ``body()`` under the narrowest tenant-authority window.
+
+    The body runs inside a SAVEPOINT so that a body failure leaves the
+    enclosing Alembic transaction in a usable state for the mandatory
+    identity reset (a plain RESET ROLE is refused with 25P02 inside an
+    aborted transaction); the original exception is always re-raised and
+    Alembic's outer rollback still discards every partial write.
+    """
+    token = _open_tenant_ddl_authority(bind, schemas, purpose)
+    if token is None:
+        body()
+        return
+    try:
+        nested = bind.begin_nested()
+        try:
+            body()
+            nested.commit()
+        except Exception:
+            nested.rollback()
+            raise
+    finally:
+        _close_tenant_ddl_authority(bind, token, purpose)
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     schemas = _registered_tenants(bind)
+    if not schemas:
+        return
 
-    failures: list[str] = []
     per_tenant_state: list[tuple[str, str]] = []
-    for schema in schemas:
-        try:
-            _preflight_tenant(bind, schema)
-            wholesaler_id = _wholesaler_for_schema(bind, schema)
-            per_tenant_state.append((schema, wholesaler_id))
-        except PreflightFailure as exc:
-            failures.append(str(exc))
-    if failures:
-        raise PreflightFailure(
-            "039 preflight failed for "
-            f"{len(failures)}/{len(schemas)} tenant(s); no writes performed. "
-            + " | ".join(failures))
+
+    def _preflight_all() -> None:
+        failures: list[str] = []
+        for schema in schemas:
+            try:
+                _preflight_tenant(bind, schema)
+                wholesaler_id = _wholesaler_for_schema(bind, schema)
+                per_tenant_state.append((schema, wholesaler_id))
+            except PreflightFailure as exc:
+                failures.append(str(exc))
+        if failures:
+            raise PreflightFailure(
+                "039 preflight failed for "
+                f"{len(failures)}/{len(schemas)} tenant(s); no writes performed. "
+                + " | ".join(failures))
+
+    # Phase P — every live tenant must pass read-only preflight (inside one
+    # window; zero writes of any kind before it completes).
+    _tenant_ddl_authority_window(
+        bind, schemas, "039 preflight tenant reads", _preflight_all)
 
     for schema, _ws in per_tenant_state:
-        _create_hold_table(bind, schema)
+        _tenant_ddl_authority_window(
+            bind, [schema], f"039 tenant hold table {schema}",
+            lambda schema=schema: _create_hold_table(bind, schema))
     for schema, _ws in per_tenant_state:
-        _backfill_holds(bind, schema)
+        _tenant_ddl_authority_window(
+            bind, [schema], f"039 tenant backfill {schema}",
+            lambda schema=schema: _backfill_holds(bind, schema))
     for schema, ws in per_tenant_state:
-        _rebuild_binding_cache(bind, schema, ws)
+        _tenant_ddl_authority_window(
+            bind, [schema], f"039 binding cache rebuild {schema}",
+            lambda schema=schema, ws=ws: _rebuild_binding_cache(bind, schema, ws))
     for schema, ws in per_tenant_state:
-        _verify_tenant(bind, schema, ws)
+        _tenant_ddl_authority_window(
+            bind, [schema], f"039 tenant verification {schema}",
+            lambda schema=schema, ws=ws: _verify_tenant(bind, schema, ws))
 
 
 def downgrade() -> None:
@@ -591,11 +745,17 @@ def _verify_tenant(bind, schema: str, ws: str) -> None:
 
 
 def _table_exists(bind, schema: str, table: str) -> bool:
+    # pg_catalog, not information_schema: the migration authority must see
+    # app-owned tenant tables even though privilege-filtered views hide them
+    # (G1-R2E-P1R1 authority contract; genuinely absent tables are still
+    # rejected by name through the same call sites).
     return bool(
         bind.execute(
             sa.text(
-                "SELECT 1 FROM information_schema.tables "
-                "WHERE table_schema=:schema AND table_name=:table"
+                "SELECT 1 FROM pg_catalog.pg_class c "
+                "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname=:schema AND c.relname=:table "
+                "AND c.relkind IN ('r', 'p', 'v', 'f')"
             ),
             {"schema": schema, "table": table},
         ).scalar()

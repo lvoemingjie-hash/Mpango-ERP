@@ -127,6 +127,93 @@ class TenantDDLAuthorityError(RuntimeError):
     ownership, or a SET ROLE leaked from an earlier window)."""
 
 
+def _handshake_discard_error(bind, purpose: str,
+                             reason: str) -> TenantDDLAuthorityError:
+    """Build the named error for a connection that cannot be proven safe.
+
+    Returned rather than raised so the caller owns the raise site, and always
+    raised WITHOUT ``from ...``/``from None``: the active exception chain --
+    the cleanup failure and the original handshake failure -- stays visible
+    instead of being suppressed.  The message states plainly whether the
+    connection really was invalidated, so a failed ``invalidate()`` can never
+    be reported as a successful discard.
+    """
+    try:
+        bind.invalidate()
+        detail = ("the migration connection was invalidated and must not be "
+                  "reused under any identity")
+    except Exception as invalidate_exc:
+        detail = (
+            "invalidation FAILED "
+            f"({type(invalidate_exc).__name__}: {str(invalidate_exc)[:80]}); "
+            "the connection was NOT discarded and must not be reused under "
+            "any identity")
+    return TenantDDLAuthorityError(
+        f"tenant DDL authority window for {purpose!r}: {reason}; {detail}")
+
+
+def _abort_handshake_window(bind, savepoint, entry_user: str,
+                            purpose: str) -> None:
+    """Fail-closed cleanup for the SET-success .. token-return gap.
+
+    ``RESET ROLE`` alone is NOT an executable boundary in that gap: when the
+    token probe fails SERVER-side the transaction is aborted and every
+    statement except ROLLBACK/ROLLBACK TO SAVEPOINT is refused with 25P02, so
+    a bare reset would itself raise and restore nothing (measured on
+    PostgreSQL 16.15).  This boundary therefore (1) rolls the handshake
+    savepoint back to restore a usable transaction, (2) executes ``RESET
+    ROLE`` and verifies ``current_user`` on the SAME live connection, and (3)
+    performs the enclosing rollback and re-verifies when the identity still
+    mismatches -- the rollback is executed, not merely documented.
+
+    A failing cleanup step never degrades into a claim: the raised error
+    carries the reason, states whether the connection really was invalidated,
+    and is raised without exception-suppression so BOTH the cleanup failure
+    and the original handshake failure stay visible.  No token is returned
+    from this path and no replacement connection is opened to fake a
+    recovery.
+    """
+    try:
+        savepoint.rollback()
+    except Exception:
+        try:
+            bind.rollback()
+        except Exception:
+            raise _handshake_discard_error(
+                bind, purpose,
+                "the handshake savepoint could not be rolled back and the "
+                "enclosing transaction could not be rolled back either")
+    restored = None
+    try:
+        bind.execute(sa.text("RESET ROLE"))
+        restored = bind.execute(sa.text("SELECT current_user")).scalar()
+    except Exception:
+        try:
+            bind.rollback()
+            bind.execute(sa.text("RESET ROLE"))
+            restored = bind.execute(sa.text("SELECT current_user")).scalar()
+        except Exception:
+            raise _handshake_discard_error(
+                bind, purpose,
+                "the migration identity could not be verified after the "
+                "handshake savepoint rollback")
+    if restored != entry_user:
+        try:
+            bind.rollback()
+            restored = bind.execute(sa.text("SELECT current_user")).scalar()
+        except Exception:
+            raise _handshake_discard_error(
+                bind, purpose,
+                f"current_user {entry_user!r} could not be restored and the "
+                "enclosing transaction could not be rolled back")
+        if restored != entry_user:
+            raise _handshake_discard_error(
+                bind, purpose,
+                "failed to restore current_user "
+                f"{entry_user!r} after a failed SET ROLE handshake "
+                f"(now {restored!r})")
+
+
 def _open_tenant_ddl_authority(bind, schemas: list[str], purpose: str):
     """Open the narrowest SET ROLE window for tenant reads/DDL/backfill.
 
@@ -184,8 +271,16 @@ def _open_tenant_ddl_authority(bind, schemas: list[str], purpose: str):
             "WITH INHERIT FALSE, SET TRUE, applied by the admin in "
             "provisioning phase 1) is absent on this deployment"
         )
-    bind.execute(sa.text(f'SET ROLE "{TENANT_AUTHORITY_ROLE}"'))
+    # The SET-success .. token-return gap needs its own exception-safe
+    # boundary: the enclosing _tenant_ddl_authority_window ``finally`` is not
+    # reached while this function raises, and a bare RESET ROLE cannot run
+    # once a server-side handshake error has aborted the transaction.  The
+    # handshake therefore runs inside a SAVEPOINT whose rollback restores
+    # both transaction usability and the migration identity, and whose
+    # failure path is the shared fail-closed cleanup (G1-R2E-P1R1R2).
+    savepoint = bind.begin_nested()
     try:
+        bind.execute(sa.text(f'SET ROLE "{TENANT_AUTHORITY_ROLE}"'))
         bound = bind.execute(sa.text("SELECT current_user")).scalar()
         if bound != TENANT_AUTHORITY_ROLE:
             raise TenantDDLAuthorityError(
@@ -193,10 +288,9 @@ def _open_tenant_ddl_authority(bind, schemas: list[str], purpose: str):
                 f"bound current_user {bound!r}, expected "
                 f"{TENANT_AUTHORITY_ROLE!r}"
             )
-    except Exception:
-        # The SET succeeded but the token handshake failed: the reset
-        # boundary must already cover this gap (SET-success .. token-return).
-        bind.execute(sa.text("RESET ROLE"))
+        savepoint.commit()
+    except BaseException:
+        _abort_handshake_window(bind, savepoint, current_user, purpose)
         raise
     return current_user
 
@@ -204,8 +298,12 @@ def _open_tenant_ddl_authority(bind, schemas: list[str], purpose: str):
 def _close_tenant_ddl_authority(bind, token, purpose: str) -> None:
     """Close the window: RESET ROLE and prove the migration identity is back.
 
-    Called from ``finally`` — SET ROLE survives transaction rollback, so the
-    reset must run even when the window body failed.
+    Called from ``finally``.  The reset is required on the NORMAL path — the
+    window body commits its savepoint and the SET ROLE is still in effect —
+    and it is executed (as a verified no-op) on the failure path too, where
+    the body savepoint rollback has already reverted the role.  Measured on
+    PostgreSQL 16.15: an explicit ROLLBACK does revert SET ROLE, so the reset
+    is about closing the live window, not about surviving a rollback.
     """
     if token is None:
         return

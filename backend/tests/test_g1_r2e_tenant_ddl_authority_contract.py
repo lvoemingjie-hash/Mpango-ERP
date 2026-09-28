@@ -402,10 +402,18 @@ def test_capability_present_full_pass_app_owned(product_capability):
     source = os.environ["TEST_DATABASE_URL"]
     with temporary_database_url(source, "g1r2epos") as db_url:
         schema = _prepare_036_with_tenant(db_url, sentinel=True)
-        pre_oid = _fetchone(_admin_engine(db_url), (
-            "SELECT c.oid::bigint FROM pg_class c JOIN pg_namespace n "
-            "ON n.oid = c.relnamespace WHERE n.nspname = :s "
-            "AND c.relname = 'payments'"), {"s": schema})[0]
+        # the probe engine is released explicitly: relying on cyclic GC left
+        # a pooled admin session attached to the disposable database and the
+        # harness teardown (which never terminates other-role sessions) then
+        # timed out even though every assertion above had passed
+        pre_engine = _admin_engine(db_url)
+        try:
+            pre_oid = _fetchone(pre_engine, (
+                "SELECT c.oid::bigint FROM pg_class c JOIN pg_namespace n "
+                "ON n.oid = c.relnamespace WHERE n.nspname = :s "
+                "AND c.relname = 'payments'"), {"s": schema})[0]
+        finally:
+            pre_engine.dispose()
         run = _alembic(db_url, REV_038)
         assert run["rc"] == 0, run["stderr"][-1200:]
         engine = _admin_engine(db_url)
@@ -1428,12 +1436,29 @@ class _HandshakeInterruptingBind:
     def __init__(self, conn):
         self._conn = conn
         self._seen_set_role = False
+        self._fired = False
+
+    def __getattr__(self, name):
+        # faithful delegation (its own docstring promises it): the window now
+        # opens a handshake savepoint, exactly as 037/038 already did, so
+        # nested-transaction helpers must reach the real connection.  No
+        # assertion, selection or skip logic is touched here.
+        if name == "_conn":
+            raise AttributeError(name)
+        return getattr(self._conn, name)
 
     def execute(self, *a, **kw):
         sql = str(a[0]) if a else ""
         if "SET ROLE" in sql:
             self._seen_set_role = True
-        elif self._seen_set_role and "current_user" in sql:
+        elif (self._seen_set_role and not self._fired
+              and "current_user" in sql):
+            # ONE-SHOT, exactly as this double's docstring states: the
+            # boundary's own identity-verification probe must be allowed
+            # through, otherwise the double would exercise a scenario it does
+            # not claim (an unverifiable connection) rather than the intended
+            # SET-success..token-return failure
+            self._fired = True
             raise RuntimeError("injected handshake failure after SET ROLE")
         return self._conn.execute(*a, **kw)
 
@@ -1739,3 +1764,357 @@ def test_038_handshake_server_sql_error_restores_identity(product_capability):
 def test_038_handshake_wrong_identity_named_refusal_restores_identity(
         product_capability):
     _handshake_case("038", "wrong_identity", "g1r2e038hs_id")
+
+
+# ===========================================================================
+# G1-R2E-P1R1R2: 039 handshake parity + cleanup-failure visibility
+# (appended 2026-09-28; every node above is byte-identical except the single
+#  authorised connection-lifetime fix inside
+# test_capability_present_full_pass_app_owned, disclosed in the report).
+# Authorization: CTO-DIR-G1-R2E-P1R1R2-039-HANDSHAKE-20260928.
+#
+# The R1 helpers above are deliberately left untouched (this round may only
+# append nodes plus release the leftover engine), so this block carries its own
+# driver that also covers 039.
+# ===========================================================================
+
+_R2_ARTIFACTS = {"037": "payment_declarations",
+                 "038": "catalog_products",
+                 "039": "order_credit_holds"}
+_R2_MIGRATIONS = {
+    "037": BACKEND / "alembic" / "versions" / "037_payment_declarations_schema.py",
+    "038": BACKEND / "alembic" / "versions" / "038_catalog_identity_vertical_slice.py",
+    "039": BACKEND / "alembic" / "versions" / "039_order_credit_holds.py",
+}
+
+
+def _r2_load(which):
+    spec = importlib.util.spec_from_file_location(
+        f"g1r2e_p1r1r2_migration_{which}", _R2_MIGRATIONS[which])
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _r2_pgcode(exc):
+    return getattr(getattr(exc, "orig", None), "pgcode", None)
+
+
+def _r2_walk_exception_chain(exc):
+    """Every exception visible from ``exc`` through __cause__/__context__."""
+    seen, chain, cur = set(), [], exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        chain.append(f"{type(cur).__name__}: {cur}")
+        cur = cur.__cause__ if cur.__cause__ is not None else cur.__context__
+    return chain
+
+
+def _r2_probe_after_failure(conn):
+    """Same-connection state right after the injected failure, BEFORE any
+    outer rollback (the F-001 discriminator)."""
+    out = {}
+    try:
+        row = conn.execute(text("SELECT current_user, session_user")).fetchone()
+        out["current_user"], out["session_user"] = row[0], row[1]
+        out["identity_already_migration"] = (row[0] == MIGRATE_ROLE
+                                             and row[1] == MIGRATE_ROLE)
+    except Exception as exc:
+        out["identity_already_migration"] = False
+        out["identity_probe_pgcode"] = _r2_pgcode(exc)
+    try:
+        out["tx_still_usable"] = conn.execute(text("SELECT 1")).scalar() == 1
+    except Exception as exc:
+        out["tx_still_usable"] = False
+        out["tx_probe_pgcode"] = _r2_pgcode(exc)
+    return out
+
+
+def _r2_inject_handshake(db_url, which, mode):
+    """Handshake-fault driver for 037/038/039 (R1 driver covers only 037/038)."""
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    module = _r2_load(which)
+    engine = _engine(db_url)
+    record = {"which": which, "mode": mode}
+    real_sa = module.sa
+    try:
+        with engine.connect() as conn:
+            injector = _HandshakeProbeInjector(real_sa, mode)
+            module.sa = injector
+            module.op = Operations(MigrationContext.configure(conn))
+            try:
+                with pytest.raises(BaseException) as err:
+                    with conn.begin():
+                        module.upgrade()
+                record["raised_type"] = type(err.value).__name__
+                record["raised_message"] = str(err.value)[:400]
+                record["raised_pgcode"] = _r2_pgcode(err.value)
+                record["injection_fired"] = injector.fired
+                record["reset_issued"] = injector.saw_reset_role
+                record.update(_r2_probe_after_failure(conn))
+                if mode == "sql_error":
+                    naive = {}
+                    try:
+                        conn.execute(text(f'SET ROLE "{APP_ROLE}"'))
+                        try:
+                            conn.execute(text("SELECT 1 / 0"))
+                        except Exception as exc:
+                            naive["error_pgcode"] = _r2_pgcode(exc)
+                        try:
+                            conn.execute(text("RESET ROLE"))
+                            naive["naive_reset_executed"] = True
+                        except Exception as exc:
+                            naive["naive_reset_executed"] = False
+                            naive["naive_reset_pgcode"] = _r2_pgcode(exc)
+                        conn.rollback()
+                        naive["identity_after_rollback"] = conn.execute(
+                            text("SELECT current_user")).scalar()
+                    except Exception as exc:
+                        naive["demo_unavailable_pgcode"] = _r2_pgcode(exc)
+                        conn.rollback()
+                    record["naive_reset_counter_demo"] = naive
+                conn.rollback()
+                record["current_user_after_rollback"] = conn.execute(
+                    text("SELECT current_user")).scalar()
+                record["version"] = conn.execute(text(
+                    "SELECT version_num FROM public.alembic_version")).scalar()
+            finally:
+                module.sa = real_sa
+                module.op = None
+    finally:
+        engine.dispose()
+    return record
+
+
+def _r2_assert_handshake_closure(record, db_url, tenant_schema, artifact):
+    """Same requirements as the R1 nodes, restated for the 039 driver."""
+    assert record["injection_fired"] is True, record
+    assert record["reset_issued"] is True, record
+    assert record["identity_already_migration"] is True, record
+    assert record["tx_still_usable"] is True, record
+    assert record["current_user_after_rollback"] == MIGRATE_ROLE, record
+    assert record["version"] == REV_036, record
+    engine = _admin_engine(db_url)
+    try:
+        assert _fetchone(engine, (
+            "SELECT count(*) FROM pg_class c JOIN pg_namespace n "
+            "ON n.oid=c.relnamespace WHERE n.nspname=:s AND c.relname=:t"),
+            {"s": tenant_schema, "t": artifact})[0] == 0, record
+        assert _fetchone(engine, (
+            f'SELECT status::text, total_amount::text FROM '
+            f'"{tenant_schema}".orders')) == ("confirmed", "15000.00")
+        assert _fetchone(engine, (
+            f'SELECT amount::text FROM "{tenant_schema}".payments'))[0] == \
+            "5000.00"
+    finally:
+        engine.dispose()
+    if record["mode"] == "python_exception":
+        assert record["raised_type"] == "RuntimeError", record
+        assert "injected Python failure" in record["raised_message"], record
+    if record["mode"] == "sql_error":
+        assert record["raised_pgcode"] == "22012", record
+        naive = record["naive_reset_counter_demo"]
+        assert naive.get("error_pgcode") == "22012", naive
+        assert naive.get("naive_reset_executed") is False, naive
+        assert naive.get("naive_reset_pgcode") == "25P02", naive
+        assert naive.get("identity_after_rollback") == MIGRATE_ROLE, naive
+    if record["mode"] == "wrong_identity":
+        assert record["raised_type"] == "TenantDDLAuthorityError", record
+        assert "expected" in record["raised_message"], record
+        assert "not_mpango_app" in record["raised_message"], record
+
+
+def _r2_handshake_case(which, mode, prefix):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, prefix) as db_url:
+        tenant_schema = _prepare_036_with_tenant(db_url, sentinel=True)
+        record = _r2_inject_handshake(db_url, which, mode)
+        record["tenant_schema"] = tenant_schema
+        _r2_assert_handshake_closure(record, db_url, tenant_schema,
+                                     _R2_ARTIFACTS[which])
+
+
+# ---------------------------------------------------------------------------
+# 26-28. 039 token-handshake gap: the three failure classes
+# ---------------------------------------------------------------------------
+
+def test_039_handshake_python_exception_restores_identity(product_capability):
+    _r2_handshake_case("039", "python_exception", "g1r2e039hs2_py")
+
+
+def test_039_handshake_server_sql_error_restores_identity(product_capability):
+    _r2_handshake_case("039", "sql_error", "g1r2e039hs2_sq")
+
+
+def test_039_handshake_wrong_identity_named_refusal_restores_identity(
+        product_capability):
+    _r2_handshake_case("039", "wrong_identity", "g1r2e039hs2_id")
+
+
+# ---------------------------------------------------------------------------
+# 29-31. cleanup-failure counterexamples: a failing cleanup step must keep BOTH
+#        the cleanup error and the original handshake error visible, and must
+#        never report a discard that did not happen.
+# ---------------------------------------------------------------------------
+
+class _R2FailingSavepoint:
+    """Savepoint whose rollback always fails (injected)."""
+
+    def __init__(self, real):
+        self._real = real
+        self.rollback_attempts = 0
+
+    def rollback(self):
+        self.rollback_attempts += 1
+        raise RuntimeError("injected savepoint rollback failure")
+
+    def commit(self):
+        return self._real.commit()
+
+
+class _R2CleanupFaultBind:
+    """Delegating bind that injects cleanup-step faults.
+
+    faults is a set drawn from: 'savepoint' (begin_nested() savepoint whose
+    rollback raises), 'rollback' (bind.rollback() raises), 'reset' (the RESET
+    ROLE statement raises), 'identity' (the identity probe returns a wrong
+    identity), 'invalidate' (bind.invalidate() raises).
+    """
+
+    def __init__(self, conn, faults):
+        self._conn = conn
+        self._faults = set(faults)
+        self.executed = []
+        self.invalidate_attempts = 0
+        self.rollback_attempts = 0
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def execute(self, statement, *args, **kwargs):
+        sql = " ".join(str(statement).split())
+        self.executed.append(sql[:60])
+        if "reset" in self._faults and sql.startswith("RESET ROLE"):
+            raise RuntimeError("injected RESET ROLE failure")
+        if "identity" in self._faults and sql == "SELECT current_user":
+            return self._conn.execute(text("SELECT 'not_mpango_app'::text"))
+        return self._conn.execute(statement, *args, **kwargs)
+
+    def rollback(self):
+        self.rollback_attempts += 1
+        if "rollback" in self._faults:
+            raise RuntimeError("injected enclosing rollback failure")
+        return self._conn.rollback()
+
+    def begin_nested(self):
+        real = self._conn.begin_nested()
+        if "savepoint" in self._faults:
+            return _R2FailingSavepoint(real)
+        return real
+
+    def invalidate(self):
+        self.invalidate_attempts += 1
+        if "invalidate" in self._faults:
+            raise RuntimeError("injected invalidate failure")
+        return self._conn.invalidate()
+
+
+def _r2_cleanup_fault_probe(db_url, which, faults):
+    """Drive the handshake with a Python-exception injection plus the given
+    cleanup faults; return the observable error chain and state."""
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    module = _r2_load(which)
+    engine = _engine(db_url)
+    record = {"which": which, "faults": sorted(faults)}
+    real_sa = module.sa
+    try:
+        with engine.connect() as conn:
+            injector = _HandshakeProbeInjector(real_sa, "python_exception")
+            bind = _R2CleanupFaultBind(conn, faults)
+            module.sa = injector
+            module.op = Operations(MigrationContext.configure(bind))
+            try:
+                try:
+                    module.upgrade()
+                    record["raised"] = None
+                except BaseException as exc:  # noqa: BLE001
+                    record["raised"] = type(exc).__name__
+                    record["raised_message"] = str(exc)[:600]
+                    record["chain"] = _r2_walk_exception_chain(exc)
+                record["injection_fired"] = injector.fired
+                record["invalidate_attempts"] = bind.invalidate_attempts
+                record["rollback_attempts"] = bind.rollback_attempts
+                try:
+                    record["actual_identity"] = conn.execute(
+                        text("SELECT current_user")).scalar()
+                except Exception as exc:
+                    record["actual_identity"] = f"unusable:{_r2_pgcode(exc)}"
+                conn.rollback()
+                record["version"] = conn.execute(text(
+                    "SELECT version_num FROM public.alembic_version")).scalar()
+            finally:
+                module.sa = real_sa
+                module.op = None
+    finally:
+        engine.dispose()
+    return record
+
+
+def _r2_assert_cleanup_visibility(record, expect_reason, expect_discard):
+    chain = " | ".join(record.get("chain") or [])
+    assert record["raised"] == "TenantDDLAuthorityError", record
+    message = record["raised_message"]
+    assert "injected Python failure" in chain, record        # original kept
+    assert "injected" in message or "injected" in chain, record
+    assert expect_reason in message, record
+    if expect_discard:
+        # a real discard happened -> the message may claim it, but must still
+        # name the failure that forced it
+        assert "was invalidated and must not be reused" in message, record
+    else:
+        # invalidate() itself failed -> never claim a successful discard
+        assert "invalidation FAILED" in message, record
+        assert "was invalidated and must not be reused" not in message, record
+    assert record["version"] == REV_036, record
+
+
+def _r2_cleanup_fault_case(which, prefix):
+    source = os.environ["TEST_DATABASE_URL"]
+    with temporary_database_url(source, prefix) as db_url:
+        _prepare_036_with_tenant(db_url, sentinel=True)
+        # (1) savepoint rollback AND the enclosing rollback both fail
+        rec = _r2_cleanup_fault_probe(db_url, which,
+                                      {"savepoint", "rollback"})
+        assert "injected savepoint rollback failure" in " | ".join(rec["chain"]), rec
+        assert "injected enclosing rollback failure" in " | ".join(rec["chain"]), rec
+        _r2_assert_cleanup_visibility(
+            rec, "could not be rolled back", expect_discard=True)
+        # (2) RESET ROLE fails (primary attempt and the re-verify attempt)
+        rec = _r2_cleanup_fault_probe(db_url, which, {"reset"})
+        assert "injected RESET ROLE failure" in " | ".join(rec["chain"]), rec
+        _r2_assert_cleanup_visibility(
+            rec, "could not be verified", expect_discard=True)
+        # (3) the identity cannot be restored AND invalidate() fails
+        rec = _r2_cleanup_fault_probe(db_url, which,
+                                      {"identity", "invalidate"})
+        assert "injected invalidate failure" in " | ".join(rec["chain"]), rec
+        assert rec["invalidate_attempts"] >= 1, rec
+        _r2_assert_cleanup_visibility(
+            rec, "failed to restore current_user", expect_discard=False)
+
+
+def test_037_cleanup_failures_keep_both_errors_visible(product_capability):
+    _r2_cleanup_fault_case("037", "g1r2e037cl")
+
+
+def test_038_cleanup_failures_keep_both_errors_visible(product_capability):
+    _r2_cleanup_fault_case("038", "g1r2e038cl")
+
+
+def test_039_cleanup_failures_keep_both_errors_visible(product_capability):
+    _r2_cleanup_fault_case("039", "g1r2e039cl")

@@ -87,6 +87,20 @@ def _script_heads(config: Config) -> list[str]:
     return list(ScriptDirectory.from_config(config).get_heads())
 
 
+def _tenant_owner_engine(db_url):
+    """Sync engine for the RUNTIME app identity on the disposable database.
+
+    Bootstrap-created tenant schemas (``t_*``) and their tables are owned by
+    the app role, so test-side reads, seeding, malform and repair DDL against
+    tenant objects must run as their owner through ``db_url.app_url`` — the
+    migration authority (the yielded URL's str value) holds no tenant-schema
+    privileges outside the migrations' narrow SET ROLE windows.  Alembic, the
+    version table and the public registry path stay on the migration
+    authority.
+    """
+    return create_engine(_sync_url(db_url.app_url))
+
+
 @contextmanager
 def _database_url_env(url: str):
     previous = os.environ.get("DATABASE_URL")
@@ -372,16 +386,17 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r1pay") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
 
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         fp_before = _catalog_fingerprint(conn, schema)
 
                     # Malform: drop the payments table entirely
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(f'DROP TABLE "{schema}".payments CASCADE'))
 
                     # Upgrade must fail
@@ -393,6 +408,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -403,13 +419,14 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r1ubv") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
 
                     # Malform: make transaction_id unbounded
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'ALTER TABLE "{schema}".payments '
                             'ALTER COLUMN transaction_id TYPE VARCHAR'))
@@ -421,11 +438,12 @@ class TestRealAlembicUpgradeFailClosed:
 
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
+                    with app_eng.connect() as conn:
                         fp_after = _catalog_fingerprint(conn, schema)
                         assert fp_before == fp_after, "catalog mutated on failure"
 
                     # GREEN: repair and upgrade to sole head 037
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'ALTER TABLE "{schema}".payments '
                             'ALTER COLUMN transaction_id TYPE VARCHAR(64)'))
@@ -434,6 +452,7 @@ class TestRealAlembicUpgradeFailClosed:
                         assert _current_revision(conn) == REV_HEAD
                         assert _script_heads(config) == [REV_HEAD]
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -444,13 +463,14 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r1col") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
 
                     # Malform: insert the NEW permission alongside the OLD one
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'INSERT INTO "{schema}".permissions (code, description) '
                             "VALUES ('client:payments:declare', 'collision') "
@@ -463,11 +483,12 @@ class TestRealAlembicUpgradeFailClosed:
 
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
+                    with app_eng.connect() as conn:
                         fp_after = _catalog_fingerprint(conn, schema)
                         assert fp_before == fp_after, "catalog mutated on failure"
 
                     # GREEN: remove the collision, upgrade
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f"DELETE FROM \"{schema}\".permissions "
                             "WHERE code = 'client:payments:declare'"))
@@ -475,6 +496,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -1054,12 +1076,13 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r1ok") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
 
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         fp_before = _catalog_fingerprint(conn, schema)
 
                     # First upgrade to 037
@@ -1067,6 +1090,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
                         assert _script_heads(config) == [REV_HEAD]
+                    with app_eng.connect() as conn:
                         fp_after_first = _catalog_fingerprint(conn, schema)
 
                     # Second upgrade — no-op
@@ -1074,9 +1098,11 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
                         assert _script_heads(config) == [REV_HEAD]
+                    with app_eng.connect() as conn:
                         fp_after_second = _catalog_fingerprint(conn, schema)
                         assert fp_after_first == fp_after_second, "second upgrade mutated catalog"
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
 
@@ -1403,6 +1429,7 @@ class TestTwoRegisteredTenantsUpgrade:
         with temporary_database_url(source, "r4r1ct") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
@@ -1414,11 +1441,11 @@ class TestTwoRegisteredTenantsUpgrade:
                     run_coroutine(_bootstrap_and_revert_to_036(schema_a, db_url))
                     run_coroutine(_bootstrap_and_revert_to_036(schema_b, db_url))
 
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         fp_a_before = _catalog_fingerprint(conn, schema_a)
 
                     # Malform B: make transaction_id unbounded
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'ALTER TABLE "{schema_b}".payments '
                             'ALTER COLUMN transaction_id TYPE VARCHAR'))
@@ -1431,9 +1458,11 @@ class TestTwoRegisteredTenantsUpgrade:
 
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
+                    with app_eng.connect() as conn:
                         fp_a_after = _catalog_fingerprint(conn, schema_a)
                         fp_b_after = _catalog_fingerprint(conn, schema_b)
                         assert fp_a_before == fp_a_after, "tenant A mutated on B failure"
                         assert fp_b_before == fp_b_after, "tenant B mutated on failure"
             finally:
+                app_eng.dispose()
                 eng.dispose()

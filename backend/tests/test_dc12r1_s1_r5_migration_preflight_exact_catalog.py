@@ -10,6 +10,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 from alembic.config import Config
@@ -48,6 +49,60 @@ def _async_url(url: str) -> str:
 
 def _engine(url: str | None = None):
     return create_engine(_sync_url(url or os.environ["DATABASE_URL"]), future=True)
+
+
+def _migration_engine():
+    """Sync engine for the MIGRATION authority on the same task database.
+
+    The catalog/DDL evidence tests exercise public-schema DDL and the
+    product preflight validators as the migration authority — the owner of
+    the public objects — never as the runtime app identity, whose product
+    contract deliberately excludes public-schema CREATE and table
+    ownership.  The default ``_engine()`` (DATABASE_URL) keeps serving the
+    tenant/runtime mapping paths below.  The migration URL is selected
+    explicitly, proven bound to the expected role before any write, and
+    every mismatch is a named refusal.
+    """
+    migration_url = os.environ.get("TEST_MIGRATION_DATABASE_URL")
+    if not migration_url:
+        raise RuntimeError(
+            "TEST_MIGRATION_DATABASE_URL is required for the s1r5 catalog "
+            "evidence tests (named refusal: migration identity missing)")
+    app_parsed = urlparse(_sync_url(os.environ["DATABASE_URL"]))
+    mig_parsed = urlparse(_sync_url(migration_url))
+    if (app_parsed.hostname, app_parsed.port or 5432) != (
+            mig_parsed.hostname, mig_parsed.port or 5432):
+        raise RuntimeError(
+            "migration identity must share the app identity's host and port "
+            "(named refusal: endpoint mismatch)")
+    if app_parsed.path != mig_parsed.path:
+        raise RuntimeError(
+            "migration identity must target the same test database as the "
+            "app identity (named refusal: database mismatch)")
+    if not app_parsed.path.lstrip("/").lower().startswith(("test", "pytest", "ci")):
+        raise RuntimeError(
+            "catalog evidence tests refuse a database that is not "
+            "test-marked (named refusal: source database is not a test "
+            "database)")
+    app_user = (app_parsed.username or "").lower()
+    mig_user = (mig_parsed.username or "").lower()
+    if not mig_user or mig_user == app_user:
+        raise RuntimeError(
+            "migration identity must be pairwise-distinct from the app "
+            "identity (named refusal: role not distinct)")
+    if mig_user == "mpango" or "prod" in mig_user:
+        raise RuntimeError(
+            "migration identity user is not test-safe (named refusal)")
+    eng = create_engine(_sync_url(migration_url), future=True)
+    with eng.connect() as connection:
+        connected_as = connection.execute(text("SELECT current_user")).scalar_one()
+    if connected_as.lower() != mig_user:
+        eng.dispose()
+        raise RuntimeError(
+            "migration identity did not bind to the expected role "
+            f"(named refusal: connected as {connected_as!r}, "
+            f"expected {mig_user!r})")
+    return eng
 
 
 def _alembic_config(url: str) -> Config:
@@ -363,7 +418,7 @@ def _validate_token_catalog_in_transaction(
     expect_failure: bool = True,
 ) -> None:
     mod = _load_mod()
-    eng = _engine()
+    eng = _migration_engine()
     table = _table_name(kind)
     with eng.connect() as connection:
         trans = connection.begin()

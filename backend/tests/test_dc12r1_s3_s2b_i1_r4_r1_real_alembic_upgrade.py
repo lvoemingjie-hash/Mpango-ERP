@@ -507,6 +507,7 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r1rsx") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
@@ -518,10 +519,11 @@ class TestRealAlembicUpgradeFailClosed:
                         assert _current_revision(conn) == REV_HEAD
 
                     # Now malform receipt_sequences: add an extra column
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'ALTER TABLE "{schema}".receipt_sequences '
                             'ADD COLUMN extra_col INTEGER'))
+                    with eng.begin() as conn:
                         # Stamp back to 036 so the upgrade runs again
                         conn.execute(text(
                             "UPDATE public.alembic_version SET version_num = :v",
@@ -534,6 +536,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -544,6 +547,7 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r1ck") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
@@ -555,7 +559,7 @@ class TestRealAlembicUpgradeFailClosed:
                         assert _current_revision(conn) == REV_HEAD
 
                     # Malform: replace status CHECK with a weakened version
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'ALTER TABLE "{schema}".payment_declarations '
                             'DROP CONSTRAINT ck_payment_declarations_status'))
@@ -563,6 +567,7 @@ class TestRealAlembicUpgradeFailClosed:
                             f'ALTER TABLE "{schema}".payment_declarations '
                             "ADD CONSTRAINT ck_payment_declarations_status "
                             "CHECK (status IN ('pending', 'confirmed', 'rejected') OR TRUE)"))
+                    with eng.begin() as conn:
                         # Stamp back to 036
                         conn.execute(text(
                             "UPDATE public.alembic_version SET version_num = :v"
@@ -575,6 +580,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -585,6 +591,7 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r1fk") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
@@ -596,7 +603,7 @@ class TestRealAlembicUpgradeFailClosed:
                         assert _current_revision(conn) == REV_HEAD
 
                     # Malform: change order_id FK to CASCADE
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         fk_name = conn.execute(text(
                             "SELECT c.conname FROM pg_constraint c "
                             "JOIN pg_class t ON t.oid = c.conrelid "
@@ -613,6 +620,7 @@ class TestRealAlembicUpgradeFailClosed:
                                 f'ADD CONSTRAINT "{fk_name}" '
                                 f'FOREIGN KEY (order_id) REFERENCES "{schema}".orders(id) '
                                 'ON DELETE CASCADE'))
+                    with eng.begin() as conn:
                         conn.execute(text(
                             "UPDATE public.alembic_version SET version_num = :v"
                         ), {"v": REV_036})
@@ -624,6 +632,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -634,6 +643,7 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r1ix") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
@@ -645,12 +655,13 @@ class TestRealAlembicUpgradeFailClosed:
                         assert _current_revision(conn) == REV_HEAD
 
                     # Malform: drop and recreate with wrong keys
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'DROP INDEX "{schema}".{UX_DECL_IDEM}'))
                         conn.execute(text(
                             f'CREATE UNIQUE INDEX {UX_DECL_IDEM} '
                             f'ON "{schema}".payment_declarations (idempotency_key)'))
+                    with eng.begin() as conn:
                         conn.execute(text(
                             "UPDATE public.alembic_version SET version_num = :v"
                         ), {"v": REV_036})
@@ -662,6 +673,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -672,6 +684,7 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r1amt") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
@@ -682,7 +695,7 @@ class TestRealAlembicUpgradeFailClosed:
                         assert _current_revision(conn) == REV_HEAD
 
                     # Malform: weaken > 0 to >= 0
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'ALTER TABLE "{schema}".payment_declarations '
                             'DROP CONSTRAINT ck_payment_declarations_amount_positive'))
@@ -690,6 +703,7 @@ class TestRealAlembicUpgradeFailClosed:
                             f'ALTER TABLE "{schema}".payment_declarations '
                             "ADD CONSTRAINT ck_payment_declarations_amount_positive "
                             "CHECK (declared_amount >= 0)"))
+                    with eng.begin() as conn:
                         conn.execute(text(
                             "UPDATE public.alembic_version SET version_num = :v"
                         ), {"v": REV_036})
@@ -701,6 +715,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -711,6 +726,7 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r1sd") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
@@ -721,10 +737,11 @@ class TestRealAlembicUpgradeFailClosed:
                         assert _current_revision(conn) == REV_HEAD
 
                     # Malform: drop DEFAULT on status
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'ALTER TABLE "{schema}".payment_declarations '
                             'ALTER COLUMN status DROP DEFAULT'))
+                    with eng.begin() as conn:
                         conn.execute(text(
                             "UPDATE public.alembic_version SET version_num = :v"
                         ), {"v": REV_036})
@@ -736,6 +753,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -746,6 +764,7 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r1ns") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
@@ -756,10 +775,11 @@ class TestRealAlembicUpgradeFailClosed:
                         assert _current_revision(conn) == REV_HEAD
 
                     # Malform: change next_seq default to 10
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'ALTER TABLE "{schema}".receipt_sequences '
                             'ALTER COLUMN next_seq SET DEFAULT 10'))
+                    with eng.begin() as conn:
                         conn.execute(text(
                             "UPDATE public.alembic_version SET version_num = :v"
                         ), {"v": REV_036})
@@ -771,6 +791,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -781,6 +802,7 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r1ci") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
@@ -791,7 +813,7 @@ class TestRealAlembicUpgradeFailClosed:
                         assert _current_revision(conn) == REV_HEAD
 
                     # Malform: move method CHECK to a different column
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'ALTER TABLE "{schema}".payment_declarations '
                             'DROP CONSTRAINT ck_payment_declarations_method'))
@@ -799,6 +821,7 @@ class TestRealAlembicUpgradeFailClosed:
                             f'ALTER TABLE "{schema}".payment_declarations '
                             "ADD CONSTRAINT ck_payment_declarations_method "
                             "CHECK (status IN ('cash', 'transfer'))"))
+                    with eng.begin() as conn:
                         conn.execute(text(
                             "UPDATE public.alembic_version SET version_num = :v"
                         ), {"v": REV_036})
@@ -810,6 +833,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -820,13 +844,14 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r2ne") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
                     run_alembic_upgrade(config, "head")
 
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'ALTER TABLE "{schema}".payment_declarations '
                             'DROP CONSTRAINT ck_payment_declarations_status'))
@@ -834,6 +859,7 @@ class TestRealAlembicUpgradeFailClosed:
                             f'ALTER TABLE "{schema}".payment_declarations '
                             "ADD CONSTRAINT ck_payment_declarations_status "
                             "CHECK (status <> 'cash' AND status <> 'transfer')"))
+                    with eng.begin() as conn:
                         conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
                                      {"v": REV_036})
 
@@ -843,6 +869,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -853,13 +880,14 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r2or") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
                     run_alembic_upgrade(config, "head")
 
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'ALTER TABLE "{schema}".payment_declarations '
                             'DROP CONSTRAINT ck_payment_declarations_status'))
@@ -867,6 +895,7 @@ class TestRealAlembicUpgradeFailClosed:
                             f'ALTER TABLE "{schema}".payment_declarations '
                             "ADD CONSTRAINT ck_payment_declarations_status "
                             "CHECK (status IN ('pending','confirmed','rejected') OR 1=1)"))
+                    with eng.begin() as conn:
                         conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
                                      {"v": REV_036})
 
@@ -876,6 +905,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -886,13 +916,14 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r2am") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
                     run_alembic_upgrade(config, "head")
 
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'ALTER TABLE "{schema}".payment_declarations '
                             'DROP CONSTRAINT ck_payment_declarations_amount_positive'))
@@ -900,6 +931,7 @@ class TestRealAlembicUpgradeFailClosed:
                             f'ALTER TABLE "{schema}".payment_declarations '
                             "ADD CONSTRAINT ck_payment_declarations_amount_positive "
                             "CHECK (declared_amount > 0 OR 1=1)"))
+                    with eng.begin() as conn:
                         conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
                                      {"v": REV_036})
 
@@ -909,6 +941,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -919,16 +952,18 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r2ts") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
                     run_alembic_upgrade(config, "head")
 
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'ALTER TABLE "{schema}".payment_declarations '
                             "ALTER COLUMN status SET DEFAULT 'pending '::text"))
+                    with eng.begin() as conn:
                         conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
                                      {"v": REV_036})
 
@@ -938,6 +973,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -948,19 +984,21 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r2rk") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
                     run_alembic_upgrade(config, "head")
 
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(f'DROP INDEX "{schema}".{UX_RECEIPT}'))
                         # Recreate with wrong key (idempotency_key instead of receipt_number)
                         conn.execute(text(
                             f'CREATE UNIQUE INDEX {UX_RECEIPT} '
                             f'ON "{schema}".payments (idempotency_key) '
                             'WHERE receipt_number IS NOT NULL'))
+                    with eng.begin() as conn:
                         conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
                                      {"v": REV_036})
 
@@ -970,6 +1008,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -980,18 +1019,20 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r2rp") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
                     run_alembic_upgrade(config, "head")
 
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(f'DROP INDEX "{schema}".{UX_RECEIPT}'))
                         # Recreate with correct key but no partial predicate
                         conn.execute(text(
                             f'CREATE UNIQUE INDEX {UX_RECEIPT} '
                             f'ON "{schema}".payments (receipt_number)'))
+                    with eng.begin() as conn:
                         conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
                                      {"v": REV_036})
 
@@ -1001,6 +1042,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -1011,13 +1053,14 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r2ep") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
                     run_alembic_upgrade(config, "head")
 
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'DROP INDEX "{schema}".{IX_DECL_RS}'))
                         # Recreate with extra predicate that shouldn't be there
@@ -1025,6 +1068,7 @@ class TestRealAlembicUpgradeFailClosed:
                             f'CREATE INDEX {IX_DECL_RS} '
                             f'ON "{schema}".payment_declarations (retailer_id, status) '
                             "WHERE status IS NOT NULL"))
+                    with eng.begin() as conn:
                         conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
                                      {"v": REV_036})
 
@@ -1034,6 +1078,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -1044,19 +1089,21 @@ class TestRealAlembicUpgradeFailClosed:
         with temporary_database_url(source, "r4r2wu") as db_url:
             config = _alembic_config(db_url)
             eng = create_engine(_sync_url(db_url))
+            app_eng = _tenant_owner_engine(db_url)
             try:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
                     run_alembic_upgrade(config, "head")
 
-                    with eng.begin() as conn:
+                    with app_eng.begin() as conn:
                         conn.execute(text(
                             f'DROP INDEX "{schema}".{IX_DECL_RS}'))
                         # Recreate as UNIQUE (should be non-unique)
                         conn.execute(text(
                             f'CREATE UNIQUE INDEX {IX_DECL_RS} '
                             f'ON "{schema}".payment_declarations (retailer_id, status)'))
+                    with eng.begin() as conn:
                         conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
                                      {"v": REV_036})
 
@@ -1066,6 +1113,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
             finally:
+                app_eng.dispose()
                 eng.dispose()
 
     # ------------------------------------------------------------------
@@ -1122,58 +1170,69 @@ class TestExactCatalogShapeBypass:
     def _full_proof(self, db_url, config, eng, schema_unused, malform_fn, repair_fn,
                     root_cause_substr):
         """Shared RED→GREEN→no-op proof protocol."""
-        with _database_url_env(db_url):
-            # 1. Start at 036
-            run_alembic_upgrade(config, REV_036)
-            # 2. Register tenant + bootstrap + revert to 036 baseline
-            with eng.begin() as conn:
-                schema = _register_tenant(conn, prefix="r4r3")
-            run_coroutine(_bootstrap_and_revert_to_036(schema, db_url))
+        app_eng = _tenant_owner_engine(db_url)
+        try:
+            with _database_url_env(db_url):
+                # 1. Start at 036
+                run_alembic_upgrade(config, REV_036)
+                # 2. Register tenant + bootstrap + revert to 036 baseline
+                with eng.begin() as conn:
+                    schema = _register_tenant(conn, prefix="r4r3")
+                run_coroutine(_bootstrap_and_revert_to_036(schema, db_url))
 
-            # 3. First upgrade to EXACTLY 037 (tables need to exist for some
-            #    malformations). "head" would install 038, making the tenant
-            #    038-shaped before the malformation cycle — 038 then could not
-            #    re-run at step 8. The tenant must stay pre-038 here.
-            run_alembic_upgrade(config, REV_037)
-            with eng.connect() as conn:
-                assert _current_revision(conn) == REV_037
+                # 3. First upgrade to EXACTLY 037 (tables need to exist for some
+                #    malformations). "head" would install 038, making the tenant
+                #    038-shaped before the malformation cycle — 038 then could not
+                #    re-run at step 8. The tenant must stay pre-038 here.
+                run_alembic_upgrade(config, REV_037)
+                with eng.connect() as conn:
+                    assert _current_revision(conn) == REV_037
 
-            # 4. Malform + stamp back to 036
-            with eng.begin() as conn:
-                malform_fn(conn, schema)
-                conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
-                             {"v": REV_036})
-                # Capture fingerprint AFTER all mutations (malform + version stamp)
-                fp_before = _catalog_fingerprint(conn, schema)
+                # 4. Malform as the tenant owner (app identity), stamp the
+                #    version back to 036 as the migration authority, then read
+                #    the catalog back as the owner — separate identity scopes,
+                #    each committed before the next step observes it.
+                with app_eng.begin() as conn:
+                    malform_fn(conn, schema)
+                with eng.begin() as conn:
+                    conn.execute(text("UPDATE public.alembic_version SET version_num = :v"),
+                                 {"v": REV_036})
+                with app_eng.connect() as conn:
+                    fp_before = _catalog_fingerprint(conn, schema)
 
-            # 5. Run upgrade — must fail with PreflightFailure in chain
-            with pytest.raises(RuntimeError) as exc_info:
+                # 5. Run upgrade — must fail with PreflightFailure in chain
+                with pytest.raises(RuntimeError) as exc_info:
+                    run_alembic_upgrade(config, "head")
+                _assert_preflight_failure(exc_info, root_cause_substr)
+
+                # 6. Version must remain 036 + fingerprint unchanged
+                with eng.connect() as conn:
+                    assert _current_revision(conn) == REV_036
+                with app_eng.connect() as conn:
+                    fp_after = _catalog_fingerprint(conn, schema)
+                    assert fp_before == fp_after, "catalog mutated on failure"
+
+                # 7. Repair as the tenant owner
+                with app_eng.begin() as conn:
+                    repair_fn(conn, schema)
+
+                # 8. Upgrade to sole head 037
                 run_alembic_upgrade(config, "head")
-            _assert_preflight_failure(exc_info, root_cause_substr)
+                with eng.connect() as conn:
+                    assert _current_revision(conn) == REV_HEAD
+                    assert _script_heads(config) == [REV_HEAD]
+                with app_eng.connect() as conn:
+                    fp_green = _catalog_fingerprint(conn, schema)
 
-            # 6. Version must remain 036 + fingerprint unchanged
-            with eng.connect() as conn:
-                assert _current_revision(conn) == REV_036
-                fp_after = _catalog_fingerprint(conn, schema)
-                assert fp_before == fp_after, "catalog mutated on failure"
-
-            # 7. Repair
-            with eng.begin() as conn:
-                repair_fn(conn, schema)
-
-            # 8. Upgrade to sole head 037
-            run_alembic_upgrade(config, "head")
-            with eng.connect() as conn:
-                assert _current_revision(conn) == REV_HEAD
-                assert _script_heads(config) == [REV_HEAD]
-                fp_green = _catalog_fingerprint(conn, schema)
-
-            # 9. Second upgrade — no-op
-            run_alembic_upgrade(config, "head")
-            with eng.connect() as conn:
-                assert _current_revision(conn) == REV_HEAD
-                fp_noop = _catalog_fingerprint(conn, schema)
-                assert fp_green == fp_noop, "second upgrade mutated catalog"
+                # 9. Second upgrade — no-op
+                run_alembic_upgrade(config, "head")
+                with eng.connect() as conn:
+                    assert _current_revision(conn) == REV_HEAD
+                with app_eng.connect() as conn:
+                    fp_noop = _catalog_fingerprint(conn, schema)
+                    assert fp_green == fp_noop, "second upgrade mutated catalog"
+        finally:
+            app_eng.dispose()
 
     # ------------------------------------------------------------------
     # 1. Wrong CHECK with valid literals plus extra AND condition

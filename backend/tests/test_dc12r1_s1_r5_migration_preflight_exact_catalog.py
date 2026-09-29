@@ -59,50 +59,163 @@ def _migration_engine():
     the public objects — never as the runtime app identity, whose product
     contract deliberately excludes public-schema CREATE and table
     ownership.  The default ``_engine()`` (DATABASE_URL) keeps serving the
-    tenant/runtime mapping paths below.  The migration URL is selected
-    explicitly, proven bound to the expected role before any write, and
-    every mismatch is a named refusal.
+    tenant/runtime mapping paths below.
+
+    Fail-closed per the repository's three-identity test contract: a test
+    MPANGO_ENV, PostgreSQL URLs, an explicitly allow-listed host/port, the
+    full test-database name rule, pairwise-distinct app/migration/operator
+    (and optional admin) identities on one endpoint and one test database,
+    and a migration URL identical to the declared
+    TEST_MIGRATION_DATABASE_URL.  Cluster admins (postgres), superusers and
+    CREATEDB (operator-like) roles are refused by name.  Role, database and
+    touched-public-object ownership are proven read-only on the SAME real
+    connection the helper later writes with (see
+    ``_assert_migration_authority``), before any public DDL.  Every refusal
+    is named and precedes any connection or write; no diagnostic echoes a
+    URL or password.
     """
-    migration_url = os.environ.get("TEST_MIGRATION_DATABASE_URL")
-    if not migration_url:
+    if os.environ.get("MPANGO_ENV") not in {"test", "testing"}:
         raise RuntimeError(
-            "TEST_MIGRATION_DATABASE_URL is required for the s1r5 catalog "
-            "evidence tests (named refusal: migration identity missing)")
-    app_parsed = urlparse(_sync_url(os.environ["DATABASE_URL"]))
-    mig_parsed = urlparse(_sync_url(migration_url))
-    if (app_parsed.hostname, app_parsed.port or 5432) != (
-            mig_parsed.hostname, mig_parsed.port or 5432):
+            "catalog evidence tests require MPANGO_ENV=test|testing "
+            "(named refusal: environment is not a test environment)")
+    identity_urls = {
+        "app": os.environ.get("TEST_DATABASE_URL"),
+        "migration": os.environ.get("TEST_MIGRATION_DATABASE_URL"),
+        "operator": os.environ.get("TEST_OPERATOR_DATABASE_URL"),
+        "admin": os.environ.get("TEST_ADMIN_DATABASE_URL"),
+    }
+    for label in ("app", "migration", "operator"):
+        if not identity_urls[label]:
+            raise RuntimeError(
+                f"temporary database topology requires TEST_DATABASE_URL, "
+                f"TEST_MIGRATION_DATABASE_URL and TEST_OPERATOR_DATABASE_URL "
+                f"(named refusal: the {label} identity is missing)")
+    allowed_hosts = {"127.0.0.1", "localhost", "::1"}
+    allowed_hosts.update(
+        host.strip().lower()
+        for host in os.environ.get("MPANGO_TEMP_DB_ALLOWED_HOSTS", "").split(",")
+        if host.strip())
+    allowed_ports = {
+        value.strip()
+        for value in os.environ.get("MPANGO_TEMP_DB_ALLOWED_PORTS", "").split(",")
+        if value.strip()}
+    parsed_identities = {}
+    for label, raw in identity_urls.items():
+        if not raw:
+            continue
+        parsed = urlparse(_sync_url(raw))
+        if parsed.scheme != "postgresql":
+            raise RuntimeError(
+                f"the {label} identity must use PostgreSQL "
+                "(named refusal: unsupported scheme)")
+        host = (parsed.hostname or "").lower()
+        if host not in allowed_hosts:
+            raise RuntimeError(
+                f"the {label} identity host is not explicitly allow-listed "
+                "(named refusal: host not allowed)")
+        port = str(parsed.port or 5432)
+        if port not in allowed_ports:
+            raise RuntimeError(
+                f"the {label} identity port is not explicitly allow-listed "
+                "(named refusal: port not allowed)")
+        username = (parsed.username or "").lower()
+        if username == "mpango" or "prod" in username:
+            raise RuntimeError(
+                f"the {label} identity user is not test-safe "
+                "(named refusal: reserved username)")
+        parsed_identities[label] = parsed
+    endpoints = {
+        label: ((p.hostname or "").lower(), p.port or 5432)
+        for label, p in parsed_identities.items()}
+    if len({endpoints[label] for label in ("app", "migration", "operator")}) != 1:
         raise RuntimeError(
-            "migration identity must share the app identity's host and port "
-            "(named refusal: endpoint mismatch)")
-    if app_parsed.path != mig_parsed.path:
+            "app, migration and operator identities must share one endpoint "
+            "(named refusal: endpoint disagreement)")
+    databases = {parsed_identities[label].path
+                 for label in ("app", "migration", "operator")}
+    if len(databases) != 1:
         raise RuntimeError(
-            "migration identity must target the same test database as the "
-            "app identity (named refusal: database mismatch)")
-    if not app_parsed.path.lstrip("/").lower().startswith(("test", "pytest", "ci")):
+            "app, migration and operator identities must name one test "
+            "database (named refusal: database disagreement)")
+    database_name = next(iter(databases)).lstrip("/").lower()
+    from tests.async_test_utils import _TEST_DATABASE_NAME
+
+    if not _TEST_DATABASE_NAME.fullmatch(database_name):
         raise RuntimeError(
-            "catalog evidence tests refuse a database that is not "
-            "test-marked (named refusal: source database is not a test "
-            "database)")
-    app_user = (app_parsed.username or "").lower()
-    mig_user = (mig_parsed.username or "").lower()
-    if not mig_user or mig_user == app_user:
+            "the test database name must fully match "
+            "^(test|pytest|ci)[_-][a-z0-9_-]+$ "
+            "(named refusal: database name is not a test database)")
+    users = {label: (parsed.username or "").lower()
+             for label, parsed in parsed_identities.items()}
+    if len(set(users.values())) != len(users):
         raise RuntimeError(
-            "migration identity must be pairwise-distinct from the app "
-            "identity (named refusal: role not distinct)")
-    if mig_user == "mpango" or "prod" in mig_user:
+            "app, migration, operator (and optional admin) identities must "
+            "be pairwise-distinct roles (named refusal: duplicate role)")
+    # The migration URL is used exactly as declared: any other migration
+    # identity (operator/admin URLs included) is already refused above by
+    # the pairwise-distinctness and endpoint/database checks.
+    return create_engine(_sync_url(identity_urls["migration"]), future=True)
+
+
+#: Public objects this module's catalog evidence tests read, alter or drop.
+_CATALOG_EVIDENCE_PUBLIC_OBJECTS = (
+    SETUP_TABLE,
+    RESET_TABLE,
+    "wholesaler_retailer_bindings",
+    "retailers",
+)
+
+
+def _assert_migration_authority(connection, expected_user: str) -> None:
+    """Read-only proof, on the SAME connection that will write, that the
+    bound role is the provisioner-created migration authority: not the
+    cluster admin, not superuser, not CREATEDB (operator-like), owning the
+    database and every public object these tests touch.  Any failure is a
+    named refusal before the helper's first public DDL."""
+    connected_user, connected_db = connection.execute(
+        text("SELECT current_user, current_database()")).one()
+    if connected_user.lower() != expected_user:
         raise RuntimeError(
-            "migration identity user is not test-safe (named refusal)")
-    eng = create_engine(_sync_url(migration_url), future=True)
-    with eng.connect() as connection:
-        connected_as = connection.execute(text("SELECT current_user")).scalar_one()
-    if connected_as.lower() != mig_user:
-        eng.dispose()
+            "migration identity did not bind to the declared role "
+            f"(named refusal: connected as {connected_user!r}, "
+            f"expected {expected_user!r})")
+    if connected_user.lower() == "postgres":
         raise RuntimeError(
-            "migration identity did not bind to the expected role "
-            f"(named refusal: connected as {connected_as!r}, "
-            f"expected {mig_user!r})")
-    return eng
+            "cluster-admin identities never run catalog evidence writes "
+            "(named refusal: postgres)")
+    role = connection.execute(text(
+        "SELECT rolsuper, rolcreatedb FROM pg_roles WHERE rolname = current_user"
+    )).one()
+    if role.rolsuper:
+        raise RuntimeError(
+            "superuser identities never run catalog evidence writes "
+            "(named refusal: SUPERUSER role)")
+    if role.rolcreatedb:
+        raise RuntimeError(
+            "CREATEDB identities are operator-like and never run catalog "
+            "evidence writes (named refusal: CREATEDB role)")
+    db_owner = connection.execute(text(
+        "SELECT pg_get_userbyid(datdba) FROM pg_database "
+        "WHERE datname = current_database()")).scalar_one()
+    if db_owner != connected_user:
+        raise RuntimeError(
+            "the connected role must own the database per the provisioner's "
+            f"migration-authority contract (named refusal: database is "
+            f"owned by {db_owner!r})")
+    for table in _CATALOG_EVIDENCE_PUBLIC_OBJECTS:
+        owner = connection.execute(text(
+            "SELECT pg_get_userbyid(c.relowner) FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = 'public' AND c.relname = :t"),
+            {"t": table}).scalar()
+        if owner is None:
+            raise RuntimeError(
+                f"public.{table} must exist before catalog evidence runs "
+                "(named refusal: migration-owned object missing)")
+        if owner != connected_user:
+            raise RuntimeError(
+                f"public.{table} must be owned by the migration authority "
+                f"(named refusal: owned by {owner!r})")
 
 
 def _alembic_config(url: str) -> Config:
@@ -420,23 +533,33 @@ def _validate_token_catalog_in_transaction(
     mod = _load_mod()
     eng = _migration_engine()
     table = _table_name(kind)
-    with eng.connect() as connection:
-        trans = connection.begin()
-        try:
-            for stmt in pre_sql or []:
-                connection.execute(text(stmt))
-            connection.execute(text(f"DROP TABLE IF EXISTS public.{table}"))
-            connection.execute(text(ddl))
-            for stmt in _token_indexes(kind):
-                connection.execute(text(stmt))
-            if expect_failure:
-                with pytest.raises(mod.PreflightFailure):
+    try:
+        with eng.connect() as connection:
+            trans = connection.begin()
+            try:
+                # Read-only identity/ownership proof on the SAME real
+                # connection that writes below; every refusal fires before
+                # the first public DDL (the rollback discards nothing the
+                # proof read).
+                _assert_migration_authority(
+                    connection,
+                    (urlparse(_sync_url(os.environ["TEST_MIGRATION_DATABASE_URL"]))
+                     .username or "").lower())
+                for stmt in pre_sql or []:
+                    connection.execute(text(stmt))
+                connection.execute(text(f"DROP TABLE IF EXISTS public.{table}"))
+                connection.execute(text(ddl))
+                for stmt in _token_indexes(kind):
+                    connection.execute(text(stmt))
+                if expect_failure:
+                    with pytest.raises(mod.PreflightFailure):
+                        _validator(mod, kind)(connection)
+                else:
                     _validator(mod, kind)(connection)
-            else:
-                _validator(mod, kind)(connection)
-        finally:
-            trans.rollback()
-            eng.dispose()
+            finally:
+                trans.rollback()
+    finally:
+        eng.dispose()
 
 
 @pytest.mark.parametrize("kind", ["setup", "reset"])

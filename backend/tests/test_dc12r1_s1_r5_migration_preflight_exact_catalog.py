@@ -941,7 +941,8 @@ def test_actual_alembic_035_to_036_failure_rolls_back_then_repaired_upgrade_noop
 
 
 # ---------------------------------------------------------------------------
-# G1-T2A-R1R1: permanent database-binding counterexample (F-001 closure)
+# G1-T2A-R1R1/R1R2: permanent database-binding counterexample (F-001 closure;
+# second-database lifecycle managed by the sanctioned harness helper)
 # ---------------------------------------------------------------------------
 
 def test_wrong_approved_database_binding_refused_before_public_ddl():
@@ -949,74 +950,79 @@ def test_wrong_approved_database_binding_refused_before_public_ddl():
     task-owned ``test_*`` database — owned by the SAME qualified migration
     role (non-superuser, non-CREATEDB) with every public object these tests
     touch migration-owned — is still refused BY NAME, on the live
-    connection, before any public DDL."""
-    operator_url = os.environ.get("TEST_OPERATOR_DATABASE_URL")
-    assert operator_url, (
-        "TEST_OPERATOR_DATABASE_URL is required for the database-binding "
-        "counterexample (the one-shot operator creates the second "
-        "disposable task database)")
-    migration_url = os.environ["TEST_MIGRATION_DATABASE_URL"]
-    approved_db = urlparse(_sync_url(migration_url)).path.lstrip("/")
-    expected_user = (urlparse(_sync_url(migration_url)).username or "").lower()
-    second_db = f"test_r5dbx_{uuid.uuid4().hex[:12]}"
-    op_eng = create_engine(_sync_url(operator_url), future=True,
-                           isolation_level="AUTOCOMMIT")
-    second_engine = None
-    created = False
-    try:
-        with op_eng.connect() as op_conn:
-            op_conn.execute(text(
-                f'CREATE DATABASE "{second_db}" OWNER "mpango_migrate"'))
-        created = True
-        # Route the SAME migration role at the second database and give it
-        # the four migration-owned public objects the ownership proof
-        # checks — every condition of the guard except the binding holds.
-        second_url = _sync_url(migration_url).replace(
-            f"/{approved_db}", f"/{second_db}", 1)
-        second_engine = create_engine(second_url, future=True)
-        with second_engine.begin() as conn:
-            for table in _CATALOG_EVIDENCE_PUBLIC_OBJECTS:
-                conn.execute(text(
-                    f"CREATE TABLE IF NOT EXISTS public.{table} "
-                    "(id INTEGER PRIMARY KEY)"))
-        snapshot_sql = (
-            "SELECT c.relname, pg_get_userbyid(c.relowner) "
-            "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
-            "WHERE n.nspname='public' ORDER BY c.relname")
-        with second_engine.connect() as conn:
-            before = conn.execute(text(snapshot_sql)).fetchall()
-        conn = second_engine.connect()
+    connection, before any public DDL.
+
+    The second database is created and destroyed EXCLUSIVELY through
+    ``tests.async_test_utils.temporary_database_url`` (write-before-create
+    validation, verified operator, migration-owner teardown); this test
+    never reads an operator/admin URL, never issues handwritten
+    CREATE/DROP DATABASE and never hardcodes the migration owner — the
+    owner is whatever the SAME validated TEST_MIGRATION_DATABASE_URL
+    snapshot declares."""
+    source = os.environ.get("TEST_DATABASE_URL")
+    assert source, (
+        "TEST_DATABASE_URL is required for the database-binding "
+        "counterexample (the sanctioned temporary-database source)")
+    with temporary_database_url(source, "r5dbx") as second_url:
+        # Approved binding from the SAME validated snapshot path the 36
+        # catalog tests use; the engine is lazy and never connected here.
+        approved_engine, expected_user, approved_db = _migration_engine()
+        approved_engine.dispose()
+        second_db = urlparse(_sync_url(second_url)).path.lstrip("/")
+        second_engine = create_engine(_sync_url(second_url), future=True)
         try:
-            trans = conn.begin()
+            with second_engine.begin() as conn:
+                for table in _CATALOG_EVIDENCE_PUBLIC_OBJECTS:
+                    conn.execute(text(
+                        f"CREATE TABLE IF NOT EXISTS public.{table} "
+                        "(id INTEGER PRIMARY KEY)"))
+            # Precondition proof (machine-checked): every guard condition
+            # EXCEPT the approved-database binding holds on the second
+            # database — same qualified role, role owns the database and
+            # all four public objects.
+            with second_engine.connect() as conn:
+                db_owner = conn.execute(text(
+                    "SELECT pg_get_userbyid(datdba) FROM pg_database "
+                    "WHERE datname = current_database()")).scalar_one()
+                assert db_owner == expected_user, (
+                    f"second database owner {db_owner!r} != migration "
+                    f"role {expected_user!r}")
+                role = conn.execute(text(
+                    "SELECT rolsuper, rolcreatedb FROM pg_roles "
+                    "WHERE rolname = current_user")).one()
+                assert not role.rolsuper and not role.rolcreatedb
+                for table in _CATALOG_EVIDENCE_PUBLIC_OBJECTS:
+                    owner = conn.execute(text(
+                        "SELECT pg_get_userbyid(c.relowner) FROM pg_class c "
+                        "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                        "WHERE n.nspname = 'public' AND c.relname = :t"),
+                        {"t": table}).scalar_one()
+                    assert owner == expected_user, (
+                        f"public.{table} owner {owner!r} != migration role")
+            snapshot_sql = (
+                "SELECT c.relname, pg_get_userbyid(c.relowner) "
+                "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+                "WHERE n.nspname='public' ORDER BY c.relname")
+            with second_engine.connect() as conn:
+                before = conn.execute(text(snapshot_sql)).fetchall()
+            conn = second_engine.connect()
             try:
-                with pytest.raises(RuntimeError) as exc_info:
-                    _assert_migration_authority(conn, expected_user, approved_db)
+                trans = conn.begin()
+                try:
+                    with pytest.raises(RuntimeError) as exc_info:
+                        _assert_migration_authority(
+                            conn, expected_user, approved_db)
+                finally:
+                    trans.rollback()
             finally:
-                trans.rollback()
+                conn.close()
+            message = str(exc_info.value)
+            assert "actual database" in message and "approved database" in message, (
+                f"expected the database-binding named refusal; got: {message}")
+            assert second_db in message and approved_db in message
+            # The guard performed ZERO public DDL / persistent writes.
+            with second_engine.connect() as conn:
+                after = conn.execute(text(snapshot_sql)).fetchall()
+            assert before == after, "guard mutated the wrong database"
         finally:
-            conn.close()
-        message = str(exc_info.value)
-        assert "actual database" in message and "approved database" in message, (
-            f"expected the database-binding named refusal; got: {message}")
-        assert second_db in message and approved_db in message
-        # The guard performed ZERO public DDL / persistent writes.
-        with second_engine.connect() as conn:
-            after = conn.execute(text(snapshot_sql)).fetchall()
-        assert before == after, "guard mutated the wrong database"
-    finally:
-        if second_engine is not None:
             second_engine.dispose()
-        if created:
-            # only the database owner may drop it: dispose sessions, then
-            # drop as the migration role on the maintenance database
-            owner_admin = _sync_url(migration_url).replace(
-                f"/{approved_db}", "/postgres", 1)
-            owner_eng = create_engine(owner_admin, future=True,
-                                      isolation_level="AUTOCOMMIT")
-            try:
-                with owner_eng.connect() as owner_conn:
-                    owner_conn.execute(text(
-                        f'DROP DATABASE IF EXISTS "{second_db}"'))
-            finally:
-                owner_eng.dispose()
-        op_eng.dispose()

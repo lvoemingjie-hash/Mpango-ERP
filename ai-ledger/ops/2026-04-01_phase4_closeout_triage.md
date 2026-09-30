@@ -132,12 +132,12 @@ M backend/alembic.ini    # Password drift: V0.1.4 → V0.1.2 (requires CTO revie
 
 | File | Change | Rationale | Recommendation |
 |------|--------|-----------|----------------|
-| `backend/alembic.ini` | `MpangoDBV0.1.4` → `MpangoDBV0.1.2` | Matched wrong `.env` password | **REVERT** to `MpangoDBV0.1.4` or document standard |
+| `backend/alembic.ini` | `REDACTED_S02_INI_FAMILY` → `REDACTED_S02_PRE_ROTATION` | Matched wrong `.env` password | **REVERT** to `REDACTED_S02_INI_FAMILY` or document standard |
 
 **CTO Decision Required:**
 - What is the repository-standard database password for local development?
 - Should `alembic.ini` be committed with a generic password or excluded?
-- Current Docker container uses `MpangoDBV0.1.4`
+- Current Docker container uses `REDACTED_S02_INI_FAMILY`
 
 ---
 

@@ -352,7 +352,7 @@ forbidden in any outcome row, policy row, registry response, audit payload, or s
 
 - **Raw backup logs** -- the free-text `backup.log` lines, `pg_dump` stdout / stderr, exit-code detail.
 - **DSNs, connection strings, host, port, credentials** -- including the hardcoded default password in
-  `backup_postgres.sh` (`MpangoDBV0.1.2`, a pre-existing ops-script concern; it must never flow into the
+  `backup_postgres.sh` (`<已按S-02脱敏>`, a pre-existing ops-script concern; it must never flow into the
   source).
 - **File path secrets** -- dump directory paths (`/opt/mpango/backups`), dump file names
   (`mpango_backup_<ts>.sql`), volume mounts, container paths (`/tmp/backup.dump`).

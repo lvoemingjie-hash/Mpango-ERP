@@ -55,7 +55,7 @@ dashboards:read
 POST /api/v1/auth/login
 {
   "email": "admin@mpango.demo",
-  "password": "DemoAdmin2026!"
+  "password": "<已按S-02脱敏>"
 }
 ```
 
@@ -244,26 +244,26 @@ Phase 4 runtime validation was blocked by PostgreSQL authentication failures. Ba
 |-------|---------------|--------|
 | Docker container status | `docker ps -a \| findstr postgres` | Container `mpango_postgres` running on port 5432 (Up 4 hours) |
 | Native PostgreSQL process | `Get-Process postgres` | No native PostgreSQL running |
-| Container environment | `docker exec mpango_postgres env` | `POSTGRES_PASSWORD=MpangoDBV0.1.4` |
-| backend/.env password | File inspection | `DATABASE_URL=postgresql://mpango:MpangoDBV0.1.2@127.0.0.1:5432/mpango_erp` |
-| .env.example password | File inspection | `DATABASE_URL=postgresql://mpango:mpango123@localhost:5432/mpango_erp` |
-| alembic.ini password | File inspection | `MpangoDBV0.1.4` (matches container) |
+| Container environment | `docker exec mpango_postgres env` | `POSTGRES_PASSWORD=REDACTED_S02_INI_FAMILY` |
+| backend/.env password | File inspection | `DATABASE_URL=postgresql://mpango@127.0.0.1:5432/mpango_erp（口令已按 S-02 脱敏）` |
+| .env.example password | File inspection | `DATABASE_URL=postgresql://mpango@localhost:5432/mpango_erp（口令已按 S-02 脱敏）` |
+| alembic.ini password | File inspection | `REDACTED_S02_INI_FAMILY` (matches container) |
 
 ### Root Cause Identified
 **Password drift between Docker container initialization and backend/.env**
 
-- Docker container `mpango_postgres` was initialized 2 weeks ago with `POSTGRES_PASSWORD=MpangoDBV0.1.4`
-- `backend/.env` was subsequently modified to use password `MpangoDBV0.1.2`
-- `backend/alembic.ini` correctly had `MpangoDBV0.1.4` (matching container)
+- Docker container `mpango_postgres` was initialized 2 weeks ago with `POSTGRES_PASSWORD=REDACTED_S02_INI_FAMILY`
+- `backend/.env` was subsequently modified to use password `REDACTED_S02_PRE_ROTATION`
+- `backend/alembic.ini` correctly had `REDACTED_S02_INI_FAMILY` (matching container)
 - This is **config drift** - not a code regression or Phase 4 business logic issue
 
 ### Proof of Root Cause
 ```
-Test with current .env password (MpangoDBV0.1.2) - FAILS
-❌ INVALID PASSWORD: 'MpangoDBV0.1.2'
+Test with current .env password (REDACTED_S02_PRE_ROTATION) - FAILS
+❌ INVALID PASSWORD: <已按S-02脱敏>
 
-Test with container password (MpangoDBV0.1.4) - SUCCEEDS
-✅ SUCCESS with password 'MpangoDBV0.1.4'
+Test with container password (REDACTED_S02_INI_FAMILY) - SUCCEEDS
+✅ SUCCESS with password 'REDACTED_S02_INI_FAMILY'
    Database: mpango_erp
    User: mpango
    Version: PostgreSQL 15.16 on x86_64-pc-linux-musl
@@ -275,8 +275,8 @@ Test with container password (MpangoDBV0.1.4) - SUCCEEDS
 
 ### Fix 1: Database Password
 **File:** `backend/.env` line 3
-- FROM: `DATABASE_URL=postgresql://mpango:MpangoDBV0.1.2@127.0.0.1:5432/mpango_erp`
-- TO: `DATABASE_URL=postgresql://mpango:MpangoDBV0.1.4@127.0.0.1:5432/mpango_erp`
+- FROM: historical DATABASE_URL (credential-bearing DSN removed; S-02 redaction).
+- TO: `DATABASE_URL=postgresql://mpango@127.0.0.1:5432/mpango_erp（口令已按 S-02 脱敏）`
 
 ### Fix 2: Permissions Added
 Created and ran `backend/add_pricing_to_correct_schema.py`:
@@ -325,9 +325,9 @@ VALUES
 
 | Requirement | Status | Evidence |
 |-------------|--------|----------|
-| Explain why authentication failed | ✅ COMPLETE | Password drift: .env used MpangoDBV0.1.2, container expects MpangoDBV0.1.4 |
+| Explain why authentication failed | ✅ COMPLETE | Password drift: .env used REDACTED_S02_PRE_ROTATION, container expects REDACTED_S02_INI_FAMILY |
 | Exact config that was wrong | ✅ COMPLETE | backend/.env line 3: DATABASE_URL password |
-| Exact fix applied | ✅ COMPLETE | Changed password from MpangoDBV0.1.2 to MpangoDBV0.1.4 |
+| Exact fix applied | ✅ COMPLETE | Changed password from REDACTED_S02_PRE_ROTATION to REDACTED_S02_INI_FAMILY |
 | Commands run | ✅ COMPLETE | Documented in Fix Applied section |
 | Runtime validation rerun | ✅ COMPLETE | Login, tenant select, auth/me, retailers, SKUs all working |
 | /auth/me status recorded | ✅ COMPLETE | 200 OK - working (separate from Phase 4) |

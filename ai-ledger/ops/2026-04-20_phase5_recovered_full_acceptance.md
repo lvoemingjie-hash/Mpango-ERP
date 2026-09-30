@@ -56,7 +56,7 @@ docker compose exec -T postgres sh -lc "env | sort | grep POSTGRES"
 结果：
 ```text
 POSTGRES_DB=mpango_erp
-POSTGRES_PASSWORD=MpangoDBV0.1.4
+POSTGRES_PASSWORD=REDACTED_S02_INI_FAMILY
 POSTGRES_USER=mpango
 ```
 
@@ -92,7 +92,7 @@ GET http://localhost/healthz
 POST /api/v1/auth/login
 Content-Type: application/json
 
-{ "email": "admin@mpango.demo", "password": "DemoAdmin2026!" }
+{ "email": "admin@mpango.demo", "password": "<已按S-02脱敏>" }
 ```
 
 结果：**PASS**

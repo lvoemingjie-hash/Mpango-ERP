@@ -11,12 +11,21 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="${BACKUP_DIR}/mpango_backup_${TIMESTAMP}.sql"
 LOG_FILE="${BACKUP_DIR}/backup.log"
 
-# Database connection (from environment or defaults)
+# Database connection (from environment; no versioned credential defaults)
 DB_HOST="${DB_HOST:-postgres}"
 DB_PORT="${DB_PORT:-5432}"
 DB_NAME="${DB_NAME:-mpango_erp}"
 DB_USER="${DB_USER:-mpango}"
-DB_PASSWORD="${DB_PASSWORD:-MpangoDBV0.1.2}"
+# DB_PASSWORD has no default: it must be supplied explicitly for every run.
+DB_PASSWORD="${DB_PASSWORD:-}"
+
+# Fail fast when the explicit credential is missing, empty, or blank:
+# refuse BEFORE creating directories, writing logs, or invoking
+# docker/pg_dump/copy/retention. The value itself is never printed.
+if [ -z "$DB_PASSWORD" ] || [ -z "$(printf '%s' "$DB_PASSWORD" | tr -d '[:space:]')" ]; then
+    echo "BACKUP_DB_PASSWORD_REQUIRED: DB_PASSWORD must be set to a non-blank PostgreSQL password (environment); refusing to start any backup step" >&2
+    exit 2
+fi
 
 # Ensure backup directory exists
 mkdir -p "$BACKUP_DIR"
@@ -28,8 +37,14 @@ log() {
 
 log "Starting PostgreSQL backup: $BACKUP_FILE"
 
-# Create backup using pg_dump via docker exec
-docker exec mpango_postgres pg_dump \
+# Create backup using pg_dump via docker exec.
+# The explicit credential travels ONLY through the environment of this
+# docker exec (name-only -e PGPASSWORD pass-through); it never appears in
+# argv, command text, logs, or files. --no-password keeps pg_dump from
+# prompting; it is not a credential supply mechanism.
+PGPASSWORD="$DB_PASSWORD" docker exec \
+    -e PGPASSWORD \
+    mpango_postgres pg_dump \
     --host="$DB_HOST" \
     --port="$DB_PORT" \
     --username="$DB_USER" \

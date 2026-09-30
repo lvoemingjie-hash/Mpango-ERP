@@ -39,7 +39,7 @@ CREATE SCHEMA IF NOT EXISTS "t_dev";
 ### Migration execution
 
 ```
-DATABASE_URL=postgresql://mpango:MpangoDBV0.1.4@localhost:5432/mpango_gate6c
+DATABASE_URL=postgresql://mpango@localhost:5432/mpango_gate6c（口令已按 S-02 脱敏）
 REPORTING_USER_PASSWORD=ReportingPass_staging_2026
 PYTHONIOENCODING=utf-8
 alembic upgrade head

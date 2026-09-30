@@ -42,7 +42,7 @@
 |---|---|---|
 | PostgreSQL | Reachable | Docker container `mpango_postgres` (postgres:15-alpine), port 5432 |
 | Redis | Reachable | Docker container `mpango_redis` (redis:7-alpine), port 6379 |
-| DATABASE_URL | Set | `postgresql://mpango:MpangoDBV0.1.4@localhost:5432/mpango_erp` |
+| DATABASE_URL | Set | `postgresql://mpango@localhost:5432/mpango_erp（口令已按 S-02 脱敏）` |
 | REPORTING_USER_PASSWORD | Set | `ReportingPass_staging_2026` |
 | SECRET_KEY | Set | Cryptographically secure random key (generated) |
 | Poetry deps | Installed | 114 packages installed in fresh venv |

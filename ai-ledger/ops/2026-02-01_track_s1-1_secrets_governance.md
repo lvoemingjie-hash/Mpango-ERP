@@ -15,7 +15,7 @@
 - `secrets/prod.env` - Duplicate production secrets
 
 **Exposed Credentials:**
-- Database password: `MpangoDBV0.1.2`
+- Database password: `<已按S-02脱敏>`
 - SECRET_KEY (JWT signing): `ax6SvjxO9JzAwg1LQiams0hTlGzdjjEZPRYLNUtLzOB8IcBX1MYRqb29e9eJU0yn9YdR5FdiCET-vCyilqcdoB`
 - Database connection string with embedded credentials
 - PostgreSQL username: `mpango`
@@ -85,8 +85,8 @@ git gc --prune=now --aggressive
 ### 2. Credential Rotation Checklist
 
 **High Priority (< 1 Hour):**
-- [ ] POSTGRES_PASSWORD: `MpangoDBV0.1.2` → Generate new 32-char password
-- [ ] SECRET_KEY: `ax6SvjxO9JzAwg1LQiams0hTlGzdjjEZPRYLNUtLzOB8IcBX1MYRqb29e9eJU0yn9YdR5FdiCET-vCyilqcdoB` → Generate new 64-char key
+- [ ] POSTGRES_PASSWORD: `<已按S-02脱敏>` → Generate new 32-char password
+- [ ] Rotate the application signing key (SECRET_KEY); historical example removed. Generate a fresh 64-character key through the approved secret channel.
 - [ ] DATABASE_URL: Update with new password
 
 **Medium Priority (< 24 Hours):**
@@ -100,7 +100,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 # Update PostgreSQL
 docker compose exec postgres psql -U mpango -d mpango_erp
-ALTER USER mpango WITH PASSWORD 'NEW_PASSWORD';
+-- Historical password-change SQL example removed; supply a fresh value through the approved secret channel.
 
 # Generate new SECRET_KEY
 python -c "import secrets; print(secrets.token_urlsafe(64))"

@@ -84,6 +84,13 @@ docker compose up -d postgres redis
 # 2. Backend (port 8000)
 cd backend
 pip install -r requirements.txt
+
+# Alembic ships no default database URL: `sqlalchemy.url` in
+# backend/alembic.ini is empty by design, so migrations refuse to run
+# until a URL is supplied explicitly. Preferred supply is the
+# DATABASE_URL environment variable (a blank or malformed value is
+# rejected by name; it never falls back to another source):
+export DATABASE_URL='postgresql://<user>:<password>@<host>:<port>/<database>'
 alembic upgrade head
 uvicorn main:app --reload
 
@@ -92,6 +99,14 @@ cd frontend
 npm install
 npm run dev
 ```
+
+> **Migration URL safety rules**: keep the real DSN out of version
+> control, command-line arguments, shell history, reports, and logs —
+> pass it via the `DATABASE_URL` environment variable (or a secret
+> manager) and percent-encode special characters in the password
+> (e.g. `@` as `%40`). Programmatic callers may set a non-empty
+> `sqlalchemy.url` on the Alembic `Config` object instead; values
+> written through ConfigParser must escape `%` as `%%`.
 
 ---
 

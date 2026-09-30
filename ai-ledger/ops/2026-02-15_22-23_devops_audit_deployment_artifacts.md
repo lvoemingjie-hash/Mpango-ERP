@@ -1,7 +1,7 @@
 # DevOps Audit Report — Mpango ERP v0.2.0 Deployment Artifacts
 
-**Date**: 2026-02-15 22:23 (UTC+08:00)  
-**Auditor**: DevOps Auditor  
+**Date**: 2026-02-15 22:23 (UTC+08:00)
+**Auditor**: DevOps Auditor
 **Scope**: `docker-compose.prod.yml`, `scripts/reset-staging.sh`, `.env.example`
 
 ---
@@ -117,7 +117,7 @@ The `.env.example` files **DO exist** in subdirectories and contain development-
 
 | File | Content | Assessment |
 |------|---------|------------|
-| `backend/.env.example` | `DATABASE_URL=postgresql://mpango:mpango123@...`<br>`SECRET_KEY=EXAMPLE_ONLY_REPLACE_WITH_...` | ⚠️ Weak defaults, but **protected by S2-1 validation** |
+| `backend/.env.example` | `DATABASE_URL=postgresql://mpango@...（口令已按 S-02 脱敏）`<br>`SECRET_KEY=<已按S-02脱敏>` | ⚠️ Weak defaults, but **protected by S2-1 validation** |
 | `frontend/.env.example` | `VITE_API_URL=http://localhost:8000/api/v1` | ✅ Clean, no secrets |
 
 ### Backend Protection Mechanism
@@ -139,7 +139,7 @@ The backend `config.py` has fail-fast validation (S2-1 compliance) that rejects 
 
 The `.env` file in repo root contains **real credentials** and should be audited:
 ```
-POSTGRES_PASSWORD=MpangoDBV0.1.4
+POSTGRES_PASSWORD=REDACTED_S02_INI_FAMILY
 SECRET_KEY=ax6SvjxO9JzAwg1LQiams0hTlGzdjjEZPRYLNUtLzOB8IcBX1MYRqb29e9eJU0yn9YdR5FdiCET-vCyilqcdoD
 VITE_V0_API_KEY=0Ggp09HBtPnbOcQss
 ```

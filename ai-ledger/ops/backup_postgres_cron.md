@@ -114,7 +114,8 @@ docker compose up -d
 docker run -d --name postgres_restore \
     -e POSTGRES_DB=mpango_erp_restore \
     -e POSTGRES_USER=mpango \
-    -e POSTGRES_PASSWORD=MpangoDBV0.1.2 \
+    -e POSTGRES_PASSWORD=<已按S-02脱敏> \
+> 注（2026-09-30 S-02 脱敏更正）：上一行命令为历史示例、非现行部署方式；现行 `backup_postgres.sh` 不再带版本化口令回退，要求通过环境显式供给 `DB_PASSWORD` 并经 docker exec 环境通道传给 pg_dump。
     -p 5433:5432 \
     postgres:15
 

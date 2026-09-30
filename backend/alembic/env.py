@@ -12,7 +12,7 @@ import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool, text
-from sqlalchemy.engine import Connection
+from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
@@ -27,15 +27,98 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override sqlalchemy.url from DATABASE_URL env var if available.
-# This allows alembic to work inside Docker where the DB host is
-# a service name (e.g. 'postgres') rather than '127.0.0.1'.
-_db_url = os.environ.get("DATABASE_URL")
-if _db_url:
-    # Alembic needs the async driver prefix
-    if _db_url.startswith("postgresql://"):
-        _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    config.set_main_option("sqlalchemy.url", _db_url)
+# Explicit database URL selection for migrations.
+#
+# alembic.ini intentionally ships `sqlalchemy.url` empty: the repository
+# carries no default DSN. The migration URL must be supplied explicitly,
+# with this precedence:
+#   1. the DATABASE_URL environment variable, whenever the key exists —
+#      a blank or malformed value is rejected by name and never falls
+#      back to another source;
+#   2. otherwise a non-empty `sqlalchemy.url` set on this Alembic Config
+#      object by the caller (programmatic invocation path).
+# When neither source yields a usable URL, migrations fail fast here,
+# before any engine is created (online) or the offline context is
+# configured, with a value-free error.
+class MigrationDatabaseUrlError(RuntimeError):
+    """No explicit, usable migration database URL is configured.
+
+    The message carries only fixed key names and a reason category:
+    offending values are never echoed, and the exception chain is kept
+    free of library errors that would embed the URL.
+    """
+
+
+_ENV_URL_KEY = "DATABASE_URL"
+_MAIN_URL_OPTION = "sqlalchemy.url"
+
+_CONFIG_OPTION_UNREADABLE = object()
+
+
+def _named_reject(reason_category: str) -> None:
+    # Invoked only outside except blocks, so the raised error keeps a
+    # clean, value-free exception chain (no __cause__ / __context__).
+    raise MigrationDatabaseUrlError(
+        "Refusing to run migrations: no usable database URL "
+        f"(reason: {reason_category}). Supply {_ENV_URL_KEY} in the "
+        f"environment or a non-empty {_MAIN_URL_OPTION} on the Alembic "
+        f"Config object; alembic.ini ships {_MAIN_URL_OPTION} empty by "
+        "design."
+    )
+
+
+def _url_is_parseable(candidate: str) -> bool:
+    # SQLAlchemy parse errors embed the offending URL, so the attempt is
+    # reduced to a boolean here; the exception never leaves this frame.
+    try:
+        make_url(candidate)
+    except Exception:
+        return False
+    return True
+
+
+def _config_url_value_free():
+    # A ConfigParser interpolation failure would embed the stored value in
+    # its message; reduce any read failure to a sentinel instead.
+    try:
+        return config.get_main_option(_MAIN_URL_OPTION)
+    except Exception:
+        return _CONFIG_OPTION_UNREADABLE
+
+
+def _resolve_migration_url() -> str:
+    """Pick the migration URL: env key wins over explicit Config input."""
+    if _ENV_URL_KEY in os.environ:
+        raw = os.environ[_ENV_URL_KEY]
+        if not raw.strip():
+            _named_reject(f"{_ENV_URL_KEY}_EMPTY")
+        # Alembic needs the async driver prefix. Byte-exact scheme rewrite
+        # as before; the rest of the URL is left untouched.
+        resolved = raw
+        if resolved.startswith("postgresql://"):
+            resolved = resolved.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if not _url_is_parseable(resolved):
+            _named_reject(f"{_ENV_URL_KEY}_MALFORMED")
+        # BasicInterpolation would reject or rewrite a bare '%' (e.g. in
+        # percent-encoded credentials); store the ConfigParser-escaped
+        # form so reads deliver the original bytes.
+        config.set_main_option(_MAIN_URL_OPTION, resolved.replace("%", "%%"))
+        return resolved
+
+    raw = _config_url_value_free()
+    if raw is _CONFIG_OPTION_UNREADABLE:
+        _named_reject(f"{_MAIN_URL_OPTION}_MALFORMED")
+    if not (raw or "").strip():
+        _named_reject(f"{_MAIN_URL_OPTION}_EMPTY")
+    if not _url_is_parseable(raw):
+        _named_reject(f"{_MAIN_URL_OPTION}_MALFORMED")
+    return raw
+
+
+# Resolve once per env.py execution; online and offline share this
+# selection, so `heads`/`history` (which never execute env.py) are
+# unaffected while every migration run is gated before any connection.
+_resolved_db_url = _resolve_migration_url()
 
 # Target metadata for autogenerate
 target_metadata = Base.metadata

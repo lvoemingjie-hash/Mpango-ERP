@@ -73,14 +73,14 @@ dashboards:read
 ## Environment Fixes Applied
 
 ### Fix 1: Database Password Drift
-**Root Cause:** `backend/.env` had password `MpangoDBV0.1.2`, Docker container expects `MpangoDBV0.1.4`
+**Root Cause:** `backend/.env` had password `REDACTED_S02_PRE_ROTATION`, Docker container expects `REDACTED_S02_INI_FAMILY`
 
 **Files Changed:**
-- `backend/.env` line 3: `MpangoDBV0.1.2` → `MpangoDBV0.1.4`
+- `backend/.env` line 3: `REDACTED_S02_PRE_ROTATION` → `REDACTED_S02_INI_FAMILY`
 
 **Verification:**
 ```
-✅ asyncpg connection succeeds with MpangoDBV0.1.4
+✅ asyncpg connection succeeds with REDACTED_S02_INI_FAMILY
 ✅ Backend starts without DB authentication errors
 ```
 
@@ -256,9 +256,9 @@ PostgreSQL authentication failure blocked all database operations.
 ### Evidence
 | Check | Result |
 |-------|--------|
-| Docker container password | `MpangoDBV0.1.4` |
-| `backend/.env` password | `MpangoDBV0.1.2` (WRONG) |
-| `backend/alembic.ini` password | `MpangoDBV0.1.4` (correct) |
+| Docker container password | `REDACTED_S02_INI_FAMILY` |
+| `backend/.env` password | `REDACTED_S02_PRE_ROTATION` (WRONG) |
+| `backend/alembic.ini` password | `REDACTED_S02_INI_FAMILY` (correct) |
 
 ### Classification
 **Config drift** — Not a Phase 4 regression. Docker container initialized 2 weeks ago with V0.1.4, `.env` was subsequently modified to V0.1.2.
@@ -269,13 +269,13 @@ PostgreSQL authentication failure blocked all database operations.
 
 **Change Detected:**
 ```diff
--sqlalchemy.url = postgresql+asyncpg://mpango:MpangoDBV0.1.4@127.0.0.1:5432/mpango_erp
-+sqlalchemy.url = postgresql+asyncpg://mpango:MpangoDBV0.1.2@127.0.0.1:5432/mpango_erp
+-sqlalchemy.url = postgresql+asyncpg://mpango@127.0.0.1:5432/mpango_erp（口令已按 S-02 脱敏）
++sqlalchemy.url = postgresql+asyncpg://mpango@127.0.0.1:5432/mpango_erp（口令已按 S-02 脱敏）
 ```
 
 **Rationale:** This change was made to match the (incorrect) `.env` password. It was part of the same config drift.
 
-**Recommendation:** REVERT to `MpangoDBV0.1.4` to match Docker container. This is a **local-only fix** that should NOT be committed unless the repository standard password is V0.1.4.
+**Recommendation:** REVERT to `REDACTED_S02_INI_FAMILY` to match Docker container. This is a **local-only fix** that should NOT be committed unless the repository standard password is V0.1.4.
 
 **Status:** Requires explicit CTO review — password standard not documented in contracts.
 

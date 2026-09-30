@@ -214,7 +214,7 @@ Commands run in Windows PowerShell, directories specified.
      container_name: mpango_backend
      environment:
        - REDIS_URL=redis://redis:6379/0
-       - DATABASE_URL=postgresql://mpango:MpangoDBV0.1.2@postgres:5432/mpango_erp
+       - DATABASE_URL=postgresql://mpango@postgres:5432/mpango_erp（口令已按 S-02 脱敏）
        - SECRET_KEY=MpangoSecretKeyV0.1.2
      ports:
        - "8000:8000"

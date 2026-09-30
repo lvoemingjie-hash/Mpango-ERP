@@ -65,7 +65,8 @@ Complete guide covering: prerequisites, quick start, env vars, architecture, tro
 - Required for seed script and staging Docker stack
 
 ### `backend/alembic.ini`
-- Updated DB password from `MpangoDBV0.1.2` to `MpangoDBV0.1.4` (matches Docker)
+- Updated DB password from `REDACTED_S02_PRE_ROTATION` to `REDACTED_S02_INI_FAMILY` (matches Docker)
+> [2026-09-30 S-02 sanitization: both credential literals in this change record are redacted; the rotation event and its Docker-match fact are preserved as historical record.]
 
 ## Verification
 

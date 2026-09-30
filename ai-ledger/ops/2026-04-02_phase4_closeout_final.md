@@ -61,15 +61,15 @@ None specific to this file — the change is clean.
 ### What Changed
 `backend/alembic.ini` was modified locally:
 ```diff
-- sqlalchemy.url = postgresql+asyncpg://mpango:MpangoDBV0.1.4@127.0.0.1:5432/mpango_erp
-+ sqlalchemy.url = postgresql+asyncpg://mpango:MpangoDBV0.1.2@127.0.0.1:5432/mpango_erp
+- sqlalchemy.url = postgresql+asyncpg://mpango@127.0.0.1:5432/mpango_erp（口令已按 S-02 脱敏）
++ sqlalchemy.url = postgresql+asyncpg://mpango@127.0.0.1:5432/mpango_erp（口令已按 S-02 脱敏）
 ```
 
 ### Current State
 The file is **not** staged. `git status` shows `M backend/alembic.ini` (modified but unstaged). The drift exists only in the local worktree.
 
 ### Decision
-**REVERT.** The `MpangoDBV0.1.2` value was a local-only mistake introduced during debugging. The correct committed value is `MpangoDBV0.1.4`. There is no reason to carry this into a product commit. Running `git checkout backend/alembic.ini` restores it.
+**REVERT.** The `REDACTED_S02_PRE_ROTATION` value was a local-only mistake introduced during debugging. The correct committed value is `REDACTED_S02_INI_FAMILY`. There is no reason to carry this into a product commit. Running `git checkout backend/alembic.ini` restores it.
 
 ### Action Required Before Push
 ```bash

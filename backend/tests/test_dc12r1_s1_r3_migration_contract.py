@@ -9,6 +9,7 @@ Also proves a fully compatible pre-existing table is accepted.
 
 from __future__ import annotations
 
+import pathlib
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -34,11 +35,52 @@ def _load_migration_module():
     return mod
 
 
-def _sync_engine():
+_HOSTED_MIGRATION_URL = None
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _host_migration_contract_db():
+    """Host this module's destructive public-table contract work on a
+    disposable migration-owned database (G1-R1 §3B).
+
+    The DROP/recreate cycles below deliberately break public structure to
+    prove the migration validators reject each malformed variant; they must
+    never sandbox the shared test source. The disposable database is created
+    by the sanctioned helper, brought to the real migration head (so FK
+    targets exist exactly as on the shared source), and the sync engine
+    binds the migration authority — the identity that owns public. The
+    migration/refusal assertions themselves are unchanged.
+    """
     import os
+
+    from alembic.config import Config
+
+    from tests.async_test_utils import run_alembic_upgrade, temporary_database_url
+
+    global _HOSTED_MIGRATION_URL
+    with temporary_database_url(
+            os.environ["TEST_MIGRATION_DATABASE_URL"], "s1r3") as mig_url:
+        previous = os.environ.get("DATABASE_URL")
+        os.environ["DATABASE_URL"] = mig_url
+        try:
+            cfg = Config(str(pathlib.Path("alembic.ini")))
+            cfg.set_main_option("script_location", str(pathlib.Path("alembic")))
+            run_alembic_upgrade(cfg, "head")
+        finally:
+            if previous is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = previous
+        _HOSTED_MIGRATION_URL = mig_url
+        yield
+    _HOSTED_MIGRATION_URL = None
+
+
+def _sync_engine():
     from sqlalchemy import create_engine
     return create_engine(
-        os.environ["DATABASE_URL"].replace("postgresql://", "postgresql+psycopg2://")
+        _HOSTED_MIGRATION_URL.replace(
+            "postgresql://", "postgresql+psycopg2://", 1)
     )
 
 

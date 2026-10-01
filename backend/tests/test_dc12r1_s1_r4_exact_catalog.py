@@ -20,11 +20,48 @@ def _load_mod():
     return mod
 
 
-def _eng():
+_HOSTED_MIGRATION_URL = None
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _host_migration_contract_db():
+    """Host this module's destructive public-table contract work on a
+    disposable migration-owned database (G1-R1 §3B) — same discipline as
+    test_dc12r1_s1_r3_migration_contract: never sandbox the shared test
+    source; the sync engine binds the migration authority after the
+    disposable DB is brought to the real migration head."""
+    import pathlib
+
+    from alembic.config import Config
+
+    from tests.async_test_utils import run_alembic_upgrade, temporary_database_url
+
     import os
+
+    global _HOSTED_MIGRATION_URL
+    with temporary_database_url(
+            os.environ["TEST_MIGRATION_DATABASE_URL"], "s1r4") as mig_url:
+        previous = os.environ.get("DATABASE_URL")
+        os.environ["DATABASE_URL"] = mig_url
+        try:
+            cfg = Config(str(pathlib.Path("alembic.ini")))
+            cfg.set_main_option("script_location", str(pathlib.Path("alembic")))
+            run_alembic_upgrade(cfg, "head")
+        finally:
+            if previous is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = previous
+        _HOSTED_MIGRATION_URL = mig_url
+        yield
+    _HOSTED_MIGRATION_URL = None
+
+
+def _eng():
     from sqlalchemy import create_engine
     return create_engine(
-        os.environ["DATABASE_URL"].replace("postgresql://", "postgresql+psycopg2://")
+        _HOSTED_MIGRATION_URL.replace(
+            "postgresql://", "postgresql+psycopg2://", 1)
     )
 
 

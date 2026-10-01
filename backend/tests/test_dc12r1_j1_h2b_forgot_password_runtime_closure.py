@@ -94,11 +94,11 @@ EVENT_CLASSES = (
 
 @pytest.fixture(autouse=True)
 async def _h2b_setup():
-    await _prepare_tables()
+    _prepare_tables()
     await _reset_wholesaler_state()
     clear_dev_email_deliveries()
     async with AsyncSessionLocal() as db:
-        await db.execute(text("TRUNCATE public.password_reset_tokens"))
+        await db.execute(text("DELETE FROM public.password_reset_tokens"))
         await db.commit()
     try:
         yield
@@ -127,9 +127,33 @@ async def _reset_wholesaler_state() -> None:
         await db.commit()
 
 
-async def _prepare_tables() -> None:
-    async with AsyncSessionLocal() as db:
-        await db.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+def _prepare_tables() -> None:
+    """Public prep under the migration authority (G1-R1 §3B identity split).
+
+    The runtime app role holds no CREATE on schema public (frozen provisioner
+    contract), and PostgreSQL checks that privilege before an
+    IF-NOT-EXISTS skip, so the table preparation DDL runs on a short psycopg2
+    connection as the migration authority (byte-identical DDL). Business DML
+    (seed/scan/delete) stays on the runtime sessions exactly as before.
+    """
+    import os as _os
+    import psycopg2 as _psycopg2
+
+    url = _os.environ.get("TEST_MIGRATION_DATABASE_URL", "")
+    if not url.strip():
+        raise RuntimeError(
+            "PUBLIC_PREP_REFUSED_MISSING_MIGRATION_IDENTITY: "
+            "TEST_MIGRATION_DATABASE_URL is not set; public-schema "
+            "preparation requires the migration authority"
+        )
+    conn = _psycopg2.connect(
+        url.replace("postgresql+asyncpg://", "postgresql://", 1))
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM pg_extension WHERE extname='pgcrypto'")
+        if not cur.fetchone():
+            cur.execute("CREATE EXTENSION pgcrypto")
         for ddl in (
             """CREATE TABLE IF NOT EXISTS public.wholesalers (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -152,8 +176,10 @@ async def _prepare_tables() -> None:
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 is_deleted BOOLEAN NOT NULL DEFAULT false, deleted_at TIMESTAMPTZ)""",
         ):
-            await db.execute(text(ddl))
-        await db.commit()
+            cur.execute(ddl)
+        cur.close()
+    finally:
+        conn.close()
 
 
 async def _seed_wholesaler_with_user(

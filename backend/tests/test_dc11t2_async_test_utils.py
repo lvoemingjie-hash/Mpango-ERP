@@ -103,6 +103,50 @@ def test_alembic_downgrade_restores_current_loop(monkeypatch, isolated_event_loo
     assert asyncio.get_event_loop() is isolated_event_loop
 
 
+def test_preserving_loop_survives_real_asyncio_run(isolated_event_loop):
+    """The helper must neutralize env.py's real cleanup shape, not just a
+    set_event_loop(None) stub: asyncio.run() installs its own loop, closes
+    it, and clears the slot. The caller's loop survives exact and usable."""
+    async_test_utils._run_alembic_preserving_loop(
+        lambda: asyncio.run(asyncio.sleep(0)))
+    policy = asyncio.get_event_loop_policy()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        assert policy.get_event_loop() is isolated_event_loop
+    assert not isolated_event_loop.is_closed()
+    assert isolated_event_loop.run_until_complete(
+        asyncio.sleep(0, result="alive")) == "alive"
+
+
+def test_preserving_loop_restores_empty_slot():
+    """A cleared slot (the state asyncio.run's cleanup leaves behind) is
+    restored as cleared, not papered over with a stray new loop."""
+    policy = asyncio.get_event_loop_policy()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        try:
+            previous = policy.get_event_loop()
+        except RuntimeError:
+            previous = None
+    policy.set_event_loop(None)
+    try:
+        async_test_utils._run_alembic_preserving_loop(
+            lambda: asyncio.run(asyncio.sleep(0)))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            try:
+                policy.get_event_loop()
+                slot_empty = False
+            except RuntimeError:
+                slot_empty = True
+        assert slot_empty, "slot must remain cleared after an empty-slot run"
+    finally:
+        if previous is not None and not previous.is_closed():
+            policy.set_event_loop(previous)
+        else:
+            policy.set_event_loop(policy.new_event_loop())
+
+
 def test_temp_db_guard_accepts_explicit_loopback_test_source(monkeypatch):
     _authorize_temp_db(monkeypatch)
 

@@ -19,6 +19,42 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+_HOSTED_MIGRATION_URL = None
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _host_migration_contract_db():
+    """G1-R1 §3B: the destructive setup-token contract node below runs on a
+    disposable migration-owned database (created by the sanctioned helper,
+    brought to the real migration head); the shared test source is never the
+    sandbox and the sync engine binds the migration authority."""
+    import pathlib
+
+    from alembic.config import Config
+
+    from tests.async_test_utils import run_alembic_upgrade, temporary_database_url
+
+    import os
+
+    global _HOSTED_MIGRATION_URL
+    with temporary_database_url(
+            os.environ["TEST_MIGRATION_DATABASE_URL"], "s1r2") as mig_url:
+        previous = os.environ.get("DATABASE_URL")
+        os.environ["DATABASE_URL"] = mig_url
+        try:
+            cfg = Config(str(pathlib.Path("alembic.ini")))
+            cfg.set_main_option("script_location", str(pathlib.Path("alembic")))
+            run_alembic_upgrade(cfg, "head")
+        finally:
+            if previous is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = previous
+        _HOSTED_MIGRATION_URL = mig_url
+        yield
+    _HOSTED_MIGRATION_URL = None
+
+
 from core.config import get_settings
 from core.security import verify_password
 from services.email_delivery import clear_dev_email_deliveries, get_dev_retailer_email_deliveries
@@ -248,7 +284,12 @@ async def test_malformed_setup_token_table_missing_column_triggers_preflight(r2_
 
     import os
     from sqlalchemy import create_engine
-    db_url = os.environ.get("DATABASE_URL", "").replace("postgresql://", "postgresql+psycopg2://")
+    # G1-R1 §3B: this node deliberately breaks and restores the public
+    # setup-token table; it runs on the module-hosted disposable DB (see
+    # _host_migration_contract_db) as the migration authority instead of
+    # sandboxing the shared test source as the runtime identity.
+    db_url = _HOSTED_MIGRATION_URL.replace(
+        "postgresql://", "postgresql+psycopg2://", 1)
     eng = create_engine(db_url)
     try:
         with eng.begin() as conn:

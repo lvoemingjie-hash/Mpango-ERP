@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from decimal import Decimal
 
@@ -34,10 +35,45 @@ async def _set_search_path(session, schema: str) -> None:
     await session.execute(text(f'SET search_path TO "{schema}", public'))
 
 
-async def _ensure_public_tables(session) -> None:
-    await session.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
-    await session.execute(
-        text(
+def _migration_identity_prep_url() -> str:
+    """The verified migration-authority URL for public-schema preparation.
+
+    The frozen three-identity contract keeps the runtime app role without
+    CREATE on schema public; the migrated test source already owns every
+    public object this module touches, but PostgreSQL checks the CREATE
+    privilege before an IF-NOT-EXISTS skip, so the preparation DDL must run
+    as the migration authority (the public owner), never as the runtime
+    session. A missing key is a named refusal — no silent fallback.
+    """
+    url = os.environ.get("TEST_MIGRATION_DATABASE_URL", "")
+    if not url.strip():
+        raise RuntimeError(
+            "PUBLIC_PREP_REFUSED_MISSING_MIGRATION_IDENTITY: "
+            "TEST_MIGRATION_DATABASE_URL is not set; public-schema "
+            "preparation requires the migration authority"
+        )
+    return url
+
+
+def _ensure_public_tables(_session=None) -> None:
+    """Create the public counterpart tables under the migration identity.
+
+    Byte-identical DDL to the historical fixture body; executed on a short
+    psycopg2 connection as the migration authority so the runtime session
+    never issues public DDL. Idempotent, matching the original semantics.
+    """
+    import psycopg2
+
+    conn = psycopg2.connect(
+        _migration_identity_prep_url().replace(
+            "postgresql+asyncpg://", "postgresql://", 1))
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM pg_extension WHERE extname='pgcrypto'")
+        if not cur.fetchone():
+            cur.execute("CREATE EXTENSION pgcrypto")
+        cur.execute(
             """
             CREATE TABLE IF NOT EXISTS public.wholesalers (
                 id UUID PRIMARY KEY,
@@ -49,9 +85,7 @@ async def _ensure_public_tables(session) -> None:
             )
             """
         )
-    )
-    await session.execute(
-        text(
+        cur.execute(
             """
             CREATE TABLE IF NOT EXISTS public.retailers (
                 id UUID PRIMARY KEY,
@@ -62,9 +96,7 @@ async def _ensure_public_tables(session) -> None:
             )
             """
         )
-    )
-    await session.execute(
-        text(
+        cur.execute(
             """
             CREATE TABLE IF NOT EXISTS public.wholesaler_retailer_bindings (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -80,11 +112,43 @@ async def _ensure_public_tables(session) -> None:
             )
             """
         )
-    )
+        cur.close()
+    finally:
+        conn.close()
+
+
+async def _ensure_public_tables_refused_for_runtime_identity(session) -> None:
+    """Identity-contract regression: the runtime session must be REFUSED.
+
+    Executes one representative public DDL statement on the runtime session
+    and asserts the server rejects it with SQLSTATE 42501 — the frozen
+    contract under which the migration-authority preparation above is the
+    only sanctioned path. Kept as a permanent negative control.
+    """
+    with pytest.raises(Exception) as excinfo:
+        await session.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS public.wholesalers (
+                    id UUID PRIMARY KEY,
+                    code VARCHAR(64) UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    status VARCHAR(32) NOT NULL DEFAULT 'active',
+                    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+                    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+                )
+                """
+            )
+        )
+    code = getattr(excinfo.value, "orig", None)
+    sqlstate = getattr(code, "pgcode", None) or getattr(
+        excinfo.value, "code", None)
+    assert str(sqlstate) == "42501", (
+        f"runtime identity public DDL must fail with 42501, got {sqlstate!r}")
 
 
 async def _bootstrap_minimal_tenant_schema(session, schema: str) -> None:
-    await _ensure_public_tables(session)
+    _ensure_public_tables()
     await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
     await _set_search_path(session, schema)
     await session.execute(
@@ -274,7 +338,7 @@ async def _seed_confirmed_order(
     total: Decimal,
     initial_outstanding: Decimal = Decimal("0.00"),
 ):
-    await _ensure_public_tables(session)
+    _ensure_public_tables()
     order_id = uuid.uuid4()
     retailer_id = uuid.uuid4()
     await session.execute(
@@ -652,6 +716,15 @@ async def _cross_tenant_residue_guard(async_session):
 
 
 @pytest.mark.asyncio
+async def test_public_prep_ddl_is_refused_for_runtime_identity_42501(
+        async_session):
+    """Identity contract regression (G1-R1 §3B): the runtime session must be
+    refused with SQLSTATE 42501 for the same public DDL that the migration
+    authority prepares — proving the preparation split is enforced by the
+    server, not by test-side discipline."""
+    await _ensure_public_tables_refused_for_runtime_identity(async_session)
+
+
 async def test_sequential_same_financial_result_replay_creates_one_financial_result(async_session):
     schema = _tenant_schema(async_session)
     tenant_id = _tenant_id(async_session)

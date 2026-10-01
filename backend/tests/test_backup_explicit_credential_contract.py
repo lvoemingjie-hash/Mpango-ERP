@@ -296,6 +296,23 @@ def test_docker_failure_propagates_without_downstream_steps(tmp_path):
 # harness disclosure: the resolved shell identity is part of the evidence
 # --------------------------------------------------------------------------
 def test_git_bash_identity_is_explicit_and_recorded():
-    assert "git" in _BASH.lower(), _BASH
-    assert not any(m in _BASH.lower() for m in _SYS_SHIM_MARKERS)
-    assert "version" in _BASH_VERSION.lower()
+    """Platform-real interpreter contract (G1-R1 §3C).
+
+    Windows: the harness must run an explicit legal Git Bash — never the
+    System32/WindowsApps WSL shim — so the resolved interpreter must carry
+    git in its path in addition to passing the common checks below.
+    POSIX/Linux: /usr/bin/bash is legal without carrying "git" in its
+    path; the contract is that a REAL, executable bash interpreter was
+    resolved explicitly and reports a genuine version banner. The node
+    runs (never skips) on both platforms.
+    """
+    import re as _re
+
+    assert not any(m in _BASH.lower() for m in _SYS_SHIM_MARKERS), _BASH
+    assert Path(_BASH).is_file(), _BASH
+    assert os.access(_BASH, os.X_OK), _BASH
+    banner = _BASH_VERSION.lower()
+    assert "bash" in banner and "version" in banner, _BASH_VERSION
+    assert _re.search(r"version\s+v?\d+(\.\d+)+", banner), _BASH_VERSION
+    if os.name == "nt":
+        assert "git" in _BASH.lower(), _BASH

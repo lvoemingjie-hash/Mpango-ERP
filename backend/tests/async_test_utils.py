@@ -67,13 +67,38 @@ def run_coroutine(awaitable: Awaitable[T]) -> T:
     return loop.run_until_complete(awaitable)
 
 
+def _current_loop_slot() -> asyncio.AbstractEventLoop | None:
+    """Read the thread's current-loop slot without requiring a loop to exist.
+
+    Returns None when the policy raises (slot explicitly cleared). On the
+    very first call in a thread the policy auto-creates a loop and installs
+    it; that loop is returned and save/restore then faithfully preserves it.
+    """
+    policy = asyncio.get_event_loop_policy()
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            return policy.get_event_loop()
+    except RuntimeError:
+        return None
+
+
 def _run_alembic_preserving_loop(operation: Callable[[], None]) -> None:
-    """Restore pytest's current loop after Alembic's async env completes."""
-    loop = _current_or_new_loop()
+    """Run one in-process Alembic env execution without leaking its loop.
+
+    env.py's online path calls asyncio.run(), whose Runner cleanup closes its
+    private loop AND clears the thread's current-loop slot
+    (set_event_loop(None)). Under a pytest-asyncio session-scoped loop this
+    poisons every later async node: asyncio.get_event_loop() then raises
+    "There is no current event loop". Save the caller's exact slot (which may
+    legitimately be None) before the operation and restore it afterwards; a
+    saved loop that the operation somehow closed is never re-installed.
+    """
+    loop = _current_loop_slot()
     try:
         operation()
     finally:
-        if not loop.is_closed():
+        if loop is None or not loop.is_closed():
             asyncio.set_event_loop(loop)
 
 

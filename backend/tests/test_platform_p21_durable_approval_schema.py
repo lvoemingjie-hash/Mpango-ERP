@@ -97,17 +97,39 @@ def _bootstrap_ephemeral(url):
 
 @pytest.fixture(scope="module")
 def _boot():
-    """Resolve the ephemeral URL, set env, and run test-only DB initialization once."""
-    url = _ephemeral_url()
-    os.environ["DATABASE_URL"] = url
+    """Host this module on a disposable migration-owned database (G1-R1 §3B).
+
+    The schema contract below verifies migration 020's real output and the
+    bootstrap prepares public structure (pgcrypto, a widened
+    public.alembic_version, t_dev) — public DDL belongs to the migration
+    authority, never to the runtime identity. The disposable database is
+    created by the sanctioned temporary_database_url helper; the historical
+    shared-source run was refused 42501 by the frozen grant contract."""
+    from tests.async_test_utils import temporary_database_url
+
+    _ephemeral_url()  # keep the historical no-target refusal guard
+    source = os.environ.get("TEST_MIGRATION_DATABASE_URL", "")
+    if not source.strip():
+        pytest.skip(
+            "no TEST_MIGRATION_DATABASE_URL set; refusing without an "
+            "explicit migration identity for the disposable schema host")
     os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
-    _bootstrap_ephemeral(url)
-    return url
+    with temporary_database_url(source, "p21sch") as url:
+        _bootstrap_ephemeral(url)
+        previous = os.environ.get("DATABASE_URL")
+        os.environ["DATABASE_URL"] = url
+        try:
+            yield url
+        finally:
+            if previous is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = previous
 
 
 @pytest.fixture(scope="module")
 def db(_boot):
-    """Bootstrap the ephemeral DB, upgrade to head, and yield a sync connection."""
+    """Upgrade the disposable DB to head and yield the owner connection."""
     import psycopg2  # noqa: delayed import so module collection never needs a live DB
     from alembic.config import Config
 

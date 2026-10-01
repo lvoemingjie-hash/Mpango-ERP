@@ -26,17 +26,21 @@ tries to open a network connection. No database is created, no migration
 runs, and no inherited credential is used anywhere: all URLs are built
 at runtime from per-test random tokens.
 """
+import asyncio
 import configparser
 import os
 import re
 import socket
 import uuid
+import warnings
 from pathlib import Path
 
 import pytest
 from alembic.config import Config as AlembicConfig
 from alembic.runtime.environment import EnvironmentContext
 from alembic.script import ScriptDirectory
+
+from tests.async_test_utils import _run_alembic_preserving_loop
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 ALEMBIC_INI = BACKEND_DIR / "alembic.ini"
@@ -193,11 +197,18 @@ def _run_candidate_env(monkeypatch, cfg, *, offline: bool):
     This is Alembic's own runtime path (EnvironmentContext +
     ScriptDirectory.run_env) — the URL selection under test is the
     candidate module itself, never a re-implementation.
+
+    env.py's online path runs asyncio.run(), whose cleanup clears the
+    thread's current-loop slot; without preservation that poisons every
+    later async node under pytest-asyncio's session-scoped loop
+    (asyncio.get_event_loop() then raises "There is no current event
+    loop"). The loop-preserving helper restores the caller's exact slot;
+    see test_online_env_execution_preserves_current_event_loop.
     """
     script = ScriptDirectory.from_config(cfg)
     env_context = EnvironmentContext(cfg, script, as_sql=offline)
     with env_context:
-        script.run_env()
+        _run_alembic_preserving_loop(script.run_env)
     return env_context
 
 
@@ -527,3 +538,53 @@ def test_heads_reports_migration_graph_with_database_url_key_cleared(
         assert head in printed
     # env.py never executed and no outlet was touched.
     assert events == []
+
+
+# --------------------------------------------------------------------------
+# 9. permanent regression: in-process online env runs preserve the
+#    thread's current-loop slot (pytest-asyncio session-loop poisoning)
+# --------------------------------------------------------------------------
+def test_online_env_execution_preserves_current_event_loop(monkeypatch):
+    """An online env.py execution must leave the caller's loop installed.
+
+    env.py's online path calls asyncio.run(); its Runner cleanup clears the
+    current-loop slot. Without preservation, the next pytest-asyncio node in
+    the same process fails at asyncio.get_event_loop() with "There is no
+    current event loop" (the G1 ordered boundary: this file followed by
+    test_alembic_migrations' first async node).
+    """
+    policy = asyncio.get_event_loop_policy()
+
+    def _slot():
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                return policy.get_event_loop()
+        except RuntimeError:
+            return None
+
+    previous = _slot()
+    sentinel = policy.new_event_loop()
+    policy.set_event_loop(sentinel)
+    try:
+        token = uuid.uuid4().hex[:12]
+        monkeypatch.setenv("DATABASE_URL", _synthetic_url("postgresql", token))
+        events = []
+        _patch_engine_factory(monkeypatch, events)
+
+        cfg = _make_alembic_config()
+        _run_candidate_env(monkeypatch, cfg, offline=False)
+
+        # The exact caller loop is still installed, open, and usable — the
+        # asyncio.run() inside env.py neither leaks nor poisons the slot.
+        assert _slot() is sentinel
+        assert not sentinel.is_closed()
+        assert sentinel.run_until_complete(
+            asyncio.sleep(0, result="alive")) == "alive"
+        assert ("dispose",) in events
+    finally:
+        sentinel.close()
+        if previous is not None and not previous.is_closed():
+            policy.set_event_loop(previous)
+        else:
+            policy.set_event_loop(None)

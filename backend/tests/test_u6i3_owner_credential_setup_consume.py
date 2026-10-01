@@ -181,7 +181,8 @@ async def _tenant_auth_tables_absent_or_empty(tenant_schema: str) -> bool:
 
 
 async def _drop_owner_setup_purpose_constraint() -> None:
-    async with async_engine.begin() as connection:
+    from tests.async_test_utils import migration_public_prep
+    async with migration_public_prep(("owner_credential_setup_tokens",)) as connection:
         await connection.execute(
             text(
                 "ALTER TABLE public.owner_credential_setup_tokens "
@@ -191,7 +192,8 @@ async def _drop_owner_setup_purpose_constraint() -> None:
 
 
 async def _restore_owner_setup_purpose_constraint() -> None:
-    async with async_engine.begin() as connection:
+    from tests.async_test_utils import migration_public_prep
+    async with migration_public_prep(("owner_credential_setup_tokens",)) as connection:
         await connection.execute(
             text(
                 "DO $$ BEGIN "

@@ -35,6 +35,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
+from tests.async_test_utils import run_coroutine
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_DIR.parent
@@ -1013,7 +1014,7 @@ def test_two_role_lifecycle_and_public_contract_refusals():
             with admin.cursor() as cur:
                 cur.execute("DROP FUNCTION public.prevent_ledger_modification()")
             with pytest.raises(bts.LedgerGuardAuthorityError):
-                asyncio.run(_boot_refuses())
+                run_coroutine(_boot_refuses())
             assert _tenant_schema_count(admin) == 0
             with admin.cursor() as cur:
                 cur.execute(guard_def)
@@ -1021,7 +1022,7 @@ def test_two_role_lifecycle_and_public_contract_refusals():
                 cur.execute(f"ALTER FUNCTION public.prevent_ledger_modification() "
                             f"OWNER TO {admin_role}")
             with pytest.raises(bts.LedgerGuardAuthorityError):
-                asyncio.run(_boot_refuses())
+                run_coroutine(_boot_refuses())
             assert _tenant_schema_count(admin) == 0
             with admin.cursor() as cur:
                 cur.execute(f"ALTER FUNCTION public.prevent_ledger_modification() "
@@ -1033,7 +1034,7 @@ def test_two_role_lifecycle_and_public_contract_refusals():
                 cur.execute("UPDATE alembic_version SET version_num = "
                             "'038_catalog_identity_vertical_slice'")
             with pytest.raises(RuntimeError) as excinfo:
-                asyncio.run(_boot_refuses())
+                run_coroutine(_boot_refuses())
             assert "039_order_credit_holds" in str(excinfo.value)
             assert _tenant_schema_count(admin) == 0
             with admin.cursor() as cur:
@@ -1043,7 +1044,7 @@ def test_two_role_lifecycle_and_public_contract_refusals():
             guard0 = _guard_snapshot(admin)
 
             # phase 5: runtime bootstrap (positive path)
-            asyncio.run(bts.bootstrap(tenant, app_url))
+            run_coroutine(bts.bootstrap(tenant, app_url))
             assert _tenant_schema_count(admin) == 1
 
             # guard invariance across further bootstrap attempts
@@ -1064,7 +1065,7 @@ def test_two_role_lifecycle_and_public_contract_refusals():
                 finally:
                     await engine.dispose()
             with pytest.raises(Exception) as excinfo:
-                asyncio.run(_runtime_tries_replacement())
+                run_coroutine(_runtime_tries_replacement())
             assert "permission" in str(excinfo.value).lower() or "42501" in str(excinfo.value)
             assert _guard_snapshot(admin) == guard0
 
@@ -1076,7 +1077,7 @@ def test_two_role_lifecycle_and_public_contract_refusals():
                 before = _tenant_schema_count(admin)
                 state = _constraint_names(admin)
                 with pytest.raises(bts.PublicContractError) as excinfo:
-                    asyncio.run(bts.bootstrap(f"t_{uuid.uuid4().hex}", app_url))
+                    run_coroutine(bts.bootstrap(f"t_{uuid.uuid4().hex}", app_url))
                 assert fragment in str(excinfo.value), (case, str(excinfo.value))
                 assert _tenant_schema_count(admin) == before
                 assert _constraint_names(admin) == state
@@ -1144,7 +1145,7 @@ def test_two_role_lifecycle_and_public_contract_refusals():
                         assert row == "probe"
                 finally:
                     await engine.dispose()
-            asyncio.run(_tenant_business())
+            run_coroutine(_tenant_business())
         finally:
             admin.close()
             cluster_admin.close()

@@ -99,6 +99,13 @@ from sqlalchemy import text, event
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.session import AsyncSessionLocal, async_engine
+from tests.async_test_utils import record_shared_test_pool
+
+
+@event.listens_for(async_engine.sync_engine, "connect")
+def _record_test_connection_loop(dbapi_connection, connection_record):
+    import asyncio
+    record_shared_test_pool(async_engine, asyncio.get_running_loop())
 
 
 TEST_TENANT_SCHEMA = os.environ.get("TEST_TENANT_SCHEMA", "t_test")
@@ -833,3 +840,4 @@ async def async_session() -> AsyncGenerator[AsyncSession, None]:
             # Remove the listener to avoid leaking across tests
             event.remove(sync_session, "after_begin", _after_begin)
             await session.close()
+            await async_engine.dispose()

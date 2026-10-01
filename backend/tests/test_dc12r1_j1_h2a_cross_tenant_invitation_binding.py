@@ -29,6 +29,7 @@ from db.tenant_filter import run_as_system
 from repositories.invitation_repository import InvitationRepository
 from services.invitation_service import InvitationService
 from services.retailer_service import RetailerService
+from tests.async_test_utils import migration_public_prep
 
 pytestmark = pytest.mark.asyncio
 
@@ -40,6 +41,12 @@ def _run_phone() -> str:
 
 
 async def _prepare_public_registration_tables(db: AsyncSession) -> None:
+    async with migration_public_prep(("wholesalers", "retailers", "invitations",
+                                     "wholesaler_retailer_bindings")) as connection:
+        await _prepare_public_registration_ddl(connection)
+
+
+async def _prepare_public_registration_ddl(db) -> None:
     """Same minimal public-table bootstrap as the DC-1G registration tests."""
     await db.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
     await db.execute(

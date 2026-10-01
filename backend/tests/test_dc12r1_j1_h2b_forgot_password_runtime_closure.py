@@ -74,6 +74,7 @@ from services.email_delivery import (
     get_dev_reset_email_deliveries,
 )
 from services.onboarding_service import hash_token
+from tests.async_test_utils import migration_prep_identity, assert_migration_public_connection
 
 pytestmark = pytest.mark.asyncio
 
@@ -136,20 +137,15 @@ def _prepare_tables() -> None:
     connection as the migration authority (byte-identical DDL). Business DML
     (seed/scan/delete) stays on the runtime sessions exactly as before.
     """
-    import os as _os
     import psycopg2 as _psycopg2
 
-    url = _os.environ.get("TEST_MIGRATION_DATABASE_URL", "")
-    if not url.strip():
-        raise RuntimeError(
-            "PUBLIC_PREP_REFUSED_MISSING_MIGRATION_IDENTITY: "
-            "TEST_MIGRATION_DATABASE_URL is not set; public-schema "
-            "preparation requires the migration authority"
-        )
+    identity = migration_prep_identity()
     conn = _psycopg2.connect(
-        url.replace("postgresql+asyncpg://", "postgresql://", 1))
+        identity.url.replace("postgresql+asyncpg://", "postgresql://", 1), connect_timeout=10)
     conn.autocommit = True
     try:
+        assert_migration_public_connection(conn, identity, (
+            "wholesalers", "password_reset_tokens"))
         cur = conn.cursor()
         cur.execute("SELECT 1 FROM pg_extension WHERE extname='pgcrypto'")
         if not cur.fetchone():

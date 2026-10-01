@@ -59,9 +59,37 @@ _SERVICE = CatalogProductService()
 async def tenant_db():
     """One dedicated tenant schema per test: real PG16 tables via the
     canonical bootstrap (22 tables), matching production shape."""
-    schema = "t_b2_serialization"
-    await bootstrap(schema, DB_URL.replace("postgresql://", "postgresql+asyncpg://", 1))
-    yield schema
+    wholesaler_id = uuid.uuid4()
+    schema = f"t_{wholesaler_id.hex}"
+    engine = create_async_engine(DB_URL.replace("postgresql://", "postgresql+asyncpg://", 1))
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(text(
+                "INSERT INTO public.wholesalers (id, code, name, status, is_deleted) "
+                "VALUES (:id, :code, 'B2 serialization fixture', 'active', false)"),
+                {"id": wholesaler_id, "code": f"B2{uuid.uuid4().hex[:16]}"})
+            await connection.execute(text(
+                "INSERT INTO public.tenant_registrations "
+                "(id, company_name, tenant_code, country, owner_email, status, "
+                "password_hash_cleared_at, wholesaler_id, tenant_schema, expires_at, is_deleted) "
+                "VALUES (:id, 'B2 fixture', :code, 'ZA', :email, 'provisioning', "
+                "now(), :wid, :schema, now() + interval '7 days', false)"),
+                {"id": uuid.uuid4(), "code": uuid.uuid4().hex,
+                 "email": f"b2-{uuid.uuid4().hex}@example.test", "wid": wholesaler_id,
+                 "schema": schema})
+        await bootstrap(schema, DB_URL.replace("postgresql://", "postgresql+asyncpg://", 1))
+        yield schema
+    finally:
+        try:
+            async with engine.begin() as connection:
+                await connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+                await connection.execute(text(
+                    "DELETE FROM public.tenant_registrations WHERE wholesaler_id=:id"),
+                    {"id": wholesaler_id})
+                await connection.execute(text("DELETE FROM public.wholesalers WHERE id=:id"),
+                                         {"id": wholesaler_id})
+        finally:
+            await engine.dispose()
 
 
 @pytest_asyncio.fixture
@@ -74,7 +102,7 @@ async def db(tenant_db):
     )
     try:
         maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-        tenant_id = uuid.uuid5(uuid.NAMESPACE_URL, f"b2-serialization:{schema}")
+        tenant_id = uuid.UUID(schema[2:])
         async with maker() as session:
             session.info["tenant_schema"] = schema
             session.info["tenant_id"] = str(tenant_id)

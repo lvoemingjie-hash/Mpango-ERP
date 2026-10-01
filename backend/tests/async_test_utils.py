@@ -8,7 +8,8 @@ import re
 import time
 import warnings
 from collections.abc import Awaitable, Callable
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass, field
 from typing import TypeVar
 from urllib.parse import urlparse, urlunparse
 from uuid import uuid4
@@ -42,6 +43,28 @@ _TEMP_DB_SESSION_POLL_SECONDS = 0.05
 _MIGRATION_URL_ENV = "TEST_MIGRATION_DATABASE_URL"
 _OPERATOR_URL_ENV = "TEST_OPERATOR_DATABASE_URL"
 _ADMIN_URL_ENV = "TEST_ADMIN_DATABASE_URL"
+_shared_test_pool = None
+
+
+def record_shared_test_pool(engine, loop) -> None:
+    """Track the loop at actual asyncpg allocation, not the current-loop slot."""
+    global _shared_test_pool
+    _shared_test_pool = (engine, loop)
+
+
+def _release_shared_test_pool() -> None:
+    global _shared_test_pool
+    if _shared_test_pool is None:
+        return
+    engine, owner = _shared_test_pool
+    pool = engine.pool
+    if pool.checkedout():
+        raise RuntimeError("TEST_POOL_BOUNDARY_REFUSED_CHECKED_OUT_CONNECTION")
+    if pool.checkedin():
+        if owner.is_closed() or owner.is_running():
+            raise RuntimeError("TEST_POOL_BOUNDARY_REFUSED_UNAVAILABLE_OWNER_LOOP")
+        owner.run_until_complete(engine.dispose())
+    _shared_test_pool = None
 
 
 def _current_or_new_loop() -> asyncio.AbstractEventLoop:
@@ -64,7 +87,18 @@ def run_coroutine(awaitable: Awaitable[T]) -> T:
     loop = _current_or_new_loop()
     if loop.is_running():
         raise RuntimeError("run_coroutine cannot run inside an active event loop")
-    return loop.run_until_complete(awaitable)
+    try:
+        _release_shared_test_pool()
+    except BaseException:
+        if hasattr(awaitable, "close"):
+            awaitable.close()
+        raise
+    try:
+        return loop.run_until_complete(awaitable)
+    finally:
+        # A synchronous test loop cannot lend asyncpg connections to the
+        # later pytest session loop. Pooling remains enabled within the call.
+        _release_shared_test_pool()
 
 
 def _current_loop_slot() -> asyncio.AbstractEventLoop | None:
@@ -227,6 +261,75 @@ def _sanctioned_test_identities() -> dict[str, tuple[object, str]]:
             "different roles"
         )
     return identities
+
+
+@dataclass(frozen=True)
+class MigrationPrepIdentity:
+    url: str = field(repr=False)
+    user: str
+    database: str
+
+
+def migration_prep_identity() -> MigrationPrepIdentity:
+    """Freeze approved topology before connecting; never echo URL values."""
+    if os.environ.get("MPANGO_ENV") not in {"test", "testing"}:
+        raise RuntimeError("PUBLIC_PREP_REFUSED_NOT_TEST_ENVIRONMENT")
+    identities = _sanctioned_test_identities()
+    parsed, raw = identities["migration"]
+    return MigrationPrepIdentity(raw, parsed.username, parsed.path.lstrip("/"))
+
+
+def assert_migration_public_connection(connection, identity, objects=()) -> None:
+    """Read-only proof on the actual write connection, including absent objects."""
+    from sqlalchemy import text
+
+    def rows(statement):
+        if hasattr(connection, "cursor"):
+            with connection.cursor() as cursor:
+                cursor.execute(statement)
+                return cursor.fetchall()
+        return connection.execute(text(statement)).all()
+
+    user, database = rows("SELECT current_user, current_database()")[0]
+    if (user, database) != (identity.user, identity.database):
+        raise RuntimeError("PUBLIC_PREP_REFUSED_ACTUAL_IDENTITY_MISMATCH")
+    # CREATEROLE is the existing migration-011 reporting-role contract;
+    # CREATEDB identifies the operator, and is never a preparation role.
+    role = rows("SELECT rolsuper, rolcreatedb, rolreplication, "
+                "rolbypassrls FROM pg_roles WHERE rolname = current_user")[0]
+    if any(role):
+        raise RuntimeError("PUBLIC_PREP_REFUSED_PRIVILEGED_ROLE")
+    owner = rows("SELECT pg_get_userbyid(datdba) FROM pg_database "
+                 "WHERE datname = current_database()")[0][0]
+    if owner != user:
+        raise RuntimeError("PUBLIC_PREP_REFUSED_DATABASE_OWNER")
+    schema = rows("SELECT pg_get_userbyid(nspowner), "
+                  "has_schema_privilege(current_user, oid, 'CREATE') "
+                  "FROM pg_namespace WHERE nspname = 'public'")
+    if not schema or schema[0][0] not in (user, "pg_database_owner") or not schema[0][1]:
+        raise RuntimeError("PUBLIC_PREP_REFUSED_SCHEMA_OWNER")
+    owners = dict(rows("SELECT c.relname, pg_get_userbyid(c.relowner) "
+                       "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+                       "WHERE n.nspname='public'"))
+    if any(name in owners and owners[name] != user for name in objects):
+        raise RuntimeError("PUBLIC_PREP_REFUSED_OBJECT_OWNER")
+
+
+@asynccontextmanager
+async def migration_public_prep(objects):
+    """Own a short migration connection; business sessions keep app identity."""
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    identity = migration_prep_identity()
+    engine = create_async_engine(identity.url.replace(
+        "postgresql://", "postgresql+asyncpg://", 1))
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(
+                lambda sync: assert_migration_public_connection(sync, identity, objects))
+            yield connection
+    finally:
+        await engine.dispose()
 
 
 def _validate_temporary_database_source(source_url: str):

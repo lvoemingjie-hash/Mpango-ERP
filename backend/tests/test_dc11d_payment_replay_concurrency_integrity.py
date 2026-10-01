@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from api.v1.orders import pay_order
 from database.session import AsyncSessionLocal
 from schemas.order import PayOrderRequest
+from tests.async_test_utils import migration_prep_identity, assert_migration_public_connection
 
 
 class _Token:
@@ -45,14 +46,7 @@ def _migration_identity_prep_url() -> str:
     as the migration authority (the public owner), never as the runtime
     session. A missing key is a named refusal — no silent fallback.
     """
-    url = os.environ.get("TEST_MIGRATION_DATABASE_URL", "")
-    if not url.strip():
-        raise RuntimeError(
-            "PUBLIC_PREP_REFUSED_MISSING_MIGRATION_IDENTITY: "
-            "TEST_MIGRATION_DATABASE_URL is not set; public-schema "
-            "preparation requires the migration authority"
-        )
-    return url
+    return migration_prep_identity().url
 
 
 def _ensure_public_tables(_session=None) -> None:
@@ -64,11 +58,13 @@ def _ensure_public_tables(_session=None) -> None:
     """
     import psycopg2
 
-    conn = psycopg2.connect(
-        _migration_identity_prep_url().replace(
-            "postgresql+asyncpg://", "postgresql://", 1))
+    identity = migration_prep_identity()
+    conn = psycopg2.connect(identity.url.replace(
+        "postgresql+asyncpg://", "postgresql://", 1), connect_timeout=10)
     conn.autocommit = True
     try:
+        assert_migration_public_connection(conn, identity, (
+            "wholesalers", "retailers", "wholesaler_retailer_bindings"))
         cur = conn.cursor()
         cur.execute("SELECT 1 FROM pg_extension WHERE extname='pgcrypto'")
         if not cur.fetchone():

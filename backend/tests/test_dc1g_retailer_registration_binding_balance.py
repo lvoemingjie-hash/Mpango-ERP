@@ -14,9 +14,16 @@ from db.tenant_filter import run_as_system
 from repositories.binding_repository import BindingRepository
 from repositories.invitation_repository import InvitationRepository
 from services.retailer_service import RetailerService
+from tests.async_test_utils import migration_public_prep
 
 
 async def _prepare_public_registration_tables(db: AsyncSession) -> None:
+    async with migration_public_prep(("wholesalers", "retailers", "invitations",
+                                     "wholesaler_retailer_bindings")) as connection:
+        await _prepare_public_registration_ddl(connection)
+
+
+async def _prepare_public_registration_ddl(db) -> None:
     await db.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
     await db.execute(
         text(

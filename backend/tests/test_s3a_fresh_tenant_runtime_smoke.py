@@ -117,7 +117,7 @@ def _empty_db_result():
     return result
 
 
-def _make_mock_session():
+def _make_mock_session(*, tenant_id=None, tenant_schema=None):
     """Mock AsyncSession that answers any execute() with an empty result."""
     session = MagicMock()
     session.execute = AsyncMock(return_value=_empty_db_result())
@@ -125,6 +125,8 @@ def _make_mock_session():
     session.rollback = AsyncMock()
     session.close = AsyncMock()
     session.info = {}
+    if tenant_id is not None and tenant_schema is not None:
+        session.info.update(tenant_schema=tenant_schema, tenant_id=tenant_id)
     session.bind = MagicMock()
     return session
 
@@ -188,7 +190,8 @@ def _build_smoke_app() -> FastAPI:
     app.include_router(exports_router, prefix="/api/v1/exports", tags=["exports"])
 
     # --- mock sessions -----------------------------------------------------
-    tenant_session = _make_mock_session()
+    tenant_session = _make_mock_session(
+        tenant_id=FRESH_TENANT_ID, tenant_schema=FRESH_TENANT_SCHEMA)
     public_session = _make_mock_session()
 
     # --- DB dependency overrides -------------------------------------------
@@ -220,7 +223,8 @@ def _build_smoke_app() -> FastAPI:
     # We patch at the module level so they yield our mock session instead of
     # trying to open a real DB connection (which fails with getaddrinfo in
     # the test environment).
-    reporting_session = _make_mock_session()
+    reporting_session = _make_mock_session(
+        tenant_id=FRESH_TENANT_ID, tenant_schema=FRESH_TENANT_SCHEMA)
     import api.v1.dashboards as _dashboards_mod
     import database.session as _db_session_mod
 

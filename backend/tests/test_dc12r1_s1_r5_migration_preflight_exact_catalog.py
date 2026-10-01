@@ -559,8 +559,22 @@ def _validate_token_catalog_in_transaction(
     pre_sql: list[str] | None = None,
     expect_failure: bool = True,
 ) -> None:
+    with temporary_database_url(
+        os.environ["TEST_MIGRATION_DATABASE_URL"], "s1r5catalog"
+    ) as database_url:
+        with _database_url_env(database_url):
+            run_alembic_upgrade(_alembic_config(database_url))
+        _validate_isolated_token_catalog(
+            database_url, kind, ddl, pre_sql=pre_sql, expect_failure=expect_failure)
+
+
+def _validate_isolated_token_catalog(
+    database_url, kind, ddl, *, pre_sql=None, expect_failure=True
+) -> None:
     mod = _load_mod()
-    eng, expected_user, expected_database = _migration_engine()
+    eng = _engine(database_url)
+    parsed = urlparse(database_url)
+    expected_user, expected_database = parsed.username, parsed.path.lstrip("/")
     table = _table_name(kind)
     try:
         with eng.connect() as connection:

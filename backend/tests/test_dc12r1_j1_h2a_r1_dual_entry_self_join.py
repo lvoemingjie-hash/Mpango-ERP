@@ -32,6 +32,7 @@ from core.join_intent import (
 from core.security import TokenPayload
 from db.tenant_filter import run_as_system
 from repositories.invitation_repository import InvitationRepository
+from tests.async_test_utils import migration_public_prep
 
 pytestmark = pytest.mark.asyncio
 
@@ -64,6 +65,13 @@ def _code(prefix: str = "R1WS") -> str:
 # ---------------------------------------------------------------------------
 
 async def _prepare(async_session: AsyncSession) -> None:
+    async with migration_public_prep(("wholesalers", "retailers", "invitations",
+                                     "wholesaler_retailer_bindings",
+                                     "retailer_credential_setup_tokens")) as connection:
+        await _prepare_public_ddl(connection)
+
+
+async def _prepare_public_ddl(async_session) -> None:
     await async_session.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
     for ddl in (
         """CREATE TABLE IF NOT EXISTS public.wholesalers (

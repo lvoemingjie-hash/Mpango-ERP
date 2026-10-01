@@ -110,9 +110,7 @@ def _boot():
     _ephemeral_url()  # keep the historical no-target refusal guard
     source = os.environ.get("TEST_MIGRATION_DATABASE_URL", "")
     if not source.strip():
-        pytest.skip(
-            "no TEST_MIGRATION_DATABASE_URL set; refusing without an "
-            "explicit migration identity for the disposable schema host")
+        raise RuntimeError("PUBLIC_PREP_REFUSED_MISSING_MIGRATION_IDENTITY")
     os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
     with temporary_database_url(source, "p21sch") as url:
         _bootstrap_ephemeral(url)

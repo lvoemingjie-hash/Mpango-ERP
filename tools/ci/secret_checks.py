@@ -1,0 +1,137 @@
+"""Pinned offline detector and tracked-file checks; never write baseline."""
+import fnmatch
+import hashlib
+import importlib.metadata
+import json
+import logging
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+
+class Refusal(Exception):
+    def __init__(self, code, category):
+        self.code, self.category = code, category
+
+class DetectorFault(logging.Handler):
+    def emit(self, record):
+        if record.levelno >= logging.WARNING:
+            raise Refusal(3, 'DETECTOR_EXECUTION_FAILED')
+
+def tracked():
+    try:
+        result = subprocess.run(['git', 'ls-files', '-z'], capture_output=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        raise Refusal(5, 'TRACKED_ENUMERATION_FAILED') from None
+    if not result.stdout.endswith(b'\0'):
+        raise Refusal(5, 'TRACKED_SET_EMPTY_OR_INVALID')
+    paths = [os.fsdecode(p) for p in result.stdout.split(b'\0')[:-1]]
+    for name in paths:
+        try:
+            if Path(name).is_absolute() or '..' in Path(name).parts:
+                raise ValueError()
+            if not stat.S_ISREG(Path(name).lstat().st_mode):
+                raise ValueError()
+            with open(name, 'rb') as stream:
+                stream.read(1)
+        except (OSError, ValueError):
+            raise Refusal(5, 'TRACKED_INPUT_UNREADABLE_OR_NONREGULAR') from None
+    return paths
+
+def detector(paths):
+    try:
+        if importlib.metadata.version('detect-secrets') != '1.5.0':
+            raise Refusal(3, 'DETECTOR_VERSION_MISMATCH')
+        from detect_secrets.core.secrets_collection import SecretsCollection
+        from detect_secrets.settings import transient_settings
+        from detect_secrets.core.log import log
+    except (ImportError, importlib.metadata.PackageNotFoundError):
+        raise Refusal(3, 'DETECTOR_UNAVAILABLE') from None
+    baseline = Path('.secrets.baseline')
+    try:
+        raw = baseline.read_bytes()
+        doc = json.loads(raw)
+        if doc['version'] != '1.5.0' or not isinstance(doc['results'], dict) or not doc['plugins_used']:
+            raise ValueError()
+        known = SecretsCollection.load_from_baseline(doc)
+        config = dict(doc)
+        # Offline detection is stricter: no suppression via live secret checks.
+        config['filters_used'] = [f for f in doc.get('filters_used', [])
+            if f['path'] != 'detect_secrets.filters.common.is_ignored_due_to_verification_policies']
+        if any(not f['path'].startswith('detect_secrets.filters.') for f in config['filters_used']):
+            raise ValueError()
+    except (OSError, ValueError, KeyError, TypeError):
+        raise Refusal(4, 'BASELINE_INVALID') from None
+    fault = DetectorFault()
+    old_handlers, old_level = log.handlers[:], log.level
+    log.handlers = [fault]
+    log.setLevel(logging.WARNING)
+    try:
+        with transient_settings(config):
+            observed = SecretsCollection()
+            for name in paths:
+                if name != '.secrets.baseline':
+                    observed.scan_file(name)
+            new = observed - known
+            findings = [{'path': name, 'line': secret.line_number, 'type': secret.type}
+                        for name, secret in new]
+            known_count = sum(1 for _ in observed) - len(findings)
+    except Exception:
+        raise Refusal(3, 'DETECTOR_EXECUTION_FAILED') from None
+    finally:
+        log.handlers, log.level = old_handlers, old_level
+    if baseline.read_bytes() != raw:
+        raise Refusal(6, 'BASELINE_CHANGED')
+    return {'mode': 'detector', 'tracked_files': len(paths),
+        'baseline_sha256': hashlib.sha256(raw).hexdigest(), 'baseline_unchanged': True,
+        'tool_version': '1.5.0', 'network_verification': False,
+        'known_findings': known_count, 'new_findings': len(findings), 'findings': findings}
+
+def hardcoded(paths):
+    password = re.compile(r'''(password|passwd|pwd|secret|token|api_key|apikey)\s*=\s*["'][^"']{8,}["']''')
+    aws = re.compile(r'(AKIA[0-9A-Z]{16}|' + 'AWS_ACCESS_' + 'KEY_ID|' + 'AWS_SECRET_' + 'ACCESS_KEY)')
+    findings = []
+    for name in paths:
+        parts, base = Path(name).parts, Path(name).name
+        if (fnmatch.fnmatch(base, '*.pem') or fnmatch.fnmatch(base, '*.key') or base == 'id_rsa'):
+            if 'test' not in name and 'example' not in name:
+                findings.append({'path': name, 'line': 0, 'type': 'PRIVATE_KEY_FILENAME'})
+        if any(p in ('node_modules', 'venv', '.venv') for p in parts):
+            continue
+        check_password = any(fnmatch.fnmatch(base, g) for g in ('*.py', '*.js', '*.ts', '*.java'))
+        check_password = check_password and 'tests' not in parts and 'dist' not in parts
+        check_aws = any(fnmatch.fnmatch(base, g) for g in ('*.py', '*.js', '*.ts', '*.env*'))
+        if not (check_password or check_aws):
+            continue
+        try:
+            lines = Path(name).read_text(encoding='utf-8').splitlines()
+        except (OSError, UnicodeError):
+            raise Refusal(3, 'HARDCODED_INPUT_READ_FAILED') from None
+        for line, content in enumerate(lines, 1):
+            if check_password and password.search(content):
+                findings.append({'path': name, 'line': line, 'type': 'HARDCODED_PASSWORD'})
+            if check_aws and aws.search(content):
+                findings.append({'path': name, 'line': line, 'type': 'AWS_PATTERN'})
+    return {'mode': 'hardcoded', 'tracked_files': len(paths),
+            'new_findings': len(findings), 'findings': findings}
+
+def main():
+    try:
+        if len(sys.argv) not in (2, 3) or sys.argv[1] not in ('detector', 'hardcoded'):
+            raise Refusal(2, 'USAGE')
+        os.chdir(sys.argv[2] if len(sys.argv) == 3 else '.')
+        paths = tracked()
+        report = detector(paths) if sys.argv[1] == 'detector' else hardcoded(paths)
+        print(json.dumps(report, ensure_ascii=True, sort_keys=True))
+        return 1 if report['new_findings'] else 0
+    except Refusal as exc:
+        print(json.dumps({'error': exc.category}), file=sys.stderr)
+        return exc.code
+    except Exception:
+        print('{"error":"CHECK_EXECUTION_FAILED"}', file=sys.stderr)
+        return 3
+
+if __name__ == '__main__':
+    raise SystemExit(main())

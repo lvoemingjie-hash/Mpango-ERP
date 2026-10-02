@@ -17,14 +17,18 @@ evidence.
 """
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import os
 import re
 import subprocess
 import sys
 import uuid
+from functools import wraps
 
 import pytest
+
+from tests.async_test_utils import _current_loop_slot
 
 from tests.test_combined_setup_authority_contract import (
     BACKEND_DIR,
@@ -158,6 +162,20 @@ def _load_helper():
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    evaluate = module.evaluate_contract
+
+    @wraps(evaluate)
+    def evaluate_in_test(*args, **kwargs):
+        # The CLI owns its asyncio.run loop; preserve pytest's caller slot
+        # when exercising that same implementation inside the test process.
+        caller = _current_loop_slot()
+        try:
+            return evaluate(*args, **kwargs)
+        finally:
+            if caller is None or not caller.is_closed():
+                asyncio.set_event_loop(caller)
+
+    module.evaluate_contract = evaluate_in_test
     return module
 
 
@@ -1054,3 +1072,62 @@ def test_readiness_probes_are_behaviorally_read_only(
     finally:
         admin.close()
     assert before == after
+
+
+@_requires_temp_db
+def test_in_process_evaluator_preserves_caller_loop(five_stage_database,
+                                                   monkeypatch):
+    """The real CLI evaluator may close its own loop, never the test slot."""
+    monkeypatch.setenv("REPORTING_DATABASE_URL",
+                       five_stage_database["reporting_url"])
+    previous = _current_loop_slot()
+    caller = asyncio.new_event_loop()
+    asyncio.set_event_loop(caller)
+    try:
+        helper = _load_helper()
+        assert helper.evaluate_contract(five_stage_database["app_url"],
+                                        "t_dev") == []
+        assert _current_loop_slot() is caller, "C91_READINESS_LOOP_SLOT_LOST"
+        assert not caller.is_closed(), "C91_READINESS_CALLER_LOOP_CLOSED"
+        assert helper.run_gate(five_stage_database["app_url"], "t_dev",
+                               deadline_seconds=0) == 0
+        assert _current_loop_slot() is caller, "C91_GATE_LOOP_SLOT_LOST"
+    finally:
+        caller.close()
+        asyncio.set_event_loop(previous)
+
+
+def test_in_process_evaluator_restores_slot_on_exception(monkeypatch):
+    helper = _load_helper()
+    previous = _current_loop_slot()
+    caller = asyncio.new_event_loop()
+    failure = RuntimeError("C91_EXPECTED_EVALUATOR_FAILURE")
+    def fail_run(coroutine):
+        coroutine.close()
+        asyncio.set_event_loop(None)
+        raise failure
+    asyncio.set_event_loop(caller)
+    monkeypatch.setattr(helper.asyncio, "run", fail_run)
+    try:
+        with pytest.raises(RuntimeError) as caught:
+            helper.evaluate_contract("postgresql://unused/unused", "t_dev")
+        assert caught.value is failure
+        assert _current_loop_slot() is caller, "C91_EXCEPTION_LOOP_SLOT_LOST"
+    finally:
+        caller.close()
+        asyncio.set_event_loop(previous)
+
+
+def test_in_process_evaluator_preserves_explicit_empty_slot(monkeypatch):
+    helper = _load_helper()
+    previous = _current_loop_slot()
+    def completed(coroutine):
+        coroutine.close()
+        return None
+    monkeypatch.setattr(helper.asyncio, "run", completed)
+    asyncio.set_event_loop(None)
+    try:
+        assert helper.evaluate_contract("postgresql://unused/unused", "t_dev") == []
+        assert _current_loop_slot() is None, "C91_EMPTY_LOOP_SLOT_REPLACED"
+    finally:
+        asyncio.set_event_loop(previous)

@@ -15,8 +15,8 @@ import time
 import psycopg2
 from psycopg2 import sql
 
-OWNER = "zcode-mvp-invariants-codex-c91-fr3-20261002"
-TASK = "c91-gap-closure-r3-20261002"
+OWNER = "zcode-mvp-invariants-codex-c91-fr4-20261002"
+TASK = "c91-g2-final-validation-r4-20261002"
 BACKEND = Path(__file__).resolve().parents[1]
 DURABLE_TABLES = (
     "durable_approval_requests", "durable_approval_decisions",
@@ -64,6 +64,16 @@ def _inspect(cid):
     if len(values) != 1:
         raise RuntimeError("TASK_PG_INSPECT_CARDINALITY")
     return values[0]
+
+
+def _postgres_image_id():
+    result = subprocess.run(["docker", "image", "inspect", "postgres:16",
+                             "--format", "{{.Id}}"], capture_output=True,
+                            check=True, timeout=20, text=True)
+    image = result.stdout.strip()
+    if not image.startswith("sha256:") or len(image) != 71:
+        raise RuntimeError("TASK_PG_IMAGE_ID_REFUSED")
+    return image
 
 
 def validate_owned_postgres(record, info):
@@ -158,19 +168,22 @@ def task_postgres(module, *, bare=False, shell=False):
     root.mkdir(mode=0o700)
     passwords = {u: secrets.token_urlsafe(30) for u in ("postgres", "mpango_migrate", "mpango_app", "reporting_user")}
     _save(root / "credential-input.json", passwords)
-    name = "c91-fr3-" + module + "-" + secrets.token_hex(8)
+    name = "c91-fr4-" + module + "-" + secrets.token_hex(8)
     labels = ["--label", "mpango.owner=" + OWNER, "--label", "mpango.task=" + TASK]
     _native(root, "volume", ["docker", "volume", "create"] + labels + [name])
     env = dict(os.environ)
     env.update(POSTGRES_PASSWORD=passwords["postgres"], POSTGRES_USER="postgres", POSTGRES_DB="postgres")
+    image = _postgres_image_id()
     cid = _native(root, "container", ["docker", "run", "--pull=never", "-d", "--name", name] + labels + [
         "-p", "127.0.0.1::5432", "-v", name + ":/var/lib/postgresql/data",
-        "-e", "POSTGRES_PASSWORD", "-e", "POSTGRES_USER", "-e", "POSTGRES_DB", "postgres:16"], env=env)
-    info = _inspect(cid)
-    record = {"id": cid, "image": info["Image"], "volume": name, "owner": OWNER, "task": TASK}
-    _save(root / "resource-created.json", record)
+        "-e", "POSTGRES_PASSWORD", "-e", "POSTGRES_USER", "-e", "POSTGRES_DB", image], env=env)
+    record = {"id": cid, "image": image, "volume": name, "owner": OWNER, "task": TASK}
     previous = {k: os.environ.get(k) for k in ("DATABASE_URL", "REPORTING_USER_PASSWORD")}
     try:
+        # A successful create is already ours before inspect/receipt can fail.
+        # The finalizer still revalidates ID, labels, image and mount to stop.
+        _save(root / "resource-created.json", record)
+        info = _inspect(cid)
         validate_owned_postgres(record, info)
         mapping = info["NetworkSettings"]["Ports"]["5432/tcp"]
         if len(mapping) != 1 or mapping[0]["HostIp"] != "127.0.0.1":

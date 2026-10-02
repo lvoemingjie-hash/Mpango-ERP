@@ -248,3 +248,46 @@ def test_p21_real_runtime_identity_and_closed_connections():
     assert before == after, "FR3_P21_AUTHORITY_CHANGED"
     assert before["head"] == [["039_order_credit_holds"]], "FR3_P21_WRONG_HEAD"
     assert json.loads((root / "connection-close-proof.json").read_text())["remaining"] == [], "FR3_P21_CONNECTIONS_REMAIN"
+
+
+@pytest.mark.parametrize("fault", ["inspect", "receipt"])
+def test_p21_post_create_failure_enters_owned_stop_boundary(tmp_path,
+                                                           monkeypatch, fault):
+    from tests import task_owned_pg_resources as resources
+
+    tmp_path.chmod(0o700)
+    monkeypatch.setenv("C91_R3_RESOURCE_ROOT", str(tmp_path))
+    cid = "b" * 64
+    image = "sha256:" + "c" * 64
+    created = []
+    stopped = []
+    failure = RuntimeError("C91_EXPECTED_POST_CREATE_FAILURE")
+    original_save = resources._save
+    def native(root, name, argv, **kwargs):
+        assert name in ("volume", "container"), "C91_UNEXPECTED_SETUP_REACHED"
+        if name == "container":
+            created.append(cid)
+            return cid
+        return argv[-1]
+    def inspect(value):
+        assert value == cid
+        raise failure
+    def save(path, data):
+        if fault == "receipt" and path.name == "resource-created.json":
+            raise failure
+        original_save(path, data)
+    monkeypatch.setattr(resources, "_native", native)
+    monkeypatch.setattr(resources, "_postgres_image_id", lambda: image)
+    monkeypatch.setattr(resources, "_inspect", inspect)
+    monkeypatch.setattr(resources, "_save", save)
+    monkeypatch.setattr(resources, "stop_owned_postgres",
+                        lambda record: stopped.append(record.copy()))
+    with pytest.raises(RuntimeError) as caught:
+        with resources.task_postgres("exception-control"):
+            pytest.fail("C91_FAILED_SETUP_YIELDED")
+    assert caught.value is failure
+    assert created == [cid]
+    assert len(stopped) == 1, "C91_CREATED_CONTAINER_ESCAPED_FINALIZER"
+    assert stopped[0]["id"] == cid and stopped[0]["image"] == image
+    assert stopped[0]["owner"] == resources.OWNER
+    assert stopped[0]["task"] == resources.TASK

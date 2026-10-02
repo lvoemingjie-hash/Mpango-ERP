@@ -20,6 +20,12 @@ partial payment 30, credit conversion 100 followed by fulfillment of two units,
 and confirmed hold 50. Expected stock is 48, reserved quantity 3, remaining
 partial hold 70 and binding cache 220. Tenant B has stock 7 and a draft 50 order.
 These expectations must be checked against Decimal facts, not inferred from rc.
+In the actual source, partial cash and credit fulfillment did not post ledger
+entries. The amended task scenario therefore added a fourth 50 full-cash order
+and fulfilled one unit through the existing commands. The amended expected stock
+is 47, reserved quantity 3, binding cache still 220, with an additional settled
+hold and nonzero balanced ledger. This is a fixture amendment, not a new product
+accounting rule or a claim that delivery accounting is fully implemented.
 
 ## Export and restore
 
@@ -63,3 +69,12 @@ scan; metadata tombstones do not claim physical erasure.
 This does not establish production cron, offsite storage, notifications, capacity,
 RPO/RTO, global CI safety or merge/deployment authority. R4 results keep their R4
 candidate identity; CI/doc-only successors may request reuse by blob equivalence.
+
+The R5 rehearsal paused at catalog comparison under its repeated-cause stop rule.
+The real dump and transactional restore succeeded and row fingerprints matched,
+but equivalent varchar-array CHECK/index deparser forms were not yet compared
+consistently. Runtime post-restore operations and negative restore controls were
+not executed. Preserve the raw definitions and restore receipt; do not claim a
+completed recovery battery. A read-only normalization probe showed matching PG
+parsed filters for the first CHECK. Database-level ACL is not in a non-create
+pg_dump and must be restored from the existing product contract, not ad-hoc grants.

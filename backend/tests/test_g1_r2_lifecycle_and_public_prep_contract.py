@@ -225,6 +225,8 @@ def test_p21_stop_failure_is_not_suppressed():
 
 
 def test_p21_real_runtime_identity_and_closed_connections():
+    import json
+    from pathlib import Path
     from tests.task_owned_pg_resources import _inspect, task_postgres
 
     with task_postgres("p21control") as urls:
@@ -240,3 +242,9 @@ def test_p21_real_runtime_identity_and_closed_connections():
         finally:
             connection.close()
     assert _inspect(cid)["State"]["Running"] is False, "FR3_OWNED_PG_NOT_STOPPED"
+    root = Path(urls["private_root"])
+    before = json.loads((root / "authority-before.json").read_text())
+    after = json.loads((root / "authority-after.json").read_text())
+    assert before == after, "FR3_P21_AUTHORITY_CHANGED"
+    assert before["head"] == [["039_order_credit_holds"]], "FR3_P21_WRONG_HEAD"
+    assert json.loads((root / "connection-close-proof.json").read_text())["remaining"] == [], "FR3_P21_CONNECTIONS_REMAIN"

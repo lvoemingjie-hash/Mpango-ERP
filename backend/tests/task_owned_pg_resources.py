@@ -102,6 +102,26 @@ def _assert_identity(url, user, database, *, runtime=False):
         connection.close()
 
 
+def _authority_snapshot(url):
+    connection = psycopg2.connect(url, connect_timeout=3)
+    try:
+        with connection.cursor() as cursor:
+            queries = {
+                "head": "SELECT version_num FROM public.alembic_version ORDER BY version_num",
+                "roles": "SELECT rolname,rolsuper,rolcreatedb,rolcreaterole,rolinherit,rolreplication,rolbypassrls FROM pg_roles WHERE rolname IN ('mpango_app','mpango_migrate','reporting_user') ORDER BY rolname",
+                "memberships": "SELECT r.rolname,m.rolname,a.admin_option,a.inherit_option,a.set_option FROM pg_auth_members a JOIN pg_roles r ON r.oid=a.roleid JOIN pg_roles m ON m.oid=a.member ORDER BY 1,2",
+                "guard": "SELECT pg_get_userbyid(p.proowner),md5(pg_get_functiondef(p.oid)) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='prevent_ledger_modification'",
+                "runtime_public_create": "SELECT has_schema_privilege('mpango_app','public','CREATE')",
+            }
+            result = {}
+            for name, query in queries.items():
+                cursor.execute(query)
+                result[name] = cursor.fetchall()
+            return result
+    finally:
+        connection.close()
+
+
 @contextmanager
 def route_deadline(urls):
     """Bound only the current native route node; retain read-only blockers."""
@@ -212,10 +232,16 @@ def task_postgres(module, *, bare=False, shell=False):
             urls[kind + "_async"] = url("mpango_app", target).replace("postgresql://", "postgresql+asyncpg://")
         os.environ["DATABASE_URL"] = urls["mig_async"]
         os.environ["REPORTING_USER_PASSWORD"] = passwords["reporting_user"]
+        before = _authority_snapshot(url("mpango_migrate", database))
+        _save(root / "authority-before.json", before)
         _save(root / "topology.json", {"container": cid, "port": port, "database": database,
                                      "business_user": "mpango_app", "negative_databases": [k for k in urls if k.endswith("_async")]})
         yield urls
         _native(root, "verify-after", command + ["--verify"], env=setup)
+        after = _authority_snapshot(url("mpango_migrate", database))
+        _save(root / "authority-after.json", after)
+        if before != after:
+            raise RuntimeError("TASK_PG_AUTHORITY_DRIFT")
         connection = psycopg2.connect(admin)
         try:
             with connection.cursor() as cursor:

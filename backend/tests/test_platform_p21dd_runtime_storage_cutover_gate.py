@@ -39,6 +39,7 @@ stays ``is_live_store == False``; the P20 service gate decides durability at
 runtime. No P18 action is ever executed.
 """
 import os
+from contextlib import asynccontextmanager
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -90,184 +91,19 @@ def _docker_available() -> bool:
     try:
         subprocess.run(["docker", "--version"], capture_output=True, check=True, timeout=20)
         return True
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
-
-
-def _wait_postgres(sync_url: str, timeout: float = 60.0) -> None:
-    import psycopg2
-
-    deadline = time.time() + timeout
-    last: Exception | None = None
-    while time.time() < deadline:
-        try:
-            conn = psycopg2.connect(sync_url)
-            conn.close()
-            return
-        except Exception as exc:  # noqa: BLE001
-            last = exc
-            time.sleep(0.5)
-    raise RuntimeError(f"postgres container not ready within {timeout}s: {last}")
-
-
-def _bootstrap(sync_url: str) -> None:
-    """Test-only DB init mirroring database/init.sql (self-contained repro)."""
-    import psycopg2
-
-    conn = psycopg2.connect(sync_url)
-    conn.autocommit = True
-    cur = conn.cursor()
-    try:
-        cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
-        cur.execute(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
-            "WHERE table_schema = 'public' AND table_name = 'alembic_version')"
-        )
-        has_av = cur.fetchone()[0]
-        if has_av:
-            cur.execute(
-                "SELECT character_maximum_length FROM information_schema.columns "
-                "WHERE table_schema = 'public' AND table_name = 'alembic_version' "
-                "AND column_name = 'version_num'"
-            )
-            row = cur.fetchone()
-            length = row[0] if row else 0
-            if length is None or length < 128:
-                cur.execute(
-                    "ALTER TABLE public.alembic_version "
-                    "ALTER COLUMN version_num TYPE varchar(128)"
-                )
-        else:
-            cur.execute(
-                "CREATE TABLE public.alembic_version "
-                "(version_num varchar(128) NOT NULL, "
-                "CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))"
-            )
-        cur.execute("CREATE SCHEMA IF NOT EXISTS t_dev")
-    finally:
-        cur.close()
-        conn.close()
-
-
-def _create_database(admin_sync_url: str, new_db: str) -> None:
-    """CREATE DATABASE via an autocommit admin connection (cannot run in a txn)."""
-    import psycopg2
-
-    conn = psycopg2.connect(admin_sync_url)
-    conn.autocommit = True
-    cur = conn.cursor()
-    try:
-        cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (new_db,))
-        if not cur.fetchone():
-            cur.execute(f'CREATE DATABASE "{new_db}"')
-    finally:
-        cur.close()
-        conn.close()
-
-
-def _make_shell_tables(sync_url: str) -> None:
-    """Create the five durable table NAMES as empty shells (no columns/enums).
-
-    Readiness counts these as present, but an adapter INSERT fails (wrong
-    columns / missing enums) -> exercises the degraded fail-closed path.
-    """
-    import psycopg2
-
-    conn = psycopg2.connect(sync_url)
-    conn.autocommit = True
-    cur = conn.cursor()
-    try:
-        for t in REQUIRED_TABLES:
-            cur.execute(f'CREATE TABLE IF NOT EXISTS public."{t}" (x int)')
-    finally:
-        cur.close()
-        conn.close()
-
-
-def _restore_env(snapshot: dict) -> None:
-    """Restore os.environ keys captured before a fixture mutated them.
-
-    Test isolation: the durable integration fixtures point DATABASE_URL (and
-    setdefault REPORTING_USER_PASSWORD) at a throwaway container, then tear the
-    container down. Without restoring, later suites in the same pytest process
-    read a dead DATABASE_URL and error. A None snapshot value means the key was
-    absent and is popped; otherwise the prior value is restored.
-    """
-    for key, value in snapshot.items():
-        if value is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = value
 
 
 @pytest.fixture(scope="module")
 def durable_urls():
-    """One throwaway container hosting three databases (mig / bare / shell)."""
-    # Snapshot the env BEFORE this fixture mutates it, so the finally can restore
-    # it (test isolation -- no leaked dead DATABASE_URL to later suites).
-    _env = {
-        "DATABASE_URL": os.environ.get("DATABASE_URL"),
-        "REPORTING_USER_PASSWORD": os.environ.get("REPORTING_USER_PASSWORD"),
-    }
+    """Own PG16 stack; bare and shell databases retain negative shapes."""
+    from tests.task_owned_pg_resources import task_postgres
+
     if not _docker_available():
         pytest.skip("docker not available; cannot start an ephemeral postgres container")
-    container = f"p21dd-ephemeral-{uuid4().hex[:10]}"
-    subprocess.run(["docker", "rm", "-f", container], capture_output=True)
-    run = subprocess.run(
-        [
-            "docker", "run", "-d", "--name", container,
-            "-e", "POSTGRES_PASSWORD=p21dd",  # pragma: allowlist secret
-            "-e", "POSTGRES_DB=p21dd_mig",
-            "-P", "postgres:15",
-        ],
-        capture_output=True, text=True, timeout=180,
-    )
-    if run.returncode != 0:
-        pytest.skip(f"could not start ephemeral postgres container: {run.stderr.strip()}")
-    try:
-        port_out = subprocess.run(
-            ["docker", "port", container, "5432/tcp"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip()
-        if not port_out:
-            pytest.skip("could not resolve ephemeral postgres host port")
-        host_port = port_out.splitlines()[0].rsplit(":", 1)[1]
-        mig_async = f"postgresql+asyncpg://postgres:p21dd@127.0.0.1:{host_port}/p21dd_mig"  # pragma: allowlist secret
-        mig_sync = f"postgresql://postgres:p21dd@127.0.0.1:{host_port}/p21dd_mig"  # pragma: allowlist secret
-        admin_sync = f"postgresql://postgres:p21dd@127.0.0.1:{host_port}/postgres"  # pragma: allowlist secret
-        # Refuse any chance of landing on the developer DB.
-        for u in (mig_async, mig_sync, admin_sync):
-            assert "mpango_erp" not in u.lower()
-            assert "mpango_postgres" not in u.lower()
-        _wait_postgres(mig_sync)
-        _bootstrap(mig_sync)
-        # Create + bootstrap the bare and shell databases (no migration on them).
-        _create_database(admin_sync, "p21dd_bare")
-        bare_sync = f"postgresql://postgres:p21dd@127.0.0.1:{host_port}/p21dd_bare"  # pragma: allowlist secret
-        _wait_postgres(bare_sync)
-        _bootstrap(bare_sync)
-        _create_database(admin_sync, "p21dd_shell")
-        shell_sync = f"postgresql://postgres:p21dd@127.0.0.1:{host_port}/p21dd_shell"  # pragma: allowlist secret
-        _wait_postgres(shell_sync)
-        _bootstrap(shell_sync)
-        _make_shell_tables(shell_sync)
-        # Run migration 020 (head) on the migrated database only.
-        os.environ["DATABASE_URL"] = mig_async
-        os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
-        from alembic.config import Config
-
-        cfg = Config(str(BACKEND_DIR / "alembic.ini"))
-        cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-        run_alembic_upgrade(cfg, "head")
-        yield {
-            "mig_async": mig_async,
-            "mig_sync": mig_sync,
-            "bare_async": f"postgresql+asyncpg://postgres:p21dd@127.0.0.1:{host_port}/p21dd_bare",  # pragma: allowlist secret
-            "shell_async": f"postgresql+asyncpg://postgres:p21dd@127.0.0.1:{host_port}/p21dd_shell",  # pragma: allowlist secret
-        }
-    finally:
-        subprocess.run(["docker", "rm", "-f", container], capture_output=True)
-        _restore_env(_env)  # test isolation: do not leak the throwaway DATABASE_URL
+    with task_postgres("p21dd", bare=True, shell=True) as urls:
+        yield urls
 
 
 @pytest.fixture(scope="module")
@@ -306,10 +142,19 @@ async def _mode_and_clean():
     p20svc.set_storage_mode(None)
 
 
+@pytest.fixture(scope="module")
+async def prep_engine(durable_urls):
+    eng = create_async_engine(durable_urls["migration_async"], future=True)
+    try:
+        yield eng
+    finally:
+        await eng.dispose()
+
+
 @pytest.fixture(autouse=True)
-async def _truncate_migrated(mig_engine):
+async def _truncate_migrated(prep_engine):
     """Clean durable tables before each test (isolated, deterministic)."""
-    async with mig_engine.begin() as conn:
+    async with prep_engine.begin() as conn:
         await conn.execute(
             text(
                 "TRUNCATE public.durable_approval_decisions, "
@@ -825,8 +670,16 @@ def _route_app(url):
     from api.dependencies import get_db, get_platform_db
     from api.v1.platform.p20.routes import router
 
-    engine = create_async_engine(url, future=True)
-    app = FastAPI()
+    engine = create_async_engine(url, future=True, connect_args={
+        "server_settings": {"lock_timeout": "100000", "statement_timeout": "110000"}})
+    @asynccontextmanager
+    async def lifespan(app):
+        try:
+            yield
+        finally:
+            await engine.dispose()
+
+    app = FastAPI(lifespan=lifespan)
 
     async def override():
         session = AsyncSession(engine, expire_on_commit=False)
@@ -839,6 +692,30 @@ def _route_app(url):
     app.dependency_overrides[get_platform_db] = app.dependency_overrides[get_db]
     app.include_router(router)
     return app
+
+
+@pytest.fixture(autouse=True)
+def _owned_route_clients(monkeypatch, durable_urls, request):
+    """One portal per client; close it before the resource fixture can stop PG."""
+    clients = []
+    real_client = TestClient
+
+    def acquire(app, *args, **kwargs):
+        client = real_client(app, *args, **kwargs)
+        client.__enter__()
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(__import__(__name__, fromlist=["TestClient"]), "TestClient", acquire)
+    from contextlib import nullcontext
+    from tests.task_owned_pg_resources import route_deadline
+    deadline = route_deadline(durable_urls) if "route" in request.node.name else nullcontext()
+    try:
+        with deadline:
+            yield
+    finally:
+        for client in reversed(clients):
+            client.__exit__(None, None, None)
 
 
 def _payload(**over):

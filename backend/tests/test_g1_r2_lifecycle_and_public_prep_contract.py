@@ -162,3 +162,81 @@ def test_s1r5_catalog_dispatch_uses_owned_database_and_removes_it(monkeypatch):
             assert cursor.fetchone()[0] == 0, "FR2_S1R5_DATABASE_RESIDUE"
     finally:
         connection.close()
+
+
+@pytest.mark.parametrize("field", ("id", "owner", "task", "mount", "image"))
+def test_p21_wrong_resource_identity_never_stops(field):
+    from tests.task_owned_pg_resources import OWNER, TASK, stop_owned_postgres
+
+    cid = "a" * 64
+    record = {"id": cid, "image": "sha256:" + "b" * 64, "volume": "owned-volume"}
+    info = {"Id": cid, "Image": record["image"],
+            "Config": {"Labels": {"mpango.owner": OWNER, "mpango.task": TASK}},
+            "Mounts": [{"Type": "volume", "Name": "owned-volume",
+                        "Destination": "/var/lib/postgresql/data"}],
+            "State": {"Running": True}}
+    if field == "id":
+        info["Id"] = "c" * 64
+    elif field in ("owner", "task"):
+        info["Config"]["Labels"]["mpango." + field] = "other-task"
+    elif field == "mount":
+        info["Mounts"][0]["Name"] = "other-volume"
+    else:
+        info["Image"] = "other-image"
+    calls = []
+    try:
+        with pytest.raises(RuntimeError, match="TASK_PG_.*_MISMATCH"):
+            stop_owned_postgres(record, inspect=lambda value: info, stop=calls.append)
+    finally:
+        assert calls == [], "FR3_WRONG_RESOURCE_WAS_STOPPED"
+
+
+def test_p21_owned_resource_stops_only_exact_id():
+    from tests.task_owned_pg_resources import OWNER, TASK, stop_owned_postgres
+
+    cid = "a" * 64
+    record = {"id": cid, "image": "sha256:" + "b" * 64, "volume": "owned-volume"}
+    info = {"Id": cid, "Image": record["image"],
+            "Config": {"Labels": {"mpango.owner": OWNER, "mpango.task": TASK}},
+            "Mounts": [{"Type": "volume", "Name": "owned-volume",
+                        "Destination": "/var/lib/postgresql/data"}],
+            "State": {"Running": True}}
+    calls = []
+    def stop(value):
+        calls.append(value)
+        info["State"]["Running"] = False
+    stop_owned_postgres(record, inspect=lambda value: info, stop=stop)
+    assert calls == [cid], "FR3_STOP_NOT_BOUND_TO_EXACT_ID"
+
+
+def test_p21_stop_failure_is_not_suppressed():
+    from tests.task_owned_pg_resources import OWNER, TASK, stop_owned_postgres
+
+    cid = "a" * 64
+    record = {"id": cid, "image": "image", "volume": "owned-volume"}
+    info = {"Id": cid, "Image": "image",
+            "Config": {"Labels": {"mpango.owner": OWNER, "mpango.task": TASK}},
+            "Mounts": [{"Type": "volume", "Name": "owned-volume",
+                        "Destination": "/var/lib/postgresql/data"}]}
+    def fail(value):
+        raise RuntimeError("stop failed")
+    with pytest.raises(RuntimeError, match="stop failed"):
+        stop_owned_postgres(record, inspect=lambda value: info, stop=fail)
+
+
+def test_p21_real_runtime_identity_and_closed_connections():
+    from tests.task_owned_pg_resources import _inspect, task_postgres
+
+    with task_postgres("p21control") as urls:
+        cid = urls["container"]
+        connection = psycopg2.connect(urls["mig_sync"])
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT current_user,rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls FROM pg_roles WHERE rolname=current_user")
+                row = cursor.fetchone()
+                assert row == ("mpango_app", False, False, False, False, False), "FR3_P21_BUSINESS_IDENTITY_ELEVATED"
+                cursor.execute("SELECT has_schema_privilege(current_user,'public','CREATE')")
+                assert cursor.fetchone() == (False,), "FR3_P21_RUNTIME_PUBLIC_CREATE"
+        finally:
+            connection.close()
+    assert _inspect(cid)["State"]["Running"] is False, "FR3_OWNED_PG_NOT_STOPPED"

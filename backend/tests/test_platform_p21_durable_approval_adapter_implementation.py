@@ -5,12 +5,11 @@ implementation) against an EPHEMERAL, self-contained PostgreSQL database and
 proves the durable adapter mirrors the P20-B in-memory service logic exactly
 while persisting every operation as a single atomic, restart-safe transaction.
 
-Self-contained ephemeral DB: the module-scoped fixture starts its OWN throwaway
-``postgres:15`` container (never the developer ``mpango_erp`` database, never a
-shared DB), bootstraps the test-only prerequisites (pgcrypto, widened
-``public.alembic_version``, ``t_dev``), runs the already-merged migration
-``020_durable_approval_store`` (the public durable tables / enums), and tears the
-container down on finish. It REFUSES to run without docker (skip, not fail);
+Self-contained PG16: the fixture registers its new container and named volume,
+uses product provisioning and migration authority for setup, and uses runtime
+sessions for business operations. Connections close before an exact-ID,
+ownership-verified stop; stopped resources are retained, never deleted.
+It REFUSES to run without docker (the historical skip, not a new skip);
 when docker is available (the validation environment) every test runs for real.
 
 Coverage (the directive's required surface):
@@ -79,136 +78,22 @@ FUTURE = datetime(2099, 1, 1, tzinfo=timezone.utc)
 
 def _docker_available() -> bool:
     try:
-        subprocess.run(
-            ["docker", "--version"], capture_output=True, check=True, timeout=20
-        )
+        subprocess.run(["docker", "--version"], capture_output=True, check=True, timeout=20)
         return True
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
-
-
-def _wait_postgres(sync_url: str, timeout: float = 45.0) -> None:
-    import psycopg2
-
-    deadline = time.time() + timeout
-    last: Exception | None = None
-    while time.time() < deadline:
-        try:
-            conn = psycopg2.connect(sync_url)
-            conn.close()
-            return
-        except Exception as exc:  # noqa: BLE001
-            last = exc
-            time.sleep(0.5)
-    raise RuntimeError(f"postgres container not ready within {timeout}s: {last}")
-
-
-def _bootstrap(sync_url: str) -> None:
-    """Test-only DB init mirroring database/init.sql (self-contained repro)."""
-    import psycopg2
-
-    conn = psycopg2.connect(sync_url)
-    conn.autocommit = True
-    cur = conn.cursor()
-    try:
-        cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
-        cur.execute(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
-            "WHERE table_schema = 'public' AND table_name = 'alembic_version')"
-        )
-        has_av = cur.fetchone()[0]
-        if has_av:
-            cur.execute(
-                "SELECT character_maximum_length FROM information_schema.columns "
-                "WHERE table_schema = 'public' AND table_name = 'alembic_version' "
-                "AND column_name = 'version_num'"
-            )
-            row = cur.fetchone()
-            length = row[0] if row else 0
-            if length is None or length < 128:
-                cur.execute(
-                    "ALTER TABLE public.alembic_version "
-                    "ALTER COLUMN version_num TYPE varchar(128)"
-                )
-        else:
-            cur.execute(
-                "CREATE TABLE public.alembic_version "
-                "(version_num varchar(128) NOT NULL, "
-                "CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))"
-            )
-        cur.execute("CREATE SCHEMA IF NOT EXISTS t_dev")
-    finally:
-        cur.close()
-        conn.close()
-
-
-def _restore_env(snapshot: dict) -> None:
-    """Restore os.environ keys captured before a fixture mutated them.
-
-    Test isolation: the durable integration fixtures point DATABASE_URL (and
-    setdefault REPORTING_USER_PASSWORD) at a throwaway container, then tear the
-    container down. Without restoring, later suites in the same pytest process
-    read a dead DATABASE_URL and error. A None snapshot value means the key was
-    absent and is popped; otherwise the prior value is restored.
-    """
-    for key, value in snapshot.items():
-        if value is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = value
 
 
 @pytest.fixture(scope="module")
 def durable_db_url():
-    """Start a throwaway postgres:15 container and run migration 020 (sync)."""
-    # Snapshot the env BEFORE this fixture mutates it, so the finally can restore
-    # it (test isolation -- no leaked dead DATABASE_URL to later suites).
-    _env = {
-        "DATABASE_URL": os.environ.get("DATABASE_URL"),
-        "REPORTING_USER_PASSWORD": os.environ.get("REPORTING_USER_PASSWORD"),
-    }
+    """PG16 migration setup with runtime business sessions; exact-ID stop only."""
+    from tests.task_owned_pg_resources import task_postgres
+
     if not _docker_available():
         pytest.skip("docker not available; cannot start an ephemeral postgres container")
-    container = f"p21dc-ephemeral-{uuid4().hex[:10]}"
-    subprocess.run(["docker", "rm", "-f", container], capture_output=True)
-    run = subprocess.run(
-        [
-            "docker", "run", "-d", "--name", container,
-            "-e", "POSTGRES_PASSWORD=p21dc",
-            "-e", "POSTGRES_DB=p21dc",
-            "-P", "postgres:15",
-        ],
-        capture_output=True, text=True, timeout=180,
-    )
-    if run.returncode != 0:
-        pytest.skip(f"could not start ephemeral postgres container: {run.stderr.strip()}")
-    try:
-        port_out = subprocess.run(
-            ["docker", "port", container, "5432/tcp"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip()
-        if not port_out:
-            pytest.skip("could not resolve ephemeral postgres host port")
-        host_port = port_out.splitlines()[0].rsplit(":", 1)[1]
-        # Throwaway local container credentials (never the developer DB); marked
-        # allowlist so the basic-auth-shaped URL does not trip detect-secrets.
-        async_url = f"postgresql+asyncpg://postgres:p21dc@127.0.0.1:{host_port}/p21dc"  # pragma: allowlist secret
-        sync_url = f"postgresql://postgres:p21dc@127.0.0.1:{host_port}/p21dc"  # pragma: allowlist secret
-        # Refuse any chance of landing on the developer DB.
-        assert "mpango_erp" not in async_url.lower()
-        _wait_postgres(sync_url)
-        _bootstrap(sync_url)
-        os.environ["DATABASE_URL"] = async_url
-        os.environ.setdefault("REPORTING_USER_PASSWORD", "ephemeral_reporting_pw")
-        from alembic.config import Config
-
-        cfg = Config(str(BACKEND_DIR / "alembic.ini"))
-        cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-        run_alembic_upgrade(cfg, "head")  # public-mode; creates durable tables
-        yield {"async_url": async_url, "sync_url": sync_url, "container": container}
-    finally:
-        subprocess.run(["docker", "rm", "-f", container], capture_output=True)
-        _restore_env(_env)  # test isolation: do not leak the throwaway DATABASE_URL
+    with task_postgres("p21dc") as urls:
+        yield {"async_url": urls["mig_async"], "sync_url": urls["mig_sync"],
+               "container": urls["container"], "migration_async": urls["migration_async"]}
 
 
 @pytest.fixture(scope="module")
@@ -220,10 +105,19 @@ async def engine(durable_db_url):
         await eng.dispose()
 
 
+@pytest.fixture(scope="module")
+async def prep_engine(durable_db_url):
+    eng = create_async_engine(durable_db_url["migration_async"], future=True)
+    try:
+        yield eng
+    finally:
+        await eng.dispose()
+
+
 @pytest.fixture(autouse=True)
-async def _truncate(engine):
+async def _truncate(prep_engine):
     """Clean durable tables before each test (isolated, deterministic)."""
-    async with engine.begin() as conn:
+    async with prep_engine.begin() as conn:
         await conn.execute(
             text(
                 "TRUNCATE public.durable_approval_decisions, "

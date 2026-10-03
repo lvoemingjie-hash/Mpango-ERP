@@ -43,16 +43,36 @@ def _is_legal_sha512_sri(token):
         return False
     return 'sha512-' + base64.b64encode(decoded).decode('ascii') == token
 
+def _is_structured_sri_line(text, token):
+    for pattern in SRI_FIELD_PATTERNS:
+        match = pattern.match(text)
+        if match and match.group(1) == token:
+            return True
+    return False
+
 def sri_recognition(path, line_number):
     try:
-        line = Path(path).read_text(encoding='utf-8').splitlines()[line_number - 1]
+        lines = Path(path).read_text(encoding='utf-8').splitlines()
+        line = lines[line_number - 1]
     except (OSError, UnicodeError, IndexError):
         raise Refusal(3, 'SRI_RECOGNITION_READ_FAILED') from None
+    token = None
     for pattern in SRI_FIELD_PATTERNS:
         match = pattern.match(line)
         if match and _is_legal_sha512_sri(match.group(1)):
-            return 'sha512_sri_integrity_field'
-    return None
+            token = match.group(1)
+            break
+    if token is None:
+        return None
+    # The adjudication covers the structured integrity POSITION only. The
+    # detector deduplicates identical values within a file to the first
+    # occurrence, so recognizing that single finding would silently exempt
+    # every other use of the same value. Fail closed: the value must appear
+    # in this file ONLY on fully structured SRI lines.
+    for occurrence in lines:
+        if token in occurrence and not _is_structured_sri_line(occurrence, token):
+            return None
+    return 'sha512_sri_integrity_field'
 
 def tracked():
     try:

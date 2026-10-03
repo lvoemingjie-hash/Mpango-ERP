@@ -132,6 +132,48 @@ def test_plain_high_entropy_string_not_recognized(clean):
     assert report['recognized_sri'] == 0 and report['new_findings'] >= 1
 
 
+def test_same_value_mixed_use_sri_first_red(clean):
+    # detector dedups the identical value to its first (structured) line;
+    # recognition must not exempt the other-field use of the same value
+    token = random_sri()
+    add(clean, 'pnpm-lock.yaml', ['packages:', '  /a/1.0.0:',
+        f'    resolution: {{integrity: {token}}}',
+        f'    other_payload: {token}'])
+    proc = run(clean)
+    assert proc.returncode == 1, 'mixed-use value must stay refused'
+    report = json.loads(proc.stdout)
+    assert report['recognized_sri'] == 0, 'SRI-first dedup must not exempt other-field use'
+    assert any(f['path'] == 'pnpm-lock.yaml' for f in report['findings'])
+    assert token not in proc.stdout + proc.stderr
+
+
+def test_same_value_mixed_use_other_field_first_red(clean):
+    token = random_sri()
+    add(clean, 'pnpm-lock.yaml', ['packages:',
+        f'  other_payload: {token}',
+        '  /a/1.0.0:',
+        f'    resolution: {{integrity: {token}}}'])
+    proc = run(clean)
+    assert proc.returncode == 1
+    report = json.loads(proc.stdout)
+    assert report['recognized_sri'] == 0
+    assert any(f['path'] == 'pnpm-lock.yaml' for f in report['findings'])
+
+
+def test_same_value_all_structured_positions_green(clean):
+    # pure duplicate SRI positions of one value remain adjudicated (dedup
+    # collapses them to one finding; every occurrence is structured)
+    token = random_sri()
+    add(clean, 'pnpm-lock.yaml', ['packages:', '  /a/1.0.0:',
+        f'    resolution: {{integrity: {token}}}',
+        '  /b/2.0.0:',
+        f'    resolution: {{integrity: {token}}}'])
+    proc = run(clean)
+    assert proc.returncode == 0, proc.stderr
+    report = json.loads(proc.stdout)
+    assert report['new_findings'] == 0 and report['recognized_sri'] == 1
+
+
 MALFORMED_CASES = ('extra_flow_field', 'missing_padding', 'quoted_value',
                    'trailing_comment', 'wrong_algorithm', 'wrong_key',
                    'wrong_payload_length')

@@ -1,4 +1,6 @@
 """Pinned offline detector and tracked-file checks; never write baseline."""
+import base64
+import binascii
 import fnmatch
 import hashlib
 import importlib.metadata
@@ -19,6 +21,38 @@ class DetectorFault(logging.Handler):
     def emit(self, record):
         if record.levelno >= logging.WARNING:
             raise Refusal(3, 'DETECTOR_EXECUTION_FAILED')
+
+# CTO F-01 adjudication (2026-10-03): structured SHA-512 SRI integrity fields
+# are non-credential content digests. Recognition is limited to the exact
+# structured field forms below: the FULL line must be exactly one integrity
+# field expression and the token must be a canonical SHA-512 SRI (base64
+# decodes to 64 bytes and re-encodes byte-identically). It is never applied
+# to whole files/directories, never generalized to high-entropy strings, and
+# never applied to non-Base64 findings. Any doubt leaves the finding refused.
+SRI_FIELD_PATTERNS = (
+    re.compile(r'^\s*resolution:\s*\{integrity:\s*(sha512-[A-Za-z0-9+/]+=*)\},?\s*$'),
+    re.compile(r'^\s*integrity:\s*(sha512-[A-Za-z0-9+/]+=*)\s*,?\s*$'),
+)
+
+def _is_legal_sha512_sri(token):
+    try:
+        decoded = base64.b64decode(token[len('sha512-'):], validate=True)
+    except (binascii.Error, ValueError):
+        return False
+    if len(decoded) != 64:
+        return False
+    return 'sha512-' + base64.b64encode(decoded).decode('ascii') == token
+
+def sri_recognition(path, line_number):
+    try:
+        line = Path(path).read_text(encoding='utf-8').splitlines()[line_number - 1]
+    except (OSError, UnicodeError, IndexError):
+        raise Refusal(3, 'SRI_RECOGNITION_READ_FAILED') from None
+    for pattern in SRI_FIELD_PATTERNS:
+        match = pattern.match(line)
+        if match and _is_legal_sha512_sri(match.group(1)):
+            return 'sha512_sri_integrity_field'
+    return None
 
 def tracked():
     try:
@@ -75,9 +109,14 @@ def detector(paths):
                 if name != '.secrets.baseline':
                     observed.scan_file(name)
             new = observed - known
-            findings = [{'path': name, 'line': secret.line_number, 'type': secret.type}
-                        for name, secret in new]
-            known_count = sum(1 for _ in observed) - len(findings)
+            recognized, findings = [], []
+            for name, secret in new:
+                entry = {'path': name, 'line': secret.line_number, 'type': secret.type}
+                label = sri_recognition(name, secret.line_number) \
+                    if secret.type == 'Base64 High Entropy String' else None
+                (recognized if label else findings).append(
+                    dict(entry, recognition=label) if label else entry)
+            known_count = sum(1 for _ in observed) - len(findings) - len(recognized)
     except Exception:
         raise Refusal(3, 'DETECTOR_EXECUTION_FAILED') from None
     finally:
@@ -87,7 +126,8 @@ def detector(paths):
     return {'mode': 'detector', 'tracked_files': len(paths),
         'baseline_sha256': hashlib.sha256(raw).hexdigest(), 'baseline_unchanged': True,
         'tool_version': '1.5.0', 'network_verification': False,
-        'known_findings': known_count, 'new_findings': len(findings), 'findings': findings}
+        'known_findings': known_count, 'new_findings': len(findings), 'findings': findings,
+        'recognized_sri': len(recognized), 'recognized': recognized}
 
 def hardcoded(paths):
     password = re.compile(r'''(password|passwd|pwd|secret|token|api_key|apikey)\s*=\s*["'][^"']{8,}["']''')

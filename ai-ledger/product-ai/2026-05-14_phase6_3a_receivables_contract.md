@@ -162,7 +162,7 @@ poetry run pytest tests/test_receivables_service.py tests/test_finance_receivabl
 **Expected:** All tests pass with new validation tests included.
 
 ```powershell
-$env:REPORTING_USER_PASSWORD='test-password-for-reporting'
+$env:REPORTING_USER_PASSWORD='[REDACTED-R6:historical-value-removed]'
 poetry run pytest tests/test_phase5_order_payment.py -q --tb=short
 ```
 
@@ -172,8 +172,8 @@ poetry run pytest tests/test_phase5_order_payment.py -q --tb=short
 
 ```powershell
 $env:MPANGO_ENV='test'
-$env:DATABASE_URL='postgresql://postgres:postgres@localhost:5432/mpango_test'
-$env:REPORTING_USER_PASSWORD='test-password-for-reporting'
+$env:DATABASE_URL='[REDACTED-R6:historical-value-removed]ql://[REDACTED-R6:historical-value-removed]:[REDACTED-R6:historical-value-removed]@localhost:5432/mpango_test'
+$env:REPORTING_USER_PASSWORD='[REDACTED-R6:historical-value-removed]'
 @'
 import os
 import secrets
@@ -309,8 +309,8 @@ poetry run pytest tests/test_receivables_service.py tests/test_finance_receivabl
 **App Smoke:** 105 routes loaded successfully
 ```powershell
 $env:MPANGO_ENV='test'
-$env:DATABASE_URL='postgresql://postgres:postgres@localhost:5432/mpango_test'
-$env:REPORTING_USER_PASSWORD='test-password-for-reporting'
+$env:DATABASE_URL='[REDACTED-R6:historical-value-removed]ql://[REDACTED-R6:historical-value-removed]:[REDACTED-R6:historical-value-removed]@localhost:5432/mpango_test'
+$env:REPORTING_USER_PASSWORD='[REDACTED-R6:historical-value-removed]'
 python -c "import os; import secrets; os.environ['SECRET_KEY'] = secrets.token_urlsafe(32); from api.app import app; print(len(app.routes))"
 # Result: 105
 ```

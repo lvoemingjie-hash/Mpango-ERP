@@ -5,7 +5,7 @@
 -- to succeed cleanly, isolating the P10 platform guard boundary test.
 --
 -- Run against Docker Postgres (mpango_p25ec_pg, port 5433):
---   PGPASSWORD=p25ec_throwaway_pw psql -h 127.0.0.1 -p 5433 -U mpango -d mpango_erp -f tenant_setup_r1.sql
+--   PGPASSWORD=<caller-supplied-throwaway-password> psql -h 127.0.0.1 -p 5433 -U mpango -d mpango_erp -f tenant_setup_r1.sql
 --
 -- This is THROWAWAY data -- not a production migration. Drop after testing.
 

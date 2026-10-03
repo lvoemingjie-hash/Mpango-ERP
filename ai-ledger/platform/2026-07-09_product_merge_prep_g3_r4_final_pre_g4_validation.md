@@ -113,7 +113,7 @@ Body: `{"code":"TENANT_CONTEXT_UNRESOLVABLE","message":"Tenant context reference
 |-------|--------|
 | `alembic heads` | Single head: `030_platform_backup_status_source` \
 | `alembic current` | `030_platform_backup_status_source (head)` \
-| DB | `postgresql://mpango:p25ec_throwaway_pw@localhost:5433/mpango_erp` (Docker :5433) |
+| DB | `postgresql://mpango:[REDACTED-R6:historical-value-removed]@localhost:5433/mpango_erp` (Docker :5433) |
 
 No multi-head. No drift. DB already at head.
 

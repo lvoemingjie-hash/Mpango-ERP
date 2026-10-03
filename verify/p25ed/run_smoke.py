@@ -27,6 +27,20 @@ SHOTS_DIR = EVIDENCE_DIR / "screenshots"
 SHOTS_DIR.mkdir(exist_ok=True)
 
 # -- Environment for backend --
+
+def _smoke_input(env_name):
+    """Caller-explicit task-only input. Missing/empty/whitespace values are
+    refused here, before any connection, Docker or DDL side effect; the
+    value itself is never echoed."""
+    value = os.environ.get(env_name)
+    if value is None:
+        raise SystemExit(f"SMOKE_INPUT_MISSING: {env_name}")
+    if value == "":
+        raise SystemExit(f"SMOKE_INPUT_EMPTY: {env_name}")
+    if value.strip() == "" or value != value.strip():
+        raise SystemExit(f"SMOKE_INPUT_WHITESPACE: {env_name}")
+    return value
+
 BACKEND_ENV = {
     **os.environ,
     "PYTHONIOENCODING": "utf-8",
@@ -34,14 +48,14 @@ BACKEND_ENV = {
     "MPANGO_ENV": "production",
     # All secrets below are THROWAWAY test-only values for the disposable smoke
     # stack (local Docker Postgres on :5433). They are NOT production secrets.
-    "DATABASE_URL": "postgresql://mpango:p25ec_throwaway_pw@localhost:5433/mpango_erp",  # pragma: allowlist secret
+    "DATABASE_URL": _smoke_input("MPANGO_SMOKE_DATABASE_URL"),  # pragma: allowlist secret
     "REDIS_URL": "redis://localhost:6379/1",
-    "SECRET_KEY": "pHFmxXthWP58Gng5AILZ6yyw4GhIVTbf6wUJ2S8RQyU",  # pragma: allowlist secret
-    "PLATFORM_OPERATOR_SECRET": "test-operator-secret",  # pragma: allowlist secret
-    "PLATFORM_TEST_OVERRIDE_SECRET": "test-platform-override-secret",  # pragma: allowlist secret
+    "SECRET_KEY": _smoke_input("MPANGO_SMOKE_SECRET_KEY"),  # pragma: allowlist secret
+    "PLATFORM_OPERATOR_SECRET": _smoke_input("MPANGO_SMOKE_OPERATOR_SECRET"),  # pragma: allowlist secret
+    "PLATFORM_TEST_OVERRIDE_SECRET": _smoke_input("MPANGO_SMOKE_TEST_OVERRIDE_SECRET"),  # pragma: allowlist secret
     "ENABLE_METRICS": "false",
     "ENABLE_SQL_PROFILING": "false",
-    "REPORTING_DATABASE_URL": "postgresql+asyncpg://mpango:p25ec_throwaway_pw@localhost:5433/mpango_erp",  # pragma: allowlist secret
+    "REPORTING_DATABASE_URL": _smoke_input("MPANGO_SMOKE_REPORTING_DATABASE_URL"),  # pragma: allowlist secret
 }
 
 BACKEND_PORT = 8000
@@ -142,7 +156,7 @@ def run_identity_smoke():
     ENDPOINT = "/api/v1/platform/p24/incident-closeouts"
     FULL_URL = BASE_URL + ENDPOINT
 
-    OPERATOR_SECRET = "test-operator-secret"  # pragma: allowlist secret
+    OPERATOR_SECRET = BACKEND_ENV["PLATFORM_OPERATOR_SECRET"]  # caller-supplied
 
     SMOKE_TENANT_ID = "00000000-0000-0000-0000-000000000099"
     SMOKE_USER_ID = "00000000-0000-0000-0000-000000000002"

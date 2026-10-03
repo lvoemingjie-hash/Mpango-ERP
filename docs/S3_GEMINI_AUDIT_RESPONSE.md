@@ -191,7 +191,7 @@ if (status === 403) {
 | 3.2 | No refresh token rotation | 🔴 Hallucination | None — fully implemented |
 | 3.3 | LocalStorage XSS risk | ✅ Legitimate | Accepted MVP risk |
 | 4.1 | `.env.example` missing pool size | 🔴 Hallucination | None — file exists, variable name wrong |
-| 4.2 | `SECRET_KEY = 'CHANGEME...'` | 🟡 Misquoted | Already guarded by startup validator |
+| 4.2 | `SECRET_KEY = '[REDACTED-R6:historical-value-removed]'` | 🟡 Misquoted | Already guarded by startup validator |
 | 4.3 | `print(db_user)` in auth | 🔴 Hallucination | None — file/variable don't exist |
 | 4.4 | `console.log` in paymentService | 🔴 Hallucination | None — file doesn't exist |
 | 5.1 | snake_case/camelCase mismatch | 🔴 Hallucination | None — fields don't exist |

@@ -8,8 +8,8 @@
 P0-1：移除 docker-compose.yml 中硬编码数据库凭据（阻塞）
 当前 docker-compose.yml 明确存在：
 
-postgres.environment.POSTGRES_PASSWORD: mpango123
-backend.environment.DATABASE_URL=postgresql://mpango:mpango123@postgres:5432/mpango_erp
+postgres.environment.POSTGRES_PASSWORD: [REDACTED-R6:historical-value-removed]
+backend.environment.DATABASE_URL=postgresql://mpango:[REDACTED-R6:historical-value-removed]@postgres:5432/mpango_erp
 裁决：这是阻塞项。原因：
 
 这是“默认密码泄露 + 横向传播”的典型事故源。

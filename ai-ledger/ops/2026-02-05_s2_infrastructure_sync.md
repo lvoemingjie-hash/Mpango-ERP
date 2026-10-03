@@ -15,7 +15,7 @@ The backend has completed Track S2 (Production Readiness Hardening) with three m
 2. **Batch 2**: Observability Core (S2-2, S2-3, S2-6)
 3. **Batch 3**: Traffic Control & Safety (S2-5, Graceful Shutdown, S2-7)
 
-**All tests passing**: 15 tests across all batches
+**All tests [REDACTED-R6:historical-value-removed]ing**: 15 tests across all batches
 
 **Infrastructure Impact**: Requires Redis for rate limiting, updated health checks, new metrics endpoints
 
@@ -29,7 +29,7 @@ The backend has completed Track S2 (Production Readiness Hardening) with three m
 
 **Required Environment Variables**:
 ```bash
-DATABASE_URL=postgresql://user:pass@host:5432/dbname
+DATABASE_URL=postgresql://user:[REDACTED-R6:historical-value-removed]@host:5432/dbname
 REDIS_URL=redis://host:6379/0
 SECRET_KEY=<secure-random-key-min-32-chars>
 MPANGO_ENV=production|staging|development
@@ -335,7 +335,7 @@ spec:
 
 **Test Suite**: `backend/tests/test_reliability.py`
 
-**Coverage**: 11 tests, all passing
+**Coverage**: 11 tests, all [REDACTED-R6:historical-value-removed]ing
 
 **Test Categories**:
 1. Rate Limiter (7 tests)
@@ -394,7 +394,7 @@ poetry run pytest tests/test_reliability.py -v
 
 **Required**:
 ```bash
-DATABASE_URL=postgresql://user:pass@host:5432/dbname
+DATABASE_URL=postgresql://user:[REDACTED-R6:historical-value-removed]@host:5432/dbname
 REDIS_URL=redis://host:6379/0
 SECRET_KEY=<secure-random-key-min-32-chars>
 MPANGO_ENV=production
@@ -713,11 +713,11 @@ Track S2 (Production Readiness Hardening) is complete with all three batches imp
 **Pipeline**: `.github/workflows/s2-7-ci-gates.yml`
 
 ### Gate 1: Reliability & Rate Limiting
-**Purpose**: Ensure rate limiting and reliability tests pass
+**Purpose**: Ensure rate limiting and reliability tests [REDACTED-R6:historical-value-removed]
 
 **Requirements**:
 - Redis service must be available as CI sidecar
-- `tests/test_reliability.py` must pass all tests
+- `tests/test_reliability.py` must [REDACTED-R6:historical-value-removed] all tests
 - Rate limiting functional with Redis backend
 
 **CI Configuration**:
@@ -811,7 +811,7 @@ GET /metrics → 200 OK (Prometheus format)
 | 4. Deployment Smoke Test | Required | /readyz returns 200 |
 
 **Build Behavior**:
-- ✅ ALL gates pass → Build succeeds, ready for deploy
+- ✅ ALL gates [REDACTED-R6:historical-value-removed] → Build succeeds, ready for deploy
 - ❌ ANY gate fails → Build FAILS, deploy blocked
 
 ### Track S2 Completion Status

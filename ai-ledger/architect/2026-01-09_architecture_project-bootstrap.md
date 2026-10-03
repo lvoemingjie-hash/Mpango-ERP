@@ -435,7 +435,7 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
   -d '{
     "tenant_code": "DEV001",
     "email": "admin@dev.com",
-    "password": "admin123"
+    "password": "[REDACTED-R6:historical-value-removed]"
   }'
 ```
 

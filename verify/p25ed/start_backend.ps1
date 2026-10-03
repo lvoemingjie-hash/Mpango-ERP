@@ -1,12 +1,19 @@
+function Require-SmokeInput([string]$Name) {
+    $v = [Environment]::GetEnvironmentVariable($Name)
+    if ($null -eq $v) { Write-Error "SMOKE_INPUT_MISSING: $Name"; exit 1 }
+    if ($v -eq "") { Write-Error "SMOKE_INPUT_EMPTY: $Name"; exit 1 }
+    if ($v.Trim() -eq "") { Write-Error "SMOKE_INPUT_WHITESPACE: $Name"; exit 1 }
+    return $v
+}
 $env:PYTHONIOENCODING = "utf-8"
 $env:PYTHONUTF8 = "1"
 $env:MPANGO_ENV = "production"
-# All secrets below are THROWAWAY test-only values for the disposable smoke stack.
-$env:DATABASE_URL = "postgresql://mpango:p25ec_throwaway_pw@localhost:5433/mpango_erp"  # pragma: allowlist secret
+# Task-only throwaway inputs are caller-supplied environment variables.
+$env:DATABASE_URL = Require-SmokeInput "MPANGO_SMOKE_DATABASE_URL"
 $env:REDIS_URL = "redis://localhost:6379/1"
-$env:SECRET_KEY = "pHFmxXthWP58Gng5AILZ6yyw4GhIVTbf6wUJ2S8RQyU"  # pragma: allowlist secret
-$env:PLATFORM_OPERATOR_SECRET = "test-operator-secret"  # pragma: allowlist secret
-$env:PLATFORM_TEST_OVERRIDE_SECRET = "test-platform-override-secret"  # pragma: allowlist secret
+$env:SECRET_KEY = Require-SmokeInput "MPANGO_SMOKE_SECRET_KEY"
+$env:PLATFORM_OPERATOR_SECRET = Require-SmokeInput "MPANGO_SMOKE_OPERATOR_SECRET"
+$env:PLATFORM_TEST_OVERRIDE_SECRET = Require-SmokeInput "MPANGO_SMOKE_TEST_OVERRIDE_SECRET"
 $env:ENABLE_METRICS = "false"
 $env:ENABLE_SQL_PROFILING = "false"
 Set-Location "c:\Users\Jeff0\MPANGO ERP\_p25ed_2026-07-08\backend"

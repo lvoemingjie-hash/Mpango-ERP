@@ -699,8 +699,8 @@ The 3 initial failures were due to missing reporting environment configuration d
 import os, secrets
 os.environ["MPANGO_ENV"] = "test"
 os.environ["SECRET_KEY"] = secrets.token_urlsafe(32)
-os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5432/mpango_test"
-os.environ["REPORTING_USER_PASSWORD"] = "test-password-for-reporting"
+os.environ["DATABASE_URL"] = "[REDACTED-R6:historical-value-removed]ql://[REDACTED-R6:historical-value-removed]:[REDACTED-R6:historical-value-removed]@localhost:5432/mpango_test"
+os.environ["REPORTING_USER_PASSWORD"] = "[REDACTED-R6:historical-value-removed]"
 from api.app import app
 print(len(app.routes))
 ```

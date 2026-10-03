@@ -70,7 +70,7 @@ collected 47 items
 **Command 2 — CTO rerun with required local environment variable:**
 ```
 cd "C:\Users\Jeff0\MPANGO ERP\phase6-credit-mvp-2026-05-13\backend"
-$env:REPORTING_USER_PASSWORD='test_reporting_password'
+$env:REPORTING_USER_PASSWORD='[REDACTED-R6:historical-value-removed]'
 $env:PYTHONIOENCODING='utf-8'
 poetry run pytest tests/test_phase5_order_payment.py -q --tb=short
 ```

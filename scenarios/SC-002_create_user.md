@@ -34,7 +34,7 @@ And the role "sales" exists in the tenant schema
 When I send POST /api/v1/users with:
   {
     "email": "sales@acme.com",
-    "password": "Sales123!",
+    "password": "[REDACTED-R6:historical-value-removed]",
     "full_name": "Sales Person"
   }
 And Authorization header is "Bearer <valid_admin_token>"
@@ -72,7 +72,7 @@ And the "sales" role does NOT have "users:create" permission
 When I send POST /api/v1/users with:
   {
     "email": "newuser@acme.com",
-    "password": "NewUser123!",
+    "password": "[REDACTED-R6:historical-value-removed]",
     "full_name": "New User"
   }
 ```

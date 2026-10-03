@@ -184,7 +184,7 @@ except Exception as e:
 MPANGO_ENV=test
 
 # DATABASE (REQUIRED) - S2-1
-DATABASE_URL=postgresql://mpango:mpango123@localhost:5432/mpango_erp
+DATABASE_URL=postgresql://mpango:[REDACTED-R6:historical-value-removed]@localhost:5432/mpango_erp
 
 # REDIS (REQUIRED) - S2-1
 REDIS_URL=redis://localhost:6379/0

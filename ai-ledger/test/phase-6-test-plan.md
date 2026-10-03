@@ -21,12 +21,12 @@
   "retailer": {
     "tenant_code": "retail-tenant-1",
     "email": "retailer@test.com",
-    "password": "test123"
+    "password": "[REDACTED-R6:historical-value-removed]"
   },
   "wholesaler": {
     "tenant_code": "wholesale-tenant-1",
     "email": "wholesaler@test.com",
-    "password": "test123"
+    "password": "[REDACTED-R6:historical-value-removed]"
   }
 }
 ```

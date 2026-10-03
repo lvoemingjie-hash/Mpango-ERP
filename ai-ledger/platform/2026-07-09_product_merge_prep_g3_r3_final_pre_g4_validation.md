@@ -41,7 +41,7 @@ Command: `python -m pytest backend/tests/test_platform_p10_contracts.py backend/
 | `alembic current` | `030_platform_backup_status_source (head)` ✓ |
 | `alembic upgrade head` | Clean (no errors, already at head) ✓ |
 
-DB: `postgresql://mpango:p25ec_throwaway_pw@localhost:5433/mpango_erp` (port 5433, disposable smoke stack)
+DB: `postgresql://mpango:[REDACTED-R6:historical-value-removed]@localhost:5433/mpango_erp` (port 5433, disposable smoke stack)
 
 ## 3. Real-Stack Platform Smoke
 

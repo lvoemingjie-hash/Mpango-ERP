@@ -24,7 +24,7 @@
 {
   "tenant_code": "ACME01",
   "email": "admin@example.com",
-  "password": "string (min 8)"
+  "password": "[REDACTED-R6:historical-value-removed]"
 }
 ```
 

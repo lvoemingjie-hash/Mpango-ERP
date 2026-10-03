@@ -288,7 +288,7 @@ async def test_user_registration_and_login_workflow(async_client: AsyncClient):
     user_data = {
         "username": "newuser",
         "email": "newuser@example.com",
-        "password": "securepassword123"
+        "password": "[REDACTED-R6:historical-value-removed]"
     }
 
     register_response = await async_client.post("/api/v1/auth/register", json=user_data)

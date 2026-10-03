@@ -43,14 +43,46 @@ def _is_legal_sha512_sri(token):
         return False
     return 'sha512-' + base64.b64encode(decoded).decode('ascii') == token
 
-def _is_structured_sri_line(text, token):
-    for pattern in SRI_FIELD_PATTERNS:
-        match = pattern.match(text)
-        if match and match.group(1) == token:
-            return True
-    return False
+def _all_decoded_uses_are_integrity(path, token, cache):
+    # The detector parses YAML scalars and deduplicates on the DECODED value,
+    # so a same-value use written with YAML escapes is invisible to raw-text
+    # search. Uses are therefore enumerated on the parsed document: every
+    # decoded scalar (or key) equal to or containing the token must be the
+    # exact value of a sole-key 'integrity' mapping. Parse failure, ambiguity
+    # or any non-integrity use keeps the finding refused.
+    if path in cache:
+        return cache[path]
+    try:
+        import yaml
+        with open(path, encoding='utf-8') as stream:
+            documents = list(yaml.safe_load_all(stream))
+    except Exception:
+        cache[path] = False
+        return False
+    state = [False, True]  # approved position found; no non-integrity use
 
-def sri_recognition(path, line_number):
+    def collect(node):
+        if isinstance(node, dict):
+            if len(node) == 1 and 'integrity' in node and node['integrity'] == token:
+                state[0] = True
+                return
+            for key, value in node.items():
+                if isinstance(key, str) and (key == token or token in key):
+                    state[1] = False
+                collect(value)
+        elif isinstance(node, list):
+            for item in node:
+                collect(item)
+        elif isinstance(node, str):
+            if node == token or token in node:
+                state[1] = False
+
+    for document in documents:
+        collect(document)
+    cache[path] = state[0] and state[1]
+    return cache[path]
+
+def sri_recognition(path, line_number, cache):
     try:
         lines = Path(path).read_text(encoding='utf-8').splitlines()
         line = lines[line_number - 1]
@@ -64,14 +96,11 @@ def sri_recognition(path, line_number):
             break
     if token is None:
         return None
-    # The adjudication covers the structured integrity POSITION only. The
-    # detector deduplicates identical values within a file to the first
-    # occurrence, so recognizing that single finding would silently exempt
-    # every other use of the same value. Fail closed: the value must appear
-    # in this file ONLY on fully structured SRI lines.
-    for occurrence in lines:
-        if token in occurrence and not _is_structured_sri_line(occurrence, token):
-            return None
+    # Two layers, both fail-closed: (1) the reported (deduped first) line is
+    # itself the canonical structured field; (2) every decoded use of the
+    # value in this file is an approved integrity position.
+    if not _all_decoded_uses_are_integrity(path, token, cache):
+        return None
     return 'sha512_sri_integrity_field'
 
 def tracked():
@@ -130,9 +159,10 @@ def detector(paths):
                     observed.scan_file(name)
             new = observed - known
             recognized, findings = [], []
+            semantic_cache = {}
             for name, secret in new:
                 entry = {'path': name, 'line': secret.line_number, 'type': secret.type}
-                label = sri_recognition(name, secret.line_number) \
+                label = sri_recognition(name, secret.line_number, semantic_cache) \
                     if secret.type == 'Base64 High Entropy String' else None
                 (recognized if label else findings).append(
                     dict(entry, recognition=label) if label else entry)

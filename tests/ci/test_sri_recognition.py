@@ -174,6 +174,49 @@ def test_same_value_all_structured_positions_green(clean):
     assert report['new_findings'] == 0 and report['recognized_sri'] == 1
 
 
+def escaped_token():
+    while True:
+        token = random_sri()
+        if '5' in token:
+            # YAML double-quoted \\u0035 escape decodes back to the same '5'
+            return token, token.replace('5', r'\u0035', 1)
+
+
+def test_escaped_same_value_sri_first_red(clean):
+    import yaml
+    token, escaped = escaped_token()
+    add(clean, 'pnpm-lock.yaml', ['packages:', '  /a/1.0.0:',
+        f'    resolution: {{integrity: {token}}}',
+        '  /evil/1.0.0:',
+        f'    other_payload: "{escaped}"'])
+    # proof of decoded identity: the detector dedups on this equality
+    doc = yaml.safe_load((clean / 'pnpm-lock.yaml').read_text())
+    packages = doc['packages']
+    assert packages['/a/1.0.0']['resolution']['integrity'] \
+        == packages['/evil/1.0.0']['other_payload']
+    assert token not in (clean / 'pnpm-lock.yaml').read_text().splitlines()[-1]
+    proc = run(clean)
+    assert proc.returncode == 1, 'escaped same-value mixed use must stay refused'
+    report = json.loads(proc.stdout)
+    assert report['recognized_sri'] == 0
+    assert any(f['path'] == 'pnpm-lock.yaml' for f in report['findings']), \
+        'detector must still surface the value'
+    assert token not in proc.stdout + proc.stderr
+
+
+def test_escaped_same_value_other_field_first_red(clean):
+    token, escaped = escaped_token()
+    add(clean, 'pnpm-lock.yaml', ['packages:',
+        f'  early_payload: "{escaped}"',
+        '  /a/1.0.0:',
+        f'    resolution: {{integrity: {token}}}'])
+    proc = run(clean)
+    assert proc.returncode == 1
+    report = json.loads(proc.stdout)
+    assert report['recognized_sri'] == 0
+    assert any(f['path'] == 'pnpm-lock.yaml' for f in report['findings'])
+
+
 MALFORMED_CASES = ('extra_flow_field', 'missing_padding', 'quoted_value',
                    'trailing_comment', 'wrong_algorithm', 'wrong_key',
                    'wrong_payload_length')

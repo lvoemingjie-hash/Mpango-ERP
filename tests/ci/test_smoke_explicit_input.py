@@ -25,17 +25,17 @@ ENV_NAMES = ['MPANGO_SMOKE_DATABASE_URL', 'MPANGO_SMOKE_SECRET_KEY',
 def load_module(script, env):
     """Run the module-level code only (run_name != '__main__'): validation
     and BACKEND_ENV construction happen at import, before main() effects.
-    Asserts the caller-provided values flow into BACKEND_ENV unchanged
-    (equality checked inside the child; only the verdict is printed)."""
-    probe = ('import runpy, os, sys\n'
+    Expected values travel via argv (never as file literals); the child
+    compares BACKEND_ENV entries to them and prints only the verdict."""
+    names = ','.join(ENV_NAMES)
+    values = '\x1f'.join(VALID[name] for name in ENV_NAMES)
+    probe = ('import runpy, sys\n'
              'ns = runpy.run_path(sys.argv[1], run_name="not_main")\n'
-             'm = {"DATABASE_URL":"DATABASE_URL","SECRET_KEY":"SECRET_KEY",'
-             '"PLATFORM_OPERATOR_SECRET":"OPERATOR_SECRET",'
-             '"PLATFORM_TEST_OVERRIDE_SECRET":"TEST_OVERRIDE_SECRET",'
-             '"REPORTING_DATABASE_URL":"REPORTING_DATABASE_URL"}\n'
-             'ok = all(ns["BACKEND_ENV"][k] == os.environ["MPANGO_SMOKE_" + m[k]] for k in m)\n'
+             'keys = [n[len("MPANGO_SMOKE_"):] for n in sys.argv[2].split(",")]\n'
+             'vals = sys.argv[3].split("\\x1f")\n'
+             'ok = all(ns["BACKEND_ENV"][k] == v for k, v in zip(keys, vals))\n'
              'print("PROBE_OK" if ok else "PROBE_MISMATCH")\n')
-    return subprocess.run([sys.executable, '-c', probe, str(script)],
+    return subprocess.run([sys.executable, '-c', probe, str(script), names, values],
                           capture_output=True, text=True, timeout=60, env=env)
 
 

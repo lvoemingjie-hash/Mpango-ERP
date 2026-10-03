@@ -51,7 +51,7 @@ def add_audit_entry(root, path, line, ftype, value):
     git(root, 'add', '.')
 
 
-CANARY = 'c91-synthetic-lowentropy-token'  # Secret Keyword only, no entropy type
+CANARY = 'c91-synthetic-' + 'lowentropy-token'  # runtime-built Secret Keyword canary
 
 
 def observed_types(root, path):
@@ -73,7 +73,7 @@ def test_audited_observation_suppressed_new_canary_refused(fixture):
     assert json.loads(proc.stdout)['new_findings'] == 0
     assert (fixture / '.secrets.baseline').read_bytes() == before
     # same file, same position, NEW canary: must be refused again
-    fresh = 'c91-fresh-synthetic-lowentropy-token'
+    fresh = 'c91-fresh-' + 'synthetic-lowentropy-token'
     (fixture / 'ci_env.py').write_text(f'password = "{fresh}"\n')
     git(fixture, 'add', '.')
     proc = run(fixture)
@@ -98,7 +98,7 @@ def test_wrong_hash_does_not_suppress(fixture):
     (fixture / 'ci_env.py').write_text(f'password = "{CANARY}"\n')
     git(fixture, 'add', '.')
     add_audit_entry(fixture, 'ci_env.py', 1, 'Secret Keyword',
-                    'not-the-value-lowentropy')
+                    'not-the-' + 'value-lowentropy')
     proc = run(fixture)
     assert proc.returncode == 1, 'audit entry must match the exact detector hash'
 

@@ -43,13 +43,12 @@ def _is_legal_sha512_sri(token):
         return False
     return 'sha512-' + base64.b64encode(decoded).decode('ascii') == token
 
-def _all_decoded_uses_are_integrity(path, token, cache):
+def _decoded_uses(path, cache):
     # The detector parses YAML scalars and deduplicates on the DECODED value,
     # so a same-value use written with YAML escapes is invisible to raw-text
-    # search. Uses are therefore enumerated on the parsed document: every
-    # decoded scalar (or key) equal to or containing the token must be the
-    # exact value of a sole-key 'integrity' mapping. Parse failure, ambiguity
-    # or any non-integrity use keeps the finding refused.
+    # search. Enumerate every decoded scalar/key once per file, marking the
+    # sole-key 'integrity' mapping values as approved positions; each token's
+    # use check then runs over these observations. Parse failure -> None.
     if path in cache:
         return cache[path]
     try:
@@ -57,30 +56,40 @@ def _all_decoded_uses_are_integrity(path, token, cache):
         with open(path, encoding='utf-8') as stream:
             documents = list(yaml.safe_load_all(stream))
     except Exception:
-        cache[path] = False
-        return False
-    state = [False, True]  # approved position found; no non-integrity use
+        cache[path] = None
+        return None
+    observations = []
 
     def collect(node):
         if isinstance(node, dict):
-            if len(node) == 1 and 'integrity' in node and node['integrity'] == token:
-                state[0] = True
+            if len(node) == 1 and 'integrity' in node \
+                    and isinstance(node['integrity'], str):
+                observations.append((node['integrity'], True))
                 return
             for key, value in node.items():
-                if isinstance(key, str) and (key == token or token in key):
-                    state[1] = False
+                if isinstance(key, str):
+                    observations.append((key, False))
                 collect(value)
         elif isinstance(node, list):
             for item in node:
                 collect(item)
         elif isinstance(node, str):
-            if node == token or token in node:
-                state[1] = False
+            observations.append((node, False))
 
     for document in documents:
         collect(document)
-    cache[path] = state[0] and state[1]
-    return cache[path]
+    cache[path] = observations
+    return observations
+
+def _all_decoded_uses_are_integrity(path, token, cache):
+    observations = _decoded_uses(path, cache)
+    if observations is None:
+        return False
+    approved = any(value == token and is_approved
+                   for value, is_approved in observations)
+    clean = all((value == token and is_approved) or token not in value
+                for value, is_approved in observations)
+    return approved and clean
 
 def sri_recognition(path, line_number, cache):
     try:

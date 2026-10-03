@@ -259,6 +259,12 @@ class Settings(BaseSettings):
         In production mode, we MUST NOT allow default/dev secrets.
         This prevents accidental deployment with insecure defaults.
         """
+        if self.MPANGO_ENV == "staging" and (
+            self.DATABASE_URL == type(self).model_fields["DATABASE_URL"].default
+            or "postgres:postgres@localhost" in self.DATABASE_URL
+        ):
+            raise ValueError("STAGING_DATABASE_DEFAULT_REFUSED: set an explicit non-default DATABASE_URL")
+
         if self.MPANGO_ENV == "production":
             # DC-12A-R2: PUBLIC_FRONTEND_URL is required in production
             if not self.PUBLIC_FRONTEND_URL:

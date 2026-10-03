@@ -1,7 +1,7 @@
 # Mpango ERP 系统测试报告
 
-**测试日期：** 2026-03-09  
-**测试人员：** Assistant (批发商身份)  
+**测试日期：** 2026-03-09
+**测试人员：** Assistant (批发商身份)
 **测试环境：** http://143.110.177.2 (演示环境)
 
 ---
@@ -16,7 +16,7 @@
 POST /api/v1/auth/login
 {
   "email": "admin@mpango.demo",
-  "password": "DemoAdmin2026!"
+[R6: historical credential-bearing example removed; prior execution/governance facts retained; supply a new task-only value.]
 }
 ```
 
@@ -310,5 +310,5 @@ Tenant (租户/批发商)
 
 ---
 
-**测试完成时间：** 2026-03-09 20:55 (GMT+8)  
+**测试完成时间：** 2026-03-09 20:55 (GMT+8)
 **下一步：** 等待前端测试或更多 API 实现

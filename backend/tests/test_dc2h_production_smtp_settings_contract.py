@@ -157,6 +157,7 @@ def test_staging_environment_keeps_dev_sink_defaults() -> None:
     settings = Settings(
         MPANGO_ENV="staging",
         SECRET_KEY=_synthetic_secret_key(),
+        DATABASE_URL=_synthetic_database_url(),
     )
     assert settings.EMAIL_PROVIDER == "dev_sink"
     assert settings.EMAIL_DELIVERY_MODE == "dev_sink"

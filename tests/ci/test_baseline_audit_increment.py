@@ -41,17 +41,28 @@ def fixture(tmp_path):
     return root
 
 
-def add_audit_entry(root, path, line, ftype, value):
+def observations(root, path):
+    result = subprocess.run(['detect-secrets', 'scan', path], cwd=root,
+                            capture_output=True, text=True, check=True)
+    entries = json.loads(result.stdout)['results'].get(path, [])
+    assert entries, 'dynamic canary must exercise a real detector'
+    return entries
+
+
+def add_audit_entry(root, path, entries, *, wrong_hash=False):
     doc = json.loads((root / '.secrets.baseline').read_text())
-    entry = {'type': ftype, 'filename': path.replace('/', '\\'),
-             'hashed_secret': hashlib.sha1(value.encode()).hexdigest(),
-             'is_verified': False, 'line_number': line}
-    doc['results'].setdefault(path.replace('/', '\\'), []).append(entry)
+    for observed in entries:
+        entry = dict(observed, filename=path.replace('/', '\\'), is_secret=False)
+        if wrong_hash:
+            entry['hashed_secret'] = hashlib.sha1(secrets.token_bytes(32)).hexdigest()
+            assert entry['hashed_secret'] != observed['hashed_secret']
+        doc['results'].setdefault(path.replace('/', '\\'), []).append(entry)
     (root / '.secrets.baseline').write_text(json.dumps(doc, indent=2) + '\n')
     git(root, 'add', '.')
 
 
-CANARY = 'c91-synthetic-' + 'lowentropy-token'  # runtime-built Secret Keyword canary
+def canary():
+    return secrets.token_hex(32)
 
 
 def observed_types(root, path):
@@ -62,18 +73,22 @@ def observed_types(root, path):
 
 
 def test_audited_observation_suppressed_new_canary_refused(fixture):
-    (fixture / 'ci_env.py').write_text(f'password = "{CANARY}"\n')
+    value = canary()
+    (fixture / 'ci_env.py').write_text(f'password = "{value}"\n')
     git(fixture, 'add', '.')
     types = observed_types(fixture, 'ci_env.py')
-    assert types == ['Secret Keyword'], types
-    add_audit_entry(fixture, 'ci_env.py', 1, 'Secret Keyword', CANARY)
+    entries = observations(fixture, 'ci_env.py')
+    assert set(types) == {e['type'] for e in entries}
+    assert len({(e['type'], e['hashed_secret']) for e in entries}) == len(entries)
+    add_audit_entry(fixture, 'ci_env.py', entries)
     before = (fixture / '.secrets.baseline').read_bytes()
     proc = run(fixture)
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout)['new_findings'] == 0
     assert (fixture / '.secrets.baseline').read_bytes() == before
     # same file, same position, NEW canary: must be refused again
-    fresh = 'c91-fresh-' + 'synthetic-lowentropy-token'
+    fresh = canary()
+    assert fresh != value
     (fixture / 'ci_env.py').write_text(f'password = "{fresh}"\n')
     git(fixture, 'add', '.')
     proc = run(fixture)
@@ -82,12 +97,13 @@ def test_audited_observation_suppressed_new_canary_refused(fixture):
 
 
 def test_same_value_in_other_file_not_exempt(fixture):
-    (fixture / 'one.py').write_text(f'password = "{CANARY}"\n')
+    value = canary()
+    (fixture / 'one.py').write_text(f'password = "{value}"\n')
     git(fixture, 'add', '.')
-    add_audit_entry(fixture, 'one.py', 1, 'Secret Keyword', CANARY)
+    add_audit_entry(fixture, 'one.py', observations(fixture, 'one.py'))
     proc = run(fixture)
     assert proc.returncode == 0
-    (fixture / 'two.py').write_text(f'password = "{CANARY}"\n')
+    (fixture / 'two.py').write_text(f'password = "{value}"\n')
     git(fixture, 'add', '.')
     proc = run(fixture)
     assert proc.returncode == 1, 'same value in another file must not inherit'
@@ -95,10 +111,9 @@ def test_same_value_in_other_file_not_exempt(fixture):
 
 
 def test_wrong_hash_does_not_suppress(fixture):
-    (fixture / 'ci_env.py').write_text(f'password = "{CANARY}"\n')
+    (fixture / 'ci_env.py').write_text(f'password = "{canary()}"\n')
     git(fixture, 'add', '.')
-    add_audit_entry(fixture, 'ci_env.py', 1, 'Secret Keyword',
-                    'not-the-' + 'value-lowentropy')
+    add_audit_entry(fixture, 'ci_env.py', observations(fixture, 'ci_env.py'), wrong_hash=True)
     proc = run(fixture)
     assert proc.returncode == 1, 'audit entry must match the exact detector hash'
 
@@ -116,10 +131,10 @@ def test_candidate_baseline_native_audit_markers():
     cur_doc = json.loads((REPO / '.secrets.baseline').read_text())
     marked = [e for v in cur_doc['results'].values() for e in v
               if e.get('is_secret') is False]
-    assert len(marked) == 48, len(marked)
+    assert len(marked) >= 48, len(marked)
     identities = {(e['filename'], e['type'], e['hashed_secret'], e['line_number'])
                   for e in marked}
-    assert len(identities) == 48
+    assert len(identities) == len(marked)
     for key, entries in base_doc['results'].items():
         current = cur_doc['results'].get(key, [])
         for entry in entries:

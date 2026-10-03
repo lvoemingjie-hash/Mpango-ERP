@@ -2,7 +2,13 @@
 # B6 Hardening Verification Tests using curl
 # Tests tenant isolation, payment idempotency, and authorization hardening.
 
-BASE_URL="http://localhost:8000/api/v1"
+for name in MPANGO_B6_BASE_URL MPANGO_TEST_ADMIN_PASSWORD MPANGO_B6_TENANT_B_PASSWORD; do
+    if [[ -z "${!name:-}" || -z "${!name//[[:space:]]/}" ]]; then
+        printf 'SMOKE_INPUT_REQUIRED: %s\n' "$name" >&2
+        exit 2
+    fi
+done
+BASE_URL="$MPANGO_B6_BASE_URL"
 RESULTS_FILE="b6_verification_results.txt"
 
 # Clear results file
@@ -27,9 +33,9 @@ echo "=========================================="
 
 # Login to Tenant A (TEST001)
 echo "Logging into Tenant A (TEST001)..."
-TENANT_A_RESPONSE=$(curl -s -X POST "$BASE_URL/auth/login" \
+TENANT_A_RESPONSE=$(python3 -c 'import json,os; print(json.dumps(dict(tenant_code="TEST001",email="admin@test.com",password=os.environ["MPANGO_TEST_ADMIN_PASSWORD"])))' | curl -s -X POST "$BASE_URL/auth/login" \
     -H "Content-Type: application/json" \
-    -d '{"tenant_code":"TEST001","email":"admin@test.com","password":"testpassword"}')
+    -d @-)
 
 TENANT_A_TOKEN=$(echo $TENANT_A_RESPONSE | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
 
@@ -42,9 +48,9 @@ fi
 
 # Login to Tenant B (TEST_B)
 echo "Logging into Tenant B (TEST_B)..."
-TENANT_B_RESPONSE=$(curl -s -X POST "$BASE_URL/auth/login" \
+TENANT_B_RESPONSE=$(python3 -c 'import json,os; print(json.dumps(dict(tenant_code="TEST_B",email="admin@tenant-b.com",password=os.environ["MPANGO_B6_TENANT_B_PASSWORD"])))' | curl -s -X POST "$BASE_URL/auth/login" \
     -H "Content-Type: application/json" \
-    -d '{"tenant_code":"TEST_B","email":"admin@tenant-b.com","password":"TestPass123"}')
+    -d @-)
 
 TENANT_B_TOKEN=$(echo $TENANT_B_RESPONSE | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
 

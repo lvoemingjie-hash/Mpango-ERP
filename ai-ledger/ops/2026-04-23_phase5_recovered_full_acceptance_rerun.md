@@ -76,7 +76,7 @@ GET http://localhost:8000/readyz
 POST /api/v1/auth/login
 Content-Type: application/json
 
-{ "email": "admin@mpango.demo", "password": "DemoAdmin2026!" }
+[R6: historical credential-bearing example removed; prior execution/governance facts retained; supply a new task-only value.]
 ```
 
 结果：**✅ PASS**

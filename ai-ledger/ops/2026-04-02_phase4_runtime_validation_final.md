@@ -47,7 +47,7 @@ docker compose up -d backend
 ```
 POST /api/v1/auth/login
 Content-Type: application/json
-{ "email": "admin@mpango.demo", "password": "DemoAdmin2026!" }
+[R6: historical credential-bearing example removed; prior execution/governance facts retained; supply a new task-only value.]
 ```
 - 状态码：200 OK
 - 结果：返回 access_token、roles、available_tenants（含 DEMO001）

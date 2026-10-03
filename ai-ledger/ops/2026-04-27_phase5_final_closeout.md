@@ -24,7 +24,7 @@ Two critical fixes were required and applied:
 ### Step 1: Login
 ```powershell
 POST /api/v1/auth/login
-Body: {"email": "admin@mpango.demo", "password": "DemoAdmin2026!"}
+[R6: historical credential-bearing example removed; prior execution/governance facts retained; supply a new task-only value.]
 Result: 200 OK, identity token obtained
 ```
 

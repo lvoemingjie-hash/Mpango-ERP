@@ -74,7 +74,7 @@ Invoke-RestMethod -Uri "http://localhost:8000/readyz" -Method GET
 ### 2) Auth login
 执行命令：
 ```powershell
-$body = '{"email": "admin@mpango.demo", "password": "DemoAdmin2026!"}'
+[R6: historical credential-bearing example removed; prior execution/governance facts retained; supply a new task-only value.]
 Invoke-RestMethod -Uri "http://localhost:8000/api/v1/auth/login" -Method POST -ContentType "application/json" -Body $body
 ```
 

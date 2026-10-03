@@ -8,6 +8,10 @@
 # =============================================================================
 
 set -euo pipefail
+if [[ -z "${MPANGO_SMOKE_REJECTED_PASSWORD:-}" || "${MPANGO_SMOKE_REJECTED_PASSWORD:-}" =~ ^[[:space:]]*$ ]]; then
+    echo 'SMOKE_INPUT_REQUIRED: MPANGO_SMOKE_REJECTED_PASSWORD' >&2
+    exit 2
+fi
 
 # Configuration
 TAG="v0.1.2-rc1"
@@ -302,10 +306,10 @@ step_verify_endpoints() {
 
     # Auth check (should return 401 without valid token)
     log_info "Testing POST /auth/login (should return 401)..."
-    local auth_status=$(curl -s -o /dev/null -w "%{http_code}" \
+    local auth_status=$(python3 -c 'import json,os; print(json.dumps(dict(email="test@test.com",password=os.environ["MPANGO_SMOKE_REJECTED_PASSWORD"])))' | curl -s -o /dev/null -w "%{http_code}" \
         -X POST "${backend_url}/auth/login" \
         -H "Content-Type: application/json" \
-        -d '{"email":"test@test.com","password":"test"}' 2>/dev/null || echo "000")
+        -d @- 2>/dev/null || echo "000")
     if [ "$auth_status" = "401" ]; then
         log_info "✓ /auth/login returned 401 (expected - no users yet)"
     else

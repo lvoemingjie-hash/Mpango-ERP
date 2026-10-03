@@ -13,7 +13,7 @@ This directory contains performance benchmarking tools for Mpango ERP Backend.
    ```bash
    # Start PostgreSQL and Redis
    docker-compose up -d postgres redis
-   
+
    # Start backend server
    cd backend
    poetry run uvicorn main:app --host 0.0.0.0 --port 8000
@@ -23,7 +23,7 @@ This directory contains performance benchmarking tools for Mpango ERP Backend.
    ```bash
    # Check health
    curl http://localhost:8000/health
-   
+
    # Check Redis
    redis-cli ping
    ```
@@ -203,7 +203,10 @@ redis-cli ping
 **Solution**:
 ```bash
 # Seed test data
-poetry run python scripts/seed_test_tenant.py
+MPANGO_TEST_ADMIN_PASSWORD must be explicitly supplied through the task environment
+before running `poetry run python scripts/seed_test_tenant.py`. Missing, empty and
+whitespace-only values are refused before database imports. Use a newly generated
+task-only value, never a historical example; the seeder does not print it.
 
 # Reduce concurrent users
 locust -f tests/performance/locustfile.py \

@@ -467,7 +467,7 @@ Phase 6.2 Round 2 receivables visibility MVP is **IMPLEMENTED and READY FOR REVI
 
 **Receivables Tests:**
 ```powershell
-$env:REPORTING_USER_PASSWORD='test_reporting_password'
+[R6: historical credential-bearing example removed; prior execution/governance facts retained; supply a new task-only value.]
 $env:PYTHONIOENCODING='utf-8'
 poetry run pytest tests/test_receivables_service.py tests/test_finance_receivables_api.py -q --tb=short
 ```
@@ -484,7 +484,7 @@ poetry run pytest tests/test_phase5_order_payment.py -q --tb=short
 ### App Smoke Test
 
 ```powershell
-$env:REPORTING_USER_PASSWORD='test_reporting_password'
+[R6: historical credential-bearing example removed; prior execution/governance facts retained; supply a new task-only value.]
 $env:PYTHONIOENCODING='utf-8'
 $env:MPANGO_ENV='test'
 $env:SECRET_KEY='<redacted-local-test-key>'

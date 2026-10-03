@@ -17,8 +17,7 @@ from pathlib import Path
 
 
 def _add_backend_to_path() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
-    backend_dir = repo_root / "backend"
+    backend_dir = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(backend_dir))
 
 
@@ -44,6 +43,17 @@ def _require_safe_environment(*, allow_production: bool) -> None:
             "Refusing to seed tenant outside MPANGO_ENV in {test,dev}. "
             "Set MPANGO_ENV=test (recommended) or pass --allow-production to override."
         )
+
+
+def _require_admin_password() -> str:
+    value = os.environ.get("MPANGO_TEST_ADMIN_PASSWORD")
+    if value is None:
+        raise SystemExit("TEST_ADMIN_PASSWORD_MISSING")
+    if not value:
+        raise SystemExit("TEST_ADMIN_PASSWORD_EMPTY")
+    if not value.strip():
+        raise SystemExit("TEST_ADMIN_PASSWORD_WHITESPACE")
+    return value
 
 
 async def _ensure_tenant_tables(db, tenant_schema: str) -> None:
@@ -227,6 +237,7 @@ async def _ensure_public_wholesaler(db, *, tenant_id: uuid.UUID, tenant_code: st
 
 
 async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
+    admin_password = _require_admin_password()
     _require_safe_environment(allow_production=allow_production)
 
     _add_backend_to_path()
@@ -249,7 +260,6 @@ async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
     tenant_name = "Mpango Test Tenant"
 
     admin_email = "admin@test.com"
-    admin_password = "testpassword"  # pragma: allowlist secret
     admin_full_name = "Test Admin"
 
     # R2: seed ALL permission codes into the permissions table, but assign ONLY
@@ -296,7 +306,7 @@ async def seed(*, also_seed_t_dev: bool, allow_production: bool) -> None:
     if also_seed_t_dev:
         print("- Also seeded schema: t_dev")
     print(f"- Admin email: {admin_email}")
-    print(f"- Admin password: {admin_password}")
+    print("- Admin password: supplied explicitly (not displayed)")
 
 
 def main() -> None:

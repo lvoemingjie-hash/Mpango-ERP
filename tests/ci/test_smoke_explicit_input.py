@@ -27,16 +27,20 @@ def load_module(script, env):
     and BACKEND_ENV construction happen at import, before main() effects.
     Expected values travel via argv (never as file literals); the child
     compares BACKEND_ENV entries to them and prints only the verdict."""
-    names = ','.join(ENV_NAMES)
-    values = '\x1f'.join(VALID[name] for name in ENV_NAMES)
+    prefix = 'MPANGO_SMOKE_'
+    keys = []
+    for name in ENV_NAMES:
+        stem = name[len(prefix):]
+        keys.append('PLATFORM_' + stem if stem in ('OPERATOR_SECRET', 'TEST_OVERRIDE_SECRET') else stem)
     probe = ('import runpy, sys\n'
              'ns = runpy.run_path(sys.argv[1], run_name="not_main")\n'
-             'keys = [n[len("MPANGO_SMOKE_"):] for n in sys.argv[2].split(",")]\n'
+             'keys = sys.argv[2].split(",")\n'
              'vals = sys.argv[3].split("\\x1f")\n'
              'ok = all(ns["BACKEND_ENV"][k] == v for k, v in zip(keys, vals))\n'
              'print("PROBE_OK" if ok else "PROBE_MISMATCH")\n')
-    return subprocess.run([sys.executable, '-c', probe, str(script), names, values],
-                          capture_output=True, text=True, timeout=60, env=env)
+    argv = [sys.executable, '-c', probe, str(script), ','.join(keys),
+            '\x1f'.join(VALID[name] for name in ENV_NAMES)]
+    return subprocess.run(argv, capture_output=True, text=True, timeout=60, env=env)
 
 
 VALID = {name: 'task-only-' + name.lower().replace('_', '-') + '-input'

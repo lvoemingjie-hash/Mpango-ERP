@@ -101,3 +101,28 @@ def test_wrong_hash_does_not_suppress(fixture):
                     'not-the-value-lowentropy')
     proc = run(fixture)
     assert proc.returncode == 1, 'audit entry must match the exact detector hash'
+
+
+def test_candidate_baseline_native_audit_markers():
+    """The 48 delivered increments carry the native non-credential audit
+    verdict (is_secret=false), and every pre-existing entry is preserved
+    byte-for-byte against the BASE baseline blob."""
+    import subprocess
+    base_bytes = subprocess.run(
+        ['git', '-C', str(REPO), 'show',
+         'a1feb59324ab98769e655bc2a708f5ef042e4ad1:.secrets.baseline'],
+        check=True, capture_output=True).stdout
+    base_doc = json.loads(base_bytes)
+    cur_doc = json.loads((REPO / '.secrets.baseline').read_text())
+    marked = [e for v in cur_doc['results'].values() for e in v
+              if e.get('is_secret') is False]
+    assert len(marked) == 48, len(marked)
+    identities = {(e['filename'], e['type'], e['hashed_secret'], e['line_number'])
+                  for e in marked}
+    assert len(identities) == 48
+    for key, entries in base_doc['results'].items():
+        current = cur_doc['results'].get(key, [])
+        for entry in entries:
+            assert entry in current, ('OLD ENTRY CHANGED', key, entry)
+    assert cur_doc['plugins_used'] == base_doc['plugins_used']
+    assert cur_doc['filters_used'] == base_doc['filters_used']

@@ -176,8 +176,8 @@ def run_identity_smoke():
     cases = [
         ("operator_admit", {"X-Platform-Operator": OPERATOR_SECRET}, {200},
          "Valid X-Platform-Operator secret admitted"),
-        ("test_override_reject", {"X-Platform-Test-Override": "test-platform-override-secret"}, {403},
-         "X-Platform-Test-Override rejected in production env (403)"),
+        ("test_override_reject", {"X-Platform-Test-Override": BACKEND_ENV["PLATFORM_TEST_OVERRIDE_SECRET"]}, {403},
+         "X-Platform-Test-Override with the CURRENT configured value rejected in production env (403)"),
         ("identity_super_admin_admit", {"Authorization": "Bearer " + identity_jwt}, {200},
          "Identity-only super_admin Bearer admitted"),
         ("no_credentials_deny", {}, {401},

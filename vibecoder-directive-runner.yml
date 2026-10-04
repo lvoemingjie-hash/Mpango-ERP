@@ -1,0 +1,43 @@
+name: Vibecoder Directive Runner
+
+on:
+  push:
+    branches:
+      - automation/cto-directives
+    paths:
+      - "docs/ai-directives/vibecoder/pending/**.md"
+
+concurrency:
+  group: vibecoder-directive-runner
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run-vibecoder-directive:
+    name: Run Vibecoder CTO Directive
+    runs-on: [self-hosted, linux, mpango-lubuntu]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout directive branch
+        uses: actions/checkout@v4
+        with:
+          ref: automation/cto-directives
+          fetch-depth: 0
+          path: directives
+
+      - name: Show trigger context
+        shell: bash
+        run: |
+          echo "event=${GITHUB_EVENT_NAME}"
+          echo "ref=${GITHUB_REF}"
+          echo "sha=${GITHUB_SHA}"
+          git -C directives log -1 --oneline
+          git -C directives status --short
+
+      - name: Run local Vibecoder directive runner
+        shell: bash
+        run: |
+          ~/.openclaw/mpango-directive-runner/run_directive.sh "$GITHUB_WORKSPACE/directives"

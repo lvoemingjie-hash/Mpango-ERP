@@ -311,7 +311,7 @@ class GreenWorkspaceTests(WorkspaceTestCase):
         self.workspace()
         report = self.validate()
         self.assertTrue(report["green"], report["violations"])
-        self.assertEqual(report["coverage"]["total_nodes"], 15)
+        self.assertEqual(report["coverage"]["total_nodes"], 16)
         self.assertEqual(report["gates"]["structural_gate"], "PASS")
 
     def test_pristine_tree_is_green_against_pristine_baseline(self):
@@ -326,15 +326,17 @@ class GreenWorkspaceTests(WorkspaceTestCase):
         self.assertTrue(all(node["status"] != "PASS" for node in nodes))
         self.assertTrue(all(node["evidence_sha"] == "" for node in nodes))
 
-    def test_sku_catalog_nodes_bound_exactly_as_final_two(self):
-        """SKU-M1 catalog identity closure: bind both SKU nodes by exact ID,
-        full contract (capability + layer category semantics, risk, status,
-        owner, all five oracle fields, exact source_anchors, exact
-        mutation_id) and their exact positions as the final two nodes, so
-        silent deletion or reorder of the fixture stays fail-closed."""
+    def test_sku_catalog_nodes_bound_exactly_at_positions_13_14(self):
+        """SKU-M1 catalog identity closure (carried forward from the
+        former `..._as_final_two` contract): bind both SKU nodes by exact
+        ID, full contract (capability + layer category semantics, risk,
+        status, owner, all five oracle fields, exact source_anchors, exact
+        mutation_id) at their exact positions 13 and 14 of the 16-node
+        inventory, so silent deletion or reorder of the fixture stays
+        fail-closed."""
         self.workspace()
         _, nodes = self.nodes()
-        self.assertEqual(len(nodes), 15)
+        self.assertEqual(len(nodes), 16)
         self.assertEqual(nodes[13]["id"], "CATALOG-ID-001")
         self.assertEqual(nodes[14]["id"], "CATALOG-HIST-001")
 
@@ -368,7 +370,7 @@ class GreenWorkspaceTests(WorkspaceTestCase):
             "backend/services/inventory_service.py:100",
             "backend/repositories/inventory_repository.py:1",
             "backend/repositories/sku_repository.py:1",
-            "backend/crud/order.py:340",
+            "backend/crud/order.py:271",
             "backend/services/import_service.py:1",
             "backend/services/intake_apply_service.py:1",
             "backend/scripts/seed_demo_data.py:1",
@@ -430,6 +432,110 @@ class GreenWorkspaceTests(WorkspaceTestCase):
             "backend/tests/test_sku_m1_catalog_identity.py:40",
         ])
         self.assertEqual(history["mutation_id"], "MUT-CATALOG-HIST-001")
+    def test_order_state_node_bound_exactly_as_final_16th(self):
+        """C91 closure: bind the appended ORDER-STATE-R1-001 node by exact
+        ID as the final (16th) node with its full load-bearing contract
+        (capability + layer category semantics, risk, status, owner, all
+        five oracle fields, exact source_anchors, exact mutation_id), so
+        the accepted R1/R2 order-state coverage cannot be silently dropped,
+        reordered, or rewritten. Expected values are hardcoded literals,
+        never generated from the inventory under test."""
+        self.workspace()
+        _, nodes = self.nodes()
+        self.assertEqual(nodes[15]["id"], "ORDER-STATE-R1-001")
+        order = nodes[15]
+        self.assertEqual(order["capability"], "order state authority: single locked-fresh command writer, explicit dispatch, pre-lock inventory discipline, post-commit notifications, fail-closed paid cancellation; R2 adds per-order credit holds — confirm opens a hold (binding cache += total), cancel settles and releases it, a credit payment converts it into exposure counted exactly once, full cash/transfer settles it to zero, and the 039 migration preflight proves the binding-cache identity")
+        self.assertEqual(order["layer"], "route_api")
+        self.assertEqual(order["risk"], "P1")
+        self.assertEqual(order["status"], "NOT_RUN")
+        self.assertEqual(order["owner"], "codex-l")
+        self.assertEqual(order["ui_oracle"], "NOT_APPLICABLE")
+        self.assertEqual(order["navigation_oracle"], "NOT_APPLICABLE")
+        self.assertEqual(order["network_oracle"], "exactly one writer endpoint per state change; generic transition refuses command-owned targets; paid/partially_paid cancel returns 409 REFUND_WORKFLOW_NOT_IMPLEMENTED; client repeated/paid cancel returns stable 409 CANCEL_NOT_ALLOWED; credit-hold contract violations (missing converted hold, remaining mismatch, over-collected or corrupt history) return 409 CREDIT_HOLD_MISMATCH / PAYMENT_HISTORY_INTEGRITY")
+        self.assertEqual(order["session_oracle"], "permission-less JWT denied before writes; cross-tenant request is a neutral 404")
+        self.assertEqual(order["persistence_security_oracle"], "confirm opens a per-order credit hold (binding cache += total) and posts zero receivable/revenue/payment ledger entries; cancel releases owned reservations with aggregate updates and settles/releases the hold exactly once; a credit payment converts the hold into actual credit exposure (one total of binding movement, never double-counted in the receivables summary); full cash/transfer settlement reduces the hold to zero; the 039 backfill follows the C3 state matrix and its preflight proves the binding cache equals the exposure-only formula; over-collected or invalid payment history is a named refusal on the write path and both receivables reads; whole-request rollback restores the exact before-vector on injected faults; notification intents dispatch only post-commit to real retailer contacts; snapshots and identity_status never rewritten")
+        self.assertEqual(order["mutation_id"], "MUT-ORDER-STATE-R1-M1-M16; R2: MUT-ORDER-STATE-R2-M1-M8 + N1-N13 (r1-correction + sr1-closure + sr1-r1 product mutations); E1: F1-F3 source-revision gates; E1R1: registration-bound wholesaler attribution, missing-binding reverse coverage, populated-missing-table zero-DDL refusal; E1R2: non-canonical schema mapping + soft-deleted-only retained history attribution gates")
+        self.assertEqual(order["source_anchors"], [
+            "backend/services/order_command_service.py:76",
+            "backend/services/order_command_service.py:127",
+            "backend/services/order_command_service.py:171",
+            "backend/services/order_command_service.py:198",
+            "backend/services/order_command_service.py:247",
+            "backend/services/order_command_service.py:328",
+            "backend/services/order_command_service.py:427",
+            "backend/services/order_command_service.py:692",
+            "backend/services/order_service.py:34",
+            "backend/api/v1/orders.py:601",
+            "backend/api/v1/orders.py:792",
+            "backend/api/v1/client/orders.py:409",
+            "backend/api/middleware/auth.py:153",
+            "backend/core/domain/order_state.py:84",
+            "backend/alembic/versions/039_order_credit_holds.py:109",
+            "backend/alembic/versions/039_order_credit_holds.py:443",
+            "backend/models/order_credit_hold.py:34",
+            "backend/repositories/payment_repository.py:218",
+            "backend/scripts/bootstrap_tenant_schema.py:1551",
+            "backend/scripts/seed_demo_data.py:444",
+            "backend/services/canonical_payment_service.py:202",
+            "backend/services/payment_declaration_service.py:167",
+            "backend/services/payment_history_contract.py:96",
+            "backend/services/receivables_service.py:80",
+            "backend/tests/order_state_r1/conftest.py:1",
+            "backend/tests/order_state_r1/support.py:1",
+            "backend/tests/order_state_r1/test_baseline.py:1",
+            "backend/tests/order_state_r1/test_concurrency.py:1",
+            "backend/tests/order_state_r1/test_freshness.py:1",
+            "backend/tests/order_state_r1/test_rollback_vectors.py:1",
+            "backend/tests/order_state_r1/test_notifications.py:1",
+            "backend/tests/order_state_r1/test_static_guards.py:1",
+            "backend/tests/order_state_r1/test_access_controls.py:1",
+            "backend/tests/order_state_r1/test_f1_faces.py:1",
+            "backend/tests/order_state_r1/test_prelock.py:1",
+            "backend/tests/order_state_r1/test_f3_legacy_faces.py:1",
+            "backend/tests/order_state_r1/test_classifier.py:1",
+            "backend/tests/order_state_r1/run_mutations.py:1",
+            "backend/tests/order_state_r1/__init__.py",
+            "backend/tests/order_state_r2/conftest.py:1",
+            "backend/tests/order_state_r2/contract_helpers.py:1",
+            "backend/tests/order_state_r2/__init__.py",
+            "backend/tests/order_state_r2/support.py:1",
+            "backend/tests/order_state_r2/test_c1_collection_integrity.py:1",
+            "backend/tests/order_state_r2/test_c2_cancel_integrity.py:1",
+            "backend/tests/order_state_r2/test_c4_aggregation.py:1",
+            "backend/tests/order_state_r2/test_c6_lock_order.py:1",
+            "backend/tests/order_state_r2/test_c6_reverse_edge.py:1",
+            "backend/tests/order_state_r2/test_c7_attribution_display.py:1",
+            "backend/tests/order_state_r2/test_migration_c3.py:1",
+            "backend/tests/order_state_r2/test_r1_correction_gates.py:1",
+            "backend/tests/order_state_r2/test_sr1_closure_gates.py:1",
+            "backend/tests/order_state_r2/test_e1_source_revision_gates.py:1",
+            "backend/tests/conftest.py:1",
+            "backend/tests/business/test_financial_loop.py:1",
+            "backend/tests/business/test_s4b_inventory_reversal_invariants.py:1",
+            "backend/tests/business/test_s4c_concurrent_fulfillment_oversell_invariants.py:1",
+            "backend/tests/business/test_s4d_inventory_movement_ledger_integrity.py:1",
+            "backend/tests/business/test_s4e_stock_reservation_lifecycle_audit.py:1",
+            "backend/tests/business/test_s4f_business_invariant_closeout.py:1",
+            "backend/tests/business/test_s4_order_fulfillment_inventory_invariants.py:1",
+            "backend/tests/test_dc10g_platform_uuid_export_error_hardening.py:1",
+            "backend/tests/test_dc11d_payment_replay_concurrency_integrity.py:1",
+            "backend/tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py:1",
+            "backend/tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py:1",
+            "backend/tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py:1",
+            "backend/tests/test_dc12r1_s3_s2b_i2b_payment_declarations.py:1",
+            "backend/tests/test_dc12r1_s3_s2b_i2c_i1_printable_records.py:1",
+            "backend/tests/test_phase5_order_payment.py:1",
+            "backend/tests/test_receivables_service.py:1",
+            "backend/tests/test_s5a_fresh_tenant_real_user_journey_gate.py:1",
+            "backend/tests/test_s5d4b_settled_cash_payment.py:1",
+            "backend/tests/test_s5d5_payment_ledger_runtime_invariant.py:1",
+            "backend/tests/test_s5d6_multi_partial_payment_state_machine.py:1",
+            "backend/tests/test_s5_ledger.py:1",
+            "backend/tests/test_s5_order_state_machine.py:1",
+            "backend/tests/test_sku_m1_migration_pg16.py:1",
+            "backend/tests/test_u6f_onboarding_auth_chain_closeout.py:1",
+            "backend/tests/test_u6i1_owner_credential_setup_schema.py:1",
+        ])
 
     def test_a4_protocol_delta_bound_exactly(self):
         """A4 governance closure: bind the shipped A4 protocol delta itself,
@@ -461,6 +567,145 @@ class GreenWorkspaceTests(WorkspaceTestCase):
                 "approval_ref": "DC-12R1-MVP-L1-SKU-R0-M1-R1-A4",
             },
         )
+    def test_c91_governance_delta_bound_exactly(self):
+        """C91 closure: bind the shipped C91 protocol delta itself so its
+        deletion, duplication, base drift, or any affected_paths expansion
+        or contraction in protocol-deltas.json stays deterministic RED,
+        and keep both negative controls rejected: a wrong-base copy of the
+        delta is DELTA-BASE-MISMATCH, and a copy stripped of a load-bearing
+        protected path no longer authorizes that path."""
+        self.workspace()
+        deltas = self.load("inventory/protocol-deltas.json")
+        matches = [d for d in deltas
+                   if d["delta_id"] == "PD-2026-10-04-C91-HE2-STRUCTURAL-CLOSURE"]
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(
+            matches[0],
+            {
+                "delta_id": "PD-2026-10-04-C91-HE2-STRUCTURAL-CLOSURE",
+                "kind": "governance",
+                "affected_ids": [],
+                "affected_paths": [
+                    ".github/workflows/harness-governance-gate.yml",
+                    ".secrets.baseline",
+                    "backend/.env.example",
+                    "backend/alembic.ini",
+                    "backend/alembic/env.py",
+                    "backend/alembic/versions/037_payment_declarations_schema.py",
+                    "backend/api/context/tenant.py",
+                    "backend/api/v1/auth.py",
+                    "backend/core/config.py",
+                    "backend/database/reporting_session.py",
+                    "backend/docker-entrypoint.sh",
+                    "backend/repositories/pricing_repository.py",
+                    "backend/scripts/provision_runtime_db_roles.py",
+                    "backend/scripts/runtime_readiness_gate.py",
+                    "backend/scripts/seed_test_tenant.py",
+                    "backend/scripts/setup.sh",
+                    "backend/scripts/setup_preflight.py",
+                    "backend/scripts/test_login.sh",
+                    "backend/services/package_identity.py",
+                    "backend/services/sku_integrity.py",
+                    "backend/tests/api/__pycache__/test_wholesaler.cpython-314-pytest-9.0.1.pyc",
+                    "backend/tests/async_test_utils.py",
+                    "backend/tests/mpango_invariants_r0_support.py",
+                    "backend/tests/performance/README.md",
+                    "backend/tests/sku_b2_serialization_mutations.py",
+                    "backend/tests/task_owned_pg_resources.py",
+                    "backend/tests/test_alembic_explicit_url_contract.py",
+                    "backend/tests/test_backup_explicit_credential_contract.py",
+                    "backend/tests/test_combined_setup_authority_contract.py",
+                    "backend/tests/test_dc11t2_async_test_utils.py",
+                    "backend/tests/test_dc12r1_h7_bcrypt_manifest_parity.py",
+                    "backend/tests/test_dc12r1_h7_setup_preflight.py",
+                    "backend/tests/test_dc12r1_j1_h2a_cross_tenant_invitation_binding.py",
+                    "backend/tests/test_dc12r1_j1_h2a_r1_dual_entry_self_join.py",
+                    "backend/tests/test_dc12r1_j1_h2b_forgot_password_runtime_closure.py",
+                    "backend/tests/test_dc12r1_s1_r2_strict_mapping.py",
+                    "backend/tests/test_dc12r1_s1_r3_migration_contract.py",
+                    "backend/tests/test_dc12r1_s1_r4_exact_catalog.py",
+                    "backend/tests/test_dc12r1_s1_r5_migration_preflight_exact_catalog.py",
+                    "backend/tests/test_dc12r1_s3_s1_catalog_order_hardening.py",
+                    "backend/tests/test_dc1g_retailer_registration_binding_balance.py",
+                    "backend/tests/test_dc2h_production_smtp_compose_wiring.py",
+                    "backend/tests/test_dc2h_production_smtp_settings_contract.py",
+                    "backend/tests/test_deployment_topology_contract.py",
+                    "backend/tests/test_g1_r2_lifecycle_and_public_prep_contract.py",
+                    "backend/tests/test_g1_r2e_tenant_ddl_authority_contract.py",
+                    "backend/tests/test_mpango_invariants_r0_r1_guards.py",
+                    "backend/tests/test_mpango_mvp_invariants_r0_concurrency.py",
+                    "backend/tests/test_mpango_mvp_invariants_r0_revocation.py",
+                    "backend/tests/test_phase3_pricing.py",
+                    "backend/tests/test_platform_p21_durable_approval_adapter_implementation.py",
+                    "backend/tests/test_platform_p21_durable_approval_schema.py",
+                    "backend/tests/test_platform_p21dd_runtime_storage_cutover_gate.py",
+                    "backend/tests/test_platform_p21e_durable_approval_runtime_closeout.py",
+                    "backend/tests/test_pw1r3_rate_limit_context.py",
+                    "backend/tests/test_runtime_entrypoint_contract.py",
+                    "backend/tests/test_runtime_readiness_gate.py",
+                    "backend/tests/test_s3a_fresh_tenant_runtime_smoke.py",
+                    "backend/tests/test_s3c_integration.py",
+                    "backend/tests/test_s4d_fixture_db_authority_contract.py",
+                    "backend/tests/test_sku_b2_catalog_serialization.py",
+                    "backend/tests/test_sku_bc06_reprice_guard.py",
+                    "backend/tests/test_sku_r1_client_catalog_contract.py",
+                    "backend/tests/test_sku_r1_multipackaging_closure.py",
+                    "backend/tests/test_u3b2_preview_validate.py",
+                    "backend/tests/test_u4d_intake_parser_preview.py",
+                    "backend/tests/test_u6i3_owner_credential_setup_consume.py",
+                    "frontend/src/pages/client/ProductListPage.tsx",
+                    "frontend/src/tests/ClientMultipackaging.test.tsx",
+                    "harness-governance/inventory/protocol-deltas.json",
+                    "harness-governance/tests/et1_e2e_mutations.py",
+                    "harness-governance/tests/et1_r2r2_mutations.py",
+                    "harness-governance/tests/et1_r3_mutations.py",
+                    "harness-governance/tests/et1_r3a1_mutations.py",
+                    "harness-governance/tests/et1_r4_mutations.py",
+                    "harness-governance/tests/pytest_et1_collector.py",
+                    "harness-governance/tests/run_red_mutations.py",
+                    "harness-governance/tests/test_authority_runner_r2.py",
+                    "harness-governance/tests/test_authority_runner_r2r2.py",
+                    "harness-governance/tests/test_authority_runner_r3a1.py",
+                    "harness-governance/tests/test_authority_runner_r4_transport.py",
+                    "harness-governance/tests/test_harness_governance_validator.py",
+                    "harness-governance/validator/authority_runner.py",
+                    "scenarios/SC-002_create_user.md",
+                ],
+                "base_sha": "57df5334"
+                + "f35130b6"
+                + "dc58e4bf"
+                + "5f3893a9"
+                + "1bfc8a07",
+                "date": "2026-10-04",
+                "owner": "cto",
+                "reason": "CTO-AUTH-C91-HE2-STRUCTURAL-CLOSURE-ZCODEW-20261004 promotion registration bound to the actual promotion baseline 57df5334f35130b6dc58e4bf5f3893a91bfc8a07: (1) the already-CTO-accepted C91 integration differential of candidate 6ab1554c4a80a26a8db6617c9a2074e6f43cb7e8 — 14 protected governance-core paths plus 68 governed paths exactly as enumerated by the CTO's structural run on the unchanged candidate; (2) this round's bounded CI/governance repair on top of that candidate — explicit pytest==8.4.2 installation in the structural workflow before the unit tests, reconciliation of the two protected test modules with the accepted 039_order_credit_holds migration head and the 16-node inventory (historical 037/038 profiles keep failing closed), and this exact-path delta record itself. Structural sync registration only: not a release verdict, release debt stays BLOCKED, not a product-range authorization; product migrations, .secrets.baseline bytes, authority profiles, and validator implementation are unchanged.",
+                "approval_ref": "CTO-AUTH-C91-HE2-STRUCTURAL-CLOSURE-ZCODEW-20261004",
+            },
+        )
+        base = ("57df5334"
+                + "f35130b6"
+                + "dc58e4bf"
+                + "5f3893a9"
+                + "1bfc8a07")
+        # negative control 1: the same delta bound to any other base fails closed
+        wrong_base = dict(matches[0], base_sha="a" * 40)
+        authorizer = v.DeltaAuthorizer([wrong_base], [], base)
+        self.assertEqual(
+            authorizer.authorize("governance", path=".secrets.baseline"),
+            "DELTA-BASE-MISMATCH")
+        # negative control 2: stripping a protected path ends its authorization
+        stripped = dict(
+            matches[0],
+            affected_paths=[p for p in matches[0]["affected_paths"]
+                            if p != ".secrets.baseline"])
+        self.assertEqual(
+            v.DeltaAuthorizer([stripped], [], base).authorize(
+                "governance", path=".secrets.baseline"),
+            "")
+        # and the shipped delta itself authorizes the protected path
+        self.assertIsNone(
+            v.DeltaAuthorizer([matches[0]], [], base).authorize(
+                "governance", path=".secrets.baseline"))
 
     def test_release_gate_blocked_on_seed_debt(self):
         self.workspace()

@@ -26,6 +26,7 @@ DELTAS_PATH = GOV_DIR / "inventory" / "protocol-deltas.json"
 
 H2C = "037_payment_declarations_schema"
 SKU = "038_catalog_identity_vertical_slice"
+ORDER = "039_order_credit_holds"
 
 
 def _load(path, key):
@@ -165,14 +166,15 @@ class RunnerPreflightBindingTests(unittest.TestCase):
     def setUpClass(cls):
         cls.runner = _load(RUNNER_PATH, "he2et1_r3a1_runner")
 
-    def test_sku_profile_binds_and_passes_on_real_038_tree(self):
-        """A5 truth: the REAL repository migration tree now has the exact
-        single head 038_catalog_identity_vertical_slice with exact parent
-        037_payment_declarations_schema, so AUTHORITY_SKU_M1_BACKEND
-        semantics (expected 038, parent 037) must pass the real preflight
-        enforcement and bind actual/expected/parent exactly."""
-        profile = {"expected_alembic_head": SKU,
-                   "expected_alembic_parent": H2C}
+    def test_order_profile_binds_and_passes_on_real_039_tree(self):
+        """C91 closure: the REAL repository migration tree now has the exact
+        single head 039_order_credit_holds with exact parent
+        038_catalog_identity_vertical_slice, so the explicit 039/038
+        contract (expected 039, parent 038) must pass the real preflight
+        enforcement and bind actual/expected/parent exactly. The expected
+        values are hardcoded literals, never derived from the live tree."""
+        profile = {"expected_alembic_head": ORDER,
+                   "expected_alembic_parent": SKU}
         r = self.runner.AuthorityRunner(REPO_ROOT, profile, ["x"])
         r._to("PREFLIGHT")
         r.bind_redis_module()
@@ -182,15 +184,15 @@ class RunnerPreflightBindingTests(unittest.TestCase):
         # no mocking and no bypass: the real tree must satisfy the frozen
         # authority implementation, or this test is RED
         r._enforce_backend_env_authority_alembic()
-        self.assertEqual(r.alembic_expected, SKU)
-        self.assertEqual(r.alembic_parent, H2C)
-        self.assertEqual(r.alembic_actual, SKU)
+        self.assertEqual(r.alembic_expected, ORDER)
+        self.assertEqual(r.alembic_parent, SKU)
+        self.assertEqual(r.alembic_actual, ORDER)
 
-    def test_h2c_profile_fails_closed_on_real_038_tree(self):
-        """A5 truth: an H2-C profile still expecting 037 (no successor
-        parent) against the same real 038 tree must VOID fail-closed with
-        alembic_head_mismatch — the successor landing is not silently
-        accepted by a stale expected head."""
+    def test_h2c_profile_fails_closed_on_real_039_tree(self):
+        """A5 truth (carried forward): an H2-C profile still expecting 037
+        (no successor parent) against the real 039 tree must VOID
+        fail-closed with alembic_head_mismatch — a successor landing is
+        never silently accepted by a stale expected head."""
         profile = {"expected_alembic_head": H2C}
         r = self.runner.AuthorityRunner(REPO_ROOT, profile, ["x"])
         r._to("PREFLIGHT")
@@ -204,6 +206,29 @@ class RunnerPreflightBindingTests(unittest.TestCase):
                          "alembic_head_mismatch")
         self.assertEqual(r.alembic_expected, H2C)
         self.assertIsNone(r.alembic_parent)
+        self.assertIsNone(r.alembic_actual)
+
+    def test_sku_profile_fails_closed_on_real_039_tree(self):
+        """C91 closure: the historical AUTHORITY_SKU_M1_BACKEND semantics
+        (expected 038, parent 037) must keep failing closed against the
+        real 039 tree with alembic_head_mismatch — a historical profile is
+        never retargeted to accept a successor head. The profile's declared
+        parent stays bound while the actual head is never bound."""
+        profile = {"expected_alembic_head": SKU,
+                   "expected_alembic_parent": H2C}
+        r = self.runner.AuthorityRunner(REPO_ROOT, profile, ["x"])
+        r._to("PREFLIGHT")
+        r.bind_redis_module()
+        r._require_bound_redis_module()
+        r.bind_backend_env_module()
+        r._require_bound_backend_env_module()
+        with self.assertRaises(self.runner.TrapFired) as ctx:
+            r._enforce_backend_env_authority_alembic()
+        self.assertEqual(ctx.exception.evidence.get("alembic"),
+                         "alembic_head_mismatch")
+        self.assertEqual(r.alembic_expected, SKU)
+        self.assertEqual(r.alembic_parent, H2C)
+        self.assertIsNone(r.alembic_actual)
 
 
 class A5GovernanceDeltaTests(unittest.TestCase):

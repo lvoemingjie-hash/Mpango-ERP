@@ -19,6 +19,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Full history for comprehensive scan
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Check for prod.env files
         id: prod-env-check
@@ -49,13 +50,72 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Optional: for Gitleaks Pro
 
+      - name: Resolve reachable secret scan range
+        id: scan-range
+        shell: bash
+        env:
+          SCAN_EVENT: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+          PUSH_DELETED: ${{ github.event.deleted }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          refuse() { echo "::error::SECRET_SCAN_RANGE_$1"; exit 1; }
+          zero=0000000000000000000000000000000000000000
+          base=""
+          case "$SCAN_EVENT" in
+            push)
+              [[ "$PUSH_DELETED" != true && "$PUSH_AFTER" != "$zero" ]] || refuse DELETED_PUSH
+              head="$PUSH_AFTER"
+              if [[ "$PUSH_BEFORE" == "$zero" ]]; then
+                policy=full-history-first-push
+              else
+                base="$PUSH_BEFORE"
+                [[ -n "$base" ]] || refuse MISSING_PUSH_BEFORE
+                policy=incremental-push
+              fi
+              ;;
+            pull_request)
+              base="$PR_BASE"
+              head="$PR_HEAD"
+              [[ -n "$base" ]] || refuse MISSING_PR_BASE
+              policy=incremental-pr
+              ;;
+            schedule)
+              # No synthetic before: include every commit reachable from head.
+              head="$EVENT_SHA"
+              policy=full-history-schedule
+              ;;
+            *) refuse UNSUPPORTED_EVENT ;;
+          esac
+          [[ "$head" =~ ^[0-9a-f]{40}$ && "$head" != "$zero" ]] || refuse INVALID_HEAD
+          [[ "$(git rev-parse --is-shallow-repository)" == false ]] || refuse SHALLOW_HISTORY
+          git cat-file -e "${head}^{commit}" 2>/dev/null || refuse HEAD_NOT_REACHABLE
+          [[ "$(git rev-parse HEAD)" == "$head" ]] || refuse CHECKOUT_HEAD_MISMATCH
+          if [[ -n "$base" ]]; then
+            [[ "$base" =~ ^[0-9a-f]{40}$ && "$base" != "$zero" ]] || refuse INVALID_BASE
+            [[ "$base" != "$head" ]] || refuse EQUAL_ENDPOINTS
+            git cat-file -e "${base}^{commit}" 2>/dev/null || refuse BASE_NOT_REACHABLE
+            git merge-base --is-ancestor "$base" "$head" || refuse NON_ANCESTOR_BASE
+            count="$(git rev-list --count "$base..$head")"
+          else
+            count="$(git rev-list --count "$head")"
+          fi
+          [[ "$count" =~ ^[0-9]+$ && "$count" -gt 0 ]] || refuse EMPTY_COVERAGE
+          printf 'base=%s\nhead=%s\npolicy=%s\ncommits=%s\n' \
+            "$base" "$head" "$policy" "$count" >> "$GITHUB_OUTPUT"
+          echo "Secret scan policy: $policy; reachable commits: $count"
+
       - name: Run TruffleHog
         id: trufflehog
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
+          base: ${{ steps.scan-range.outputs.base }}
+          head: ${{ steps.scan-range.outputs.head }}
           extra_args: --debug --only-verified
 
       # Read-only gate: the baseline is compared, never rewritten; findings and
@@ -83,6 +143,7 @@ jobs:
           echo "- prod.env file detection: ${{ steps.prod-env-check.outcome }}" >> $GITHUB_STEP_SUMMARY
           echo "- secrets/ directory detection: ${{ steps.secrets-dir-check.outcome }}" >> $GITHUB_STEP_SUMMARY
           echo "- Gitleaks secret scanning: ${{ steps.gitleaks.outcome }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Reachable secret scan range: ${{ steps.scan-range.outcome }}" >> $GITHUB_STEP_SUMMARY
           echo "- TruffleHog secret scanning: ${{ steps.trufflehog.outcome }}" >> $GITHUB_STEP_SUMMARY
           echo "- detect-secrets read-only baseline gate: ${{ steps.detect-secrets.outcome }}" >> $GITHUB_STEP_SUMMARY
           echo "- Hardcoded credentials gate: ${{ steps.hardcoded-credentials.outcome }}" >> $GITHUB_STEP_SUMMARY

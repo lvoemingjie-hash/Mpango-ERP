@@ -2,7 +2,7 @@
 # Track E2: Staging Deployment Pipeline
 #
 # Triggers on push to main. Runs backend tests as gatekeeper.
-# If tests pass, builds production Docker image and (mock) deploys.
+# Tests always run; image publication requires explicit manual opt-in.
 # =============================================================================
 name: Deploy Staging
 
@@ -10,6 +10,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Explicitly opt in to image publication and staging handoff
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
 
 env:
   PYTHON_VERSION: "3.12"
@@ -81,13 +90,29 @@ jobs:
           psql -h localhost -U postgres -d test_db -c "CREATE SCHEMA IF NOT EXISTS t_dev;"
           psql -h localhost -U postgres -d test_db -c "CREATE SCHEMA IF NOT EXISTS t_test;"
 
+      - name: Prepare short-lived synthetic signing key
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import secrets
+
+          # Hex cannot contain the validator's non-hex weak words.
+          while True:
+              key = secrets.token_hex(32)
+              if not any(weak in key for weak in ("123456", "abc123")):
+                  break
+          print("::add-mask::" + key, flush=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write("SECRET_KEY=" + key + "\n")
+          PY
+
       - name: Run backend tests
         working-directory: backend
         env:
           MPANGO_ENV: test
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379/0
-          SECRET_KEY: ci-test-secret-key-minimum-32-characters-long
           REPORTING_USER_PASSWORD: ReportingPass_ci_2026
         run: |
           poetry run pytest \
@@ -105,6 +130,7 @@ jobs:
   build:
     name: Build Docker Image
     needs: test
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && needs.test.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -146,19 +172,19 @@ jobs:
         run: |
           IMAGE="${{ steps.meta.outputs.tags }}"
           echo "Verifying critical files in $IMAGE..."
-          
+
           # Verify seed_demo_data.py exists (required for staging data seeding)
           echo "Checking /app/scripts/seed_demo_data.py..."
           docker run --rm $IMAGE ls -la /app/scripts/seed_demo_data.py
-          
+
           # Verify create_wholesaler.py exists (required for tenant creation)
           echo "Checking /app/scripts/create_wholesaler.py..."
           docker run --rm $IMAGE ls -la /app/scripts/create_wholesaler.py
-          
+
           # Verify onboard_tenant.py exists (required for tenant onboarding)
           echo "Checking /app/scripts/onboard_tenant.py..."
           docker run --rm $IMAGE ls -la /app/scripts/onboard_tenant.py
-          
+
           echo "✅ Build integrity gate passed - all critical scripts verified"
 
   # ---------------------------------------------------------------------------
@@ -166,7 +192,8 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy to Staging
-    needs: build
+    needs: [test, build]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && needs.test.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     environment: staging
 

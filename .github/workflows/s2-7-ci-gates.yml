@@ -14,7 +14,6 @@ env:
   MPANGO_ENV: test
   DATABASE_URL: postgresql://mpango:mpango_test@localhost:5432/mpango_test
   REDIS_URL: redis://localhost:6379/0
-  SECRET_KEY: ci-test-secret-key-min-32-chars-long-for-jwt-signing
   ALGORITHM: HS256
   ACCESS_TOKEN_EXPIRE_MINUTES: 30
   REFRESH_TOKEN_EXPIRE_DAYS: 7
@@ -84,6 +83,23 @@ jobs:
         run: |
           poetry install --no-interaction --no-root
 
+      - name: Prepare short-lived synthetic signing key
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import secrets
+
+          # Hex cannot contain the validator's non-hex weak words.
+          while True:
+              key = secrets.token_hex(32)
+              if not any(weak in key for weak in ("123456", "abc123")):
+                  break
+          print("::add-mask::" + key, flush=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write("SECRET_KEY=" + key + "\n")
+          PY
+
       - name: Run Reliability Tests (test_reliability.py)
         working-directory: backend
         run: |
@@ -104,11 +120,11 @@ jobs:
         run: |
           echo "🔍 Verifying Redis is accessible for rate limiting..."
           poetry run python -c "
-import redis
-r = redis.from_url('redis://localhost:6379/0')
-assert r.ping(), 'Redis not responding'
-print('✅ Redis connection verified for rate limiting tests')
-"
+          import redis
+          r = redis.from_url('redis://localhost:6379/0')
+          assert r.ping(), 'Redis not responding'
+          print('✅ Redis connection verified for rate limiting tests')
+          "
 
       - name: Reliability gate summary
         if: always()
@@ -179,58 +195,75 @@ print('✅ Redis connection verified for rate limiting tests')
         run: |
           poetry install --no-interaction --no-root
 
+      - name: Prepare short-lived synthetic signing key
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import secrets
+
+          # Hex cannot contain the validator's non-hex weak words.
+          while True:
+              key = secrets.token_hex(32)
+              if not any(weak in key for weak in ("123456", "abc123")):
+                  break
+          print("::add-mask::" + key, flush=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write("SECRET_KEY=" + key + "\n")
+          PY
+
       - name: Test S2-1 - Settings validation (missing DATABASE_URL)
         working-directory: backend
         run: |
           echo "🔍 Testing settings.py validation - missing DATABASE_URL..."
-          
+
           # Unset DATABASE_URL and expect crash
           unset DATABASE_URL
-          
+
           # Try to start app and expect failure
           timeout 5 poetry run python -c "
-import os
-if 'DATABASE_URL' in os.environ:
-    del os.environ['DATABASE_URL']
-from core.config import validate_startup_config
-try:
-    validate_startup_config()
-    print('❌ FAIL: Should have crashed with missing DATABASE_URL')
-    exit(1)
-except SystemExit as e:
-    print('✅ PASS: Application correctly crashed with missing DATABASE_URL')
-    exit(0)
-" || echo "✅ PASS: Application crashed as expected"
+          import os
+          if 'DATABASE_URL' in os.environ:
+              del os.environ['DATABASE_URL']
+          from core.config import validate_startup_config
+          try:
+              validate_startup_config()
+              print('❌ FAIL: Should have crashed with missing DATABASE_URL')
+              exit(1)
+          except SystemExit as e:
+              print('✅ PASS: Application correctly crashed with missing DATABASE_URL')
+              exit(0)
+          " || echo "✅ PASS: Application crashed as expected"
 
       - name: Test S2-1 - Settings validation (missing SECRET_KEY)
         working-directory: backend
         run: |
           echo "🔍 Testing settings.py validation - missing SECRET_KEY..."
-          
+
           # Copy env but remove SECRET_KEY
           poetry run python -c "
-import os
-os.environ.pop('SECRET_KEY', None)
-from core.config import validate_startup_config
-try:
-    validate_startup_config()
-    print('❌ FAIL: Should have crashed with missing SECRET_KEY')
-    exit(1)
-except SystemExit as e:
-    print('✅ PASS: Application correctly crashed with missing SECRET_KEY')
-except Exception as e:
-    print(f'✅ PASS: Application rejected missing SECRET_KEY: {e}')
-"
+          import os
+          os.environ.pop('SECRET_KEY', None)
+          from core.config import validate_startup_config
+          try:
+              validate_startup_config()
+              print('❌ FAIL: Should have crashed with missing SECRET_KEY')
+              exit(1)
+          except SystemExit as e:
+              print('✅ PASS: Application correctly crashed with missing SECRET_KEY')
+          except Exception as e:
+              print(f'✅ PASS: Application rejected missing SECRET_KEY: {e}')
+          "
 
       - name: Test /healthz endpoint responds within 5 seconds
         working-directory: backend
         run: |
           echo "🔍 Testing /healthz endpoint startup time..."
-          
+
           # Start app in background
           poetry run uvicorn main:app --host 0.0.0.0 --port 8000 &
           APP_PID=$!
-          
+
           # Wait up to 5 seconds for /healthz to respond
           for i in {1..5}; do
             if curl -f -s http://localhost:8000/healthz > /dev/null 2>&1; then
@@ -240,7 +273,7 @@ except Exception as e:
             fi
             sleep 1
           done
-          
+
           echo "❌ FAIL: /healthz did not respond within 5 seconds"
           kill $APP_PID 2>/dev/null || true
           exit 1
@@ -249,13 +282,13 @@ except Exception as e:
         working-directory: backend
         run: |
           echo "🔍 Testing /readyz endpoint with healthy DB and Redis..."
-          
+
           poetry run uvicorn main:app --host 0.0.0.0 --port 8000 &
           sleep 5
-          
+
           response=$(curl -s -w "%{http_code}" http://localhost:8000/readyz)
           http_code=$(echo "$response" | tail -c 4)
-          
+
           if [ "$http_code" == "200" ]; then
             echo "✅ PASS: /readyz returns 200 with healthy dependencies"
           else
@@ -263,7 +296,7 @@ except Exception as e:
             pkill -f uvicorn || true
             exit 1
           fi
-          
+
           pkill -f uvicorn || true
 
       - name: Schema gate summary
@@ -298,17 +331,17 @@ except Exception as e:
         run: |
           echo "🔍 Scanning for print statements in backend/src (excluding tests)..."
           echo ""
-          
+
           # Find all Python files in backend/ excluding tests/
           print_found=0
-          
+
           # Check backend/ excluding tests/
           while IFS= read -r file; do
             # Skip tests directory and __pycache__
             if [[ "$file" == *"/tests/"* ]] || [[ "$file" == *"/__pycache__/"* ]]; then
               continue
             fi
-            
+
             # Check for print( statements (not print_function import)
             if grep -n "print(" "$file" 2>/dev/null | grep -v "from __future__ import print_function" | grep -v "# " > /dev/null; then
               echo "❌ Found print( in: $file"
@@ -316,7 +349,7 @@ except Exception as e:
               print_found=1
             fi
           done < <(find backend -name "*.py" -type f)
-          
+
           if [ $print_found -eq 1 ]; then
             echo ""
             echo "❌ FAIL: print statements found in backend code"
@@ -332,13 +365,13 @@ except Exception as e:
       - name: Allow print in scripts/ directory
         run: |
           echo "🔍 Verifying scripts/ directory is exempt from no-print policy..."
-          
+
           # scripts/ is allowed to use print
           if [ -d "scripts" ]; then
             script_prints=$(find scripts -name "*.py" -exec grep -l "print(" {} \; 2>/dev/null | wc -l)
             echo "ℹ️  Found $script_prints script(s) using print (allowed in scripts/)"
           fi
-          
+
           echo "✅ PASS: scripts/ directory correctly exempt from no-print policy"
 
       - name: No-print gate summary
@@ -414,6 +447,23 @@ except Exception as e:
         run: |
           poetry install --no-interaction --no-root
 
+      - name: Prepare short-lived synthetic signing key
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import secrets
+
+          # Hex cannot contain the validator's non-hex weak words.
+          while True:
+              key = secrets.token_hex(32)
+              if not any(weak in key for weak in ("123456", "abc123")):
+                  break
+          print("::add-mask::" + key, flush=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write("SECRET_KEY=" + key + "\n")
+          PY
+
       - name: Start application for smoke test
         working-directory: backend
         run: |
@@ -424,11 +474,11 @@ except Exception as e:
       - name: Smoke test - /healthz endpoint
         run: |
           echo "🔍 Smoke test - /healthz..."
-          
+
           response=$(curl -s -w "%{http_code}" http://localhost:8000/healthz)
           http_code=$(echo "$response" | tail -c 4)
           body=$(echo "$response" | head -c -4)
-          
+
           if [ "$http_code" == "200" ]; then
             echo "✅ PASS: /healthz returns HTTP 200"
             echo "Response: $body"
@@ -440,11 +490,11 @@ except Exception as e:
       - name: Smoke test - /readyz endpoint (the critical check)
         run: |
           echo "🔍 Smoke test - /readyz (deployment readiness)..."
-          
+
           response=$(curl -s -w "%{http_code}" http://localhost:8000/readyz)
           http_code=$(echo "$response" | tail -c 4)
           body=$(echo "$response" | head -c -4)
-          
+
           if [ "$http_code" == "200" ]; then
             echo "✅ PASS: /readyz returns HTTP 200 - Deployment is ready"
             echo "Response: $body"
@@ -457,10 +507,10 @@ except Exception as e:
       - name: Smoke test - /metrics endpoint
         run: |
           echo "🔍 Smoke test - /metrics..."
-          
+
           response=$(curl -s -w "%{http_code}" http://localhost:8000/metrics)
           http_code=$(echo "$response" | tail -c 4)
-          
+
           if [ "$http_code" == "200" ]; then
             echo "✅ PASS: /metrics returns HTTP 200"
           else
@@ -471,11 +521,11 @@ except Exception as e:
       - name: Smoke test - JSON logging verification
         run: |
           echo "🔍 Smoke test - JSON logging format..."
-          
+
           # Generate some traffic
           curl -s http://localhost:8000/healthz > /dev/null
           curl -s http://localhost:8000/readyz > /dev/null
-          
+
           # Check that logs were generated (we can't easily verify JSON format in CI,
           # but we verify the endpoints work which generates logs)
           echo "✅ PASS: Traffic generated, logs should be in JSON format"

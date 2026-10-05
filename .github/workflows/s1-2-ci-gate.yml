@@ -148,13 +148,29 @@ jobs:
         run: |
           poetry install --no-interaction --no-root
 
+      - name: Prepare short-lived synthetic signing key
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import secrets
+
+          # Hex cannot contain the validator's non-hex weak words.
+          while True:
+              key = secrets.token_hex(32)
+              if not any(weak in key for weak in ("123456", "abc123")):
+                  break
+          print("::add-mask::" + key, flush=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write("SECRET_KEY=" + key + "\n")
+          PY
+
       - name: Run auth strategy tests with MPANGO_ENV=test
         working-directory: backend
         env:
           MPANGO_ENV: test
           DATABASE_URL: postgresql://mpango:mpango_test@localhost:5432/mpango_test
           REDIS_URL: redis://localhost:6379/0
-          SECRET_KEY: test-secret-key-for-ci-only
         run: |
           echo "🧪 Running auth strategy tests with MPANGO_ENV=test..."
           echo ""
@@ -174,16 +190,16 @@ jobs:
 
           # Run a quick Python check to verify the strategy
           poetry run python -c "
-import os
-os.environ['MPANGO_ENV'] = 'test'
+          import os
+          os.environ['MPANGO_ENV'] = 'test'
 
-from auth.factory import get_auth_strategy
-from auth.strategies.mock import MockAuthStrategy
+          from auth.factory import get_auth_strategy
+          from auth.strategies.mock import MockAuthStrategy
 
-strategy = get_auth_strategy()
-assert isinstance(strategy, MockAuthStrategy), f'Expected MockAuthStrategy, got {type(strategy)}'
-print('✅ MockAuthStrategy correctly loaded for MPANGO_ENV=test')
-"
+          strategy = get_auth_strategy()
+          assert isinstance(strategy, MockAuthStrategy), f'Expected MockAuthStrategy, got {type(strategy)}'
+          print('✅ MockAuthStrategy correctly loaded for MPANGO_ENV=test')
+          "
 
       - name: Test verification summary
         if: always()
@@ -238,6 +254,23 @@ print('✅ MockAuthStrategy correctly loaded for MPANGO_ENV=test')
           echo ""
           echo "✅ All production files are clean"
 
+      - name: Prepare short-lived synthetic signing key
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import secrets
+
+          # Hex cannot contain the validator's non-hex weak words.
+          while True:
+              key = secrets.token_hex(32)
+              if not any(weak in key for weak in ("123456", "abc123")):
+                  break
+          print("::add-mask::" + key, flush=True)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write("SECRET_KEY=" + key + "\n")
+          PY
+
       - name: Verify production strategy selection
         working-directory: backend
         run: |
@@ -245,16 +278,16 @@ print('✅ MockAuthStrategy correctly loaded for MPANGO_ENV=test')
           echo ""
 
           poetry run python -c "
-import os
-os.environ['MPANGO_ENV'] = 'production'
+          import os
+          os.environ['MPANGO_ENV'] = 'production'
 
-from auth.factory import get_auth_strategy
-from auth.strategies.jwt import JwtAuthStrategy
+          from auth.factory import get_auth_strategy
+          from auth.strategies.jwt import JwtAuthStrategy
 
-strategy = get_auth_strategy()
-assert isinstance(strategy, JwtAuthStrategy), f'Expected JwtAuthStrategy, got {type(strategy)}'
-print('✅ JwtAuthStrategy correctly loaded for MPANGO_ENV=production')
-"
+          strategy = get_auth_strategy()
+          assert isinstance(strategy, JwtAuthStrategy), f'Expected JwtAuthStrategy, got {type(strategy)}'
+          print('✅ JwtAuthStrategy correctly loaded for MPANGO_ENV=production')
+          "
 
       - name: Verify default strategy selection
         working-directory: backend
@@ -263,18 +296,18 @@ print('✅ JwtAuthStrategy correctly loaded for MPANGO_ENV=production')
           echo ""
 
           poetry run python -c "
-import os
-# Ensure MPANGO_ENV is not set
-if 'MPANGO_ENV' in os.environ:
-    del os.environ['MPANGO_ENV']
+          import os
+          # Ensure MPANGO_ENV is not set
+          if 'MPANGO_ENV' in os.environ:
+              del os.environ['MPANGO_ENV']
 
-from auth.factory import get_auth_strategy
-from auth.strategies.jwt import JwtAuthStrategy
+          from auth.factory import get_auth_strategy
+          from auth.strategies.jwt import JwtAuthStrategy
 
-strategy = get_auth_strategy()
-assert isinstance(strategy, JwtAuthStrategy), f'Expected JwtAuthStrategy as default, got {type(strategy)}'
-print('✅ JwtAuthStrategy correctly loaded as default')
-"
+          strategy = get_auth_strategy()
+          assert isinstance(strategy, JwtAuthStrategy), f'Expected JwtAuthStrategy as default, got {type(strategy)}'
+          print('✅ JwtAuthStrategy correctly loaded as default')
+          "
 
       - name: Check factory is only env branching point
         working-directory: backend

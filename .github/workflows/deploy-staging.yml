@@ -110,6 +110,7 @@ jobs:
         working-directory: backend
         env:
           C91_R3_RESOURCE_ROOT: ${{ runner.temp }}/c91-resource-root
+          MPANGO_ALLOW_TEMP_DB_CREATE: "1"
         run: |
           mkdir -p "$C91_R3_RESOURCE_ROOT" && chmod 700 "$C91_R3_RESOURCE_ROOT"
           . "$RUNNER_TEMP/c91-test-env.sh"

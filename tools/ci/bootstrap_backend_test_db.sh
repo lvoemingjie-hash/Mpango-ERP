@@ -100,6 +100,10 @@ PG_CONTAINER_ID="${CI_PG_CONTAINER_ID:-}"
 REDIS_CONTAINER_ID="${CI_REDIS_CONTAINER_ID:-}"
 OWNER_LABEL="${CI_OWNER_LABEL:-}"
 SKIP_SERVICE_WAIT="${CI_SUPPLY_SKIP_SERVICE_WAIT:-0}"
+# Task-scoped credential store: re-running the supply against an already
+# provisioned task cluster MUST reuse the original role passwords (the
+# product provisioner refuses re-provisioning with non-connectable URLs).
+CREDS_FILE="${CI_CREDENTIALS_FILE:-}"
 
 refuse() { echo "bootstrap_backend_test_db: REFUSED: $1" >&2; exit 3; }
 
@@ -354,12 +358,22 @@ if [ -n "$PG_CONTAINER_ID" ] && command -v docker >/dev/null 2>&1; then
 fi
 
 gen_password() { "$PY_RUNNER" -c "import secrets; print(secrets.token_hex(16))"; }
-MIGRATE_PASSWORD="$(gen_password)"
-APP_PASSWORD="$(gen_password)"
-OPERATOR_PASSWORD="$(gen_password)"
+load_or_gen() {
+    local key="$1" value=""
+    if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
+        value="$(grep -m1 "^${key}=" "$CREDS_FILE" | cut -d= -f2- || true)"
+    fi
+    if [ -z "$value" ]; then
+        value="$(gen_password)"
+    fi
+    printf '%s' "$value"
+}
+MIGRATE_PASSWORD="$(load_or_gen MIGRATE_PASSWORD)"
+APP_PASSWORD="$(load_or_gen APP_PASSWORD)"
+OPERATOR_PASSWORD="$(load_or_gen OPERATOR_PASSWORD)"
 REPORTING_PASSWORD="${CI_REPORTING_USER_PASSWORD:-}"
 if [ -z "$REPORTING_PASSWORD" ]; then
-    REPORTING_PASSWORD="$(gen_password)"
+    REPORTING_PASSWORD="$(load_or_gen REPORTING_PASSWORD)"
 fi
 SECRET_KEY="$("$PY_RUNNER" - <<'PYKEY'
 import secrets
@@ -374,6 +388,18 @@ if [ -z "$PW1R3_REDIS_URL" ]; then
     PW1R3_REDIS_URL="$("$PY_RUNNER" -c "import sys;u=sys.argv[1];print(u.rsplit('/',1)[0]+'/15')" "$REDIS_URL")"
 fi
 
+if [ -n "$CREDS_FILE" ] && [ ! -f "$CREDS_FILE" ]; then
+    umask 177
+    {
+        echo "MIGRATE_PASSWORD=$MIGRATE_PASSWORD"
+        echo "APP_PASSWORD=$APP_PASSWORD"
+        echo "OPERATOR_PASSWORD=$OPERATOR_PASSWORD"
+        echo "REPORTING_PASSWORD=$REPORTING_PASSWORD"
+        echo "SECRET_KEY=$SECRET_KEY"
+    } > "$CREDS_FILE"
+    chmod 600 "$CREDS_FILE"
+    echo "[supply] task credential store written (mode 0600)"
+fi
 MAINT_URL="postgresql://${ADMIN_USER}:${ADMIN_PASSWORD}@${PG_HOST}:${PG_PORT}/postgres"
 MIGRATE_URL="postgresql://${MIGRATE_USER}:${MIGRATE_PASSWORD}@${PG_HOST}:${PG_PORT}/${TEST_DB}"
 APP_URL="postgresql://${APP_USER}:${APP_PASSWORD}@${PG_HOST}:${PG_PORT}/${TEST_DB}"
@@ -496,7 +522,7 @@ echo "[supply] phase 4/5 verify (read-only product contract)"
 echo "[supply] phase 4b/5 capability probe (live catalog facts)"
 OP_ATTRS="$(run_psql "$ADMIN_USER" "$ADMIN_PASSWORD" postgres "SELECT rolcreatedb, rolcreaterole, rolsuper, rolinherit FROM pg_roles WHERE rolname = '${OPERATOR_USER}'")"
 [ "$OP_ATTRS" = "t|t|f|f" ] || refuse "operator ${OPERATOR_USER} attributes are '${OP_ATTRS}', expected CREATEDB/CREATEROLE true and SUPERUSER/INHERIT false"
-OP_MEMBERSHIP="$(run_psql "$ADMIN_USER" "$ADMIN_PASSWORD" postgres "SELECT r.rolname || ':' || m.set_option || ':' || m.inherit_option FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.roleid JOIN pg_roles rr ON rr.oid = m.member WHERE rr.rolname = '${OPERATOR_USER}' AND r.rolname = '${MIGRATE_USER}'")"
+OP_MEMBERSHIP="$(run_psql "$ADMIN_USER" "$ADMIN_PASSWORD" postgres "SELECT r.rolname || ':' || m.set_option::int || ':' || m.inherit_option::int FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.roleid JOIN pg_roles rr ON rr.oid = m.member WHERE rr.rolname = '${OPERATOR_USER}' AND r.rolname = '${MIGRATE_USER}'")"
 [ "$OP_MEMBERSHIP" = "${MIGRATE_USER}:1:0" ] || refuse "operator membership of ${MIGRATE_USER} is '${OP_MEMBERSHIP}', expected SET-only (set=1, inherit=0)"
 echo "[supply] operator capability facts verified: CREATEDB+CREATEROLE, SET-only membership"
 

@@ -94,7 +94,7 @@ MIGRATE_USER="${CI_MIGRATE_USER:-mpango_migrate}"
 APP_USER="${CI_APP_USER:-mpango_app}"
 OPERATOR_USER="${CI_OPERATOR_USER:-ci_r3_operator}"
 TENANT_SCHEMA="${CI_TEST_TENANT_SCHEMA:-t_test}"
-REDIS_URL="${CI_REDIS_URL:-redis://localhost:6379/0}"
+REDIS_URL="${CI_REDIS_URL:-}"
 PW1R3_REDIS_URL="${PW1R3_TEST_REDIS_URL:-}"
 PG_CONTAINER_ID="${CI_PG_CONTAINER_ID:-}"
 REDIS_CONTAINER_ID="${CI_REDIS_CONTAINER_ID:-}"
@@ -108,12 +108,17 @@ CREDS_FILE="${CI_CREDENTIALS_FILE:-}"
 refuse() { echo "bootstrap_backend_test_db: REFUSED: $1" >&2; exit 3; }
 
 # ---- topology validation (shared by preflight and real mode) ---------------
-"$PY_RUNNER" - "$PG_HOST" "$PG_PORT" "$ADMIN_USER" "$TEST_DB" "$MIGRATE_USER" "$APP_USER" "$OPERATOR_USER" "$ADMIN_PASSWORD" <<'PY'
+"$PY_RUNNER" - "$PG_HOST" "$PG_PORT" "$ADMIN_USER" "$TEST_DB" "$MIGRATE_USER" "$APP_USER" "$OPERATOR_USER" <<'PY'
+import os
 import re
 import sys
 
-host, port, admin_user, test_db, migrate_user, app_user, operator_user, admin_password = sys.argv[1:9]
+host, port, admin_user, test_db, migrate_user, app_user, operator_user = sys.argv[1:8]
+admin_password = os.environ.get("CI_PG_ADMIN_PASSWORD", "")
 refusals = []
+redis_url = os.environ.get("CI_REDIS_URL", "")
+if not redis_url:
+    refusals.append("CI_REDIS_URL is required: the run's registered Redis instance must be wired before the supply starts (no default)")
 if not admin_password:
     refusals.append("CI_PG_ADMIN_PASSWORD is required (maintenance-DB admin credential)")
 if not re.fullmatch(r"[0-9]+", port):
@@ -139,6 +144,14 @@ if len(users) != 4:
     )
 if operator_user.startswith("mpango"):
     refusals.append("the task operator must not borrow the product mpango_* namespace")
+if redis_url:
+    import urllib.parse as _up
+    _ru = _up.urlparse(redis_url)
+    if _ru.scheme != "redis" or not _ru.port or _ru.path not in ("", "/0"):
+        refusals.append(
+            "CI_REDIS_URL must be redis://HOST:PORT/0 of this task's instance "
+            f"(got scheme={_ru.scheme!r}, port={_ru.port!r}, path={_ru.path!r})"
+        )
 if refusals:
     print(
         "bootstrap_backend_test_db: REFUSED: topology validation failed:\n  - "
@@ -537,6 +550,7 @@ echo "[supply] phase 5/5 tenant bootstrap (runtime role; schema ${TENANT_SCHEMA}
 # ---- versioned environment build (single source for test processes) --------
 if [ -n "$ENV_FILE" ]; then
     mkdir -p "$(dirname "$ENV_FILE")"
+    umask 177
     {
         echo "# C91 test environment build (versioned; generated $(date -u '+%Y-%m-%dT%H:%M:%SZ'))"
         echo "# schema-version: 3"

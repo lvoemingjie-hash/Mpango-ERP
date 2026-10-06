@@ -78,14 +78,15 @@ jobs:
           CI_PG_ADMIN_PASSWORD: postgres
           CI_TEST_DB: test_ci_mpango
           CI_TEST_TENANT_SCHEMA: t_test
+          CI_REDIS_URL: redis://127.0.0.1:${{ env.CI_REDIS_PORT }}/0
         run: |
           bash tools/ci/bootstrap_backend_test_db.sh --github-env "$GITHUB_ENV" --env-file "$RUNNER_TEMP/c91-test-env.sh" --plan-file "$RUNNER_TEMP/supply-plan.json" --profile-dir "$RUNNER_TEMP"
-          echo "CI_REDIS_URL=redis://127.0.0.1:$CI_REDIS_PORT/0" >> "$GITHUB_ENV"
 
       - name: Run backend tests (runtime profile)
         if: steps.provision.outcome == 'success'
         working-directory: backend
         run: |
+          test -s "$RUNNER_TEMP/profile-runtime.tests" || { echo "profile runtime argfile missing/empty; refusing to fall back to full collection"; exit 1; }
           . "$RUNNER_TEMP/c91-test-env.sh"
           timeout --signal=INT --kill-after=60s 20m poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-runtime.tests") -q --tb=short --junitxml=../junit-runtime.xml
 
@@ -95,6 +96,7 @@ jobs:
         env:
           MPANGO_ALLOW_TEMP_DB_CREATE: "1"
         run: |
+          test -s "$RUNNER_TEMP/profile-topology.tests" || { echo "profile topology argfile missing/empty; refusing to fall back to full collection"; exit 1; }
           . "$RUNNER_TEMP/c91-test-env.sh"
           timeout --signal=INT --kill-after=60s 20m poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-topology.tests") -q --tb=short --junitxml=../junit-topology.xml
 
@@ -102,6 +104,7 @@ jobs:
         if: steps.provision.outcome == 'success'
         working-directory: backend
         run: |
+          test -s "$RUNNER_TEMP/profile-invariants-jwt.tests" || { echo "profile invariants-jwt argfile missing/empty; refusing to fall back to full collection"; exit 1; }
           set -a; . "$RUNNER_TEMP/c91-test-env.sh"; set +a
           MPANGO_ENV=staging timeout --signal=INT --kill-after=60s 20m poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-invariants-jwt.tests") -q --tb=short --junitxml=../junit-invariants.xml
 
@@ -113,6 +116,7 @@ jobs:
           MPANGO_ALLOW_TEMP_DB_CREATE: "1"
         run: |
           mkdir -p "$C91_R3_RESOURCE_ROOT" && chmod 700 "$C91_R3_RESOURCE_ROOT"
+          test -s "$RUNNER_TEMP/profile-task-managed-pg.tests" || { echo "profile task-managed-pg argfile missing/empty; refusing to fall back to full collection"; exit 1; }
           . "$RUNNER_TEMP/c91-test-env.sh"
           timeout --signal=INT --kill-after=60s 20m poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-task-managed-pg.tests") -q --tb=short --junitxml=../junit-taskmanaged.xml
 

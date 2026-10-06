@@ -225,6 +225,10 @@ class TestDeployWorkflowContract:
         assert provision["id"] == "provision"
         assert "bootstrap_backend_test_db.sh" in provision["run"]
         assert "--env-file" in provision["run"] and "--plan-file" in provision["run"]
+        # the run's registered Redis port reaches the wrapper BEFORE it runs
+        assert "CI_REDIS_URL" in provision["env"]
+        assert "${{ env.CI_REDIS_PORT }}" in provision["env"]["CI_REDIS_URL"]
+        assert "CI_REDIS_URL" not in provision["run"]  # no post-hoc GITHUB_ENV echo
         profile_steps = [s for s in self.steps if s.get("name", "").startswith("Run backend tests")]
         assert len(profile_steps) == 4
         for step in profile_steps:
@@ -232,6 +236,10 @@ class TestDeployWorkflowContract:
             assert 'timeout --signal=INT' in step["run"]
             assert "--junitxml=" in step["run"]
             assert '. "$RUNNER_TEMP/c91-test-env.sh"' in step["run"]
+            # empty/missing argfiles must refuse instead of falling back to
+            # full-suite collection
+            profile = re.search(r"\(([^)]+) profile\)", step.get("name", "")).group(1)
+            assert f'test -s "$RUNNER_TEMP/profile-{profile}.tests"' in step["run"]
         topology = next(s for s in profile_steps if "topology" in s["name"])
         assert topology["env"]["MPANGO_ALLOW_TEMP_DB_CREATE"] == "1"
         invariants = next(s for s in profile_steps if "invariants-jwt" in s["name"])
@@ -257,6 +265,7 @@ class TestBootstrapPreflight:
                 "CI_PG_ADMIN_USER": "postgres",
                 "CI_PG_ADMIN_PASSWORD": PREFLIGHT_CREDENTIAL,
                 "CI_TEST_DB": "test_ci_mpango",
+                "CI_REDIS_URL": "redis://127.0.0.1:55433/0",
                 "PYTHON_BIN": sys.executable,
             }
         )
@@ -305,6 +314,14 @@ class TestBootstrapPreflight:
             assert union & files == set()
             union |= files
         assert union == expected
+
+    def test_missing_or_malformed_redis_url_refused(self):
+        missing = self._run({"CI_REDIS_URL": ""}, plan=Path(self.tmp) / "x-redis.json")
+        assert missing.returncode != 0
+        assert "CI_REDIS_URL is required" in missing.stderr
+        wrong_db = self._run({"CI_REDIS_URL": "redis://127.0.0.1:55433/5"}, plan=Path(self.tmp) / "x-redis2.json")
+        assert wrong_db.returncode != 0
+        assert "redis://HOST:PORT/0" in wrong_db.stderr
 
     def test_missing_admin_password_and_role_drift_refused(self):
         assert self._run({"CI_PG_ADMIN_PASSWORD": ""}).returncode != 0
@@ -488,3 +505,245 @@ class TestWrapperFakeToolExecution:
         assert not any("bootstrap_tenant_schema.py" in t for t in argv_texts)
         assert not any("--apply-grants" in t for t in argv_texts)
         assert not env_file.exists()
+
+
+FAKE_DOCKER = r'''#!/usr/bin/env bash
+# fake docker for the workflow-fragment control: records argv; run prints a
+# synthetic container id; inspect answers the two --format shapes used
+DIR="${C91_FAKE_DIR:-/tmp}"
+N=$(ls "$DIR" 2>/dev/null | grep -c '^docker-' || true)
+printf '%s\n' "$*" > "$DIR/docker-$N.argv"
+case "$1 $2" in
+  "run -d") echo "fakedockerid$$" ;;
+  "inspect --format")
+    case "$3" in
+      *HostPort*) echo "36379" ;;
+      *) echo "postgres:16-alpine|zcode-mvp-invariants-ci-deploy-staging-r3" ;;
+    esac ;;
+esac
+exit 0
+'''
+
+FAKE_PYTHON_RECORDER = r'''#!/usr/bin/env bash
+# records argv for EVERY $PY_RUNNER spawn, then execs the real interpreter
+DIR="${C91_FAKE_DIR:-/tmp}"
+N=$(ls "$DIR" 2>/dev/null | grep -c '^python-' || true)
+printf '%s\n' "$*" > "$DIR/python-$N.argv"
+exec "${REAL_PYTHON:?REAL_PYTHON must be set}" "$@"
+'''
+
+
+class TestWorkflowRedisWiringExecuted:
+    """F-01/F-04: EXECUTE the workflow's Redis-start fragment (fake docker)
+    and the provision fragment (real wrapper, fake tools) and prove the
+    wrapper receives the run's registered non-6379 Redis URL before it
+    starts, emitting REDIS_URL=DB0 and PW1R3_TEST_REDIS_URL=DB15 of that
+    same instance. Dropping the step-env wiring must be a semantic RED."""
+
+    @pytest.fixture()
+    def sandbox(self, tmp_path):
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "docker").write_text(FAKE_DOCKER, encoding="utf-8", newline="\n")
+        (bin_dir / "psql").write_text(FAKE_PSQL, encoding="utf-8", newline="\n")
+        (bin_dir / "poetry").write_text(FAKE_POETRY_PASS, encoding="utf-8", newline="\n")
+        for name in ("docker", "psql", "poetry"):
+            os.chmod(bin_dir / name, 0o755)
+        rec = tmp_path / "records"
+        rec.mkdir()
+        github_env = tmp_path / "github-env"
+        github_env.write_text("", encoding="utf-8")
+        return tmp_path, bin_dir, rec, github_env
+
+    def _run_fragment(self, bin_dir, rec, github_env_path, run_block, extra_env):
+        env = dict(os.environ)
+        env.update(
+            {
+                "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+                "C91_FAKE_DIR": str(rec),
+                "GITHUB_ENV": str(github_env_path),
+                "GITHUB_RUN_ID": "r3r1",
+                "GITHUB_RUN_ATTEMPT": "1",
+                "CI_OWNER_LABEL": "zcode-mvp-invariants-ci-deploy-staging-r3",
+            }
+        )
+        env.update(extra_env)
+        return subprocess.run(
+            [BASH, "-c", run_block], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", env=env, cwd=str(Path(rec).parent),
+            stdin=subprocess.DEVNULL,
+        )
+
+    def _provision_env_and_run(self):
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        step = next(s for s in doc["jobs"]["test"]["steps"] if "Provision" in s.get("name", ""))
+        env = {k: str(v).replace("${{ env.CI_REDIS_PORT }}", "36379") for k, v in step["env"].items()}
+        return env, step["run"]
+
+    def _run_wrapper_with_merged_env(self, sandbox, prov_env, out_prefix):
+        """Drive the REAL wrapper with the exact environment the workflow's
+        provision step would pass: the fragment-executed Redis registration
+        (GITHUB_ENV) merged with the step env block by GitHub's own
+        ${{ env.CI_REDIS_PORT }} substitution rule."""
+        tmp_path, bin_dir, rec, github_env = sandbox
+
+        def posix(path) -> str:
+            return str(path).replace(chr(92), "/")
+
+        env_file = tmp_path / (out_prefix + "-env.sh")
+        env = dict(os.environ)
+        env.update(
+            {
+                "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+                "C91_FAKE_DIR": str(rec),
+                "PYTHON_BIN": sys.executable,
+                "CI_SUPPLY_SKIP_SERVICE_WAIT": "1",
+            }
+        )
+        env.update(prov_env)
+        proc = subprocess.run(
+            [BASH, posix(BOOTSTRAP), "--repo-root", posix(REPO_ROOT),
+             "--env-file", posix(env_file),
+             "--github-env", posix(tmp_path / (out_prefix + "-gh")),
+             "--plan-file", posix(tmp_path / (out_prefix + "-plan.json")),
+             "--profile-dir", posix(tmp_path / (out_prefix + "-profiles"))],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=env, stdin=subprocess.DEVNULL,
+        )
+        return proc, env_file
+
+    def test_wrapper_receives_registered_redis_and_emits_db0_db15(self, sandbox):
+        tmp_path, bin_dir, rec, github_env = sandbox
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        redis_step = next(s for s in doc["jobs"]["test"]["steps"] if "Redis 7" in s.get("name", ""))
+        proc = self._run_fragment(bin_dir, rec, github_env, redis_step["run"], {})
+        assert proc.returncode == 0, proc.stderr
+        gh = github_env.read_text(encoding="utf-8")
+        assert "CI_REDIS_PORT=36379" in gh and "CI_REDIS_CONTAINER_ID=fakedockerid" in gh
+
+        prov_env, _ = self._provision_env_and_run()
+        assert prov_env["CI_REDIS_URL"] == "redis://127.0.0.1:36379/0"
+        proc2, env_file = self._run_wrapper_with_merged_env(sandbox, prov_env, "wf")
+        assert proc2.returncode == 0, proc2.stderr
+        text = env_file.read_text(encoding="utf-8")
+        assert "export REDIS_URL='redis://127.0.0.1:36379/0'" in text
+        assert "export PW1R3_TEST_REDIS_URL='redis://127.0.0.1:36379/15'" in text
+        assert "redis://localhost:6379" not in text
+
+    def test_mutation_dropping_step_env_wiring_is_semantic_red(self, sandbox):
+        prov_env, _ = self._provision_env_and_run()
+        mutated = {k: v for k, v in prov_env.items() if k != "CI_REDIS_URL"}
+        proc, env_file = self._run_wrapper_with_merged_env(sandbox, mutated, "mut")
+        assert proc.returncode != 0, "missing wiring must refuse, not silently default"
+        assert "CI_REDIS_URL is required" in proc.stderr
+        assert not env_file.exists()
+
+
+class TestFullProcessCredentialChannels:
+    """F-02: EVERY external process the wrapper spawns (python via $PY_RUNNER,
+    psql, poetry) has its argv recorded. A high-entropy canary in the admin
+    credential must appear in NO argv and no unmasked output, while remaining
+    byte-identical in the real env consumption channel. Counterexample A
+    re-introduces the canary into the front python argv and must be caught."""
+
+    CANARY = "channel-canary-9f8e7d6c5b4a3210fedcba9876543210"
+
+    @pytest.fixture()
+    def channel_env(self, tmp_path):
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "psql").write_text(FAKE_PSQL, encoding="utf-8", newline="\n")
+        (bin_dir / "poetry").write_text(FAKE_POETRY_PASS, encoding="utf-8", newline="\n")
+        (bin_dir / "python-recorder").write_text(FAKE_PYTHON_RECORDER, encoding="utf-8", newline="\n")
+        for name in ("psql", "poetry", "python-recorder"):
+            os.chmod(bin_dir / name, 0o755)
+        rec = tmp_path / "records"
+        rec.mkdir()
+        return tmp_path, bin_dir, rec
+
+    def _run_wrapper(self, tmp_path, bin_dir, rec, *, script=BOOTSTRAP):
+        env = dict(os.environ)
+        env.update(
+            {
+                "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+                "C91_FAKE_DIR": str(rec),
+                "REAL_PYTHON": sys.executable,
+                "PYTHON_BIN": str(bin_dir / "python-recorder"),
+                "CI_PG_HOST": "127.0.0.1",
+                "CI_PG_PORT": "55432",
+                "CI_PG_ADMIN_USER": "postgres",
+                "CI_PG_ADMIN_PASSWORD": self.CANARY,
+                "CI_TEST_DB": "test_ci_mpango",
+                "CI_REDIS_URL": "redis://127.0.0.1:36379/0",
+                "CI_SUPPLY_SKIP_SERVICE_WAIT": "1",
+            }
+        )
+        env_file = tmp_path / "chan-env.sh"
+
+        def posix(path) -> str:
+            return str(path).replace(chr(92), "/")
+
+        proc = subprocess.run(
+            [BASH, str(script), "--repo-root", posix(REPO_ROOT),
+             "--env-file", posix(env_file), "--github-env", posix(tmp_path / "chan-gh"),
+             "--plan-file", posix(tmp_path / "chan-plan.json"),
+             "--profile-dir", posix(tmp_path / "chan-profiles")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+            stdin=subprocess.DEVNULL,
+        )
+        return proc, env_file
+
+    def test_canary_absent_from_all_argv_and_outputs_present_in_channel(self, channel_env):
+        tmp_path, bin_dir, rec = channel_env
+        proc, env_file = self._run_wrapper(tmp_path, bin_dir, rec)
+        assert proc.returncode == 0, proc.stderr
+        argv_texts = [p.read_text(encoding="utf-8") for p in rec.glob("*.argv")]
+        assert argv_texts, "no process argv recorded"
+        for text in argv_texts:
+            assert self.CANARY not in text, text[:120]
+        unmasked = chr(10).join(
+            l for l in proc.stdout.splitlines() if "::add-mask::" not in l
+        )
+        assert self.CANARY not in unmasked and self.CANARY not in proc.stderr
+        env_records = list(rec.glob("*.env"))
+        assert any(self.CANARY in p.read_text(encoding="utf-8") for p in env_records), (
+            "the credential must actually travel the env consumption channel"
+        )
+        env_text = env_file.read_text(encoding="utf-8")
+        assert f"postgresql://postgres:{self.CANARY}@127.0.0.1:55432/postgres" in env_text
+        # Birth permissions: umask 177 before creation + explicit chmod 600.
+        # On POSIX this is asserted at runtime (os.stat). Windows host mounts
+        # are typically noacl (chmod/umask silently no-op), so there the
+        # source-level invariant is asserted instead and the ACTUAL mode is
+        # captured as evidence during the real Linux run (Phase B ledger).
+        if os.name == "posix":
+            perms = env_file.stat().st_mode & 0o777
+            assert perms & 0o077 == 0, f"env file must be user-only (got {oct(perms)})"
+        else:
+            source = BOOTSTRAP.read_text(encoding="utf-8")
+            env_block = source.split('if [ -n "$ENV_FILE" ]; then', 1)[1]
+            assert "umask 177" in env_block.split("}", 1)[0], (
+                "wrapper must set umask before env-file creation"
+            )
+            assert 'chmod 600 "$ENV_FILE"' in env_block, (
+                "wrapper must enforce chmod 600 on the env file"
+            )
+
+    def test_counterexample_a_canary_in_front_python_argv_is_caught(self, channel_env):
+        tmp_path, bin_dir, rec = channel_env
+        mutated = tmp_path / "wrapper-argv-mutant.sh"
+        text = BOOTSTRAP.read_text(encoding="utf-8")
+        q = chr(39)
+        needle = f'"$OPERATOR_USER" <<{q}PY{q}'
+        assert needle in text
+        mutated.write_text(
+            text.replace(needle, f'"$OPERATOR_USER" "$ADMIN_PASSWORD" <<{q}PY{q}'),
+            encoding="utf-8", newline="\n",
+        )
+        os.chmod(mutated, 0o755)
+        proc, _ = self._run_wrapper(tmp_path, bin_dir, rec, script=mutated)
+        argv_texts = [p.read_text(encoding="utf-8") for p in rec.glob("python-*.argv")]
+        assert argv_texts, "python argv recording must be active for the mutant"
+        assert any(self.CANARY in t for t in argv_texts), (
+            "the control must detect the canary re-entering the front python argv"
+        )

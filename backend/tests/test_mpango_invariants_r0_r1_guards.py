@@ -40,6 +40,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 from types import SimpleNamespace
+import re
+import re
 
 import pytest
 from fastapi import HTTPException
@@ -1252,9 +1254,19 @@ def test_f1_guard_refuses_migration_equal_to_container_admin(monkeypatch):
 # every static declaration check before them still executes for real.
 # ---------------------------------------------------------------------------
 class _R3FakeCursor:
-    def __init__(self, results):
-        self._results = list(results)
-        self.queries = []
+    """SQL-semantic fake cursor (R3R1 F-03): fetchone() derives from the
+    EXECUTED statement, not from a positional result queue — consumption
+    order across cursors and connections can never misalign rows. execute()
+    also records any DDL so the read-only controls can prove the live proof
+    issues none."""
+
+    _DDL_RE = re.compile(
+        r"(CREATE|ALTER|DROP|GRANT|REVOKE|TRUNCATE|INSERT|UPDATE|DELETE)", re.I
+    )
+
+    def __init__(self, conn):
+        self._conn = conn
+        self._query = ""
 
     def __enter__(self):
         return self
@@ -1263,24 +1275,33 @@ class _R3FakeCursor:
         return False
 
     def execute(self, query, params=None):
-        self.queries.append(query)
+        self._query = query
+        self._conn.executed.append(query)
+        if self._DDL_RE.search(query):
+            self._conn.ddl_seen = True
 
     def fetchone(self):
-        if not self._results:
-            return None
-        item = self._results.pop(0)
-        if isinstance(item, Exception):
-            raise item
-        return item
+        query = self._query
+        if "current_database()" in query:
+            return self._conn.identity
+        if "system_identifier" in query:
+            return (self._conn.system_id,)
+        if "pg_database" in query:
+            return self._conn.owner_row
+        return None
 
 
 class _R3FakeConn:
-    def __init__(self, results):
-        self._results = list(results)
+    def __init__(self, *, identity, system_id, owner_row):
+        self.identity = identity
+        self.system_id = system_id
+        self.owner_row = owner_row
+        self.executed = []
+        self.ddl_seen = False
         self.closed = False
 
     def cursor(self):
-        return _R3FakeCursor(self._results)
+        return _R3FakeCursor(self)
 
     def close(self):
         self.closed = True
@@ -1323,15 +1344,13 @@ def _r3_docker_inspect():
 
 def _r3_live_connections(*, current=("inv_r3_lab", "inv_run"), owner="inv_migrate",
                          catalog_row=True, same_cluster=True):
-    run_results = [
-        current,
-        (12345,) if same_cluster else (99999,),
-    ]
-    admin_results = [
-        (12345,),
-        (owner,) if catalog_row else None,
-    ]
-    return _R3FakeConn(run_results), _R3FakeConn(admin_results)
+    run = _R3FakeConn(identity=current, system_id=12345, owner_row=None)
+    admin = _R3FakeConn(
+        identity=("postgres", "inv_admin"),
+        system_id=12345 if same_cluster else 99999,
+        owner_row=(owner,) if catalog_row else None,
+    )
+    return run, admin
 
 
 def test_r3_guard_accepts_live_provisioned_target_with_distinct_init_db(monkeypatch):
@@ -1361,6 +1380,11 @@ def test_r3_guard_accepts_live_provisioned_target_with_distinct_init_db(monkeypa
     assert engine_bindings, "engine binding must still run after the live proof"
     assert run_conn.closed and admin_conn.closed
     assert len(connect_urls) == 2
+    # the live proof is read-only: no DDL ever executes on either connection
+    assert not run_conn.ddl_seen and not admin_conn.ddl_seen
+    assert any("pg_database" in q for q in admin_conn.executed), (
+        "the catalog ownership probe must actually run on the admin connection"
+    )
 
 
 def test_r3_guard_refuses_live_target_mismatch(monkeypatch):

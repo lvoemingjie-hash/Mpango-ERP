@@ -327,72 +327,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Scan for print statements in backend/ (excluding tests)
-        run: |
-          echo "🔍 Scanning for print statements in backend/src (excluding tests)..."
-          echo ""
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-          # Find all Python files in backend/ excluding tests/
-          print_found=0
-
-          # Check backend/ excluding tests/
-          while IFS= read -r file; do
-            # Skip tests directory and __pycache__
-            if [[ "$file" == *"/tests/"* ]] || [[ "$file" == *"/__pycache__/"* ]]; then
-              continue
-            fi
-
-            # Check for print( statements (not print_function import)
-            if grep -n "print(" "$file" 2>/dev/null | grep -v "from __future__ import print_function" | grep -v "# " > /dev/null; then
-              echo "❌ Found print( in: $file"
-              grep -n "print(" "$file" | head -5
-              print_found=1
-            fi
-          done < <(find backend -name "*.py" -type f)
-
-          if [ $print_found -eq 1 ]; then
-            echo ""
-            echo "❌ FAIL: print statements found in backend code"
-            echo "Developers must use the structured logger instead:"
-            echo "  from core.structured_logging import get_logger"
-            echo "  logger = get_logger(__name__)"
-            echo "  logger.info('message')"
-            exit 1
-          else
-            echo "✅ PASS: No print statements found in backend code (excluding tests)"
-          fi
-
-      - name: Allow print in scripts/ directory
-        run: |
-          echo "🔍 Verifying scripts/ directory is exempt from no-print policy..."
-
-          # scripts/ is allowed to use print
-          if [ -d "scripts" ]; then
-            script_prints=$(find scripts -name "*.py" -exec grep -l "print(" {} \; 2>/dev/null | wc -l)
-            echo "ℹ️  Found $script_prints script(s) using print (allowed in scripts/)"
-          fi
-
-          echo "✅ PASS: scripts/ directory correctly exempt from no-print policy"
+      - name: AST no-print gate on business request paths
+        run: python tools/ci/no_print_gate.py --repo-root .
 
       - name: No-print gate summary
         if: always()
         run: |
-          echo "## Gate 3: No Print Policy" >> $GITHUB_STEP_SUMMARY
+          echo "## Gate 3: No Print Policy (AST, business request paths)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ PASSED - No print statements in src" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ PASSED - no builtin print calls in backend/api, backend/services, backend/core" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ FAILED - Print statements found in src" >> $GITHUB_STEP_SUMMARY
+            echo "- ❌ FAILED - builtin print calls found, or an in-scope file failed to parse (fail-closed)" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Rules:" >> $GITHUB_STEP_SUMMARY
-          echo "- ❌ print() banned in backend/ (use logger instead)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ print() allowed in tests/ (test output)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ print() allowed in scripts/ (CLI output)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Migration:" >> $GITHUB_STEP_SUMMARY
-          echo "Replace: print('message')" >> $GITHUB_STEP_SUMMARY
-          echo "With:   logger.info('message')" >> $GITHUB_STEP_SUMMARY
+          echo "- Scope: backend/api, backend/services, backend/core (business request paths)" >> $GITHUB_STEP_SUMMARY
+          echo "- Out of scope by contract: migrations, CLI/provisioning scripts, standalone manual tests, backend/tests" >> $GITHUB_STEP_SUMMARY
+          echo "- Inherited startup-diagnostic exceptions (listed, not signed off): backend/main.py, backend/core/config.py" >> $GITHUB_STEP_SUMMARY
+          echo "- Offline counterexample contract: tools/ci/tests/test_ci_gate_contracts.py" >> $GITHUB_STEP_SUMMARY
 
   # ============================================
   # Gate 4: Final Deployment Smoke Test

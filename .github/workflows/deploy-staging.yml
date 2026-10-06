@@ -33,18 +33,21 @@ jobs:
   test:
     name: Backend Tests (Gatekeeper)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     services:
       postgres:
-        image: postgres:15-alpine
+        # Maintenance database only: no POSTGRES_DB is set, so the service
+        # never pre-creates an admin-owned application database. The product
+        # provisioner creates the target test database (CTO contract R2).
+        image: postgres:16-alpine
         env:
-          POSTGRES_DB: test_db
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d test_db"
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -74,21 +77,18 @@ jobs:
         working-directory: backend
         run: poetry install --no-interaction --no-ansi
 
-      - name: Wait for Postgres
-        run: |
-          until pg_isready -h localhost -p 5432 -U postgres; do
-            echo "Waiting for postgres..."
-            sleep 2
-          done
-
-      - name: Bootstrap test DB
-        working-directory: backend
+      - name: Provision test database via the five-phase product recipe
+        id: provision
         env:
-          PGPASSWORD: postgres
+          CI_PG_HOST: localhost
+          CI_PG_PORT: "5432"
+          CI_PG_ADMIN_USER: postgres
+          CI_PG_ADMIN_PASSWORD: postgres
+          CI_TEST_DB: ci_mpango_test
+          CI_TEST_TENANT_SCHEMA: t_test
+          CI_REDIS_URL: redis://localhost:6379/0
         run: |
-          psql -h localhost -U postgres -d test_db -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
-          psql -h localhost -U postgres -d test_db -c "CREATE SCHEMA IF NOT EXISTS t_dev;"
-          psql -h localhost -U postgres -d test_db -c "CREATE SCHEMA IF NOT EXISTS t_test;"
+          bash tools/ci/bootstrap_backend_test_db.sh --github-env "$GITHUB_ENV" --profile-dir "$RUNNER_TEMP" --plan-file "$RUNNER_TEMP/supply-plan.json"
 
       - name: Prepare short-lived synthetic signing key
         shell: bash
@@ -104,25 +104,33 @@ jobs:
                   break
           print("::add-mask::" + key, flush=True)
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
-              env.write("SECRET_KEY=" + key + "\n")
+              env.write("SECRET_KEY=" + key + "\\n")
           PY
 
-      - name: Run backend tests
+      - name: Run backend tests (runtime profile)
+        if: steps.provision.outcome == 'success'
+        working-directory: backend
+        run: |
+          timeout --signal=INT --kill-after=60s 20m poetry run pytest $(tr '\n' ' ' < "$RUNNER_TEMP/profile-runtime.tests") -q --tb=short --junitxml=../junit-runtime.xml
+
+      - name: Run backend tests (migration-topology profile)
+        if: steps.provision.outcome == 'success'
         working-directory: backend
         env:
-          MPANGO_ENV: test
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-          REDIS_URL: redis://localhost:6379/0
-          REPORTING_USER_PASSWORD: ReportingPass_ci_2026
+          MPANGO_ALLOW_TEMP_DB_CREATE: "1"
         run: |
-          poetry run pytest \
-            --ignore=tests/test_s3c_cache.py \
-            --ignore=tests/test_s3c_integration.py \
-            --ignore=tests/test_s6_p_reporting_constraints.py \
-            --ignore=tests/test_b5_real_db.py \
-            --ignore=tests/test_reliability.py \
-            --ignore=tests/test_s3_profiling.py \
-            -q --tb=short
+          timeout --signal=INT --kill-after=60s 20m poetry run pytest $(tr '\n' ' ' < "$RUNNER_TEMP/profile-migration-topology.tests") -q --tb=short --junitxml=../junit-migration-topology.xml
+
+      - name: Upload test evidence (junit + supply plan)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-evidence
+          if-no-files-found: ignore
+          path: |
+            junit-runtime.xml
+            junit-migration-topology.xml
+            ${{ runner.temp }}/supply-plan.json
 
   # ---------------------------------------------------------------------------
   # Build: Docker image

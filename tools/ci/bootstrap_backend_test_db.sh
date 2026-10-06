@@ -556,6 +556,8 @@ if [ -n "$ENV_FILE" ]; then
         echo "export MPANGO_INVARIANTS_R0_REDIS_CONTAINER='${REDIS_CONTAINER_ID}'"
         echo "export MPANGO_INVARIANTS_R0_MIGRATION_DATABASE_URL='${MIGRATE_URL}'"
         echo "export MPANGO_INVARIANTS_R0_ADMIN_DATABASE_URL='${MAINT_URL}'"
+        echo "export MPANGO_TEMP_DB_ALLOWED_PORTS='${PG_PORT}'"
+        echo "export MPANGO_TEMP_DB_ALLOWED_HOSTS='127.0.0.1,localhost'"
     } > "$ENV_FILE"
     chmod 600 "$ENV_FILE"
     echo "[supply] versioned env file written (mode 0600): $ENV_FILE"
@@ -579,6 +581,8 @@ if [ -n "$GITHUB_ENV_FILE" ]; then
         echo "MPANGO_INVARIANTS_R0_REDIS_CONTAINER=$REDIS_CONTAINER_ID"
         echo "MPANGO_INVARIANTS_R0_MIGRATION_DATABASE_URL=$MIGRATE_URL"
         echo "MPANGO_INVARIANTS_R0_ADMIN_DATABASE_URL=$MAINT_URL"
+        echo "MPANGO_TEMP_DB_ALLOWED_PORTS=$PG_PORT"
+        echo "MPANGO_TEMP_DB_ALLOWED_HOSTS=127.0.0.1,localhost"
     } >> "$GITHUB_ENV_FILE"
     echo "[supply] github env keys appended (values masked; file never echoed or uploaded)"
 fi

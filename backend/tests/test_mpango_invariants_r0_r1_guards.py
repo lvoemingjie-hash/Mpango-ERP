@@ -1287,6 +1287,12 @@ class _R3FakeConn:
 
 
 def _r3_bind_ownership_env(monkeypatch, *, port="52639"):
+    from tests.mpango_invariants_r0_support import (  # noqa: F401 (rebind locals)
+        ADMIN_URL_ENV_VAR,
+        MIGRATION_URL_ENV_VAR,
+    )
+    globals()["ADMIN_URL_ENV_VAR"] = ADMIN_URL_ENV_VAR
+    globals()["MIGRATION_URL_ENV_VAR"] = MIGRATION_URL_ENV_VAR
     run_url = f"postgresql://inv_run@127.0.0.1:{port}/inv_r3_lab"
     monkeypatch.setenv(CONTAINER_ENV_VAR, "inv-r3-container")
     monkeypatch.setenv(OWNER_LABEL_ENV_VAR, "zcode-mvp-invariants-r3-executable")

@@ -41,7 +41,6 @@ from __future__ import annotations
 from decimal import Decimal
 from types import SimpleNamespace
 import re
-import re
 
 import pytest
 from fastapi import HTTPException
@@ -1261,7 +1260,7 @@ class _R3FakeCursor:
     issues none."""
 
     _DDL_RE = re.compile(
-        r"(CREATE|ALTER|DROP|GRANT|REVOKE|TRUNCATE|INSERT|UPDATE|DELETE)", re.I
+        r"\b(CREATE|ALTER|DROP|GRANT|REVOKE|TRUNCATE|INSERT|UPDATE|DELETE)\b", re.I
     )
 
     def __init__(self, conn):
@@ -1384,6 +1383,46 @@ def test_r3_guard_accepts_live_provisioned_target_with_distinct_init_db(monkeypa
     assert not run_conn.ddl_seen and not admin_conn.ddl_seen
     assert any("pg_database" in q for q in admin_conn.executed), (
         "the catalog ownership probe must actually run on the admin connection"
+    )
+
+    # R3R1-01 closeout: prove the FAKE's own DDL detector discriminates.
+    # Positive: on a fresh connection each DDL verb must set ddl_seen.
+    # Negative: on another fresh connection the REAL guard's SELECT set must
+    # leave ddl_seen false. These are fake.execute calls only — no database
+    # is contacted and no statement of either kind actually runs.
+    for verb in (
+        "CREATE TABLE probe (x int)",
+        "ALTER TABLE probe ADD COLUMN y int",
+        "DROP TABLE probe",
+        "GRANT SELECT ON t TO someone",
+        "REVOKE SELECT ON t FROM someone",
+        "TRUNCATE TABLE probe",
+        "INSERT INTO probe VALUES (1)",
+        "UPDATE probe SET x = 2",
+        "DELETE FROM probe",
+    ):
+        ddl_conn = _R3FakeConn(
+            identity=("inv_r3_lab", "inv_run"), system_id=12345, owner_row=None
+        )
+        with ddl_conn.cursor() as cursor:
+            cursor.execute(verb)
+        assert ddl_conn.ddl_seen, f"detector must flag: {verb}"
+
+    select_conn = _R3FakeConn(
+        identity=("inv_r3_lab", "inv_run"), system_id=12345, owner_row=("inv_migrate",)
+    )
+    with select_conn.cursor() as cursor:
+        cursor.execute("SELECT current_database(), current_user")
+        cursor.fetchone()
+        cursor.execute("SELECT system_identifier FROM pg_control_system()")
+        cursor.fetchone()
+        cursor.execute(
+            "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = %s",
+            ("inv_r3_lab",),
+        )
+        cursor.fetchone()
+    assert not select_conn.ddl_seen, (
+        "the real guard's read-only SELECT set must never trip the DDL detector"
     )
 
 

@@ -14,9 +14,13 @@ Contract (CTO-C91-CI-CONTRACT-ALIGNMENT-ZCODEW-R2-20261006):
   call, an explicit ``builtins.print(...)``, or any alias imported from
   ``builtins``.  Business function *names* containing "print", comments and
   string examples are not builtin calls and must not be reported.
-* A module that rebinds ``print`` at module level (``def print`` /
-  ``print = ...``) shadows the builtin; ``print(...)`` in that module is a
-  call to the local binding and is not reported.
+* A module-level rebinding of ``print`` (``def print`` / ``print = ...``)
+  is an unambiguous shadow ONLY for call sites AFTER the binding line; a
+  ``print(...)`` that appears BEFORE a later module-level binding resolves
+  to that same global and is reported (it would NameError at runtime).
+  Nested-scope shadowing is intentionally not modeled: this is a lint, not
+  a full resolver, and it makes no claim about dynamic Python or about the
+  secret-safety of anything that is logged.
 * Unparseable in-scope Python fails closed (exit code 2).
 * Output carries relative path, line number and category only — never the
   source line or any data value.
@@ -44,20 +48,6 @@ class ParseFailure(Exception):
     """An in-scope Python file could not be parsed; the gate fails closed."""
 
 
-def _module_level_print_binding(tree: ast.Module) -> bool:
-    """True when the module itself rebinds the name ``print``."""
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "print":
-            return True
-        if isinstance(node, ast.ClassDef) and node.name == "print":
-            return True
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "print":
-                    return True
-    return False
-
-
 def _builtin_print_alias_names(tree: ast.Module) -> set[str]:
     """Names bound by ``from builtins import print [as alias]``."""
     aliases: set[str] = set()
@@ -67,6 +57,31 @@ def _builtin_print_alias_names(tree: ast.Module) -> set[str]:
                 if name.name == "print":
                     aliases.add(name.asname or "print")
     return aliases
+
+
+def _module_level_print_binding_line(tree: ast.Module) -> int | None:
+    """Line of the FIRST module-level binding of ``print``, or None.
+
+    R3 contract: an unambiguous global shadow only exempts calls that appear
+    AFTER the binding line.  A ``print(...)`` BEFORE a later module-level
+    ``def print`` / ``print = ...`` resolves to that same global name at
+    runtime and would raise NameError before the binding executes — it is a
+    real defect, not a shadowed builtin call, and must stay a finding.
+    """
+    lines: list[int] = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name == "print":
+                lines.append(node.lineno)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "print":
+                    lines.append(target.lineno)
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+            if isinstance(target, ast.Name) and target.id == "print":
+                lines.append(target.lineno)
+    return min(lines) if lines else None
 
 
 def _is_builtin_print_call(node: ast.Call, aliases: set[str]) -> bool:
@@ -99,12 +114,19 @@ def check_source(source: str, *, detection_enabled: bool = True) -> list[tuple[i
         return findings
 
     aliases = _builtin_print_alias_names(tree)
-    shadowed = _module_level_print_binding(tree)
+    shadow_line = _module_level_print_binding_line(tree)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         func = node.func
-        if isinstance(func, ast.Name) and func.id == "print" and shadowed:
+        if (
+            isinstance(func, ast.Name)
+            and func.id == "print"
+            and shadow_line is not None
+            and node.lineno > shadow_line
+        ):
+            # unambiguous: a module-level binding earlier in this file
+            # shadows the builtin for this call site
             continue
         if _is_builtin_print_call(node, aliases):
             if isinstance(func, ast.Attribute):

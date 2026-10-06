@@ -34,33 +34,8 @@ jobs:
     name: Backend Tests (Gatekeeper)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
-    services:
-      postgres:
-        # Maintenance database only: no POSTGRES_DB is set, so the service
-        # never pre-creates an admin-owned application database. The product
-        # provisioner creates the target test database (CTO contract R2).
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    env:
+      CI_OWNER_LABEL: zcode-mvp-invariants-ci-deploy-staging-r3
 
     steps:
       - uses: actions/checkout@v4
@@ -77,49 +52,68 @@ jobs:
         working-directory: backend
         run: poetry install --no-interaction --no-ansi
 
+      - name: Start task-owned Postgres 16 (labeled, exact ID recorded)
+        run: |
+          NAME="c91-r3-pg-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          CID=$(docker run -d --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" -p 127.0.0.1::5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres postgres:16-alpine)
+          PGPORT=$(docker inspect --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' "$CID")
+          echo "CI_PG_CONTAINER_ID=$CID" >> "$GITHUB_ENV"
+          echo "CI_PG_PORT=$PGPORT" >> "$GITHUB_ENV"
+          echo "PG container $CID on 127.0.0.1:$PGPORT (label mpango.owner=$CI_OWNER_LABEL)"
+
+      - name: Start task-owned Redis 7 (labeled, exact ID recorded)
+        run: |
+          NAME="c91-r3-redis-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          CID=$(docker run -d --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" -p 127.0.0.1::6379 redis:7-alpine)
+          RPORT=$(docker inspect --format '{{(index (index .NetworkSettings.Ports "6379/tcp") 0).HostPort}}' "$CID")
+          echo "CI_REDIS_CONTAINER_ID=$CID" >> "$GITHUB_ENV"
+          echo "CI_REDIS_PORT=$RPORT" >> "$GITHUB_ENV"
+          echo "Redis container $CID on 127.0.0.1:$RPORT (label mpango.owner=$CI_OWNER_LABEL)"
+
       - name: Provision test database via the five-phase product recipe
         id: provision
         env:
-          CI_PG_HOST: localhost
-          CI_PG_PORT: "5432"
+          CI_PG_HOST: 127.0.0.1
           CI_PG_ADMIN_USER: postgres
           CI_PG_ADMIN_PASSWORD: postgres
-          CI_TEST_DB: ci_mpango_test
+          CI_TEST_DB: test_ci_mpango
           CI_TEST_TENANT_SCHEMA: t_test
-          CI_REDIS_URL: redis://localhost:6379/0
         run: |
-          bash tools/ci/bootstrap_backend_test_db.sh --github-env "$GITHUB_ENV" --profile-dir "$RUNNER_TEMP" --plan-file "$RUNNER_TEMP/supply-plan.json"
-
-      - name: Prepare short-lived synthetic signing key
-        shell: bash
-        run: |
-          python - <<'PY'
-          import os
-          import secrets
-
-          # Hex cannot contain the validator's non-hex weak words.
-          while True:
-              key = secrets.token_hex(32)
-              if not any(weak in key for weak in ("123456", "abc123")):
-                  break
-          print("::add-mask::" + key, flush=True)
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
-              env.write("SECRET_KEY=" + key + "\\n")
-          PY
+          bash tools/ci/bootstrap_backend_test_db.sh --github-env "$GITHUB_ENV" --env-file "$RUNNER_TEMP/c91-test-env.sh" --plan-file "$RUNNER_TEMP/supply-plan.json" --profile-dir "$RUNNER_TEMP"
+          echo "CI_REDIS_URL=redis://127.0.0.1:$CI_REDIS_PORT/0" >> "$GITHUB_ENV"
 
       - name: Run backend tests (runtime profile)
         if: steps.provision.outcome == 'success'
         working-directory: backend
         run: |
-          timeout --signal=INT --kill-after=60s 20m poetry run pytest $(tr '\n' ' ' < "$RUNNER_TEMP/profile-runtime.tests") -q --tb=short --junitxml=../junit-runtime.xml
+          . "$RUNNER_TEMP/c91-test-env.sh"
+          timeout --signal=INT --kill-after=60s 20m poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-runtime.tests") -q --tb=short --junitxml=../junit-runtime.xml
 
-      - name: Run backend tests (migration-topology profile)
+      - name: Run backend tests (topology profile)
         if: steps.provision.outcome == 'success'
         working-directory: backend
         env:
           MPANGO_ALLOW_TEMP_DB_CREATE: "1"
         run: |
-          timeout --signal=INT --kill-after=60s 20m poetry run pytest $(tr '\n' ' ' < "$RUNNER_TEMP/profile-migration-topology.tests") -q --tb=short --junitxml=../junit-migration-topology.xml
+          . "$RUNNER_TEMP/c91-test-env.sh"
+          timeout --signal=INT --kill-after=60s 20m poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-topology.tests") -q --tb=short --junitxml=../junit-topology.xml
+
+      - name: Run backend tests (invariants-jwt profile)
+        if: steps.provision.outcome == 'success'
+        working-directory: backend
+        run: |
+          set -a; . "$RUNNER_TEMP/c91-test-env.sh"; set +a
+          MPANGO_ENV=staging timeout --signal=INT --kill-after=60s 20m poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-invariants-jwt.tests") -q --tb=short --junitxml=../junit-invariants.xml
+
+      - name: Run backend tests (task-managed-pg profile)
+        if: steps.provision.outcome == 'success'
+        working-directory: backend
+        env:
+          C91_R3_RESOURCE_ROOT: ${{ runner.temp }}/c91-resource-root
+        run: |
+          mkdir -p "$C91_R3_RESOURCE_ROOT" && chmod 700 "$C91_R3_RESOURCE_ROOT"
+          . "$RUNNER_TEMP/c91-test-env.sh"
+          timeout --signal=INT --kill-after=60s 20m poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-task-managed-pg.tests") -q --tb=short --junitxml=../junit-taskmanaged.xml
 
       - name: Upload test evidence (junit + supply plan)
         if: always()
@@ -129,10 +123,11 @@ jobs:
           if-no-files-found: ignore
           path: |
             junit-runtime.xml
-            junit-migration-topology.xml
+            junit-topology.xml
+            junit-invariants.xml
+            junit-taskmanaged.xml
             ${{ runner.temp }}/supply-plan.json
 
-  # ---------------------------------------------------------------------------
   # Build: Docker image
   # ---------------------------------------------------------------------------
   build:

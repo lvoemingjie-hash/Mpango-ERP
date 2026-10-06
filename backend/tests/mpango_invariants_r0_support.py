@@ -8,12 +8,17 @@ changing the product-facing invariants:
   run must declare the exact container (MPANGO_INVARIANTS_R0_PG_CONTAINER) and
   its owner label (MPANGO_INVARIANTS_R0_PG_OWNER), and the guard verifies via
   `docker inspect` that the label, image (postgres:16), loopback port mapping
-  and POSTGRES_DB/POSTGRES_USER all match the configured URL, that
-  TEST_DATABASE_URL and DATABASE_URL name the SAME target, that the live
-  engine is bound to that same target, and that a live probe lands on the
-  declared database+port. Migrations are run by this module's session fixture
-  with that verified URL — never via the alembic.ini default. Any mismatch,
-  missing config, or non-task container refuses BEFORE any write.
+  and POSTGRES_USER (the bootstrap ADMINISTRATOR) match the configured URL.
+  The container's POSTGRES_DB names the INIT/maintenance database only (R3
+  correction): ownership of the product-provisioned application database is
+  proven LIVE, read-only, before any write — current_database/current_user,
+  migration-owned target in the catalog, and one-cluster system-identifier
+  binding between the run and administrator connections. The guard also
+  checks that TEST_DATABASE_URL and DATABASE_URL name the SAME target, that
+  the live engine is bound to that same target, and that a live probe lands
+  on the declared database+port. Migrations are run by this module's session
+  fixture with that verified URL — never via the alembic.ini default. Any
+  mismatch, missing config, or non-task container refuses BEFORE any write.
 - JWT STRATEGY PROOF: the guard normalizes MPANGO_ENV exactly like the product
   (strip().lower()) and verifies the strategy instance actually bound to the
   app's AuthenticationMiddleware is JwtAuthStrategy (not any Mock variant).
@@ -572,12 +577,10 @@ def verify_task_database_ownership_sync() -> str:
     env_pairs = dict(
         item.split("=", 1) for item in (config.get("Env") or []) if "=" in item
     )
-    if env_pairs.get("POSTGRES_DB") != dbname:
-        raise GuardRefused(
-            f"GUARD_REFUSED_DATABASE_OWNERSHIP: container POSTGRES_DB "
-            f"{env_pairs.get('POSTGRES_DB')!r} != URL database {dbname!r}; "
-            "refusing to write into an unexpected (possibly pre-existing) database."
-        )
+    # R3 correction: the container's POSTGRES_DB names the INIT/maintenance
+    # database only — it is NOT an ownership credential for the application
+    # database, which the product provisioner creates later. The ownership
+    # proof for the provisioned target is the LIVE read-only check below.
     if env_pairs.get("POSTGRES_USER") != admin_user:
         raise GuardRefused(
             "GUARD_REFUSED_DATABASE_OWNERSHIP: container POSTGRES_USER "
@@ -587,10 +590,123 @@ def verify_task_database_ownership_sync() -> str:
             "provisioner topology, not the migration authority)."
         )
 
+    _prove_provisioned_target_live(
+        run_url=test_url,
+        admin_url=admin_url,
+        host=host,
+        port=port,
+        dbname=dbname,
+        run_user=run_user,
+        migration_user=mig_user,
+    )
     _assert_engine_binding(
         async_engine.url, host=host, port=port, dbname=dbname, username=run_user
     )
     return test_url
+
+
+def _prove_provisioned_target_live(
+    *,
+    run_url: str,
+    admin_url: str,
+    host: str,
+    port: int,
+    dbname: str,
+    run_user: str,
+    migration_user: str,
+) -> None:
+    """Read-only liveness/ownership proof for the product-provisioned target.
+
+    Runs BEFORE any business or migration write. Two REAL, same-endpoint
+    read-only connections prove, from the live server (never from env
+    self-declaration):
+
+    - run identity: connecting with the run URL lands on exactly
+      ``current_database() == dbname`` and ``current_user == run_user``;
+    - migration-owned target: the application database exists in the catalog
+      and its owner (``pg_database.datdba``) IS the declared migration
+      authority — the product provisioner's ownership topology, not an
+      init-time artifact;
+    - one task cluster: ``pg_control_system().system_identifier`` is
+      identical for the run connection (target db) and the admin connection
+      (maintenance db).
+
+    Connections are closed in ``finally`` (no leak), failures are named
+    refusals (never swallowed) and no message contains a DSN, password or
+    URL — only host-free identities and database/role names.
+    """
+    import psycopg2
+
+    run_conn = None
+    admin_conn = None
+    try:
+        try:
+            run_conn = psycopg2.connect(run_url, connect_timeout=10)
+        except Exception as exc:
+            raise GuardRefused(
+                "GUARD_REFUSED_DATABASE_OWNERSHIP: LIVE_TARGET_RUN_CONNECT_"
+                f"FAILED ({type(exc).__name__}); the declared run identity "
+                "must authenticate against the provisioned target before "
+                "any write."
+            ) from exc
+        with run_conn.cursor() as cursor:
+            cursor.execute("SELECT current_database(), current_user")
+            live_db, live_user = cursor.fetchone()
+        if live_db != dbname or live_user != run_user:
+            raise GuardRefused(
+                "GUARD_REFUSED_DATABASE_OWNERSHIP: LIVE_TARGET_MISMATCH: "
+                f"run connection landed on ({live_db!r}, {live_user!r}); "
+                f"expected ({dbname!r}, {run_user!r})."
+            )
+        with run_conn.cursor() as cursor:
+            cursor.execute("SELECT system_identifier FROM pg_control_system()")
+            run_system_id = cursor.fetchone()[0]
+
+        try:
+            admin_conn = psycopg2.connect(admin_url, connect_timeout=10)
+        except Exception as exc:
+            raise GuardRefused(
+                "GUARD_REFUSED_DATABASE_OWNERSHIP: LIVE_TARGET_ADMIN_CONNECT_"
+                f"FAILED ({type(exc).__name__}); the declared administrator "
+                "must authenticate against the maintenance database before "
+                "any write."
+            ) from exc
+        with admin_conn.cursor() as cursor:
+            cursor.execute("SELECT system_identifier FROM pg_control_system()")
+            admin_system_id = cursor.fetchone()[0]
+        if run_system_id != admin_system_id:
+            raise GuardRefused(
+                "GUARD_REFUSED_DATABASE_OWNERSHIP: LIVE_TARGET_CLUSTER_"
+                "MISMATCH: the run and administrator connections resolve to "
+                "different cluster system identifiers; all identities must "
+                "bind ONE task cluster."
+            )
+        with admin_conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_get_userbyid(datdba) FROM pg_database "
+                "WHERE datname = %s",
+                (dbname,),
+            )
+            row = cursor.fetchone()
+        if row is None:
+            raise GuardRefused(
+                "GUARD_REFUSED_DATABASE_OWNERSHIP: LIVE_TARGET_NOT_IN_"
+                f"CATALOG: database {dbname!r} does not exist on the task "
+                "cluster; the product provisioner must create it before the "
+                "suite runs."
+            )
+        owner = row[0]
+        if owner != migration_user:
+            raise GuardRefused(
+                "GUARD_REFUSED_DATABASE_OWNERSHIP: LIVE_TARGET_OWNER_"
+                f"MISMATCH: database {dbname!r} is owned by {owner!r}, not "
+                f"the declared migration authority {migration_user!r}; "
+                "refusing to run against a non-provisioned target."
+            )
+    finally:
+        for conn in (run_conn, admin_conn):
+            if conn is not None:
+                conn.close()
 
 
 def _add_url_password_forms(url: str, forms: set) -> None:

@@ -1241,3 +1241,205 @@ def test_f1_guard_refuses_migration_equal_to_container_admin(monkeypatch):
         GuardRefused, match="bootstrap ADMINISTRATOR"
     ):
         verify_task_database_ownership_sync()
+
+
+# ---------------------------------------------------------------------------
+# R3 ownership-admission controls (CTO-C91-CI-EXECUTABLE-CONTRACT-R3): the
+# container's POSTGRES_DB names the INIT/maintenance database only; ownership
+# of the product-provisioned application database is proven LIVE and
+# read-only before any write. Positive + negative unit controls below mock
+# ONLY docker inspect, the two live connections and the engine binding —
+# every static declaration check before them still executes for real.
+# ---------------------------------------------------------------------------
+class _R3FakeCursor:
+    def __init__(self, results):
+        self._results = list(results)
+        self.queries = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, query, params=None):
+        self.queries.append(query)
+
+    def fetchone(self):
+        if not self._results:
+            return None
+        item = self._results.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+class _R3FakeConn:
+    def __init__(self, results):
+        self._results = list(results)
+        self.closed = False
+
+    def cursor(self):
+        return _R3FakeCursor(self._results)
+
+    def close(self):
+        self.closed = True
+
+
+def _r3_bind_ownership_env(monkeypatch, *, port="52639"):
+    run_url = f"postgresql://inv_run@127.0.0.1:{port}/inv_r3_lab"
+    monkeypatch.setenv(CONTAINER_ENV_VAR, "inv-r3-container")
+    monkeypatch.setenv(OWNER_LABEL_ENV_VAR, "zcode-mvp-invariants-r3-executable")
+    monkeypatch.setenv("TEST_DATABASE_URL", run_url)
+    monkeypatch.setenv("DATABASE_URL", run_url)
+    monkeypatch.setenv(ADMIN_URL_ENV_VAR, "postgresql://inv_admin@127.0.0.1:" + port + "/postgres")
+    monkeypatch.setenv(
+        MIGRATION_URL_ENV_VAR, "postgresql://inv_migrate@127.0.0.1:" + port + "/inv_r3_lab"
+    )
+    return run_url
+
+
+def _r3_docker_inspect():
+    # POSTGRES_DB deliberately names the maintenance/init database (postgres),
+    # DIFFERENT from the provisioned target inv_r3_lab: under the R3 contract
+    # that difference must be accepted — ownership is proven live instead.
+    return {
+        "Config": {
+            "Labels": {"mpango.owner": "zcode-mvp-invariants-r3-executable"},
+            "Image": "postgres:16-alpine",
+            "Env": ["POSTGRES_USER=inv_admin", "POSTGRES_DB=postgres"],
+        },
+        "NetworkSettings": {
+            "Ports": {"5432/tcp": [{"HostIp": "127.0.0.1", "HostPort": "52639"}]}
+        },
+    }
+
+
+def _r3_live_connections(*, current=("inv_r3_lab", "inv_run"), owner="inv_migrate",
+                         catalog_row=True, same_cluster=True):
+    run_results = [
+        current,
+        (12345,) if same_cluster else (99999,),
+    ]
+    admin_results = [
+        (12345,),
+        (owner,) if catalog_row else None,
+    ]
+    return _R3FakeConn(run_results), _R3FakeConn(admin_results)
+
+
+def test_r3_guard_accepts_live_provisioned_target_with_distinct_init_db(monkeypatch):
+    """[R3 POSITIVE CONTROL] A container whose POSTGRES_DB is the maintenance
+    database (different from the URL database) is ACCEPTED when the live
+    read-only proof lands on the declared target as the run user, the target
+    is migration-owned in the catalog and both connections bind one cluster.
+    Both live connections must be closed."""
+    from tests import mpango_invariants_r0_support as support
+    from tests.mpango_invariants_r0_support import verify_task_database_ownership_sync
+
+    run_url = _r3_bind_ownership_env(monkeypatch)
+    monkeypatch.setattr(support, "_docker_inspect", lambda container: _r3_docker_inspect())
+    run_conn, admin_conn = _r3_live_connections()
+    connect_urls = []
+
+    def fake_connect(url, **kwargs):
+        connect_urls.append(url)
+        return run_conn if url.startswith("postgresql://inv_run") else admin_conn
+
+    monkeypatch.setattr("psycopg2.connect", fake_connect)
+    engine_bindings = []
+    monkeypatch.setattr(
+        support, "_assert_engine_binding", lambda *a, **k: engine_bindings.append(1)
+    )
+    assert verify_task_database_ownership_sync() == run_url
+    assert engine_bindings, "engine binding must still run after the live proof"
+    assert run_conn.closed and admin_conn.closed
+    assert len(connect_urls) == 2
+
+
+def test_r3_guard_refuses_live_target_mismatch(monkeypatch):
+    """[R3 NEGATIVE CONTROL] The run connection landing on the wrong database
+    or user refuses before any write."""
+    from tests import mpango_invariants_r0_support as support
+    from tests.mpango_invariants_r0_support import GuardRefused, verify_task_database_ownership_sync
+
+    _r3_bind_ownership_env(monkeypatch)
+    monkeypatch.setattr(support, "_docker_inspect", lambda container: _r3_docker_inspect())
+    run_conn, admin_conn = _r3_live_connections(current=("other_db", "inv_run"))
+    monkeypatch.setattr("psycopg2.connect", lambda url, **kw: run_conn)
+    monkeypatch.setattr(support, "_assert_engine_binding", lambda *a, **k: None)
+    with pytest.raises(GuardRefused, match="LIVE_TARGET_MISMATCH"):
+        verify_task_database_ownership_sync()
+    assert run_conn.closed
+
+
+def test_r3_guard_refuses_live_target_missing_from_catalog(monkeypatch):
+    """[R3 NEGATIVE CONTROL] A target database absent from pg_database
+    refuses with a named LIVE_TARGET_NOT_IN_CATALOG error."""
+    from tests import mpango_invariants_r0_support as support
+    from tests.mpango_invariants_r0_support import GuardRefused, verify_task_database_ownership_sync
+
+    _r3_bind_ownership_env(monkeypatch)
+    monkeypatch.setattr(support, "_docker_inspect", lambda container: _r3_docker_inspect())
+    run_conn, admin_conn = _r3_live_connections(catalog_row=False)
+    monkeypatch.setattr(
+        "psycopg2.connect",
+        lambda url, **kw: run_conn if url.startswith("postgresql://inv_run") else admin_conn,
+    )
+    with pytest.raises(GuardRefused, match="LIVE_TARGET_NOT_IN_CATALOG"):
+        verify_task_database_ownership_sync()
+    assert run_conn.closed and admin_conn.closed
+
+
+def test_r3_guard_refuses_live_target_owner_mismatch(monkeypatch):
+    """[R3 NEGATIVE CONTROL] A provisioned-looking database owned by anyone
+    other than the declared migration authority refuses."""
+    from tests import mpango_invariants_r0_support as support
+    from tests.mpango_invariants_r0_support import GuardRefused, verify_task_database_ownership_sync
+
+    _r3_bind_ownership_env(monkeypatch)
+    monkeypatch.setattr(support, "_docker_inspect", lambda container: _r3_docker_inspect())
+    run_conn, admin_conn = _r3_live_connections(owner="someone_else")
+    monkeypatch.setattr(
+        "psycopg2.connect",
+        lambda url, **kw: run_conn if url.startswith("postgresql://inv_run") else admin_conn,
+    )
+    with pytest.raises(GuardRefused, match="LIVE_TARGET_OWNER_MISMATCH"):
+        verify_task_database_ownership_sync()
+
+
+def test_r3_guard_refuses_live_cluster_mismatch(monkeypatch):
+    """[R3 NEGATIVE CONTROL] Run and administrator connections resolving to
+    different cluster system identifiers refuse (not one task cluster)."""
+    from tests import mpango_invariants_r0_support as support
+    from tests.mpango_invariants_r0_support import GuardRefused, verify_task_database_ownership_sync
+
+    _r3_bind_ownership_env(monkeypatch)
+    monkeypatch.setattr(support, "_docker_inspect", lambda container: _r3_docker_inspect())
+    run_conn, admin_conn = _r3_live_connections(same_cluster=False)
+    monkeypatch.setattr(
+        "psycopg2.connect",
+        lambda url, **kw: run_conn if url.startswith("postgresql://inv_run") else admin_conn,
+    )
+    with pytest.raises(GuardRefused, match="LIVE_TARGET_CLUSTER_MISMATCH"):
+        verify_task_database_ownership_sync()
+
+
+def test_r3_guard_refuses_live_connect_failure_without_dsn_echo(monkeypatch):
+    """[R3 NEGATIVE CONTROL] A failing run connection refuses with a named
+    error that contains neither the DSN nor the password."""
+    import psycopg2 as real_psycopg2
+    from tests import mpango_invariants_r0_support as support
+    from tests.mpango_invariants_r0_support import GuardRefused, verify_task_database_ownership_sync
+
+    _r3_bind_ownership_env(monkeypatch)
+    monkeypatch.setattr(support, "_docker_inspect", lambda container: _r3_docker_inspect())
+
+    def failing_connect(url, **kwargs):
+        raise real_psycopg2.OperationalError("connection refused with secret material")
+
+    monkeypatch.setattr("psycopg2.connect", failing_connect)
+    with pytest.raises(GuardRefused, match="LIVE_TARGET_RUN_CONNECT_FAILED") as exc_info:
+        verify_task_database_ownership_sync()
+    message = str(exc_info.value)
+    assert "inv_run@" not in message and "postgresql://" not in message

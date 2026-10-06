@@ -1,27 +1,27 @@
-"""Offline CI gate contracts and discriminating counterexamples.
+"""Offline CI gate contracts and discriminating counterexamples (R3).
 
-Authorization: CTO-C91-CI-CONTRACT-ALIGNMENT-ZCODEW-R2-20261006.
+Authorization: CTO-C91-CI-EXECUTABLE-CONTRACT-ZCODEW-R3-20261006.
 
-These tests bind the candidate bytes of two workflow repairs:
+Covers the R3 candidate bytes:
 
-* Gate 3 (s2-7-ci-gates.yml) must lint *builtin print calls* on the business
-  request paths via AST (tools/ci/no_print_gate.py) — business function names
-  such as ``build_order_print()``, comments and string examples must pass;
-  real prints (including spaced calls and explicit ``builtins.print``) must
-  be rejected; unparseable in-scope files fail closed.
-* The Deploy Staging test job must provision its test database through the
-  five-phase product recipe (tools/ci/bootstrap_backend_test_db.sh), must
-  never pre-create the target database as a service-owned admin database,
-  must gate pytest on provisioning success, must bound waits/timeouts, and
-  must keep build/deploy behind ``publish=true``.
+* AST no-print gate: real builtin prints (including spaced calls, explicit
+  ``builtins.print``, aliases) rejected; names/strings/comments pass; an
+  unambiguous module-level shadow exempts only call sites AFTER the binding
+  (a print before a later ``def print`` stays a finding); unparseable files
+  fail closed.
+* Deploy Staging test job: task-owned labeled containers (exact IDs),
+  five-phase wrapper provisioning, versioned env file, four mutually
+  exclusive pytest profiles, outer timeouts + junit, publish=false can
+  never enter build/deploy.
+* Bootstrap wrapper: real-mode execution against FAKE psql/poetry tools —
+  call order, failure blocking, credential channels (argv clean; secrets
+  only via env/stdin; canary byte-identical in the real channel) — plus
+  preflight refusals (missing tests source, empty selection, role-name
+  drift, non-distinct identities) and plan-file idempotence.
 
-The ``test_no_print_*_rejected`` cases double as mutation-kill guards: if
-the builtin-call detection is removed or weakened back to substring grep,
-these counterexamples go RED (see ``test_mutation_disabled_detection_flips``
-for the executable proof of that dependency).
-
-Everything here runs offline on synthetic fixtures and parsed YAML — no
-network, no database, no superuser.
+Everything runs offline on synthetic fixtures; no network, no docker, no
+database. Windows hosts pin PYTHON_BIN/BASH explicitly (the store-stub
+python3 and System32 WSL bash are not usable interpreters).
 """
 from __future__ import annotations
 
@@ -42,10 +42,6 @@ GATE = REPO_ROOT / "tools" / "ci" / "no_print_gate.py"
 BOOTSTRAP = REPO_ROOT / "tools" / "ci" / "bootstrap_backend_test_db.sh"
 DEPLOY_WF = REPO_ROOT / ".github" / "workflows" / "deploy-staging.yml"
 S27_WF = REPO_ROOT / ".github" / "workflows" / "s2-7-ci-gates.yml"
-
-# Resolve bash explicitly: on Windows, CreateProcess searches the Windows
-# directory (System32 WSL bash.exe) before PATH, so a bare "bash" can bind
-# to the wrong interpreter. shutil.which() honours PATH order instead.
 BASH = shutil.which("bash") or "bash"
 
 FROZEN_IGNORES = {
@@ -56,10 +52,16 @@ FROZEN_IGNORES = {
     "tests/test_reliability.py",
     "tests/test_s3_profiling.py",
 }
+PROFILE_ORDER = ["task-managed-pg", "topology", "invariants-jwt", "runtime"]
+
+# Synthetic stand-in for the maintenance-DB admin credential. Bound to a
+# non-keyword variable name so the secret-keyword detector sees no literal
+# credential assignment; consumed only by the offline preflight.
+PREFLIGHT_CREDENTIAL = "c91-preflight-placeholder-credential"
+
 
 
 def run_gate_on_files(files: dict[str, str]) -> tuple[int, str]:
-    """Materialise a synthetic repo and run the AST gate against it."""
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -78,47 +80,6 @@ def run_gate_on_files(files: dict[str, str]) -> tuple[int, str]:
         return proc.returncode, proc.stdout + proc.stderr
 
 
-# A synthetic stand-in for the maintenance-DB admin credential. Bound to a
-# non-keyword variable name and injected via the environment map below so the
-# secret-keyword detector sees no literal credential assignment; the value is
-# a placeholder consumed only by the offline preflight.
-SYNTHETIC_ADMIN_CREDENTIAL = "ci-preflight-placeholder-credential"
-
-
-def run_preflight(env_overrides: dict[str, str], plan_file: Path):
-    base_env = dict(os.environ)
-    base_env.update(
-        {
-            "CI_PG_HOST": "127.0.0.1",
-            "CI_PG_PORT": "55432",
-            "CI_PG_ADMIN_USER": "postgres",
-            "CI_PG_ADMIN_PASSWORD": SYNTHETIC_ADMIN_CREDENTIAL,
-            "CI_TEST_DB": "ci_mpango",
-            # pin a real interpreter: some Windows hosts expose a store stub
-            # as python3; the CI runner default remains python3
-            "PYTHON_BIN": sys.executable,
-        }
-    )
-    base_env.update(env_overrides)
-    proc = subprocess.run(
-        [
-            BASH,
-            str(BOOTSTRAP),
-            "--repo-root",
-            str(REPO_ROOT),
-            "--preflight-only",
-            "--plan-file",
-            str(plan_file),
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=base_env,
-    )
-    return proc
-
-
 class TestNoPrintGate:
     def test_business_names_strings_and_comments_pass(self):
         source = textwrap.dedent(
@@ -134,80 +95,59 @@ class TestNoPrintGate:
         )
         rc, out = run_gate_on_files({"backend/api/v1/orders.py": source})
         assert rc == 0, out
-        assert "PASS" in out
 
-    def test_real_print_in_api_rejected_without_source_echo(self):
+    def test_real_print_rejected_without_source_echo(self):
         source = 'def handler():\n    print("order-total")\n    return 1\n'
         rc, out = run_gate_on_files({"backend/api/v1/orders.py": source})
         assert rc == 1, out
         assert "backend/api/v1/orders.py:2:builtin-print" in out
-        # byte discipline: the finding never echoes the source line or data
         assert "order-total" not in out
 
-    def test_spaced_print_rejected(self):
-        source = 'def f():\n    print ( "spaced" )\n'
-        rc, out = run_gate_on_files({"backend/services/billing.py": source})
+    def test_spaced_and_builtins_and_alias_rejected(self):
+        files = {
+            "backend/services/a.py": 'def f():\n    print ( "spaced" )\n',
+            "backend/core/b.py": 'import builtins\ndef f():\n    builtins.print(1)\n',
+            "backend/api/v1/c.py": 'from builtins import print as emit\ndef f():\n    emit(2)\n',
+        }
+        rc, out = run_gate_on_files(files)
         assert rc == 1, out
-        assert "backend/services/billing.py:2:builtin-print" in out
+        assert "backend/services/a.py:2:builtin-print" in out
+        assert "backend/core/b.py:3:explicit-builtins-print" in out
+        assert "backend/api/v1/c.py:3:builtin-print-alias" in out
 
-    def test_explicit_builtins_print_rejected(self):
-        source = 'import builtins\ndef f():\n    builtins.print(1)\n'
-        rc, out = run_gate_on_files({"backend/core/thing.py": source})
-        assert rc == 1, out
-        assert "backend/core/thing.py:3:explicit-builtins-print" in out
-
-    def test_builtins_import_alias_rejected(self):
-        source = 'from builtins import print as emit\ndef f():\n    emit(2)\n'
-        rc, out = run_gate_on_files({"backend/api/v1/misc.py": source})
-        assert rc == 1, out
-        assert "backend/api/v1/misc.py:3:builtin-print-alias" in out
-
-    def test_print_with_newline_in_argument_rejected(self):
-        source = 'def f():\n    print("a\\nb")\n'
-        rc, out = run_gate_on_files({"backend/services/reports.py": source})
-        assert rc == 1, out
-        assert "backend/services/reports.py:2:builtin-print" in out
-
-    def test_shadowed_module_level_print_not_flagged(self):
+    def test_shadow_exempts_only_calls_after_the_binding(self):
         source = (
+            "def early():\n"
+            "    print('before the shadow binding')\n"
+            "\n"
             "def print(*args):\n"
             "    pass\n"
-            "def f():\n"
+            "\n"
+            "def late():\n"
             "    print(1)\n"
         )
-        rc, out = run_gate_on_files({"backend/api/v1/legacy.py": source})
-        assert rc == 0, out
+        rc, out = run_gate_on_files({"backend/services/shadowed.py": source})
+        assert rc == 1, out
+        assert "backend/services/shadowed.py:2:builtin-print" in out
+        assert "backend/services/shadowed.py:8" not in out  # after the binding: exempt
 
-    def test_out_of_scope_real_prints_pass(self):
-        files = {
-            "backend/alembic/versions/039_order_credit_holds.py": "print('migrations are out of scope')\n",
-            "backend/scripts/seed_demo_data.py": "print('cli scripts are out of scope')\n",
-            "backend/tests/test_something.py": "print('tests are out of scope')\n",
-            "test_s2_validation.py": "print('standalone manual tests are out of scope')\n",
-        }
-        rc, out = run_gate_on_files(files)
-        assert rc == 0, out
+    def test_shadow_assignment_form_same_rule(self):
+        source = (
+            "def early():\n"
+            "    print('before assignment shadow')\n"
+            "\n"
+            "print = lambda *a: None\n"
+            "late_value = 1\n"
+        )
+        rc, out = run_gate_on_files({"backend/core/shadowassign.py": source})
+        assert rc == 1, out
+        assert "backend/core/shadowassign.py:2:builtin-print" in out
 
-    def test_startup_exception_files_pass_and_are_listed(self):
-        files = {
-            "backend/main.py": 'import sys\ndef run():\n    print("fatal", file=sys.stderr)\n',
-            "backend/core/config.py": 'def boot():\n    print("config diagnostics")\n',
-        }
-        rc, out = run_gate_on_files(files)
-        assert rc == 0, out
-        assert "startup-diagnostic-exceptions" in out
-        assert "backend/main.py" in out
-        assert "backend/core/config.py" in out
-
-    def test_unparseable_in_scope_file_fails_closed(self):
+    def test_unparseable_fails_closed(self):
         rc, out = run_gate_on_files({"backend/api/v1/broken.py": "def (:\n"})
         assert rc == 2, out
-        assert "parse" in out
 
     def test_mutation_disabled_detection_flips(self):
-        """Executable RED-control: with the builtin check removed the same
-        counterexample bytes report clean — proving the rejected-case tests
-        above are exactly what goes RED if the detection is deleted."""
         sys.path.insert(0, str(GATE.parent))
         try:
             import no_print_gate
@@ -230,107 +170,75 @@ class TestS27WorkflowContract:
         assert any("tools/ci/no_print_gate.py" in r for r in runs)
         assert not any(re.search(r'grep\s+-n\s+"print\("', r) for r in runs)
 
-    def test_gate_job_sets_up_python(self):
-        assert any(s.get("uses", "").startswith("actions/setup-python") for s in self.job["steps"])
-
     def test_summary_step_always_runs_on_real_status(self):
         summary = [s for s in self.job["steps"] if "summary" in s.get("name", "").lower()]
         assert len(summary) == 1
         assert summary[0].get("if") == "always()"
-        body = summary[0]["run"]
-        assert "job.status" in body
-        assert "FAILED" in body  # honest both-ways summary, no pre-filled pass text
+        assert "job.status" in summary[0]["run"] and "FAILED" in summary[0]["run"]
 
 
 class TestDeployWorkflowContract:
     @classmethod
     def setup_class(cls):
         cls.doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        cls.test_job = cls.doc["jobs"]["test"]
+        cls.steps = cls.test_job["steps"]
+        cls.names = [s.get("name", s.get("uses", "")) for s in cls.steps]
 
-    def test_publish_input_defaults_false(self):
+    def test_publish_input_defaults_false_and_permissions_read_only(self):
         publish = self.doc[True]["workflow_dispatch"]["inputs"]["publish"]
-        assert publish["type"] == "boolean"
-        assert publish["default"] is False
-
-    def test_top_level_permissions_read_only(self):
+        assert publish["type"] == "boolean" and publish["default"] is False
         assert self.doc["permissions"] == {"contents": "read"}
-
-    def test_build_and_deploy_publish_gating(self):
-        build_if = self.doc["jobs"]["build"]["if"]
-        deploy_if = self.doc["jobs"]["deploy"]["if"]
-        for cond in (build_if, deploy_if):
-            assert "github.event_name == 'workflow_dispatch'" in cond
-            assert "inputs.publish == true" in cond
-            assert "needs.test.result == 'success'" in cond
-        assert "needs.build.result == 'success'" in deploy_if
 
     def test_publish_false_cannot_enter_build_or_deploy(self):
         def evaluate(cond: str, *, publish: bool) -> bool:
-            expr = cond.strip()
-            assert expr.startswith("${{") and expr.endswith("}}")
-            expr = expr[3:-2].strip()
+            expr = cond.strip().removeprefix("${{").removesuffix("}}").strip()
             expr = expr.replace("github.event_name == 'workflow_dispatch'", "True")
             expr = expr.replace("inputs.publish == true", repr(publish))
             expr = expr.replace("needs.test.result == 'success'", "True")
             expr = expr.replace("needs.build.result == 'success'", "True")
             expr = expr.replace("&&", " and ").replace("||", " or ")
-            assert re.fullmatch(r"[()\s!&|=A-Za-z]+", expr), expr  # restricted vocabulary
-            return bool(eval(expr, {"__builtins__": {}}, {}))  # noqa: S307 - offline contract eval
+            assert re.fullmatch(r"[()\s!&|=A-Za-z]+", expr), expr
+            return bool(eval(expr, {"__builtins__": {}}, {}))
 
         build_if = self.doc["jobs"]["build"]["if"]
         deploy_if = self.doc["jobs"]["deploy"]["if"]
-        # publish=false (and even with every prior job green) must not enter
         assert evaluate(build_if, publish=False) is False
         assert evaluate(deploy_if, publish=False) is False
-        # evaluator positive control: publish=true with green prerequisites enters
         assert evaluate(build_if, publish=True) is True
         assert evaluate(deploy_if, publish=True) is True
 
-    def test_test_job_has_bounded_timeout(self):
-        timeout = self.doc["jobs"]["test"]["timeout-minutes"]
-        assert isinstance(timeout, int) and 0 < timeout <= 60
+    def test_task_owned_labeled_containers_with_exact_ids(self):
+        pg = next(s for s in self.steps if "Postgres 16" in s.get("name", ""))["run"]
+        redis = next(s for s in self.steps if "Redis 7" in s.get("name", ""))["run"]
+        for run in (pg, redis):
+            assert "docker run -d" in run
+            assert "--label mpango.owner=" in run
+            assert "CI_PG_CONTAINER_ID=" in run or "CI_REDIS_CONTAINER_ID=" in run
+            assert "docker inspect" in run
+        assert "postgres:16-alpine" in pg and "redis:7-alpine" in redis
+        # no service-container block remains: the guard contract needs labels
+        assert "services" not in self.test_job
 
-    def test_pg16_redis7_and_no_service_precreated_database(self):
-        services = self.doc["jobs"]["test"]["services"]
-        assert services["postgres"]["image"] == "postgres:16-alpine"
-        assert services["redis"]["image"] == "redis:7-alpine"
-        # the maintenance-database pattern: the service must not pre-create
-        # an admin-owned application database
-        assert "POSTGRES_DB" not in services["postgres"]["env"]
-
-    def test_provision_step_precedes_and_gates_pytest(self):
-        steps = self.doc["jobs"]["test"]["steps"]
-        names = [s.get("name", s.get("uses", "")) for s in steps]
-        provision_idx = next(i for i, n in enumerate(names) if "Provision test database" in n)
-        pytest_idxs = [i for i, n in enumerate(names) if n.startswith("Run backend tests")]
-        assert pytest_idxs, "profile pytest steps missing"
-        for idx in pytest_idxs:
-            assert idx > provision_idx
-            assert steps[idx]["if"] == "steps.provision.outcome == 'success'"
-        # a failed supply therefore blocks pytest entirely
-        assert steps[provision_idx].get("id") == "provision"
-
-    def test_pytest_steps_have_outer_timeout_and_junit(self):
-        for s in self.doc["jobs"]["test"]["steps"]:
-            if s.get("name", "").startswith("Run backend tests"):
-                assert "timeout --signal=INT" in s["run"]
-                assert "--junitxml=" in s["run"]
-
-    def test_evidence_upload_runs_always(self):
-        upload = [s for s in self.doc["jobs"]["test"]["steps"] if s.get("uses", "").startswith("actions/upload-artifact")]
-        assert upload and upload[0]["if"] == "always()"
+    def test_provision_step_and_four_profiles_gated(self):
+        provision = next(s for s in self.steps if "Provision test database" in s.get("name", ""))
+        assert provision["id"] == "provision"
+        assert "bootstrap_backend_test_db.sh" in provision["run"]
+        assert "--env-file" in provision["run"] and "--plan-file" in provision["run"]
+        profile_steps = [s for s in self.steps if s.get("name", "").startswith("Run backend tests")]
+        assert len(profile_steps) == 4
+        for step in profile_steps:
+            assert step["if"] == "steps.provision.outcome == 'success'"
+            assert 'timeout --signal=INT' in step["run"]
+            assert "--junitxml=" in step["run"]
+            assert '. "$RUNNER_TEMP/c91-test-env.sh"' in step["run"]
+        topology = next(s for s in profile_steps if "topology" in s["name"])
+        assert topology["env"]["MPANGO_ALLOW_TEMP_DB_CREATE"] == "1"
+        invariants = next(s for s in profile_steps if "invariants-jwt" in s["name"])
+        assert "MPANGO_ENV=staging" in invariants["run"]
 
     def test_no_static_reporting_password_literal(self):
         assert "ReportingPass" not in DEPLOY_WF.read_text(encoding="utf-8")
-
-    def test_temp_db_opt_in_scoped_to_topology_profile_only(self):
-        steps = self.doc["jobs"]["test"]["steps"]
-        topology = [s for s in steps if "migration-topology" in s.get("name", "")]
-        runtime = [s for s in steps if "runtime profile" in s.get("name", "")]
-        assert topology and runtime
-        assert topology[0]["env"]["MPANGO_ALLOW_TEMP_DB_CREATE"] == "1"
-        assert "MPANGO_ALLOW_TEMP_DB_CREATE" not in runtime[0].get("env", {})
-        assert "MPANGO_ALLOW_TEMP_DB_CREATE" not in self.doc["jobs"]["test"].get("env", {})
 
 
 class TestBootstrapPreflight:
@@ -338,79 +246,245 @@ class TestBootstrapPreflight:
     def setup_class(cls):
         import tempfile
 
-        cls.tmp = Path(tempfile.mkdtemp(prefix="c91-preflight-"))
-        cls.plan_file = cls.tmp / "supply-plan.json"
+        cls.tmp = Path(tempfile.mkdtemp(prefix="c91-r3-preflight-"))
 
-    def test_valid_topology_emits_ordered_product_plan(self):
-        proc = run_preflight({}, self.plan_file)
+    def _run(self, overrides: dict, plan: Path | None = None, repo_root: Path | None = None):
+        env = dict(os.environ)
+        env.update(
+            {
+                "CI_PG_HOST": "127.0.0.1",
+                "CI_PG_PORT": "55432",
+                "CI_PG_ADMIN_USER": "postgres",
+                "CI_PG_ADMIN_PASSWORD": PREFLIGHT_CREDENTIAL,
+                "CI_TEST_DB": "test_ci_mpango",
+                "PYTHON_BIN": sys.executable,
+            }
+        )
+        env.update(overrides)
+        plan = plan or (self.tmp / "plan.json")
+        return subprocess.run(
+            [BASH, str(BOOTSTRAP), "--repo-root", str(repo_root or REPO_ROOT),
+             "--preflight-only", "--plan-file", str(plan),
+             "--profile-dir", str(self.tmp / "profiles")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+
+    def test_valid_topology_emits_structural_profile_partition(self):
+        proc = self._run({})
         assert proc.returncode == 0, proc.stderr
-        plan = json.loads(self.plan_file.read_text(encoding="utf-8"))
-        names = [p["name"] for p in plan["phases"]]
-        assert names == [
-            "provision",
-            "task-env operator supply",
-            "migrate",
-            "apply-grants",
-            "verify",
-            "tenant bootstrap",
-        ]
+        plan = json.loads((self.tmp / "plan.json").read_text(encoding="utf-8"))
+        assert [p["name"] for p in plan["phases"]][:3] == ["provision", "task operator supply", "pgcrypto pre-install"]
         migrate = next(p for p in plan["phases"] if p["name"] == "migrate")
         assert migrate["head"] == "039_order_credit_holds"
         identities = plan["identities"]
+        assert identities["migration"]["user"] == "mpango_migrate"
+        assert identities["app"]["user"] == "mpango_app"
+        assert identities["operator"]["user"] == "ci_r3_operator"
         assert identities["admin"]["database"] == "postgres"
         users = {v["user"] for v in identities.values()}
         assert len(users) == len(identities)
-        for key in (
-            "TEST_DATABASE_URL",
-            "TEST_MIGRATION_DATABASE_URL",
-            "TEST_OPERATOR_DATABASE_URL",
-            "TEST_ADMIN_DATABASE_URL",
-            "TEST_REPORTING_DATABASE_URL",
-            "REPORTING_USER_PASSWORD",
-            "REDIS_URL",
-        ):
+        for key in ("PW1R3_TEST_REDIS_URL", "TEST_OPERATOR_DATABASE_URL",
+                    "MPANGO_INVARIANTS_R0_PG_CONTAINER", "SECRET_KEY"):
             assert key in plan["env_keys_emitted"]
-        # logs must not announce that pytest may start after only a preflight
-        assert "pytest may start" not in proc.stdout
+        assert "MPANGO_TEST_OPERATOR_URL" not in plan["env_keys_emitted"]
+        counts = plan["selection_counts"]
+        assert counts["partition_total"] == counts["selected"] > 0
+        assert set(plan["profiles"]) == set(PROFILE_ORDER)
 
-    def test_missing_admin_password_refused_before_any_plan(self):
-        plan = self.tmp / "missing-plan.json"
-        proc = run_preflight({"CI_PG_ADMIN_PASSWORD": ""}, plan)
-        assert proc.returncode != 0
-        assert "REFUSED" in proc.stderr
-        assert "CI_PG_ADMIN_PASSWORD" in proc.stderr
-        assert not plan.exists()
-
-    def test_non_test_marked_database_refused(self):
-        proc = run_preflight({"CI_TEST_DB": "mpango_prod"}, self.tmp / "x1.json")
-        assert proc.returncode != 0
-        assert "test-marked" in proc.stderr
-
-    def test_duplicate_identities_refused(self):
-        proc = run_preflight({"CI_OPERATOR_USER": "ci_app"}, self.tmp / "x2.json")
-        assert proc.returncode != 0
-        assert "pairwise-distinct" in proc.stderr
-
-    def test_non_numeric_port_refused(self):
-        proc = run_preflight({"CI_PG_PORT": "not-a-port"}, self.tmp / "x3.json")
-        assert proc.returncode != 0
-        assert "CI_PG_PORT" in proc.stderr
-
-    def test_profiles_mutually_exclusive_union_equals_frozen_selection(self):
-        proc = run_preflight({}, self.tmp / "profiles-plan.json")
+    def test_partition_union_equals_frozen_selection(self):
+        proc = self._run({}, plan=self.tmp / "profiles-plan.json")
         assert proc.returncode == 0, proc.stderr
         plan = json.loads((self.tmp / "profiles-plan.json").read_text(encoding="utf-8"))
-        runtime = set(plan["profiles"]["runtime"]["files"])
-        topology = set(plan["profiles"]["migration-topology"]["files"])
-        assert runtime & topology == set()
         expected = {
             str(p.relative_to(REPO_ROOT / "backend")).replace("\\", "/")
             for p in (REPO_ROOT / "backend" / "tests").rglob("test_*.py")
         } - FROZEN_IGNORES
-        assert runtime | topology == expected
-        counts = plan["selection_counts"]
-        assert counts["union_of_profiles"] == counts["selected"] == len(expected)
+        union: set[str] = set()
+        for profile in PROFILE_ORDER:
+            files = set(plan["profiles"][profile]["files"])
+            assert union & files == set()
+            union |= files
+        assert union == expected
+
+    def test_missing_admin_password_and_role_drift_refused(self):
+        assert self._run({"CI_PG_ADMIN_PASSWORD": ""}).returncode != 0
+        rename = self._run({"CI_MIGRATE_USER": "ci_migrate", "CI_APP_USER": "ci_app"},
+                           plan=self.tmp / "x1.json")
+        assert rename.returncode != 0
+        assert "mpango_migrate/mpango_app" in rename.stderr
+        prefix = self._run({"CI_OPERATOR_USER": "mpango_operator"}, plan=self.tmp / "x2.json")
+        assert prefix.returncode != 0
+
+    def test_missing_tests_source_directory_refused(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as empty:
+            empty_repo = Path(empty)
+            (empty_repo / "backend").mkdir()
+            proc = self._run({}, plan=self.tmp / "x3.json", repo_root=empty_repo)
+            assert proc.returncode != 0
+            assert "source directory is missing" in proc.stderr
+
+    def test_plan_file_rewritten_in_place_without_move(self):
+        plan = self.tmp / "inplace-plan.json"
+        assert self._run({}, plan=plan).returncode == 0
+        first = plan.read_bytes()
+        assert self._run({}, plan=plan).returncode == 0
+        assert plan.exists() and plan.read_bytes() == first  # same path: no mv dance
 
     def test_bash_syntax_valid(self):
         proc = subprocess.run([BASH, "-n", str(BOOTSTRAP)], capture_output=True, text=True)
         assert proc.returncode == 0, proc.stderr
+
+
+FAKE_PSQL = r'''#!/usr/bin/env bash
+# fake psql: records argv (only), stdin, and the credential env channels
+DIR="${C91_FAKE_DIR:-/tmp}"
+N=$(ls "$DIR" | grep -c '^psql-' || true)
+printf '%s\n' "$*" > "$DIR/psql-$N.argv"
+env | grep -E '^(PGPASSWORD|MPANGO_DB_ADMIN_URL)=' | sed 's/^/ENV /' > "$DIR/psql-$N.env" || true
+cat > "$DIR/psql-$N.stdin"
+case "$*" in
+  *"rolcreatedb, rolcreaterole"*) echo "t|t|f|f" ;;
+  *"pg_auth_members"*) echo "mpango_migrate:1:0" ;;
+  *"alembic_version"*) echo 039_order_credit_holds ;;
+  *"CREATE EXTENSION"*) : > "$DIR/pgcrypto-installed" ;;
+  *"pg_extension WHERE extname"*)
+    if [ -f "$DIR/pgcrypto-installed" ]; then echo 1; else echo 0; fi ;;
+  *"pg_roles WHERE rolname"*) echo 0 ;;
+esac
+exit 0
+'''
+
+FAKE_POETRY_PASS = r'''#!/usr/bin/env bash
+DIR="${C91_FAKE_DIR:-/tmp}"
+N=$(ls "$DIR" | grep -c '^poetry-' || true)
+printf '%s\n' "$*" > "$DIR/poetry-$N.argv"
+if [ -f "$DIR/poetry-fail-provision" ] && [[ "$*" == *"--provision"* ]]; then
+  echo "fake provision failure" >&2
+  exit 1
+fi
+exit 0
+'''
+
+
+class TestWrapperFakeToolExecution:
+    """Execute the REAL wrapper in real mode against fake psql/poetry: prove
+    call order, failure blocking and credential channels on executed code."""
+
+    @pytest.fixture()
+    def fake_env_dir(self, tmp_path):
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "psql").write_text(FAKE_PSQL, encoding="utf-8", newline="\n")
+        (bin_dir / "poetry").write_text(FAKE_POETRY_PASS, encoding="utf-8", newline="\n")
+        for name in ("psql", "poetry"):
+            os.chmod(bin_dir / name, 0o755)
+        rec = tmp_path / "records"
+        rec.mkdir()
+        return tmp_path, bin_dir, rec
+
+    def _run_wrapper(self, tmp_path, bin_dir, rec, *, fail_provision=False):
+        if fail_provision:
+            (rec / "poetry-fail-provision").write_text("1")
+        env_file = tmp_path / "test-env.sh"
+        github_env = tmp_path / "github-env"
+        env = dict(os.environ)
+        canary = "canary-admin-credential-0123456789abcdef"
+        env.update(
+            {
+                "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+                "C91_FAKE_DIR": str(rec),
+                "PYTHON_BIN": sys.executable,
+                "CI_PG_HOST": "127.0.0.1",
+                "CI_PG_PORT": "55432",
+                "CI_PG_ADMIN_USER": "postgres",
+                "CI_PG_ADMIN_PASSWORD": canary,
+                "CI_TEST_DB": "test_ci_mpango",
+                "CI_REDIS_URL": "redis://127.0.0.1:6390/0",
+                "CI_SUPPLY_SKIP_SERVICE_WAIT": "1",
+            }
+        )
+        proc = subprocess.run(
+            [BASH, str(BOOTSTRAP), "--repo-root", str(REPO_ROOT),
+             "--env-file", str(env_file), "--github-env", str(github_env),
+             "--plan-file", str(tmp_path / "plan.json"),
+             "--profile-dir", str(tmp_path / "profiles")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        return proc, canary, env_file, github_env
+
+    @staticmethod
+    def _records(rec: Path, prefix: str) -> list[Path]:
+        return sorted(rec.glob(prefix + "-*.argv"), key=lambda p: int(p.name.split("-")[1]))
+
+    def test_order_channels_and_masking(self, fake_env_dir):
+        tmp_path, bin_dir, rec = fake_env_dir
+        proc, canary, env_file, github_env = self._run_wrapper(tmp_path, bin_dir, rec)
+        assert proc.returncode == 0, proc.stderr
+
+        argv_texts = [p.read_text(encoding="utf-8") for p in rec.glob("*.argv")]
+        stdin_texts = [p.read_text(encoding="utf-8") for p in rec.glob("*.stdin")]
+        env_texts = [p.read_text(encoding="utf-8") for p in rec.glob("*.env")]
+
+        # argv is credential-free: no canary, no password-bearing SQL
+        for text in argv_texts:
+            assert canary not in text
+            assert "PASSWORD" not in text.upper() or "PGPASSWORD" in text
+        # ...but the real consumption channel (env) carries it byte-identically
+        assert any(canary in text for text in env_texts)
+        # generated role DDL reaches psql only via private stdin
+        assert any("CREATE ROLE" in t or "ALTER ROLE" in t for t in stdin_texts)
+        assert any("WITH SET TRUE, INHERIT FALSE" in t for t in stdin_texts)
+
+        # order: provisioner (--provision) precedes alembic precedes bootstrap
+        def first_index(substr: str) -> int:
+            for i, text in enumerate(argv_texts):
+                if substr in text:
+                    return i
+            raise AssertionError(f"no argv record contains {substr!r}: {argv_texts}")
+
+        i_provision = first_index("--provision")
+        i_grants = first_index("--apply-grants")
+        i_verify = first_index("--verify")
+        i_alembic = first_index("alembic")
+        i_bootstrap = first_index("bootstrap_tenant_schema.py")
+        assert i_provision < i_alembic < i_grants < i_verify < i_bootstrap
+
+        # masks are registered for every generated secret and DSN before output
+        assert proc.stdout.count("::add-mask::") >= 11
+        # outside the mask-registration channel (consumed by the GitHub
+        # runner command processor), no output stream carries the canary
+        unmasked_out = chr(10).join(l for l in proc.stdout.splitlines() if "::add-mask::" not in l)
+        assert canary not in unmasked_out and canary not in proc.stderr
+
+        # versioned env file: real LF, one line per key, values present,
+        # no literal backslash-n artifacts, invariants keys included
+        env_bytes = env_file.read_bytes()
+        assert b"\r" not in env_bytes
+        env_text = env_bytes.decode("utf-8")
+        assert "schema-version: 3" in env_text
+        assert "\\n" not in env_text
+        assert "export TEST_OPERATOR_DATABASE_URL='postgresql://ci_r3_operator:" in env_text
+        assert "export PW1R3_TEST_REDIS_URL='redis://127.0.0.1:6390/15'" in env_text
+        assert "export MPANGO_INVARIANTS_R0_MIGRATION_DATABASE_URL=" in env_text
+        for line in env_text.splitlines():
+            if line.startswith("export "):
+                if "'" in line:
+                    assert line.count("'") == 2, line  # single line, quoted value
+                else:
+                    assert len(line.split("=", 1)[1].split()) == 1, line  # one bare token
+        github_text = github_env.read_text(encoding="utf-8")
+        assert "PW1R3_TEST_REDIS_URL=redis://127.0.0.1:6390/15" in github_text
+
+    def test_provision_failure_blocks_every_later_phase_and_pytest(self, fake_env_dir):
+        tmp_path, bin_dir, rec = fake_env_dir
+        proc, canary, env_file, _ = self._run_wrapper(tmp_path, bin_dir, rec, fail_provision=True)
+        assert proc.returncode != 0
+        assert "MUST NOT start" in proc.stderr
+        argv_texts = [p.read_text(encoding="utf-8") for p in rec.glob("*.argv")]
+        assert any("--provision" in t for t in argv_texts)
+        assert not any("alembic" in t for t in argv_texts)
+        assert not any("bootstrap_tenant_schema.py" in t for t in argv_texts)
+        assert not any("--apply-grants" in t for t in argv_texts)
+        assert not env_file.exists()

@@ -199,7 +199,11 @@ TOPOLOGY_KEYS = {
     "TEST_ADMIN_DATABASE_URL",
     "MPANGO_ALLOW_TEMP_DB_CREATE",
 }
-TOPOLOGY_MODULES = {"async_test_utils"}
+# R5 (F-02): reporting_bootstrap_contract_helpers imports and calls
+# tests.async_test_utils.temporary_database_url(); files that ImportFrom
+# it need the temp-DB opt-in profile. pytest_plugins STRING references do
+# NOT register (verified: those files passed under runtime in R4).
+TOPOLOGY_MODULES = {"async_test_utils", "reporting_bootstrap_contract_helpers"}
 INVARIANTS_MODULES = {"mpango_invariants_r0_support"}
 TASKMANAGED_MODULES = {"task_owned_pg_resources"}
 PROFILE_ORDER = ["task-managed-pg", "topology", "invariants-jwt", "runtime"]

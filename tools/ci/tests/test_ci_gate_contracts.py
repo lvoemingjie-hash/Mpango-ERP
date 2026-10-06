@@ -58,6 +58,9 @@ PROFILE_ORDER = ["task-managed-pg", "topology", "invariants-jwt", "runtime"]
 # non-keyword variable name so the secret-keyword detector sees no literal
 # credential assignment; consumed only by the offline preflight.
 PREFLIGHT_CREDENTIAL = "c91-preflight-placeholder-credential"
+# R5: shared by the classification controls (same non-keyword binding rule)
+CLASSIFICATION_CREDENTIAL = "c91-classification-placeholder-credential"
+
 
 
 
@@ -747,3 +750,79 @@ class TestFullProcessCredentialChannels:
         assert any(self.CANARY in t for t in argv_texts), (
             "the control must detect the canary re-entering the front python argv"
         )
+
+
+class TestTopologyHelperClassification:
+    """R5 (F-02): files that ImportFrom reporting_bootstrap_contract_helpers
+    (which calls async_test_utils.temporary_database_url) belong to the
+    topology profile. The controls below drive the REAL wrapper preflight —
+    never a source-string search — against the candidate bytes, against the
+    pre-fix bytes (module registration removed), and against known runtime
+    negatives (pytest_plugins STRING references must NOT move a file)."""
+
+    TARGET = "tests/test_dc11t4c_reporting_bootstrap_contract.py"
+
+    def _preflight_plan(self, tmp_path, script):
+        env = dict(os.environ)
+        env.update(
+            {
+                "CI_PG_HOST": "127.0.0.1",
+                "CI_PG_PORT": "55432",
+                "CI_PG_ADMIN_USER": "postgres",
+                "CI_PG_ADMIN_PASSWORD": CLASSIFICATION_CREDENTIAL,
+                "CI_TEST_DB": "test_ci_mpango",
+                "CI_REDIS_URL": "redis://127.0.0.1:55433/0",
+                "PYTHON_BIN": sys.executable,
+            }
+        )
+        plan_file = tmp_path / "plan.json"
+        proc = subprocess.run(
+            [BASH, str(script), "--repo-root", str(REPO_ROOT), "--preflight-only",
+             "--plan-file", str(plan_file), "--profile-dir", str(tmp_path)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=env, stdin=subprocess.DEVNULL,
+        )
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(plan_file.read_text(encoding="utf-8"))
+
+    def test_candidate_bytes_classify_importer_as_topology(self, tmp_path):
+        plan = self._preflight_plan(tmp_path, BOOTSTRAP)
+        assert self.TARGET in plan["profiles"]["topology"]["files"]
+        assert self.TARGET not in plan["profiles"]["runtime"]["files"]
+        assert plan["profiles"]["topology"]["count"] == 39
+        assert plan["profiles"]["runtime"]["count"] == 190
+        assert plan["selection_counts"]["partition_total"] == 236
+        # pytest_plugins STRING references do not move a file (R4 evidence:
+        # both files passed under the runtime profile)
+        for non_importer in (
+            "tests/test_s6_2_materialized_views.py",
+            "tests/test_s6_3_dashboard_api.py",
+        ):
+            assert non_importer in plan["profiles"]["runtime"]["files"]
+            assert non_importer not in plan["profiles"]["topology"]["files"]
+
+    def test_counterexample_pre_fix_bytes_classify_runtime(self, tmp_path):
+        """Removing the helper registration (the pre-fix classifier) must put
+        the importer back into runtime — proving the classification control
+        discriminates real preflight output, not strings."""
+        mutant = tmp_path / "wrapper-prefix-bug.sh"
+        text = BOOTSTRAP.read_text(encoding='utf-8')
+        fixed = 'TOPOLOGY_MODULES = {"async_test_utils", "reporting_bootstrap_contract_helpers"}'
+        assert fixed in text
+        mutant.write_text(
+            text.replace(fixed, 'TOPOLOGY_MODULES = {"async_test_utils"}'),
+            encoding="utf-8", newline="\n",
+        )
+        os.chmod(mutant, 0o755)
+        plan = self._preflight_plan(tmp_path, mutant)
+        assert self.TARGET in plan["profiles"]["runtime"]["files"], (
+            "pre-fix bytes must classify the importer as runtime (control RED direction)"
+        )
+        assert self.TARGET not in plan["profiles"]["topology"]["files"]
+        assert plan["profiles"]["runtime"]["count"] == 191
+
+    def test_runtime_negative_without_topology_imports(self, tmp_path):
+        plan = self._preflight_plan(tmp_path, BOOTSTRAP)
+        negative = "tests/test_s5_5_ledger_hardening.py"
+        assert negative in plan["profiles"]["runtime"]["files"]
+        assert negative not in plan["profiles"]["topology"]["files"]

@@ -2,7 +2,8 @@
 
 Authorization: CTO-C91-CI-EXECUTABLE-CONTRACT-ZCODEW-R3-20261006,
 CTO-C91-CI-R6-FIVE-TASK-PREPARATION-20261007,
-CTO-C91-CI-R6R1-PUBLICATION-EVIDENCE-CLOSURE-20261007.
+CTO-C91-CI-R6R1-PUBLICATION-EVIDENCE-CLOSURE-20261007,
+CTO-C91-CI-R6R2-OUTLET-RECONCILIATION-FINITE-CLOSEOUT-20261007.
 
 Covers the candidate bytes:
 
@@ -295,6 +296,14 @@ class TestDeployWorkflowContract:
         assert '--collect "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt"' in gate["run"]
         assert '--expected-nodes "${{ matrix.expected-nodes }}"' in gate["run"]
         assert "--collect-only -q" in gate["run"]
+        # R6R2 (F-02): shard-verify raw output goes to private staging; the
+        # console sees only the fixed refusal category
+        assert '--diagnostics-file "$RUNNER_TEMP/gate-verify-files.diag.json"' in gate["run"]
+        assert '--diagnostics-file "$RUNNER_TEMP/gate-verify-nodes.diag.json"' in gate["run"]
+        assert '> "$RUNNER_TEMP/gate-verify-files.log" 2>&1' in gate["run"]
+        assert '> "$RUNNER_TEMP/gate-verify-nodes.log" 2>&1' in gate["run"]
+        assert "grep -oE 'REFUSED: [A-Z_]+'" in gate["run"]
+        assert '2> "$RUNNER_TEMP/collect-${{ matrix.shard }}.err"' in gate["run"]
         # per-shard premise wiring: topology/task-managed opt-in, real JWT
         # staging env, private resource root
         assert "topology|task-managed-pg) export MPANGO_ALLOW_TEMP_DB_CREATE=1" in gate["run"]
@@ -333,6 +342,11 @@ class TestDeployWorkflowContract:
         assert "--pytest-rc" in reconcile["run"]
         assert '--not-run-file "$RUNNER_TEMP/not-run-${{ matrix.shard }}.nodeids.txt"' in reconcile["run"]
         assert 'echo "reconcile_refused" > "$RUNNER_TEMP/GAP-reconcile.txt"' in reconcile["run"]
+        # R6R2 (F-02): refusal detail (unknown/ambiguous identities, not-run
+        # examples) stays private; the console prints the fixed category only
+        assert '--diagnostics-file "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.diag.json"' in reconcile["run"]
+        assert '> "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.log" 2>&1' in reconcile["run"]
+        assert "grep -oE 'REFUSED: [A-Z_]+'" in reconcile["run"]
 
     def test_five_legs_budget_and_isolation(self):
         strategy = self.test_job["strategy"]
@@ -395,10 +409,26 @@ class TestDeployWorkflowContract:
             "collect-${{ matrix.shard }}.sanitized.txt",
             "shard-plan-${{ matrix.shard }}.sanitized.json",
             "supply-plan-${{ matrix.shard }}.sanitized.json",
+        ):
+            assert f'"{required}" required' in sanitize["run"], required
+        # R6R2 (F-01): the designated logs are required AND allow-empty — an
+        # existing zero-byte log is valid quiet evidence, a missing one is GAP
+        for log_required in (
             "pytest-stdout-${{ matrix.shard }}.sanitized.txt",
             "pytest-stderr-${{ matrix.shard }}.sanitized.txt",
         ):
-            assert f'"{required}" required' in sanitize["run"], required
+            assert f'"{log_required}" required allow-empty' in sanitize["run"], log_required
+        # R6R2 (F-02): tool diagnostic logs publish ONLY through the sanitizer
+        for optional_log in (
+            "gate-verify-files-${{ matrix.shard }}.sanitized.log",
+            "gate-verify-nodes-${{ matrix.shard }}.sanitized.log",
+            "collect-${{ matrix.shard }}.sanitized.err",
+            "reconcile-${{ matrix.shard }}.sanitized.log",
+            "gate-verify-files-${{ matrix.shard }}.sanitized.diag.json",
+            "gate-verify-nodes-${{ matrix.shard }}.sanitized.diag.json",
+            "reconcile-${{ matrix.shard }}.sanitized.diag.json",
+        ):
+            assert optional_log in sanitize["run"], optional_log
 
         upload = next(s for s in self.steps if "Upload sanitized shard evidence" in s.get("name", ""))
         assert upload["if"] == "always()"
@@ -1252,13 +1282,19 @@ class TestR6ShardPlanControls:
         argfile.write_text(
             "tests/test_platform_p17dc_backup_models.py\n", encoding="utf-8", newline="\n"
         )
+        diag = tmp_path / "diag.json"
         proc = self._run(
             "shard-verify", "--plan", plan_path, "--shard", "runtime-b",
             "--argfile", argfile, "--expected-files", "2",
+            "--diagnostics-file", diag,
         )
         assert proc.returncode == 3
         assert "SHARD_MEMBERSHIP_MISMATCH" in proc.stderr
-        assert "tests/test_z9_zero_nodes.py" in proc.stderr
+        assert "1 missing / 0 extra" in proc.stderr
+        # R6R2 (F-02): identities live in the private diagnostics file only
+        assert "tests/test_z9_zero_nodes.py" not in proc.stderr
+        details = json.loads(diag.read_text(encoding="utf-8"))
+        assert "tests/test_z9_zero_nodes.py" in details["details"]["missing"]
 
     def test_shard_verify_red_on_duplicate_member(self, tmp_path):
         plan_path = self._write_plan(tmp_path, self.RUNTIME_FILES)
@@ -1282,13 +1318,17 @@ class TestR6ShardPlanControls:
         argfile.write_text(
             "tests/test_topo_a.py\ntests/test_task_a.py\n", encoding="utf-8", newline="\n"
         )
+        diag = tmp_path / "diag-topo.json"
         proc = self._run(
             "shard-verify", "--plan", plan_path, "--shard", "topology",
             "--argfile", argfile, "--expected-files", "1",
+            "--diagnostics-file", diag,
         )
         assert proc.returncode == 3
         assert "SHARD_MEMBERSHIP_MISMATCH" in proc.stderr
-        assert "tests/test_task_a.py" in proc.stderr
+        assert "tests/test_task_a.py" not in proc.stderr
+        details = json.loads(diag.read_text(encoding="utf-8"))
+        assert "tests/test_task_a.py" in details["details"]["extra"]
 
     def test_shard_verify_red_on_node_count_drift(self, tmp_path):
         plan_path = self._write_plan(tmp_path, self.RUNTIME_FILES)
@@ -1407,7 +1447,7 @@ class TestR6SanitizeControls:
 
     def _run_sanitize(self, tmp_path, content, *, store=None, extra_env=None,
                       tool=None, store_exists=True, input_name="junit.xml",
-                      require_keys=None):
+                      require_keys=None, allow_empty=False):
         src = tmp_path / input_name
         src.write_text(content, encoding="utf-8", newline="\n")
         out = tmp_path / (input_name + ".sanitized")
@@ -1429,6 +1469,8 @@ class TestR6SanitizeControls:
             argv += ["--require-keys", require_keys]
         if extra_env:
             argv += ["--extra-env", ",".join(extra_env)]
+        if allow_empty:
+            argv += ["--allow-empty"]
         env = dict(os.environ)
         for name, value in (extra_env or {}).items():
             if value is not None:
@@ -1439,6 +1481,46 @@ class TestR6SanitizeControls:
         )
         return proc, out, receipt
 
+    def test_existing_empty_log_is_valid_quiet_evidence(self, tmp_path):
+        """F-01 (R6R2): an EXISTING zero-byte log is valid evidence of a
+        quiet run — acknowledged with an honest empty receipt, no fake
+        content synthesized."""
+        proc, out, receipt = self._run_sanitize(
+            tmp_path, "", input_name="pytest-stderr.txt", allow_empty=True
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert out.read_bytes() == b""
+        data = json.loads(receipt.read_text(encoding="utf-8"))
+        assert data["empty_log"] is True
+        assert data["input_bytes"] == 0
+        assert data["derived_output_bytes"] == 0
+        assert data["replacements"] == {}
+        import hashlib
+        assert data["input_sha256"] == hashlib.sha256(b"").hexdigest()
+
+    def test_empty_log_without_allow_empty_still_refuses(self, tmp_path):
+        proc, out, _ = self._run_sanitize(
+            tmp_path, "", input_name="pytest-stderr.txt"
+        )
+        assert proc.returncode == 4
+        assert "INPUT_EMPTY" in proc.stderr
+        assert not out.exists()
+
+    def test_empty_junit_with_allow_empty_still_refuses(self, tmp_path):
+        proc, out, _ = self._run_sanitize(
+            tmp_path, "", input_name="junit.xml", allow_empty=True
+        )
+        assert proc.returncode == 4
+        assert "ALLOW_EMPTY_FOR_XML" in proc.stderr
+        assert not out.exists()
+
+    def test_empty_collect_without_allow_empty_still_refuses(self, tmp_path):
+        proc, out, _ = self._run_sanitize(
+            tmp_path, "", input_name="collect.txt"
+        )
+        assert proc.returncode == 4
+        assert "INPUT_EMPTY" in proc.stderr
+        assert not out.exists()
     @staticmethod
     def _registry_value():
         import importlib.util
@@ -1706,11 +1788,14 @@ class TestR6SanitizeControls:
 
 
 class TestR6R1ReconcileJunitControls:
-    """F-04 (R6R1): post-run closure discriminations — the real tool maps
-    junit entries to the frozen collect via the declared rootdir/classname
-    rule and refuses missing/truncated/unknown/contradictory/incorrectly
-    green evidence; call+teardown double reporting never inflates unique;
-    non-green rc publishes the not-run set instead of faking completeness."""
+    """F-03 (R6R2): state/phase closure — a green rc with failure/error
+    phases refuses; unproven duplicate testcase entries refuse; the one
+    native duplicate shape (call failure + teardown error, pytest 8.4.2
+    cnt_double_fail_tests semantics: suite tests = phases - double-fails)
+    reconciles as ONE red unique with both phases recorded; raw phase
+    statistics and suite declarations are checked independently of the
+    unique accounting; not-run disclosure on non-green rc; identity-bearing
+    refusal detail stays in the private diagnostics file (F-02)."""
 
     COLLECT = [
         "tests/test_file_a.py::TestCls::test_one",
@@ -1741,69 +1826,117 @@ class TestR6R1ReconcileJunitControls:
         )
         receipt = tmp_path / "reconcile.json"
         not_run = tmp_path / "not-run.txt"
+        diag = tmp_path / "diag.json"
         proc = subprocess.run(
             [sys.executable, str(EVIDENCE_TOOL), "reconcile-junit",
              "--junit", junit, "--collect", collect_file, "--shard", "runtime-a",
-             "--pytest-rc", rc, "--receipt", receipt, "--not-run-file", not_run],
+             "--pytest-rc", rc, "--receipt", receipt, "--not-run-file", not_run,
+             "--diagnostics-file", diag],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             stdin=subprocess.DEVNULL,
         )
-        return proc, receipt, not_run
+        return proc, receipt, not_run, diag
 
     def test_green_run_maps_every_node_and_outcome(self, tmp_path):
+        """True green fixture: 0 failures / 0 errors, passed + xfail + skip
+        raw statuses kept and listed separately (never business passes)."""
         junit = self._junit_doc(
             [
                 ("test_one", "tests.test_file_a.TestCls", ""),
                 ("test_two[param x]", "tests.test_file_a.TestCls",
-                 '<failure message="boom" type="AssertionError"/>'),
-                ("test_three", "tests.test_file_b",
                  '<skipped type="pytest.xfail" message="xfail"/>'),
+                ("test_three", "tests.test_file_b",
+                 '<skipped type="pytest.skip" message="skip"/>'),
             ],
-            {"tests": 3, "failures": 1, "errors": 0, "skipped": 1},
+            {"tests": 3, "failures": 0, "errors": 0, "skipped": 2},
         )
-        proc, receipt, not_run = self._reconcile(tmp_path, junit, rc="0")
+        proc, receipt, not_run, _ = self._reconcile(tmp_path, junit, rc="0")
         assert proc.returncode == 0, proc.stderr
         data = json.loads(receipt.read_text(encoding="utf-8"))
         assert data["unique_reported"] == 3
         assert data["junit_entries"] == 3
+        assert data["phase_outcome_counts"] == {"passed": 1, "xfail": 1, "skipped": 1}
+        assert data["unique_outcome_counts"] == {"passed": 1, "xfail": 1, "skipped": 1}
         assert data["not_run"] == []
-        assert data["outcome_counts"] == {"passed": 1, "failure": 1, "xfail": 1}
+        assert data["double_phase_nodes"] == []
         assert not_run.read_text(encoding="utf-8").startswith("# not_run: none")
 
-    def test_duplicate_reported_entries_do_not_inflate_unique(self, tmp_path):
+    def test_green_rc_with_failure_phase_refuses(self, tmp_path):
         junit = self._junit_doc(
             [
-                ("test_one", "tests.test_file_a.TestCls", ""),
                 ("test_one", "tests.test_file_a.TestCls",
-                 '<failure message="teardown-phase failure" type="E"/>'),
+                 '<failure message="boom" type="AssertionError"/>'),
                 ("test_two[param x]", "tests.test_file_a.TestCls", ""),
                 ("test_three", "tests.test_file_b", ""),
             ],
-            {"tests": 4, "failures": 1},
+            {"tests": 3, "failures": 1},
         )
-        proc, receipt, _ = self._reconcile(tmp_path, junit, rc="0")
+        proc, receipt, _, _ = self._reconcile(tmp_path, junit, rc="0")
+        assert proc.returncode == 3
+        assert "GREEN_RC_WITH_RED_OUTCOMES" in proc.stderr
+        assert not receipt.exists(), "a contradiction must never publish a green receipt"
+
+    def test_green_rc_with_error_phase_refuses(self, tmp_path):
+        junit = self._junit_doc(
+            [
+                ("test_one", "tests.test_file_a.TestCls",
+                 '<error message="teardown" type="Exception"/>'),
+                ("test_two[param x]", "tests.test_file_a.TestCls", ""),
+                ("test_three", "tests.test_file_b", ""),
+            ],
+            {"tests": 3, "errors": 1},
+        )
+        proc, _, _, _ = self._reconcile(tmp_path, junit, rc="0")
+        assert proc.returncode == 3
+        assert "GREEN_RC_WITH_RED_OUTCOMES" in proc.stderr
+
+    def test_unproven_duplicate_passed_refuses(self, tmp_path):
+        junit = self._junit_doc(
+            [
+                ("test_one", "tests.test_file_a.TestCls", ""),
+                ("test_one", "tests.test_file_a.TestCls", ""),
+                ("test_two[param x]", "tests.test_file_a.TestCls", ""),
+                ("test_three", "tests.test_file_b", ""),
+            ],
+            {"tests": 4},
+        )
+        proc, receipt, _, _ = self._reconcile(tmp_path, junit, rc="0")
+        assert proc.returncode == 3
+        assert "DUPLICATE_JUNIT_NODEIDS_UNPROVEN" in proc.stderr
+        assert not receipt.exists()
+
+    def test_legitimate_double_phase_failure_then_error_reconciles_red(self, tmp_path):
+        """The one native duplicate shape (pytest 8.4.2 junitxml: a failed
+        call followed by an errored teardown re-opens the testcase; suite
+        tests subtracts cnt_double_fail_tests): 4 entries / 3 unique / raw
+        1F+1E, non-zero rc — ONE red unique, both phases recorded, and the
+        leg stays red through the recorded rc."""
+        junit = self._junit_doc(
+            [
+                ("test_one", "tests.test_file_a.TestCls",
+                 '<failure message="call failed" type="AssertionError"/>'),
+                ("test_one", "tests.test_file_a.TestCls",
+                 '<error message="teardown errored" type="Exception"/>'),
+                ("test_two[param x]", "tests.test_file_a.TestCls", ""),
+                ("test_three", "tests.test_file_b", ""),
+            ],
+            {"tests": 3, "failures": 1, "errors": 1},
+        )
+        proc, receipt, not_run, _ = self._reconcile(tmp_path, junit, rc="1")
         assert proc.returncode == 0, proc.stderr
         data = json.loads(receipt.read_text(encoding="utf-8"))
         assert data["junit_entries"] == 4
         assert data["unique_reported"] == 3
-        assert data["duplicate_reported_entries"] == [
-            "tests/test_file_a.py::TestCls::test_one"
-        ]
-        assert data["outcome_counts"]["failure"] == 1
-
-    def test_green_rc_with_missing_node_refuses_incomplete_green(self, tmp_path):
-        junit = self._junit_doc(
-            [("test_one", "tests.test_file_a.TestCls", "")], {"tests": 1}
-        )
-        proc, receipt, _ = self._reconcile(tmp_path, junit, rc="0")
-        assert proc.returncode == 3
-        assert "INCOMPLETE_GREEN" in proc.stderr
+        assert data["phase_outcome_counts"] == {"failure": 1, "error": 1, "passed": 2}
+        assert data["unique_outcome_counts"] == {"error": 1, "passed": 2}
+        assert data["double_phase_nodes"] == ["tests/test_file_a.py::TestCls::test_one"]
+        assert data["pytest_rc"] == 1, "reconcile never converts a red rc into a green leg"
 
     def test_nonzero_rc_publishes_not_run_set(self, tmp_path):
         junit = self._junit_doc(
             [("test_one", "tests.test_file_a.TestCls", "")], {"tests": 1}
         )
-        proc, receipt, not_run = self._reconcile(tmp_path, junit, rc="124")
+        proc, receipt, not_run, _ = self._reconcile(tmp_path, junit, rc="124")
         assert proc.returncode == 0, proc.stderr
         data = json.loads(receipt.read_text(encoding="utf-8"))
         assert data["not_run"] == [
@@ -1830,23 +1963,34 @@ class TestR6R1ReconcileJunitControls:
         junit = self._junit_doc(
             [("test_one", "tests.test_file_a.TestCls", "")], {"tests": 1}
         )[:40]
-        proc, _, _ = self._reconcile(tmp_path, junit, rc="0")
+        proc, _, _, _ = self._reconcile(tmp_path, junit, rc="0")
         assert proc.returncode == 3
         assert "JUNIT_NOT_WELL_FORMED" in proc.stderr
 
-    def test_unknown_junit_nodeid_refuses(self, tmp_path):
+    def test_unknown_junit_refusal_keeps_identity_out_of_stderr(self, tmp_path):
+        """F-02: an unknown testcase identity carrying a runtime-synthesized
+        unregistered driver DSN refuses with a COUNT-ONLY stderr; the
+        identity detail lives exclusively in the private diagnostics file."""
+        foreign_pw = "unk-" + secrets.token_hex(10)
+        synthetic_name = f"test_stranger[postgresql+asyncpg://u:{foreign_pw}@leak.example.com:5432/x]"
         junit = self._junit_doc(
             [
+                (synthetic_name, "tests.test_file_a.TestCls", ""),
                 ("test_one", "tests.test_file_a.TestCls", ""),
-                ("test_stranger", "tests.test_file_a.TestCls", ""),
                 ("test_two[param x]", "tests.test_file_a.TestCls", ""),
                 ("test_three", "tests.test_file_b", ""),
             ],
             {"tests": 4},
         )
-        proc, _, _ = self._reconcile(tmp_path, junit, rc="0")
+        proc, _, _, diag = self._reconcile(tmp_path, junit, rc="0")
         assert proc.returncode == 3
         assert "UNKNOWN_JUNIT_NODEIDS" in proc.stderr
+        assert foreign_pw not in proc.stderr
+        assert "leak.example.com" not in proc.stderr
+        assert synthetic_name not in proc.stderr
+        diagnostics = json.loads(diag.read_text(encoding="utf-8"))
+        assert diagnostics["category"] == "UNKNOWN_JUNIT_NODEIDS"
+        assert any(foreign_pw in entry for entry in diagnostics["details"]["unknown"])
 
     def test_suite_counter_contradiction_refuses(self, tmp_path):
         junit = self._junit_doc(
@@ -1858,9 +2002,48 @@ class TestR6R1ReconcileJunitControls:
             ],
             {"tests": 3, "failures": 0, "errors": 0, "skipped": 0},
         )
-        proc, _, _ = self._reconcile(tmp_path, junit, rc="1")
+        proc, _, _, _ = self._reconcile(tmp_path, junit, rc="1")
         assert proc.returncode == 3
         assert "SUITE_COUNTER_CONTRADICTION" in proc.stderr
+
+    def test_mutant_restoring_rc0_ignores_red_outcomes_is_caught(self, tmp_path):
+        """Discriminating mutant: remove the GREEN_RC_WITH_RED_OUTCOMES gate
+        (the pre-fix behavior). The mutant ACCEPTS an rc0+failure junit,
+        which breaks the rc0+F refusal control — proving that control has
+        teeth rather than passing vacuously."""
+        source = EVIDENCE_TOOL.read_text(encoding="utf-8")
+        gate = (
+            'if pytest_rc == 0 and (counted["failures"] or counted["errors"]):'
+        )
+        assert gate in source
+        mutant = tmp_path / "prepare_test_evidence_mutant.py"
+        mutant.write_text(
+            # single-point mutation: the gate condition never fires
+            source.replace(gate, "if False and pytest_rc == 0 and (counted" + chr(91) + '"failures"' + chr(93) + " or counted" + chr(91) + '"errors"' + chr(93) + "):"),
+            encoding="utf-8", newline="\n",
+        )
+        junit = self._junit_doc(
+            [
+                ("test_one", "tests.test_file_a.TestCls",
+                 '<failure message="boom" type="E"/>'),
+                ("test_two[param x]", "tests.test_file_a.TestCls", ""),
+                ("test_three", "tests.test_file_b", ""),
+            ],
+            {"tests": 3, "failures": 1},
+        )
+        junit_file = tmp_path / "junit-mutant.xml"
+        junit_file.write_text(junit, encoding="utf-8", newline="\n")
+        collect_file = tmp_path / "collect.txt"
+        collect_file.write_text("\n".join(self.COLLECT) + "\n", encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(mutant), "reconcile-junit",
+             "--junit", junit_file, "--collect", collect_file, "--shard", "runtime-a",
+             "--pytest-rc", "0", "--receipt", tmp_path / "mr.json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            stdin=subprocess.DEVNULL,
+        )
+        assert proc.returncode == 0, "the mutant must accept rc0+failure (pre-fix behavior)"
+        assert (tmp_path / "mr.json").exists(), "the mutant publishes the fake green receipt"
 
 
 FAKE_TIMEOUT_PASSTHROUGH = r'''#!/usr/bin/env bash
@@ -1899,8 +2082,17 @@ FAKE_PYTEST_EMITTER = r'''import os
 import sys
 import base64
 import secrets
-# emits REAL-format sensitive shapes into stdout (captured to private
-# staging by the workflow fragment) and exits with a controlled rc
+# offline stand-in pytest with two modes:
+#   default: emits REAL-format sensitive shapes into stdout (captured to
+#            private staging by the workflow fragment) and exits with a
+#            controlled rc, writing the junitxml it is asked for
+#   FAKE_PYTEST_MODE=collect: emits a collect list (FAKE_COLLECT_LINE
+#            repeated FAKE_COLLECT_REPEAT times) for gate-fragment controls
+if os.environ.get("FAKE_PYTEST_MODE") == "collect":
+    line = os.environ.get("FAKE_COLLECT_LINE", "tests/test_file_a.py::test_one")
+    for _ in range(int(os.environ.get("FAKE_COLLECT_REPEAT", "1"))):
+        print(line)
+    sys.exit(0)
 tok = os.environ.get("FAKE_PYTEST_SECRET", "")
 verifier = (
     "SCRAM-SHA-256$4096:"
@@ -2072,7 +2264,10 @@ class TestR6R1FragmentControls:
         (rt / "pytest-stdout.txt").write_text(
             f"log line postgresql://u:{admin_pw}@h/db\n", encoding="utf-8", newline="\n"
         )
-        (rt / "pytest-stderr.txt").write_text("quiet\n", encoding="utf-8", newline="\n")
+        # F-01 (R6R2): a NORMAL healthy run can produce a truly empty
+        # stderr — the shell redirection creates the file; pytest succeeds
+        # and writes nothing to it. Zero bytes, existing: valid evidence.
+        (rt / "pytest-stderr.txt").write_bytes(b"")
         return (
             '<?xml version="1.0" encoding="utf-8"?>'
             '<testsuites><testsuite name="s" tests="1" failures="0" errors="0" skipped="0">'
@@ -2123,39 +2318,57 @@ class TestR6R1FragmentControls:
         assert "pytest-stdout-runtime-a.sanitized.txt" in names
         sanitized_log = (pub / "pytest-stdout-runtime-a.sanitized.txt").read_text(encoding="utf-8")
         assert admin_pw not in sanitized_log
+        # the REAL EMPTY stderr publishes an honest empty receipt (F-01)
+        stderr_receipt = json.loads(
+            (pub / "pytest-stderr-runtime-a.sanitized.txt.receipt.json").read_text(encoding="utf-8")
+        )
+        assert stderr_receipt["empty_log"] is True
+        assert stderr_receipt["input_bytes"] == 0
+        import hashlib
+        assert stderr_receipt["derived_output_sha256"] == hashlib.sha256(b"").hexdigest()
+        assert (pub / "pytest-stderr-runtime-a.sanitized.txt").read_bytes() == b""
         assert list(rt.glob("GAP-*.txt")) == [], "no evidence gaps on a complete publication scope"
         assert store.is_file(), "the store survives for the cleanup step"
 
-    def test_store_missing_refuses_entire_outlet_with_valueless_receipt(self, tmp_path):
+    def test_real_empty_stderr_green_run_passes_the_final_gate(self, tmp_path):
+        """F-01 execution-level positive: healthy rc=0 + complete junit + a
+        REAL zero-byte stderr publishes completely and the final gate stays
+        green; a missing stderr turns the same run red."""
         rt = tmp_path
         junit_text = self._seed_publication_inputs(rt, "unused-admin-pw-value")
-        (tmp_path / "c91-task-credentials.env").unlink(missing_ok=True)
-        proc, _ = self._run_publication_scope(tmp_path, rt, junit_text)
-        assert proc.returncode == 0, "the step itself stays green; the GAP turns the job red"
-        assert (rt / "GAP-publication.txt").is_file()
-        pub = rt / "publish"
-        refusal = json.loads((pub / "publication-refusal.json").read_text(encoding="utf-8"))
-        assert refusal == {
-            "tool": "prepare_test_evidence.py refusal-receipt",
-            "refused": True,
-            "reason": "secrets_store_unavailable",
-            "values_included": False,
-            "payload_published": False,
-        }
-        payloads = [p for p in pub.iterdir()
-                    if ".sanitized." in p.name and not p.name.startswith("GAP-")]
-        assert not payloads, (
-            "no payload may be published from an unavailable store"
-        )
-
-    def test_incomplete_store_with_admin_env_refuses_every_payload(self, tmp_path):
-        rt = tmp_path
-        junit_text = self._seed_publication_inputs(rt, "unused-admin-pw-value")
-        # an admin value IS present in the scope, but the store lacks four
-        # required keys — admin-only must not rescue the outlet
         (rt / "c91-task-credentials.env").write_text(
-            "APP_PASSWORD=lonely\n", encoding="utf-8", newline="\n"
+            "".join(f"{k}={secrets.token_hex(16)}\n" for k in
+                    ("MIGRATE_PASSWORD", "APP_PASSWORD", "OPERATOR_PASSWORD",
+                     "REPORTING_PASSWORD", "SECRET_KEY")),
+            encoding="utf-8", newline="\n",
         )
+        (rt / "pytest-rc.txt").write_text("0", encoding="utf-8", newline="\n")
+        gh_admin = tmp_path / "github-env"
+        gh_admin.write_text(
+            "CI_PG_ADMIN_PASSWORD=" + secrets.token_hex(16) + "\n",
+            encoding="utf-8", newline="\n",
+        )
+        proc, _ = self._run_publication_scope(tmp_path, rt, junit_text, gh_admin)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert not list(rt.glob("GAP-*.txt"))
+        # execute the REAL final-gate script against THIS scope's staging
+        gate_script = TestR6OutcomePropagationControls()._final_gate_script()
+        gate_proc = self._run_script(
+            gate_script, {**os.environ, "RUNNER_TEMP": self._posix(rt)}, str(tmp_path)
+        )
+        assert gate_proc.returncode == 0, gate_proc.stdout
+
+    def test_missing_stderr_is_a_gap_and_turns_the_gate_red(self, tmp_path):
+        rt = tmp_path
+        junit_text = self._seed_publication_inputs(rt, "unused-admin-pw-value")
+        (rt / "c91-task-credentials.env").write_text(
+            "".join(f"{k}={secrets.token_hex(16)}\n" for k in
+                    ("MIGRATE_PASSWORD", "APP_PASSWORD", "OPERATOR_PASSWORD",
+                     "REPORTING_PASSWORD", "SECRET_KEY")),
+            encoding="utf-8", newline="\n",
+        )
+        (rt / "pytest-rc.txt").write_text("0", encoding="utf-8", newline="\n")
+        (rt / "pytest-stderr.txt").unlink()
         gh_admin = tmp_path / "github-env"
         gh_admin.write_text(
             "CI_PG_ADMIN_PASSWORD=" + secrets.token_hex(16) + "\n",
@@ -2163,12 +2376,146 @@ class TestR6R1FragmentControls:
         )
         proc, _ = self._run_publication_scope(tmp_path, rt, junit_text, gh_admin)
         assert proc.returncode == 0
+        assert (rt / "GAP-pytest-stderr-runtime-a.sanitized.txt.txt").is_file()
+        # the REAL final-gate script over THIS scope's staging turns red
+        gate_script = TestR6OutcomePropagationControls()._final_gate_script()
+        gate_proc = self._run_script(
+            gate_script, {**os.environ, "RUNNER_TEMP": self._posix(rt)}, str(tmp_path)
+        )
+        assert gate_proc.returncode == 1, gate_proc.stdout
+
+    def test_empty_junit_is_refused_not_fake_completeness(self, tmp_path):
+        rt = tmp_path
+        junit_text = self._seed_publication_inputs(rt, "unused-admin-pw-value")
+        (rt / "c91-task-credentials.env").write_text(
+            "".join(f"{k}={secrets.token_hex(16)}\n" for k in
+                    ("MIGRATE_PASSWORD", "APP_PASSWORD", "OPERATOR_PASSWORD",
+                     "REPORTING_PASSWORD", "SECRET_KEY")),
+            encoding="utf-8", newline="\n",
+        )
+        (rt / "pytest-rc.txt").write_text("0", encoding="utf-8", newline="\n")
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        sanitize = self._step(doc, "Sanitize shard evidence")
+        env = dict(os.environ)
+        env["RUNNER_TEMP"] = self._posix(rt)
+        env.update(self._job_env(tmp_path))
+        env["CI_PG_ADMIN_PASSWORD"] = secrets.token_hex(16)
+        junit_in_repo = REPO_ROOT / "junit-runtime-a.xml"
+        try:
+            junit_in_repo.write_bytes(b"")
+            script = sanitize["run"].replace("${{ matrix.shard }}", "runtime-a")
+            proc = self._run_script(script, env, self._posix(REPO_ROOT))
+        finally:
+            junit_in_repo.unlink(missing_ok=True)
+        assert proc.returncode == 0
         assert (rt / "GAP-junit-runtime-a.sanitized.xml.txt").is_file()
-        assert "REFUSED" in proc.stdout
         pub = rt / "publish"
         payloads = [p for p in pub.iterdir()
                     if ".sanitized." in p.name and not p.name.startswith("GAP-")]
-        assert not payloads
+        assert "junit-runtime-a.sanitized.xml" not in [p.name for p in payloads]
+
+    def test_reconcile_refusal_console_stays_clean_identity_in_private_log(self, tmp_path):
+        """F-02: the REAL reconcile fragment with an unknown junit identity
+        carrying a runtime-synthesized unregistered driver DSN — the console
+        sees only the fixed category; the identity lands in the private log
+        and diagnostics file; a GAP is recorded."""
+        rt = tmp_path
+        rt.mkdir(exist_ok=True)
+        foreign_pw = "rc-" + secrets.token_hex(10)
+        synthetic_name = f"test_stranger[postgresql+asyncpg://u:{foreign_pw}@leak.example.com:5432/x]"
+        junit_text = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<testsuites><testsuite name="s" tests="4" failures="0" errors="0" skipped="0">'
+            f'<testcase name="{synthetic_name}" classname="tests.test_file_a.TestCls" />'
+            '<testcase name="test_one" classname="tests.test_file_a.TestCls" />'
+            '<testcase name="test_two[param x]" classname="tests.test_file_a.TestCls" />'
+            '<testcase name="test_three" classname="tests.test_file_b" />'
+            "</testsuite></testsuites>"
+        )
+        (rt / "collect-runtime-a.txt").write_text(
+            "tests/test_file_a.py::TestCls::test_one\n"
+            "tests/test_file_a.py::TestCls::test_two[param x]\n"
+            "tests/test_file_b.py::test_three\n",
+            encoding="utf-8", newline="\n",
+        )
+        (rt / "pytest-rc.txt").write_text("1", encoding="utf-8", newline="\n")
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        reconcile = self._step(doc, "Reconcile junit")
+        env = dict(os.environ)
+        env["RUNNER_TEMP"] = self._posix(rt)
+        junit_in_repo = REPO_ROOT / "junit-runtime-a.xml"
+        try:
+            junit_in_repo.write_text(junit_text, encoding="utf-8", newline="\n")
+            script = reconcile["run"].replace("${{ matrix.shard }}", "runtime-a")
+            proc = self._run_script(script, env, self._posix(REPO_ROOT))
+        finally:
+            junit_in_repo.unlink(missing_ok=True)
+        assert proc.returncode == 0, "the fragment tolerates the refusal with a GAP"
+        console = proc.stdout + proc.stderr
+        assert "reconcile REFUSED: UNKNOWN_JUNIT_NODEIDS" in console
+        for marker in (foreign_pw, "leak.example.com", synthetic_name):
+            assert marker not in console, "identity leaked to the Actions console"
+        # the private log carries the raw (counts-only) tool stderr; the
+        # identity detail lives exclusively in the private diagnostics file
+        private_log = (rt / "reconcile-runtime-a.log").read_text(encoding="utf-8")
+        assert "UNKNOWN_JUNIT_NODEIDS" in private_log
+        diagnostics = json.loads(
+            (rt / "reconcile-runtime-a.diag.json").read_text(encoding="utf-8")
+        )
+        assert diagnostics["category"] == "UNKNOWN_JUNIT_NODEIDS"
+        assert any(foreign_pw in entry for entry in diagnostics["details"]["unknown"])
+        assert (rt / "GAP-reconcile.txt").is_file()
+
+    def test_console_direct_mutant_is_caught_by_the_control(self, tmp_path):
+        """F-02 discriminating mutant: revert the reconcile fragment to a
+        DIRECT console call (redirection removed) — the same input then
+        reaches the console, which the control detects."""
+        rt = tmp_path
+        rt.mkdir(exist_ok=True)
+        foreign_pw = "mt-" + secrets.token_hex(10)
+        synthetic_name = f"test_stranger[postgresql+asyncpg://u:{foreign_pw}@leak.example.com:5432/x]"
+        junit_text = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<testsuites><testsuite name="s" tests="4" failures="0" errors="0" skipped="0">'
+            f'<testcase name="{synthetic_name}" classname="tests.test_file_a.TestCls" />'
+            '<testcase name="test_one" classname="tests.test_file_a.TestCls" />'
+            '<testcase name="test_two[param x]" classname="tests.test_file_a.TestCls" />'
+            '<testcase name="test_three" classname="tests.test_file_b" />'
+            "</testsuite></testsuites>"
+        )
+        (rt / "collect-runtime-a.txt").write_text(
+            "tests/test_file_a.py::TestCls::test_one\n"
+            "tests/test_file_a.py::TestCls::test_two[param x]\n"
+            "tests/test_file_b.py::test_three\n",
+            encoding="utf-8", newline="\n",
+        )
+        (rt / "pytest-rc.txt").write_text("1", encoding="utf-8", newline="\n")
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        reconcile = self._step(doc, "Reconcile junit")
+        mutant_script = (
+            reconcile["run"]
+            .replace("${{ matrix.shard }}", "runtime-a")
+            .replace(' > "$RUNNER_TEMP/reconcile-runtime-a.log" 2>&1', "")
+        )
+        assert mutant_script != reconcile["run"].replace("${{ matrix.shard }}", "runtime-a")
+        env = dict(os.environ)
+        env["RUNNER_TEMP"] = self._posix(rt)
+        junit_in_repo = REPO_ROOT / "junit-runtime-a.xml"
+        try:
+            junit_in_repo.write_text(junit_text, encoding="utf-8", newline="\n")
+            proc = self._run_script(mutant_script, env, self._posix(REPO_ROOT))
+        finally:
+            junit_in_repo.unlink(missing_ok=True)
+        # the reverted fragment prints the tool's RAW stderr to the console —
+        # detectable as the "prepare_test_evidence:" prefix that the shipped
+        # redirection never allows into the console (today's tool stderr is
+        # counts-only; the prefix check catches the shape regression before
+        # any future message widening can re-leak identities)
+        console = proc.stdout + proc.stderr
+        assert "prepare_test_evidence: REFUSED:" in console, (
+            "the single-point console-direct mutant must be observable by this control"
+        )
+        assert (rt / "GAP-reconcile.txt").is_file()
 
     def test_body_fragment_keeps_console_clean_and_preserves_rc(self, tmp_path):
         bin_dir = self._bin_dir(tmp_path, timeout=True, poetry=True, docker=False)
@@ -2306,3 +2653,80 @@ class TestR6R1FragmentControls:
         rm2 = [p.read_text(encoding="utf-8").strip() for p in sorted(rec2.glob("docker-*.argv"))
                if p.read_text(encoding="utf-8").startswith("rm -f -v")]
         assert sorted(rm2) == ["rm -f -v own-a", "rm -f -v own-b"]
+
+
+    def test_gate_refusal_console_safety_duplicate_collect_nodeid(self, tmp_path):
+        """F-02 at the gate level: the REAL shard-gate fragment with a fake
+        collect that repeats a nodeid carrying a runtime-synthesized
+        unregistered driver DSN — shard-verify refuses
+        DUPLICATE_COLLECTED_NODEIDS, the console shows the fixed category
+        only, the identity stays in the private log/diagnostics, and the
+        step fails."""
+        bin_dir = self._bin_dir(tmp_path, timeout=True, poetry=True, docker=False)
+        fake_pytest = tmp_path / "fake_pytest.py"
+        fake_pytest.write_text(FAKE_PYTEST_EMITTER, encoding="utf-8", newline="\n")
+        rec = tmp_path / "records"
+        rec.mkdir()
+        rt = tmp_path / "rt"
+        rt.mkdir()
+        secret = secrets.token_hex(10)
+        duplicate_nodeid = (
+            "tests/test_file_a.py::TestParseDbUrl::test_failures_exact_and_neutral"
+            "[postgresql+asyncpg://u:" + secret + "@gate-leak.example.com:5432/db]"
+        )
+        (rt / "supply-plan.json").write_text(
+            json.dumps({"profiles": {
+                "runtime": {
+                    "files": [
+                        "tests/test_file_a.py",
+                        "tests/test_platform_p12_support_console.py",
+                        "tests/test_z9_gate.py",
+                    ],
+                    "count": 3,
+                },
+                "topology": {"files": [], "count": 0},
+                "invariants-jwt": {"files": [], "count": 0},
+                "task-managed-pg": {"files": [], "count": 0},
+            }}),
+            encoding="utf-8", newline="\n",
+        )
+        (rt / "profile-runtime-a.tests").write_text(
+            "tests/test_file_a.py\n"
+            "tests/test_platform_p12_support_console.py\n",
+            encoding="utf-8", newline="\n",
+        )
+        (rt / "c91-test-env.sh").write_text(
+            "export TEST_ADMIN_DATABASE_URL=''\n", encoding="utf-8", newline="\n"
+        )
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        gate = self._step(doc, "Shard gate")
+        script = (
+            gate["run"]
+            .replace("${{ matrix.shard }}", "runtime-a")
+            .replace("${{ matrix.expected-files }}", "2")
+            .replace("${{ matrix.expected-nodes }}", "2")
+        )
+        env = dict(os.environ)
+        env.update({
+            "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+            "RUNNER_TEMP": self._posix(rt),
+            "C91_FAKE_DIR": self._posix(rec),
+            "FAKE_PYTEST_SCRIPT": self._posix(fake_pytest),
+            "FAKE_PYTEST_MODE": "collect",
+            "FAKE_COLLECT_LINE": duplicate_nodeid,
+            "FAKE_COLLECT_REPEAT": "2",
+        })
+        proc = self._run_script(script, env, self._posix(REPO_ROOT))
+        assert proc.returncode == 1, "the duplicate-collect refusal must fail the gate"
+        console = proc.stdout + proc.stderr
+        assert "shard-verify (node gate) REFUSED: DUPLICATE_COLLECTED_NODEIDS" in console
+        for marker in (secret, "gate-leak.example.com"):
+            assert marker not in console, "identity leaked to the Actions console"
+        private_log = (rt / "gate-verify-nodes.log").read_text(encoding="utf-8")
+        assert "DUPLICATE_COLLECTED_NODEIDS" in private_log
+        assert secret not in private_log, "identity belongs in the diagnostics file only"
+        diagnostics = json.loads(
+            (rt / "gate-verify-nodes.diag.json").read_text(encoding="utf-8")
+        )
+        assert diagnostics["category"] == "DUPLICATE_COLLECTED_NODEIDS"
+        assert any(secret in nid for nid in diagnostics["details"]["duplicated_nodeids"])

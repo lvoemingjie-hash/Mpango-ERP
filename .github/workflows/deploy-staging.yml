@@ -138,7 +138,14 @@ jobs:
         if: steps.provision.outcome == 'success'
         run: |
           test -s "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests" || { echo "shard ${{ matrix.shard }} argfile missing/empty; refusing to fall back to full collection"; exit 1; }
-          python tools/ci/prepare_test_evidence.py shard-verify --plan "$RUNNER_TEMP/supply-plan.json" --shard "${{ matrix.shard }}" --argfile "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests" --expected-files "${{ matrix.expected-files }}"
+          # F-02 (R6R2): shard-verify refusals echo identities (nodeid/file
+          # examples) — raw stdout/stderr goes to private runner staging; the
+          # console sees only the fixed refusal category and the step fails.
+          if ! python tools/ci/prepare_test_evidence.py shard-verify --plan "$RUNNER_TEMP/supply-plan.json" --shard "${{ matrix.shard }}" --argfile "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests" --expected-files "${{ matrix.expected-files }}" --diagnostics-file "$RUNNER_TEMP/gate-verify-files.diag.json" > "$RUNNER_TEMP/gate-verify-files.log" 2>&1; then
+            echo "shard-verify (file gate) REFUSED: $(grep -oE 'REFUSED: [A-Z_]+' "$RUNNER_TEMP/gate-verify-files.log" | head -1 | cut -d' ' -f2 || echo category-unavailable)"
+            exit 1
+          fi
+          echo "shard-verify (file gate): membership exact"
           cd backend
           set -a; . "$RUNNER_TEMP/c91-test-env.sh"; set +a
           case "${{ matrix.shard }}" in
@@ -148,9 +155,16 @@ jobs:
           case "${{ matrix.shard }}" in
             task-managed-pg) export C91_R3_RESOURCE_ROOT="$RUNNER_TEMP/c91-resource-root"; mkdir -p "$C91_R3_RESOURCE_ROOT"; chmod 700 "$C91_R3_RESOURCE_ROOT" ;;
           esac
-          poetry run pytest --collect-only -q $(xargs -a "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests") > "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt"
+          if ! poetry run pytest --collect-only -q $(xargs -a "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests") > "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" 2> "$RUNNER_TEMP/collect-${{ matrix.shard }}.err"; then
+            echo "collect-only FAILED (raw output in private runner staging)"
+            exit 1
+          fi
           cd ..
-          python tools/ci/prepare_test_evidence.py shard-verify --plan "$RUNNER_TEMP/supply-plan.json" --shard "${{ matrix.shard }}" --argfile "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests" --expected-files "${{ matrix.expected-files }}" --collect "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" --expected-nodes "${{ matrix.expected-nodes }}"
+          if ! python tools/ci/prepare_test_evidence.py shard-verify --plan "$RUNNER_TEMP/supply-plan.json" --shard "${{ matrix.shard }}" --argfile "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests" --expected-files "${{ matrix.expected-files }}" --collect "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" --expected-nodes "${{ matrix.expected-nodes }}" --diagnostics-file "$RUNNER_TEMP/gate-verify-nodes.diag.json" > "$RUNNER_TEMP/gate-verify-nodes.log" 2>&1; then
+            echo "shard-verify (node gate) REFUSED: $(grep -oE 'REFUSED: [A-Z_]+' "$RUNNER_TEMP/gate-verify-nodes.log" | head -1 | cut -d' ' -f2 || echo category-unavailable)"
+            exit 1
+          fi
+          echo "shard-verify (node gate): canonical nodeid set exact"
 
       - name: Run shard test body (single pytest invocation)
         if: steps.provision.outcome == 'success'
@@ -212,10 +226,13 @@ jobs:
         if: always()
         run: |
           RC_ARG="$(cat "$RUNNER_TEMP/pytest-rc.txt" 2>/dev/null || echo never_ran)"
-          if python tools/ci/prepare_test_evidence.py reconcile-junit --junit "junit-${{ matrix.shard }}.xml" --collect "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" --shard "${{ matrix.shard }}" --pytest-rc "$RC_ARG" --receipt "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.json" --not-run-file "$RUNNER_TEMP/not-run-${{ matrix.shard }}.nodeids.txt"; then
+          # F-02 (R6R2): refusal detail (unknown/ambiguous identities,
+          # not-run examples) stays in private staging; the console sees the
+          # fixed category only.
+          if python tools/ci/prepare_test_evidence.py reconcile-junit --junit "junit-${{ matrix.shard }}.xml" --collect "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" --shard "${{ matrix.shard }}" --pytest-rc "$RC_ARG" --receipt "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.json" --not-run-file "$RUNNER_TEMP/not-run-${{ matrix.shard }}.nodeids.txt" --diagnostics-file "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.diag.json" > "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.log" 2>&1; then
             echo "reconcile complete: receipt + not-run list recorded"
           else
-            echo "reconcile REFUSED (missing/truncated/contradictory junit, unknown nodeids, or an incomplete green) — recording an evidence gap"
+            echo "reconcile REFUSED: $(grep -oE 'REFUSED: [A-Z_]+' "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.log" | head -1 | cut -d' ' -f2 || echo category-unavailable) — recording an evidence gap"
             echo "reconcile_refused" > "$RUNNER_TEMP/GAP-reconcile.txt"
           fi
 
@@ -234,7 +251,7 @@ jobs:
             exit 0
           fi
           sanitize() {
-            src="$1"; dst="$2"; required="$3"
+            src="$1"; dst="$2"; required="$3"; allow_empty="${4:-no}"
             if [ ! -f "$src" ]; then
               if [ "$required" = "required" ]; then
                 echo "required input absent: $src — recording an evidence gap (absence is not completeness)"
@@ -244,7 +261,11 @@ jobs:
               fi
               return 0
             fi
-            if python tools/ci/prepare_test_evidence.py sanitize --input "$src" --output "$PUB/$dst" --receipt "$PUB/$dst.receipt.json" --secrets-file "$SECRETS" --extra-env CI_PG_ADMIN_PASSWORD; then
+            EXTRA_ARGS=""
+            if [ "$allow_empty" = "allow-empty" ]; then
+              EXTRA_ARGS="--allow-empty"
+            fi
+            if python tools/ci/prepare_test_evidence.py sanitize --input "$src" --output "$PUB/$dst" --receipt "$PUB/$dst.receipt.json" --secrets-file "$SECRETS" --extra-env CI_PG_ADMIN_PASSWORD $EXTRA_ARGS; then
               echo "sanitized: $dst"
             else
               echo "sanitize REFUSED for $src — recording an evidence gap; the raw file is NOT uploaded"
@@ -255,11 +276,25 @@ jobs:
           sanitize "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" "collect-${{ matrix.shard }}.sanitized.txt" required
           sanitize "$RUNNER_TEMP/shard-plan.receipt.json" "shard-plan-${{ matrix.shard }}.sanitized.json" required
           sanitize "$RUNNER_TEMP/supply-plan.json" "supply-plan-${{ matrix.shard }}.sanitized.json" required
-          sanitize "$RUNNER_TEMP/pytest-stdout.txt" "pytest-stdout-${{ matrix.shard }}.sanitized.txt" required
-          sanitize "$RUNNER_TEMP/pytest-stderr.txt" "pytest-stderr-${{ matrix.shard }}.sanitized.txt" required
+          # F-01 (R6R2): shell redirection creates these files even on a
+          # quiet run — an EXISTING zero-byte log is valid evidence (the
+          # sanitizer acknowledges it with an honest empty receipt); a
+          # MISSING file above is still a required-input GAP.
+          sanitize "$RUNNER_TEMP/pytest-stdout.txt" "pytest-stdout-${{ matrix.shard }}.sanitized.txt" required allow-empty
+          sanitize "$RUNNER_TEMP/pytest-stderr.txt" "pytest-stderr-${{ matrix.shard }}.sanitized.txt" required allow-empty
           sanitize "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.json" "reconcile-${{ matrix.shard }}.sanitized.json" optional
           sanitize "$RUNNER_TEMP/not-run-${{ matrix.shard }}.nodeids.txt" "not-run-${{ matrix.shard }}.sanitized.nodeids.txt" optional
           sanitize "$RUNNER_TEMP/connections-${{ matrix.shard }}.csv" "connections-${{ matrix.shard }}.sanitized.csv" optional
+          # F-02 (R6R2): the tool diagnostic logs (gate/reconcile raw output
+          # and identity-bearing diagnostics) are published ONLY through this
+          # sanitizer channel, never to the console
+          sanitize "$RUNNER_TEMP/gate-verify-files.log" "gate-verify-files-${{ matrix.shard }}.sanitized.log" optional allow-empty
+          sanitize "$RUNNER_TEMP/gate-verify-nodes.log" "gate-verify-nodes-${{ matrix.shard }}.sanitized.log" optional allow-empty
+          sanitize "$RUNNER_TEMP/collect-${{ matrix.shard }}.err" "collect-${{ matrix.shard }}.sanitized.err" optional allow-empty
+          sanitize "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.log" "reconcile-${{ matrix.shard }}.sanitized.log" optional allow-empty
+          sanitize "$RUNNER_TEMP/gate-verify-files.diag.json" "gate-verify-files-${{ matrix.shard }}.sanitized.diag.json" optional allow-empty
+          sanitize "$RUNNER_TEMP/gate-verify-nodes.diag.json" "gate-verify-nodes-${{ matrix.shard }}.sanitized.diag.json" optional allow-empty
+          sanitize "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.diag.json" "reconcile-${{ matrix.shard }}.sanitized.diag.json" optional allow-empty
           cp "$RUNNER_TEMP"/GAP-*.txt "$PUB"/ 2>/dev/null || true
 
       - name: Upload sanitized shard evidence (never masks the test rc)

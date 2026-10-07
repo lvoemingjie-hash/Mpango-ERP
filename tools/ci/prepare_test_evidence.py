@@ -105,6 +105,23 @@ class Refused(Exception):
     from sanitize (4) so callers can record evidence gaps precisely."""
 
 
+def _refuse_with_diagnostics(diag_path, category: str, summary: str, details):
+    """F-02 (R6R2): refusal stderr carries ONLY a fixed category and counts —
+    never nodeids, classname/name samples, not-run examples or raw exception
+    values. The identity-bearing detail list goes to the (runner-private)
+    diagnostics file, which is published only through the sanitizer."""
+    if diag_path:
+        try:
+            Path(diag_path).write_text(
+                json.dumps({"category": category, "summary": summary, "details": details},
+                           indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8", newline="\n",
+            )
+        except OSError:
+            pass
+    raise Refused(f"{category}: {summary}", 3)
+
+
 def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -247,6 +264,7 @@ def cmd_shard_plan(args: argparse.Namespace) -> int:
 def cmd_shard_verify(args: argparse.Namespace) -> int:
     plan = _load_plan(Path(args.plan))
     shard = args.shard
+    diag = getattr(args, "diagnostics_file", None)
     if shard not in SHARD_NAMES:
         raise Refused(f"UNKNOWN_SHARD: {shard} not in {SHARD_NAMES}", 3)
     expected = _expected_shard_files(plan, shard)
@@ -254,13 +272,19 @@ def cmd_shard_verify(args: argparse.Namespace) -> int:
 
     duplicates = sorted({m for m in members if members.count(m) > 1})
     if duplicates:
-        raise Refused(f"DUPLICATE_SHARD_MEMBERS: {duplicates[:5]}", 3)
+        _refuse_with_diagnostics(
+            diag, "DUPLICATE_SHARD_MEMBERS",
+            f"{len(duplicates)} duplicated argfile member(s)",
+            {"duplicated_members": duplicates},
+        )
     expected_set, member_set = set(expected), set(members)
     missing = sorted(expected_set - member_set)
     extra = sorted(member_set - expected_set)
     if missing or extra:
-        raise Refused(
-            f"SHARD_MEMBERSHIP_MISMATCH: missing={missing[:5]} extra={extra[:5]}", 3
+        _refuse_with_diagnostics(
+            diag, "SHARD_MEMBERSHIP_MISMATCH",
+            f"{len(missing)} missing / {len(extra)} extra member(s) vs the plan",
+            {"missing": missing, "extra": extra},
         )
     if len(members) != int(args.expected_files):
         raise Refused(
@@ -275,11 +299,19 @@ def cmd_shard_verify(args: argparse.Namespace) -> int:
         nodeids = _collect_nodeids(args.collect)
         duplicate_ids = sorted({n for n in nodeids if nodeids.count(n) > 1})
         if duplicate_ids:
-            raise Refused(f"DUPLICATE_COLLECTED_NODEIDS: {duplicate_ids[:5]}", 3)
+            _refuse_with_diagnostics(
+                diag, "DUPLICATE_COLLECTED_NODEIDS",
+                f"{len(duplicate_ids)} duplicated collected nodeid(s)",
+                {"duplicated_nodeids": duplicate_ids},
+            )
         collected_files = sorted({n.split("::", 1)[0] for n in nodeids})
         outsiders = sorted(set(collected_files) - member_set)
         if outsiders:
-            raise Refused(f"COLLECTED_FILE_NOT_IN_SHARD: {outsiders[:5]}", 3)
+            _refuse_with_diagnostics(
+                diag, "COLLECTED_FILE_NOT_IN_SHARD",
+                f"{len(outsiders)} collected file(s) outside the shard",
+                {"outside_files": outsiders},
+            )
         if len(nodeids) != int(args.expected_nodes):
             raise Refused(
                 f"SHARD_NODE_COUNT_MISMATCH: collected={len(nodeids)} "
@@ -326,6 +358,7 @@ def _junit_outcome(tc) -> str:
 
 
 def cmd_reconcile_junit(args: argparse.Namespace) -> int:
+    diag = getattr(args, "diagnostics_file", None)
     junit_path = Path(args.junit)
     if not junit_path.is_file():
         raise Refused(f"JUNIT_MISSING: {junit_path}", 3)
@@ -355,12 +388,11 @@ def cmd_reconcile_junit(args: argparse.Namespace) -> int:
         "must match exactly one frozen nodeid (no lowercasing, no parameter "
         "rewriting)"
     )
-    outcomes = {}
+    rank = {"error": 4, "failure": 3, "xfail": 2, "skipped": 1, "passed": 0}
+    phases: dict = {}
     entries = 0
-    duplicate_entries = []
     unknown = []
     ambiguous = []
-    rank = {"error": 4, "failure": 3, "xfail": 2, "skipped": 1, "passed": 0}
     for tc in root.iter("testcase"):
         entries += 1
         name = tc.get("name", "")
@@ -384,29 +416,65 @@ def cmd_reconcile_junit(args: argparse.Namespace) -> int:
                 break
             unknown.append(f"{classname}|{name}")
             continue
-        outcome = _junit_outcome(tc)
-        if matched in outcomes:
-            # call+teardown style double reporting: keep it visible, never
-            # inflate unique; the worst outcome wins the unique accounting.
-            duplicate_entries.append(matched)
-            outcomes[matched] = max(outcomes[matched], outcome, key=lambda o: rank[o])
-        else:
-            outcomes[matched] = outcome
+        phases.setdefault(matched, []).append(_junit_outcome(tc))
 
     if ambiguous:
-        raise Refused(f"JUNIT_MAPPING_AMBIGUOUS: {sorted(set(ambiguous))[:5]}", 3)
+        _refuse_with_diagnostics(
+            diag, "JUNIT_MAPPING_AMBIGUOUS",
+            f"{len(set(ambiguous))} testcase identit(y/ies) match more than one frozen nodeid",
+            {"ambiguous": sorted(set(ambiguous))},
+        )
     if unknown:
-        raise Refused(
-            f"UNKNOWN_JUNIT_NODEIDS: {len(unknown)} entries map to no frozen nodeid "
-            f"(e.g. {sorted(set(unknown))[:5]})",
-            3,
+        _refuse_with_diagnostics(
+            diag, "UNKNOWN_JUNIT_NODEIDS",
+            f"{len(unknown)} junit entries map to no frozen nodeid",
+            {"unknown": sorted(set(unknown))},
         )
 
+    # F-03 (R6R2): duplicate testcase entries are only accepted in the one
+    # shape the candidate's actual junit generator (pytest 8.4.2
+    # _pytest/junitxml.py, LogXML.record_report) produces natively: a FAILED
+    # call followed by an ERRORED teardown on the same node re-opens a
+    # testcase, so exactly two entries with outcome set {failure, error}.
+    # Any other repetition (passed/passed, failure/failure, ...) is an
+    # unproven duplicate and refuses.
+    double_phase_nodes = sorted(
+        nid for nid, outs in phases.items()
+        if len(outs) == 2 and set(outs) == {"failure", "error"}
+    )
+    unproven_duplicates = sorted(
+        nid for nid, outs in phases.items()
+        if len(outs) > 1 and nid not in double_phase_nodes
+    )
+    if unproven_duplicates:
+        _refuse_with_diagnostics(
+            diag, "DUPLICATE_JUNIT_NODEIDS_UNPROVEN",
+            f"{len(unproven_duplicates)} nodeid(s) have repeated testcase entries "
+            "outside the proven call-failure + teardown-error shape",
+            {"unproven_duplicates": {nid: phases[nid] for nid in unproven_duplicates}},
+        )
+
+    unique_outcomes = {
+        nid: max(outs, key=lambda o: rank[o]) for nid, outs in phases.items()
+    }
+    phase_counts = {}
+    for outs in phases.values():
+        for o in outs:
+            phase_counts[o] = phase_counts.get(o, 0) + 1
+    unique_counts = {}
+    for o in unique_outcomes.values():
+        unique_counts[o] = unique_counts.get(o, 0) + 1
+
+    # suite counter validation against the candidate generator's semantics:
+    # tests = passed+failure+skipped+error phases MINUS cnt_double_fail_tests
+    # (pytest 8.4.2 pytest_sessionfinish); failures/errors/skipped attrs are
+    # RAW phase counts. Raw phase statistics are checked independently of the
+    # unique worst-outcome accounting — one never substitutes for the other.
     counted = {
-        "tests": entries,
-        "failures": sum(1 for o in outcomes.values() if o == "failure"),
-        "errors": sum(1 for o in outcomes.values() if o == "error"),
-        "skipped": sum(1 for o in outcomes.values() if o in ("skipped", "xfail")),
+        "tests": entries - len(double_phase_nodes),
+        "failures": phase_counts.get("failure", 0),
+        "errors": phase_counts.get("error", 0),
+        "skipped": phase_counts.get("skipped", 0) + phase_counts.get("xfail", 0),
     }
     contradictions = []
     for ts in root.iter("testsuite"):
@@ -419,21 +487,25 @@ def cmd_reconcile_junit(args: argparse.Namespace) -> int:
     if contradictions:
         raise Refused(f"SUITE_COUNTER_CONTRADICTION: {contradictions[:2]}", 3)
 
-    not_run = sorted(nodeid_set - set(outcomes))
+    not_run = sorted(nodeid_set - set(unique_outcomes))
     try:
         pytest_rc = int(args.pytest_rc)
     except (TypeError, ValueError):
         raise Refused("PYTEST_RC_REQUIRED: --pytest-rc must carry the recorded body rc", 3)
-    if pytest_rc == 0 and not_run:
+    if pytest_rc == 0 and (counted["failures"] or counted["errors"]):
         raise Refused(
-            f"INCOMPLETE_GREEN: rc=0 but {len(not_run)} frozen nodeids have no junit "
-            f"entry (e.g. {not_run[:5]})",
+            "GREEN_RC_WITH_RED_OUTCOMES: the recorded body rc is 0 but the junit "
+            f"carries {counted['failures']} failure phase(s) and {counted['errors']} "
+            "error phase(s) — a contradiction, never publishable as a green receipt",
             3,
         )
+    if pytest_rc == 0 and not_run:
+        _refuse_with_diagnostics(
+            diag, "INCOMPLETE_GREEN",
+            f"rc=0 but {len(not_run)} frozen nodeids have no junit entry",
+            {"not_run_examples": not_run[:20]},
+        )
 
-    outcome_counts = {}
-    for o in outcomes.values():
-        outcome_counts[o] = outcome_counts.get(o, 0) + 1
     receipt = {
         "tool": "prepare_test_evidence.py reconcile-junit",
         "shard": args.shard,
@@ -446,12 +518,15 @@ def cmd_reconcile_junit(args: argparse.Namespace) -> int:
         ),
         "mapping_rule": mapping_rule,
         "junit_entries": entries,
-        "unique_reported": len(outcomes),
-        "duplicate_reported_entries": sorted(set(duplicate_entries)),
-        "outcome_counts": outcome_counts,
+        "unique_reported": len(unique_outcomes),
+        "phase_outcome_counts": phase_counts,
+        "unique_outcome_counts": unique_counts,
+        "double_phase_nodes": double_phase_nodes,
+        "outcome_counts": unique_counts,
         "not_run": not_run,
         "pytest_rc": pytest_rc,
-        "counter_check": "ok",
+        "counter_check": "ok (pytest 8.4.2 native single-suite semantics: tests=phases-double_fail)",
+        "note": "reconcile success never converts a non-zero body rc into a green leg; the final gate keeps the recorded rc authoritative; xfail/skip stay raw statuses and are never counted as business passes",
     }
     Path(args.receipt).write_text(
         json.dumps(receipt, indent=2) + "\n", encoding="utf-8", newline="\n"
@@ -462,10 +537,10 @@ def cmd_reconcile_junit(args: argparse.Namespace) -> int:
         # comment keeps green runs from producing an empty (refusable) file
         sep = chr(10)
         body = sep.join(not_run) + sep if not_run else "# not_run: none" + sep
-        Path(args.not_run_file).write_text(body, encoding="utf-8", newline='\n')
+        Path(args.not_run_file).write_text(body, encoding="utf-8", newline="\n")
     print(
-        f"[reconcile-junit] {args.shard}: entries={entries} unique={len(outcomes)} "
-        f"not_run={len(not_run)} outcomes={outcome_counts}"
+        f"[reconcile-junit] {args.shard}: entries={entries} unique={len(unique_outcomes)} "
+        f"not_run={len(not_run)} phases={phase_counts} uniques={unique_counts}"
     )
     return 0
 
@@ -619,7 +694,40 @@ def cmd_sanitize(args: argparse.Namespace) -> int:
         raise Refused(f"INPUT_MISSING: {src}", 4)
     data = src.read_bytes()
     if not data:
-        raise Refused(f"INPUT_EMPTY: {src}", 4)
+        # F-01 (R6R2): a zero-byte EXISTING log is valid evidence of a quiet
+        # run — but only for explicitly designated log inputs (--allow-empty,
+        # used solely for stdout/stderr/tool-diagnostic logs). A missing file
+        # is never equivalent (INPUT_MISSING above), and junit/collect/plan
+        # inputs stay refused-when-empty.
+        if not getattr(args, "allow_empty", False):
+            raise Refused(f"INPUT_EMPTY: {src}", 4)
+        head = data.lstrip()[:16]
+        if src.suffix == ".xml" or head.startswith(b"<?xml") or head.startswith(b"<testsuite"):
+            raise Refused(
+                f"ALLOW_EMPTY_FOR_XML: empty evidence documents are never publishable ({src})",
+                4,
+            )
+        empty_digest = _sha256_bytes(b"")
+        receipt = {
+            "tool": "prepare_test_evidence.py sanitize",
+            "mode": "text",
+            "input_name": src.name,
+            "derived_output_name": dst.name,
+            "input_sha256": empty_digest,
+            "derived_output_sha256": empty_digest,
+            "input_bytes": 0,
+            "derived_output_bytes": 0,
+            "empty_log": True,
+            "replacements": {},
+            "mapping_invariance": "not_applicable_text",
+            "note": "existing zero-byte log (valid quiet output); no fake content synthesized",
+        }
+        dst.write_bytes(b"")
+        receipt_path.write_text(
+            json.dumps(receipt, indent=2) + "\n", encoding="utf-8", newline="\n"
+        )
+        print(f"[sanitize] {src.name}: existing empty log acknowledged (0 bytes)")
+        return 0
 
     base_rules = _load_secret_rules(args.secrets_file, args.extra_env, args.require_keys)
     active_values = [v for _, k, v in base_rules if k == "exact"]
@@ -778,11 +886,11 @@ def cmd_refusal_receipt(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 # F-03 (R6R1) frozen synthetic parameter-identity registry: the 28 distinct
 # DSN-shaped parameter-id values found in the frozen 4288-nodeid selection
-# (35 nodeid occurrences: runtime-a 22, topology 13), each a parametrize
+# (34 unique nodeids: runtime-a 21, topology 13), each a parametrize
 # literal of the three frozen modules named in _identity_registry().
 # F-03 (R6R1) frozen synthetic parameter-identity registry: the 28 distinct
 # DSN-shaped parameter-id values found in the frozen 4288-nodeid selection
-# (35 nodeid occurrences: runtime-a 22, topology 13), each a parametrize
+# (34 unique nodeids: runtime-a 21, topology 13), each a parametrize
 # literal of the three frozen modules named in _identity_registry(). Each
 # entry is stored as (userinfo_prefix, host_suffix) purely so no single
 # source literal re-forms the credential-looking user:pass@ shape that the
@@ -840,6 +948,7 @@ def main(argv: list) -> int:
     p_verify.add_argument("--collect")
     p_verify.add_argument("--expected-nodes")
     p_verify.add_argument("--canonical-hash", help="explicit canonical hash for offline controls (overrides the embedded frozen map)")
+    p_verify.add_argument("--diagnostics-file", help="runner-private file receiving identity-bearing refusal detail; stderr stays category+counts only")
     p_verify.set_defaults(func=cmd_shard_verify)
 
     p_rec = sub.add_parser("reconcile-junit", help="close one shard's junit against its frozen collect")
@@ -849,6 +958,7 @@ def main(argv: list) -> int:
     p_rec.add_argument("--pytest-rc", required=True)
     p_rec.add_argument("--receipt", required=True)
     p_rec.add_argument("--not-run-file", help="optional plain nodeid list of the not-run set")
+    p_rec.add_argument("--diagnostics-file", help="runner-private file receiving identity-bearing refusal detail; stderr stays category+counts only")
     p_rec.set_defaults(func=cmd_reconcile_junit)
 
     p_san = sub.add_parser("sanitize", help="produce a sanitized public derivative")
@@ -859,6 +969,8 @@ def main(argv: list) -> int:
     p_san.add_argument("--extra-env", help="comma-separated ENV NAMES holding credential values (values never on argv)")
     p_san.add_argument("--require-keys", default=",".join(REQUIRED_STORE_KEYS),
                        help="store keys that must ALL be present (fail-closed; no admin-only fallback)")
+    p_san.add_argument("--allow-empty", action="store_true",
+                       help="existing zero-byte LOG inputs are valid quiet output (never for XML/junit/collect/plan)")
     p_san.set_defaults(func=cmd_sanitize)
 
     p_ref = sub.add_parser("refusal-receipt", help="publishable value-free refusal record")

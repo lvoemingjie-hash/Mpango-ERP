@@ -699,9 +699,15 @@ def cmd_sanitize(args: argparse.Namespace) -> int:
                 if chunk and _residual_hits_in_text(chunk, rules):
                     raise Refused("RESIDUAL_SECRET: encoded/variant value remains in text", 4)
     else:
-        # text mode: pure nodeid lines (collect lists) are identity; every
-        # other line (logs, summaries) is a body.
-        nodeid_line = re.compile(r"\S+::\S+")
+        # text mode: whole-line nodeids (collect lists) are identity; every
+        # other line (logs, summaries) is a body. A nodeid line is the
+        # nodeid core optionally followed by ONE bracketed parameter group
+        # that runs to end-of-line — parametrized ids legitimately contain
+        # spaces and even ']' (frozen selection evidence), so the pure
+        # no-whitespace heuristic would misclassify them as bodies and
+        # corrupt the published node mapping. A log line carrying trailing
+        # status text after the bracket does NOT match and stays a body.
+        nodeid_line = re.compile(r"\S+::\S+(?:\[.*\])?")
         out_lines = []
         counts = {}
         for line in text.split("\n"):

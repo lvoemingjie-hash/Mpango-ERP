@@ -1664,6 +1664,26 @@ class TestR6SanitizeControls:
         assert "NODE_IDENTITY_AT_RISK" in proc2.stderr
         assert not out2.exists()
 
+    def test_space_bearing_param_ids_stay_identity_lines(self, tmp_path):
+        """Acceptance-found defect control (R6R1 first-failure disclosure):
+        frozen nodeids whose parametrized ids contain SPACES (pytest tuple
+        ids) are whole-line identities — the pure no-whitespace heuristic
+        corrupted 21 published nodeids by redacting the synthetic DSN inside
+        the param; a log line with trailing status text stays a body."""
+        registry_value, _module = self._registry_value()
+        spaced = (
+            "tests/test_dc12r1_h7_setup_preflight.py::TestParseDbUrl::"
+            "test_failures_exact_and_neutral[" + registry_value + " scheme is not postgresql]"
+        )
+        log_line = spaced + " PASSED"
+        content = spaced + chr(10) + log_line + chr(10)
+        proc, out, _ = self._run_sanitize(tmp_path, content, input_name="collect.txt")
+        assert proc.returncode == 0, proc.stderr
+        sanitized = out.read_text(encoding="utf-8").splitlines()
+        assert sanitized[0] == spaced, "identity line with spaces must be retained verbatim"
+        assert "REDACTED" in sanitized[1], "trailing-status line is a body and gets redacted"
+        assert registry_value not in sanitized[1]
+
     def test_mutant_without_replacement_is_caught_by_residual_scan(self, tmp_path):
         source = EVIDENCE_TOOL.read_text(encoding="utf-8")
         disabled = "text = text.replace(value, PLACEHOLDER % rule_id.split(\":\", 1)[1])"

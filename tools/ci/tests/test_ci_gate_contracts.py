@@ -1,7 +1,8 @@
-"""Offline CI gate contracts and discriminating counterexamples (R3/R6).
+"""Offline CI gate contracts and discriminating counterexamples (R3/R6/R6R1).
 
 Authorization: CTO-C91-CI-EXECUTABLE-CONTRACT-ZCODEW-R3-20261006,
-CTO-C91-CI-R6-FIVE-TASK-PREPARATION-20261007.
+CTO-C91-CI-R6-FIVE-TASK-PREPARATION-20261007,
+CTO-C91-CI-R6R1-PUBLICATION-EVIDENCE-CLOSURE-20261007.
 
 Covers the candidate bytes:
 
@@ -21,6 +22,16 @@ Covers the candidate bytes:
   only via env/stdin; canary byte-identical in the real channel) — plus
   preflight refusals (missing tests source, empty selection, role-name
   drift, non-distinct identities) and plan-file idempotence.
+* R6R1 publication/evidence closure: job-scoped credential store across
+  GitHub env scopes (supply vs publication as separate processes; missing/
+  empty/incomplete store refuses the WHOLE outlet — no admin-only
+  fallback), real-form sanitization (PG16 SCRAM verifiers, driver-scheme
+  DSNs, redis forms, XML/percent/JSON encodings, XML-special passwords on
+  decoded fields), frozen synthetic identity registry retained in identity
+  fields only, canonical nodeid-hash binding, junit reconciliation
+  (mapping, unique outcomes, not-run disclosure, counter consistency),
+  private-staging pytest output with a clean console, PG-start env-name
+  credential channel, and exact-ID label-verified cleanup.
 * R6 load-bearing controls (each with a discriminating counterexample):
   missing/duplicate shard members are RED; a failed pytest rc cannot be
   washed green by upload steps; removing artifact sanitization is caught
@@ -236,8 +247,15 @@ class TestDeployWorkflowContract:
         # R6: the admin credential is generated per run (high entropy), is
         # masked before any value can reach an output stream, and never
         # exists as a literal in the workflow bytes.
+        # R6R1 (F-05): the value crosses to docker through the environment
+        # NAME channel (-e POSTGRES_PASSWORD), never on the docker argv.
         assert "token_urlsafe" in pg
         assert "::add-mask::" in pg.split("CI_PG_ADMIN_PASSWORD=")[0]
+        assert 'export POSTGRES_PASSWORD="$PW"' in pg
+        docker_run_lines = [ln for ln in pg.splitlines() if "docker run -d" in ln]
+        assert len(docker_run_lines) == 1
+        assert "-e POSTGRES_PASSWORD postgres:16-alpine" in docker_run_lines[0]
+        assert 'POSTGRES_PASSWORD="' not in docker_run_lines[0]
         workflow_text = DEPLOY_WF.read_text(encoding="utf-8")
         assert "CI_PG_ADMIN_PASSWORD: postgres" not in workflow_text
         assert "POSTGRES_PASSWORD=postgres" not in workflow_text
@@ -254,7 +272,13 @@ class TestDeployWorkflowContract:
         # R6: the task credential store is declared so the sanitize stage has
         # a fail-closed secret source; the admin credential reaches this step
         # through the GITHUB_ENV channel, not through YAML literals.
-        assert "${{ runner.temp }}/c91-task-credentials.env" == provision["env"]["CI_CREDENTIALS_FILE"]
+        # R6R1 (F-01): the store path is declared at JOB scope so provision
+        # and the publication steps resolve the SAME private store — a
+        # step-scoped key would not cross steps.
+        assert "CI_CREDENTIALS_FILE" not in provision["env"]
+        assert self.test_job["env"]["CI_CREDENTIALS_FILE"] == (
+            "${{ runner.temp }}/c91-task-credentials.env"
+        )
         assert "CI_PG_ADMIN_PASSWORD" not in provision["env"]
 
         shard_plan = next(s for s in self.steps if "Cut frozen runtime shard" in s.get("name", ""))
@@ -297,6 +321,18 @@ class TestDeployWorkflowContract:
         # the pytest command itself is never softened with || true / || exit 0
         assert "|| true" not in pytest_line and "|| exit 0" not in pytest_line
         assert "set -o pipefail" in body["run"]
+        # R6R1 (F-05): raw pytest stdout/stderr goes to PRIVATE runner
+        # staging, never to the Actions console
+        assert '> "$RUNNER_TEMP/pytest-stdout.txt" 2> "$RUNNER_TEMP/pytest-stderr.txt"' in pytest_line
+        assert "test body started" in body["run"]
+        # R6R1 (F-04): post-run closure reconciles the junit against the
+        # frozen collect under always(), recording a GAP on any refusal
+        reconcile = next(s for s in self.steps if "Reconcile junit" in s.get("name", ""))
+        assert reconcile["if"] == "always()"
+        assert "prepare_test_evidence.py reconcile-junit" in reconcile["run"]
+        assert "--pytest-rc" in reconcile["run"]
+        assert '--not-run-file "$RUNNER_TEMP/not-run-${{ matrix.shard }}.nodeids.txt"' in reconcile["run"]
+        assert 'echo "reconcile_refused" > "$RUNNER_TEMP/GAP-reconcile.txt"' in reconcile["run"]
 
     def test_five_legs_budget_and_isolation(self):
         strategy = self.test_job["strategy"]
@@ -332,8 +368,10 @@ class TestDeployWorkflowContract:
             index_of("Cut frozen runtime shard"),
             index_of("Shard gate"),
             index_of("Run shard test body"),
+            index_of("Reconcile junit"),
             index_of("Sanitize shard evidence"),
             index_of("Upload sanitized shard evidence"),
+            index_of("Cleanup task-owned resources"),
             index_of("Assert shard outcome"),
         ]
         assert order == sorted(order), "evidence pipeline steps are out of order"
@@ -345,6 +383,22 @@ class TestDeployWorkflowContract:
         assert "--extra-env CI_PG_ADMIN_PASSWORD" in sanitize["run"]
         # a refused sanitization records a gap and never uploads the raw file
         assert 'echo "sanitize_refused" > "$RUNNER_TEMP/GAP-$dst.txt"' in sanitize["run"]
+        # R6R1 (F-01): a missing/empty store refuses the ENTIRE outlet with a
+        # valueless refusal receipt — no admin-only fallback per artifact
+        assert "refusal-receipt --reason secrets_store_unavailable" in sanitize["run"]
+        assert 'echo "publication_refused_all" > "$RUNNER_TEMP/GAP-publication.txt"' in sanitize["run"]
+        # R6R1 (F-04): absence of a required input is a GAP, not a skip that
+        # fakes completeness
+        assert 'echo "required_input_absent" > "$RUNNER_TEMP/GAP-$dst.txt"' in sanitize["run"]
+        for required in (
+            "junit-${{ matrix.shard }}.sanitized.xml",
+            "collect-${{ matrix.shard }}.sanitized.txt",
+            "shard-plan-${{ matrix.shard }}.sanitized.json",
+            "supply-plan-${{ matrix.shard }}.sanitized.json",
+            "pytest-stdout-${{ matrix.shard }}.sanitized.txt",
+            "pytest-stderr-${{ matrix.shard }}.sanitized.txt",
+        ):
+            assert f'"{required}" required' in sanitize["run"], required
 
         upload = next(s for s in self.steps if "Upload sanitized shard evidence" in s.get("name", ""))
         assert upload["if"] == "always()"
@@ -358,6 +412,21 @@ class TestDeployWorkflowContract:
         # junit/collect/connections/supply-plan path
         assert upload["with"]["path"] == "${{ runner.temp }}/publish"
         assert upload["with"]["if-no-files-found"] == "error"
+
+        # R6R1 (F-05): explicit cleanup of exactly-IDed task resources with
+        # label re-verification and exact credential destruction
+        cleanup = next(s for s in self.steps if "Cleanup task-owned resources" in s.get("name", ""))
+        assert cleanup["if"] == "always()"
+        assert "CI_PG_CONTAINER_ID CI_REDIS_CONTAINER_ID" in cleanup["run"]
+        assert 'docker inspect --format' in cleanup["run"]
+        assert "mpango.owner" in cleanup["run"]
+        assert 'docker rm -f -v "$cid"' in cleanup["run"]
+        assert 'rm -f "$CI_CREDENTIALS_FILE" "$RUNNER_TEMP/c91-test-env.sh"' in cleanup["run"]
+        assert 'rm -rf "$RUNNER_TEMP/c91-resource-root"' in cleanup["run"]
+        assert 'echo "cleanup_failed" > "$RUNNER_TEMP/GAP-cleanup.txt"' in cleanup["run"]
+        # prune/prefix/time-window deletion never appears
+        for forbidden in ("docker system prune", "docker ps -aq", "--filter until="):
+            assert forbidden not in cleanup["run"]
 
         final = next(s for s in self.steps if "Assert shard outcome" in s.get("name", ""))
         assert final["if"] == "always()"
@@ -662,16 +731,29 @@ class TestWrapperFakeToolExecution:
 
 
 FAKE_DOCKER = r'''#!/usr/bin/env bash
-# fake docker for the workflow-fragment control: records argv; run prints a
-# synthetic container id; inspect answers the two --format shapes used
+# fake docker for the workflow-fragment controls: records argv; run prints a
+# synthetic container id; rm records and succeeds; inspect answers the
+# --format shapes used (HostPort probe, wrapper image|label probe, cleanup
+# owner-label probe with per-id ownership via C91_FAKE_OWNER_ID)
 DIR="${C91_FAKE_DIR:-/tmp}"
 N=$(ls "$DIR" 2>/dev/null | grep -c '^docker-' || true)
 printf '%s\n' "$*" > "$DIR/docker-$N.argv"
 case "$1 $2" in
   "run -d") echo "fakedockerid$$" ;;
+  "rm -f") echo "removed:$*" ;;
   "inspect --format")
     case "$3" in
       *HostPort*) echo "36379" ;;
+      *Config.Image*) echo "postgres:16-alpine|zcode-mvp-invariants-ci-deploy-staging-r3" ;;
+      *mpango.owner*)
+        if [ -n "${C91_FAKE_OWNER_IDS:-}" ]; then
+          case " $C91_FAKE_OWNER_IDS " in
+            *" $4 "*) echo "${CI_OWNER_LABEL:-zcode-mvp-invariants-ci-deploy-staging-r3}" ;;
+            *) echo "foreign-owner" ;;
+          esac
+        else
+          echo "${CI_OWNER_LABEL:-zcode-mvp-invariants-ci-deploy-staging-r3}"
+        fi ;;
       *) echo "postgres:16-alpine|zcode-mvp-invariants-ci-deploy-staging-r3" ;;
     esac ;;
 esac
@@ -732,8 +814,9 @@ class TestWorkflowRedisWiringExecuted:
         )
 
     def _provision_env_and_run(self, sandbox):
-        """Workflow step env + the GITHUB_ENV channel, with GitHub's own
-        ${{ env.* }} / ${{ runner.temp }} substitution rules applied."""
+        """Workflow JOB env + step env + the GITHUB_ENV channel, with
+        GitHub's own ${{ env.* }} / ${{ runner.temp }} substitution rules
+        applied. R6R1: the credential store path comes from JOB scope."""
         tmp_path = sandbox[0]
         doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
         step = next(s for s in doc["jobs"]["test"]["steps"] if "Provision" in s.get("name", ""))
@@ -744,6 +827,10 @@ class TestWorkflowRedisWiringExecuted:
             .replace("${{ runner.temp }}", posix_tmp)
             for k, v in step["env"].items()
         }
+        for key, value in doc["jobs"]["test"].get("env", {}).items():
+            env.setdefault(
+                key, str(value).replace("${{ runner.temp }}", posix_tmp)
+            )
         # GitHub semantics: lines exported to GITHUB_ENV by earlier steps are
         # part of every later step's environment. Only the credential/port
         # channel keys are merged here; container-ID ownership verification
@@ -1057,6 +1144,55 @@ class TestR6ShardPlanControls:
         path.write_text(body, encoding="utf-8", newline="\n")
         return path
 
+    @staticmethod
+    def _canon(nodeids):
+        import hashlib
+        return hashlib.sha256(
+            ("\n".join(sorted(nodeids)) + "\n").encode("utf-8")
+        ).hexdigest()
+
+    def test_canonical_constants_equal_cto_table(self):
+        """F-04 (R6R1): the tool's embedded canonical hashes must equal the
+        CTO-computed table, byte for byte."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("pte_r6r1", EVIDENCE_TOOL)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert module.CANONICAL_NODEID_SHA256 == {
+            k: format(v, chr(120)) for k, v in {
+                "runtime-a": 31909149706389310500397118238844167744261060807324375977335756059803826548134,
+                "runtime-b": 57725012565857539176717571526097518784084886020524993529010191070552221256377,
+                "topology": 89431394580350489123950586879915797113004354348693083846620910588820036223488,
+                "invariants-jwt": 14225403732936862956787750016881398974573020047247214588285646003204590389255,
+                "task-managed-pg": 26202434481483022035822387896696908997049812747828017617325771995640059934965,
+            }.items()
+        }
+
+    def test_same_count_swapped_nodeid_is_red(self, tmp_path):
+        """F-04 (R6R1): the exact node-set gate — a collect with the SAME
+        file membership and count but one swapped nodeid must be RED."""
+        plan_path = self._write_plan(tmp_path, self.RUNTIME_FILES)
+        assert self._run("shard-plan", "--plan", plan_path, "--profile-dir", tmp_path).returncode == 0
+        good_ids = [
+            "tests/test_platform_p17dc_backup_models.py::test_alpha",
+            "tests/test_platform_p17dc_backup_models.py::test_beta",
+            "tests/test_platform_p17dc_backup_models.py::test_gamma",
+        ]
+        swapped = [
+            "tests/test_platform_p17dc_backup_models.py::test_alpha",
+            "tests/test_platform_p17dc_backup_models.py::test_beta",
+            "tests/test_platform_p17dc_backup_models.py::test_DELTA_SWAP",
+        ]
+        collect = self._collect_file(tmp_path, swapped)
+        proc = self._run(
+            "shard-verify", "--plan", plan_path, "--shard", "runtime-b",
+            "--argfile", tmp_path / "profile-runtime-b.tests",
+            "--expected-files", "2", "--collect", collect, "--expected-nodes", "3",
+            "--canonical-hash", self._canon(good_ids),
+        )
+        assert proc.returncode == 3
+        assert "CANONICAL_NODEID_HASH_MISMATCH" in proc.stderr
+
     def test_shard_plan_cuts_exact_partition_and_receipt(self, tmp_path):
         plan_path = self._write_plan(tmp_path, self.RUNTIME_FILES)
         proc = self._run("shard-plan", "--plan", plan_path, "--profile-dir", tmp_path)
@@ -1101,6 +1237,11 @@ class TestR6ShardPlanControls:
             "shard-verify", "--plan", plan_path, "--shard", "runtime-b",
             "--argfile", tmp_path / "profile-runtime-b.tests",
             "--expected-files", "2", "--collect", collect, "--expected-nodes", "3",
+            "--canonical-hash", self._canon([
+                "tests/test_platform_p17dc_backup_models.py::test_alpha",
+                "tests/test_platform_p17dc_backup_models.py::test_beta",
+                "tests/test_platform_p17dc_backup_models.py::test_gamma",
+            ]),
         )
         assert proc.returncode == 0, proc.stderr
 
@@ -1232,12 +1373,15 @@ class TestR6OutcomePropagationControls:
 
 class TestR6SanitizeControls:
     """Load-bearing control 3 (removing artifact sanitization is caught by a
-    high-entropy positive): the REAL sanitizer replaces generated
-    high-entropy credentials plus DSN/SCRAM form matches in junit
-    derivatives while proving node/status mapping invariance; refusals are
-    fail-closed (no output file is written); and a mutant with the exact-
-    value replacement disabled is caught by the tool's own residual scan —
-    proving the control discriminates, not just exists."""
+    high-entropy positive in a REAL format): the sanitizer replaces
+    generated high-entropy credentials, REAL PG16 SCRAM verifiers (salt then
+    '$' then two key segments), driver-scheme DSNs, redis credential forms,
+    XML/percent/JSON-encoded variants and XML-special-character passwords —
+    on decoded field content with an independent residual rescan. Frozen
+    synthetic identity values are retained in identity fields only; bodies
+    get no exception; live collisions refuse. Refusals are fail-closed (no
+    output file is written); a mutant with the exact replacement disabled is
+    caught by the residual scan."""
 
     @staticmethod
     def _junit(name, classname, inner=""):
@@ -1248,8 +1392,22 @@ class TestR6SanitizeControls:
             "</testsuite></testsuites>"
         )
 
+    @staticmethod
+    def _full_store(overrides=None):
+        store = {
+            "MIGRATE_PASSWORD": secrets.token_hex(16),
+            "APP_PASSWORD": secrets.token_hex(16),
+            "OPERATOR_PASSWORD": secrets.token_hex(16),
+            "REPORTING_PASSWORD": secrets.token_hex(16),
+            "SECRET_KEY": secrets.token_hex(32),
+        }
+        if overrides:
+            store.update(overrides)
+        return store
+
     def _run_sanitize(self, tmp_path, content, *, store=None, extra_env=None,
-                      tool=None, store_exists=True, input_name="junit.xml"):
+                      tool=None, store_exists=True, input_name="junit.xml",
+                      require_keys=None):
         src = tmp_path / input_name
         src.write_text(content, encoding="utf-8", newline="\n")
         out = tmp_path / (input_name + ".sanitized")
@@ -1257,7 +1415,7 @@ class TestR6SanitizeControls:
         store_path = tmp_path / "store.env"
         if store_exists:
             if store is None:
-                store = {"APP_PASSWORD": secrets.token_hex(16), "SECRET_KEY": secrets.token_hex(32)}
+                store = self._full_store()
             store_path.write_text(
                 "".join(f"{k}={v}\n" for k, v in store.items()),
                 encoding="utf-8", newline="\n",
@@ -1267,6 +1425,8 @@ class TestR6SanitizeControls:
             "--input", src, "--output", out, "--receipt", receipt,
             "--secrets-file", store_path,
         ]
+        if require_keys is not None:
+            argv += ["--require-keys", require_keys]
         if extra_env:
             argv += ["--extra-env", ",".join(extra_env)]
         env = dict(os.environ)
@@ -1279,13 +1439,20 @@ class TestR6SanitizeControls:
         )
         return proc, out, receipt
 
-    def test_high_entropy_values_replaced_with_mapping_invariance(self, tmp_path):
+    @staticmethod
+    def _registry_value():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("pte_reg", EVIDENCE_TOOL)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return sorted(module.SYNTHETIC_IDENTITY_VALUES)[0], module
+
+    def test_high_entropy_and_driver_dsn_replaced_with_mapping_invariance(self, tmp_path):
         app_secret = secrets.token_hex(16)
         # foreign-password DSN built at runtime (high entropy, no literal
-        # credential shape in source): exercises the form rule for values
-        # that are NOT in the credential store
+        # credential shape in source) in the project's real driver scheme
         foreign_pw = "fwd-" + secrets.token_hex(12)
-        foreign_dsn = f"postgresql://mpango_app:{foreign_pw}@127.0.0.1:55432/test_ci_mpango"
+        foreign_dsn = f"postgresql+asyncpg://mpango_app:{foreign_pw}@127.0.0.1:55432/test_ci_mpango"
         content = self._junit(
             "test_example", "tests.test_example",
             f'<failure message="connect failed: postgresql://mpango_app:{app_secret}'
@@ -1293,7 +1460,7 @@ class TestR6SanitizeControls:
             f"<system-err>alt endpoint {foreign_dsn}</system-err></failure>",
         )
         proc, out, receipt = self._run_sanitize(
-            tmp_path, content, store={"APP_PASSWORD": app_secret}
+            tmp_path, content, store=self._full_store({"APP_PASSWORD": app_secret})
         )
         assert proc.returncode == 0, proc.stderr
         sanitized = out.read_text(encoding="utf-8")
@@ -1305,12 +1472,19 @@ class TestR6SanitizeControls:
         assert data["mapping_invariance"] == "ok"
         assert data["replacements"]["exact:APP_PASSWORD"] >= 2
         assert data["replacements"]["form:pg-dsn"] >= 1
-        # the node identity survived byte-level replacement
         assert 'name="test_example"' in sanitized
         assert app_secret not in receipt.read_text(encoding="utf-8")
 
-    def test_scram_verifier_form_rule(self, tmp_path):
-        verifier = "SCRAM-SHA-256$4096:c3RvcmVrZXlzdG9yZWtleQ==:c2FsdHNhbHRzYWx0"
+    def test_real_pg16_scram_verifier_form_is_replaced(self, tmp_path):
+        # REAL PostgreSQL 16 verifier shape (src/common/scram-common.c):
+        # SCRAM-SHA-256$<iter>:<salt-b64>$<storedkey-b64>:<serverkey-b64>
+        import base64
+        verifier = (
+            "SCRAM-SHA-256$4096:"
+            + base64.b64encode(secrets.token_bytes(16)).decode() + "$"
+            + base64.b64encode(secrets.token_bytes(32)).decode() + ":"
+            + base64.b64encode(secrets.token_bytes(32)).decode()
+        )
         content = self._junit(
             "test_roles", "tests.test_roles",
             f'<failure message="role row leaked {verifier}" type="AssertionError"/>',
@@ -1319,7 +1493,59 @@ class TestR6SanitizeControls:
         assert proc.returncode == 0, proc.stderr
         sanitized = out.read_text(encoding="utf-8")
         assert verifier not in sanitized
+        assert verifier.split("$")[1] not in sanitized  # no partial survival
         assert "[REDACTED:scram-verifier]" in sanitized
+
+    def test_encoded_variants_replaced_in_text_mode(self, tmp_path):
+        import urllib.parse
+        tricky_probe_value = "p&ass<w>ord" + chr(34) + "1'" + chr(92) + "2"
+        percent = urllib.parse.quote(tricky_probe_value, safe="")
+        # canonical full XML attribute escaping (the encoding the pipeline's
+        # writers produce; XML inputs are matched on DECODED fields instead)
+        entity = (
+            tricky_probe_value.replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace(chr(34), "&quot;").replace("'", "&apos;")
+        )
+        json_escaped = json.dumps(tricky_probe_value)[1:-1]
+        content = (
+            "tests/test_ok.py::test_one\n" +
+            "log percent " + percent + "\n" +
+            "log entity " + entity + "\n" +
+            "log json " + json_escaped + "\n" +
+            "== 1 test collected in 0.01s ==\n"
+        )
+        proc, out, _ = self._run_sanitize(
+            tmp_path, content,
+            store=self._full_store({"APP_PASSWORD": tricky_probe_value}),
+            input_name="collect.txt",
+        )
+        assert proc.returncode == 0, proc.stderr
+        sanitized = out.read_text(encoding="utf-8")
+        for needle in (tricky_probe_value, percent, entity, json_escaped):
+            assert needle not in sanitized, needle
+        assert "tests/test_ok.py::test_one" in sanitized
+
+    def test_xml_special_password_is_replaced_not_skipped(self, tmp_path):
+        # R6 skipped exact rules containing XML-special characters; the R6R1
+        # field-level replacement on decoded content must handle them. The
+        # fixture XML entity-escapes the secret exactly as a real writer
+        # would, so only decoded-field matching can catch it.
+        from xml.sax.saxutils import escape
+        tricky_probe_value = "sp&ci<al>\"pw 'x'" + secrets.token_hex(4)
+        escaped = escape(tricky_probe_value, {"\"": "&quot;", "'": "&apos;"})
+        content = self._junit(
+            "t", "tests.test_example",
+            f'<failure message="pwd was {escaped}" type="E"/>',
+        )
+        proc, out, receipt = self._run_sanitize(
+            tmp_path, content, store=self._full_store({"APP_PASSWORD": tricky_probe_value})
+        )
+        assert proc.returncode == 0, proc.stderr
+        sanitized = out.read_text(encoding="utf-8")
+        assert tricky_probe_value not in sanitized
+        assert tricky_probe_value.replace("&", "&amp;") not in sanitized
+        assert "[REDACTED:APP_PASSWORD]" in sanitized
+        assert json.loads(receipt.read_text(encoding="utf-8"))["mapping_invariance"] == "ok"
 
     def test_missing_store_refuses_fail_closed(self, tmp_path):
         proc, out, _ = self._run_sanitize(
@@ -1331,11 +1557,24 @@ class TestR6SanitizeControls:
 
     def test_empty_store_refuses_fail_closed(self, tmp_path):
         proc, out, _ = self._run_sanitize(
-            tmp_path, self._junit("t", "c"),
-            store_exists=True, store={"APP_PASSWORD": ""},
+            tmp_path, self._junit("t", "c"), store_exists=True, store={"APP_PASSWORD": ""},
         )
         assert proc.returncode == 4
         assert "SECRETS_STORE_EMPTY" in proc.stderr
+        assert not out.exists()
+
+    def test_incomplete_store_refuses_even_with_admin_env(self, tmp_path):
+        """F-01: a store holding only one required key cannot be rescued by
+        the admin environment value — the whole outlet is refused."""
+        lone = secrets.token_hex(16)
+        proc, out, _ = self._run_sanitize(
+            tmp_path, self._junit("t", "c"),
+            store={"APP_PASSWORD": lone},
+            extra_env={"C91_SYNTH_ADMIN_TOKEN": secrets.token_hex(16)},
+        )
+        assert proc.returncode == 4
+        assert "SECRETS_STORE_INCOMPLETE" in proc.stderr
+        assert "no admin-only fallback" in proc.stderr
         assert not out.exists()
 
     def test_unset_extra_env_refuses_fail_closed(self, tmp_path):
@@ -1347,15 +1586,83 @@ class TestR6SanitizeControls:
         assert "SECRETS_ENV_MISSING" in proc.stderr
         assert not out.exists()
 
-    def test_secret_touching_a_node_name_refuses(self, tmp_path):
+    def test_frozen_synthetic_identity_in_name_publishes_verbatim(self, tmp_path):
+        """F-03: a proven frozen synthetic identity in an identity field is
+        retained verbatim with the node mapping intact. The fixture ends the
+        name exactly at the registry value because the DSN form rule matches
+        greedily to the line/field end."""
+        registry_value, _module = self._registry_value()
+        name = "test_malformed_env[" + registry_value
+        content = self._junit(name, "tests.test_alembic_explicit_url_contract")
+        proc, out, receipt = self._run_sanitize(tmp_path, content)
+        assert proc.returncode == 0, proc.stderr
+        sanitized = out.read_text(encoding="utf-8")
+        assert registry_value in sanitized, "identity fields keep the frozen synthetic form"
+        assert json.loads(receipt.read_text(encoding="utf-8"))["mapping_invariance"] == "ok"
+
+    def test_registry_value_in_a_body_is_still_replaced(self, tmp_path):
+        registry_value, _module = self._registry_value()
+        content = self._junit(
+            "test_clean", "tests.test_example",
+            f'<failure message="echoed url {registry_value}" type="E"/>',
+        )
+        proc, out, _ = self._run_sanitize(tmp_path, content)
+        assert proc.returncode == 0, proc.stderr
+        sanitized = out.read_text(encoding="utf-8")
+        assert registry_value not in sanitized, "bodies get no identity exception"
+        assert "[REDACTED:pg-dsn]" in sanitized
+
+    def test_live_secret_in_node_name_refuses(self, tmp_path):
         app_secret = secrets.token_hex(16)
         content = self._junit(f"test_{app_secret}", "tests.test_example")
         proc, out, _ = self._run_sanitize(
-            tmp_path, content, store={"APP_PASSWORD": app_secret}
+            tmp_path, content, store=self._full_store({"APP_PASSWORD": app_secret})
         )
         assert proc.returncode == 4
         assert "NODE_MAPPING_AT_RISK" in proc.stderr
         assert not out.exists()
+
+    def test_live_collision_with_registry_refuses(self, tmp_path):
+        registry_value, _module = self._registry_value()
+        proc, out, _ = self._run_sanitize(
+            tmp_path, self._junit("t", "c"),
+            store=self._full_store({"APP_PASSWORD": registry_value}),
+        )
+        assert proc.returncode == 4
+        assert "SYNTHETIC_IDENTITY_LIVE_COLLISION" in proc.stderr
+        assert not out.exists()
+
+    def test_nodeid_lines_identity_vs_log_line_bodies(self, tmp_path):
+        registry_value, _module = self._registry_value()
+        foreign_pw = "fwd-" + secrets.token_hex(12)
+        body_dsn = f"redis://:{foreign_pw}@cache.internal:6379/0"
+        nodeid_line = (
+            "tests/test_dc12r1_h7_setup_preflight.py::TestParseDbUrl::"
+            "test_failures_exact_and_neutral[" + registry_value
+        )
+        content = (
+            nodeid_line + "\n"
+            f"retry log endpoint {body_dsn}\n"
+            "== 1 test collected in 0.01s ==\n"
+        )
+        proc, out, _ = self._run_sanitize(
+            tmp_path, content, input_name="collect.txt",
+        )
+        assert proc.returncode == 0, proc.stderr
+        sanitized = out.read_text(encoding="utf-8")
+        assert nodeid_line in sanitized, "registry identities stay verbatim on nodeid lines"
+        assert foreign_pw not in sanitized
+        assert "[REDACTED:redis-dsn]" in sanitized
+        # a LIVE value on a nodeid line is an identity risk, not a rewrite
+        live = secrets.token_hex(16)
+        bad = f"tests/test_x.py::test_y[{live}]\n"
+        proc2, out2, _ = self._run_sanitize(
+            tmp_path, bad, store=self._full_store({"APP_PASSWORD": live}),
+            input_name="collect2.txt",
+        )
+        assert proc2.returncode == 4
+        assert "NODE_IDENTITY_AT_RISK" in proc2.stderr
+        assert not out2.exists()
 
     def test_mutant_without_replacement_is_caught_by_residual_scan(self, tmp_path):
         source = EVIDENCE_TOOL.read_text(encoding="utf-8")
@@ -1371,26 +1678,611 @@ class TestR6SanitizeControls:
             "t", "c", f'<failure message="leak {app_secret}" type="E"/>'
         )
         proc, out, _ = self._run_sanitize(
-            tmp_path, content, store={"APP_PASSWORD": app_secret}, tool=mutant
+            tmp_path, content, store=self._full_store({"APP_PASSWORD": app_secret}), tool=mutant
         )
         assert proc.returncode == 4
         assert "RESIDUAL_SECRET" in proc.stderr
         assert not out.exists(), "a bypassed sanitizer must not publish anything"
 
-    def test_text_mode_replaces_in_collect_lists(self, tmp_path):
-        app_secret = secrets.token_hex(16)
-        content = (
-            "tests/test_ok.py::test_one\n"
-            f"tests/test_skipped.py::test_skip reason=dsn postgres://u:{app_secret}@h/db\n"
-            "== 2 tests collected in 0.01s ==\n"
+
+class TestR6R1ReconcileJunitControls:
+    """F-04 (R6R1): post-run closure discriminations — the real tool maps
+    junit entries to the frozen collect via the declared rootdir/classname
+    rule and refuses missing/truncated/unknown/contradictory/incorrectly
+    green evidence; call+teardown double reporting never inflates unique;
+    non-green rc publishes the not-run set instead of faking completeness."""
+
+    COLLECT = [
+        "tests/test_file_a.py::TestCls::test_one",
+        "tests/test_file_a.py::TestCls::test_two[param x]",
+        "tests/test_file_b.py::test_three",
+    ]
+
+    @staticmethod
+    def _junit_doc(entries, counters):
+        cases = "".join(
+            f'<testcase name="{name}" classname="{classname}">{inner}</testcase>'
+            for name, classname, inner in entries
         )
-        proc, out, receipt = self._run_sanitize(
-            tmp_path, content, store={"APP_PASSWORD": app_secret},
-            input_name="collect.txt",
+        return (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            f'<testsuites><testsuite name="s" tests="{counters.get("tests", len(entries))}" '
+            f'failures="{counters.get("failures", 0)}" errors="{counters.get("errors", 0)}" '
+            f'skipped="{counters.get("skipped", 0)}">{cases}</testsuite></testsuites>'
+        )
+
+    def _reconcile(self, tmp_path, junit_text, collect=None, rc="0"):
+        junit = tmp_path / "junit.xml"
+        junit.write_text(junit_text, encoding="utf-8", newline="\n")
+        collect_file = tmp_path / "collect.txt"
+        collect_file.write_text(
+            "\n".join(collect if collect is not None else self.COLLECT) + "\n",
+            encoding="utf-8", newline="\n",
+        )
+        receipt = tmp_path / "reconcile.json"
+        not_run = tmp_path / "not-run.txt"
+        proc = subprocess.run(
+            [sys.executable, str(EVIDENCE_TOOL), "reconcile-junit",
+             "--junit", junit, "--collect", collect_file, "--shard", "runtime-a",
+             "--pytest-rc", rc, "--receipt", receipt, "--not-run-file", not_run],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            stdin=subprocess.DEVNULL,
+        )
+        return proc, receipt, not_run
+
+    def test_green_run_maps_every_node_and_outcome(self, tmp_path):
+        junit = self._junit_doc(
+            [
+                ("test_one", "tests.test_file_a.TestCls", ""),
+                ("test_two[param x]", "tests.test_file_a.TestCls",
+                 '<failure message="boom" type="AssertionError"/>'),
+                ("test_three", "tests.test_file_b",
+                 '<skipped type="pytest.xfail" message="xfail"/>'),
+            ],
+            {"tests": 3, "failures": 1, "errors": 0, "skipped": 1},
+        )
+        proc, receipt, not_run = self._reconcile(tmp_path, junit, rc="0")
+        assert proc.returncode == 0, proc.stderr
+        data = json.loads(receipt.read_text(encoding="utf-8"))
+        assert data["unique_reported"] == 3
+        assert data["junit_entries"] == 3
+        assert data["not_run"] == []
+        assert data["outcome_counts"] == {"passed": 1, "failure": 1, "xfail": 1}
+        assert not_run.read_text(encoding="utf-8").startswith("# not_run: none")
+
+    def test_duplicate_reported_entries_do_not_inflate_unique(self, tmp_path):
+        junit = self._junit_doc(
+            [
+                ("test_one", "tests.test_file_a.TestCls", ""),
+                ("test_one", "tests.test_file_a.TestCls",
+                 '<failure message="teardown-phase failure" type="E"/>'),
+                ("test_two[param x]", "tests.test_file_a.TestCls", ""),
+                ("test_three", "tests.test_file_b", ""),
+            ],
+            {"tests": 4, "failures": 1},
+        )
+        proc, receipt, _ = self._reconcile(tmp_path, junit, rc="0")
+        assert proc.returncode == 0, proc.stderr
+        data = json.loads(receipt.read_text(encoding="utf-8"))
+        assert data["junit_entries"] == 4
+        assert data["unique_reported"] == 3
+        assert data["duplicate_reported_entries"] == [
+            "tests/test_file_a.py::TestCls::test_one"
+        ]
+        assert data["outcome_counts"]["failure"] == 1
+
+    def test_green_rc_with_missing_node_refuses_incomplete_green(self, tmp_path):
+        junit = self._junit_doc(
+            [("test_one", "tests.test_file_a.TestCls", "")], {"tests": 1}
+        )
+        proc, receipt, _ = self._reconcile(tmp_path, junit, rc="0")
+        assert proc.returncode == 3
+        assert "INCOMPLETE_GREEN" in proc.stderr
+
+    def test_nonzero_rc_publishes_not_run_set(self, tmp_path):
+        junit = self._junit_doc(
+            [("test_one", "tests.test_file_a.TestCls", "")], {"tests": 1}
+        )
+        proc, receipt, not_run = self._reconcile(tmp_path, junit, rc="124")
+        assert proc.returncode == 0, proc.stderr
+        data = json.loads(receipt.read_text(encoding="utf-8"))
+        assert data["not_run"] == [
+            "tests/test_file_a.py::TestCls::test_two[param x]",
+            "tests/test_file_b.py::test_three",
+        ]
+        assert not_run.read_text(encoding="utf-8").splitlines() == data["not_run"]
+
+    def test_missing_junit_refuses(self, tmp_path):
+        collect_file = tmp_path / "collect.txt"
+        collect_file.write_text("\n".join(self.COLLECT) + "\n", encoding="utf-8", newline="\n")
+        proc = subprocess.run(
+            [sys.executable, str(EVIDENCE_TOOL), "reconcile-junit",
+             "--junit", tmp_path / "absent.xml", "--collect", collect_file,
+             "--shard", "runtime-a", "--pytest-rc", "1",
+             "--receipt", tmp_path / "r.json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            stdin=subprocess.DEVNULL,
+        )
+        assert proc.returncode == 3
+        assert "JUNIT_MISSING" in proc.stderr
+
+    def test_truncated_junit_refuses(self, tmp_path):
+        junit = self._junit_doc(
+            [("test_one", "tests.test_file_a.TestCls", "")], {"tests": 1}
+        )[:40]
+        proc, _, _ = self._reconcile(tmp_path, junit, rc="0")
+        assert proc.returncode == 3
+        assert "JUNIT_NOT_WELL_FORMED" in proc.stderr
+
+    def test_unknown_junit_nodeid_refuses(self, tmp_path):
+        junit = self._junit_doc(
+            [
+                ("test_one", "tests.test_file_a.TestCls", ""),
+                ("test_stranger", "tests.test_file_a.TestCls", ""),
+                ("test_two[param x]", "tests.test_file_a.TestCls", ""),
+                ("test_three", "tests.test_file_b", ""),
+            ],
+            {"tests": 4},
+        )
+        proc, _, _ = self._reconcile(tmp_path, junit, rc="0")
+        assert proc.returncode == 3
+        assert "UNKNOWN_JUNIT_NODEIDS" in proc.stderr
+
+    def test_suite_counter_contradiction_refuses(self, tmp_path):
+        junit = self._junit_doc(
+            [
+                ("test_one", "tests.test_file_a.TestCls",
+                 '<failure message="boom" type="E"/>'),
+                ("test_two[param x]", "tests.test_file_a.TestCls", ""),
+                ("test_three", "tests.test_file_b", ""),
+            ],
+            {"tests": 3, "failures": 0, "errors": 0, "skipped": 0},
+        )
+        proc, _, _ = self._reconcile(tmp_path, junit, rc="1")
+        assert proc.returncode == 3
+        assert "SUITE_COUNTER_CONTRADICTION" in proc.stderr
+
+
+FAKE_TIMEOUT_PASSTHROUGH = r'''#!/usr/bin/env bash
+# passthrough timeout for the body-fragment control: strips the GNU timeout
+# flags and the duration, execs the real command (offline; no host timeout)
+args=()
+for a in "$@"; do
+  case "$a" in
+    --signal=*|--kill-after=*) ;;
+    [0-9]*[smh]) ;;
+    *) args+=("$a") ;;
+  esac
+done
+exec "${args[@]}"
+'''
+
+FAKE_POETRY_DISPATCH = r'''#!/usr/bin/env bash
+# fake poetry for the body-fragment control: records argv; dispatches
+# "run pytest" to the fake pytest script and everything else to the real
+# interpreter on PATH (the observer heredoc path)
+DIR="${C91_FAKE_DIR:-/tmp}"
+N=$(ls "$DIR" 2>/dev/null | grep -c '^poetry-' || true)
+printf '%s\n' "$*" > "$DIR/poetry-$N.argv"
+if [ "$1" = "run" ] && [ "$2" = "pytest" ]; then
+  shift 2
+  exec python "${FAKE_PYTEST_SCRIPT:?}" "$@"
+fi
+if [ "$1" = "run" ]; then
+  shift
+  exec "$@"
+fi
+exec "$@"
+'''
+
+FAKE_PYTEST_EMITTER = r'''import os
+import sys
+import base64
+import secrets
+# emits REAL-format sensitive shapes into stdout (captured to private
+# staging by the workflow fragment) and exits with a controlled rc
+tok = os.environ.get("FAKE_PYTEST_SECRET", "")
+verifier = (
+    "SCRAM-SHA-256$4096:"
+    + base64.b64encode(secrets.token_bytes(16)).decode() + "$"
+    + base64.b64encode(secrets.token_bytes(32)).decode() + ":"
+    + base64.b64encode(secrets.token_bytes(32)).decode()
+)
+print("worker auth verifier " + verifier)
+print("connect dsn postgresql+asyncpg://u:" + tok + "@db.example.com:5432/x")
+args = sys.argv[1:]
+if "--junitxml" in args:
+    path = args[args.index("--junitxml") + 1]
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<testsuites><testsuite name="s" tests="1" failures="0" errors="0" skipped="0">'
+            '<testcase name="test_one" classname="tests.test_file_a" />'
+            "</testsuite></testsuites>"
+        )
+sys.exit(int(os.environ.get("FAKE_PYTEST_RC", "0")))
+'''
+
+
+class TestR6R1FragmentControls:
+    """R6R1 execution-scope controls on REAL workflow fragments: the PG
+    start uses the environment-NAME credential channel (value never on the
+    docker argv, masked before any output); the supply scope and the
+    publication scope run as SEPARATE processes sharing the job-scoped
+    credential store (missing/empty/incomplete store refuses the whole
+    outlet with a valueless receipt — admin-only cannot save it); the test
+    body keeps raw pytest output in private staging with the console clean
+    and the rc preserved; cleanup removes ONLY label-verified own IDs and
+    the exact credential files."""
+
+    @staticmethod
+    def _posix(path) -> str:
+        return str(path).replace(chr(92), "/")
+
+    def _bin_dir(self, tmp_path, *, docker=True, psql=False, poetry_pass=False,
+                 timeout=False, poetry=False):
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        fixtures = []
+        if docker:
+            fixtures.append(("docker", FAKE_DOCKER))
+        if psql:
+            fixtures.append(("psql", FAKE_PSQL))
+        if poetry_pass:
+            fixtures.append(("poetry", FAKE_POETRY_PASS))
+        if timeout:
+            fixtures.append(("timeout", FAKE_TIMEOUT_PASSTHROUGH))
+        if poetry:
+            fixtures.append(("poetry", FAKE_POETRY_DISPATCH))
+        for name, body in fixtures:
+            target = bin_dir / name
+            target.write_text(body, encoding="utf-8", newline="\n")
+            os.chmod(target, 0o755)
+        return bin_dir
+
+    def _run_script(self, script, env, cwd):
+        return subprocess.run(
+            [BASH, "-c", script], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", env=env, cwd=cwd,
+            stdin=subprocess.DEVNULL,
+        )
+
+    def _job_env(self, tmp_path):
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        posix_tmp = self._posix(tmp_path)
+        return {
+            k: str(v).replace("${{ runner.temp }}", posix_tmp)
+            for k, v in doc["jobs"]["test"]["env"].items()
+        }
+
+    def _fragment_env(self, tmp_path, bin_dir, github_env, rec):
+        env = dict(os.environ)
+        env.update({
+            "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+            "C91_FAKE_DIR": self._posix(rec),
+            "GITHUB_ENV": self._posix(github_env),
+            "GITHUB_RUN_ID": "r6r1",
+            "GITHUB_RUN_ATTEMPT": "1",
+        })
+        env.update(self._job_env(tmp_path))
+        return env
+
+    @staticmethod
+    def _step(doc, name_fragment):
+        return next(
+            s for s in doc["jobs"]["test"]["steps"]
+            if name_fragment in s.get("name", "")
+        )
+
+    def test_pg_start_uses_env_name_channel_and_masks_before_any_output(self, tmp_path):
+        bin_dir = self._bin_dir(tmp_path)
+        rec = tmp_path / "records"
+        rec.mkdir()
+        github_env = tmp_path / "github-env"
+        github_env.write_text("", encoding="utf-8")
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        pg = self._step(doc, "Postgres 16")
+        env = self._fragment_env(tmp_path, bin_dir, github_env, rec)
+        proc = self._run_script(
+            pg["run"].replace("${{ matrix.shard }}", "runtime-a"), env, str(tmp_path)
         )
         assert proc.returncode == 0, proc.stderr
-        sanitized = out.read_text(encoding="utf-8")
-        assert app_secret not in sanitized
-        assert "tests/test_ok.py::test_one" in sanitized
-        data = json.loads(receipt.read_text(encoding="utf-8"))
-        assert data["mapping_invariance"] == "not_applicable_text"
+        gh = github_env.read_text(encoding="utf-8")
+        pw = re.search(r"^CI_PG_ADMIN_PASSWORD=(\S+)$", gh, re.M).group(1)
+        assert len(pw) >= 24
+        argv_texts = [p.read_text(encoding="utf-8") for p in sorted(rec.glob("docker-*.argv"))]
+        # one `run` + one HostPort `inspect` are expected from the fragment
+        run_argv = [a for a in argv_texts if a.startswith("run -d")]
+        assert len(run_argv) == 1
+        docker_argv = run_argv[0]
+        assert "-e POSTGRES_PASSWORD" in docker_argv
+        assert "-e POSTGRES_PASSWORD=" not in docker_argv, "value must ride the env-name channel only"
+        assert pw not in docker_argv
+        assert pw not in "".join(a for a in argv_texts if a != docker_argv)
+        # the console sees the value exactly once — inside the mask
+        # registration line itself, before any other output
+        assert proc.stdout.count(pw) == 1
+        assert f"::add-mask::{pw}" in proc.stdout
+        assert "CI_PG_PORT=36379" in gh
+        assert "CI_PG_CONTAINER_ID=fakedockerid" in gh
+
+    def _supply_scope_store(self, tmp_path, bin_dir, github_env, rec):
+        """Runs the PG/Redis start fragments and the REAL wrapper (fake
+        tools) in the SUPPLY scope; returns the job-scoped store path."""
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        for fragment in ("Postgres 16", "Redis 7"):
+            step = self._step(doc, fragment)
+            env = self._fragment_env(tmp_path, bin_dir, github_env, rec)
+            proc = self._run_script(
+                step["run"].replace("${{ matrix.shard }}", "runtime-a"), env, str(tmp_path)
+            )
+            assert proc.returncode == 0, proc.stderr
+        provision = self._step(doc, "Provision test database")
+        env = self._fragment_env(tmp_path, bin_dir, github_env, rec)
+        env.update({"PYTHON_BIN": sys.executable, "CI_SUPPLY_SKIP_SERVICE_WAIT": "1"})
+        for key, value in provision["env"].items():
+            env[key] = str(value).replace("${{ env.CI_REDIS_PORT }}", "36379")
+        gh = github_env.read_text(encoding="utf-8")
+        for key in ("CI_PG_ADMIN_PASSWORD", "CI_PG_PORT", "CI_REDIS_PORT"):
+            env[key] = re.search(rf"^{key}=(.*)$", gh, re.M).group(1)
+        proc = subprocess.run(
+            [BASH, self._posix(BOOTSTRAP), "--repo-root", self._posix(REPO_ROOT),
+             "--env-file", self._posix(tmp_path / "env.sh"),
+             "--github-env", self._posix(tmp_path / "gh2"),
+             "--plan-file", self._posix(tmp_path / "plan.json"),
+             "--profile-dir", self._posix(tmp_path / "profiles")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=env, cwd=str(tmp_path), stdin=subprocess.DEVNULL,
+        )
+        assert proc.returncode == 0, proc.stderr
+        store = tmp_path / "c91-task-credentials.env"
+        assert store.is_file(), "the job-scoped store must exist after supply"
+        store_text = store.read_text(encoding="utf-8")
+        for key in ("MIGRATE_PASSWORD", "APP_PASSWORD", "OPERATOR_PASSWORD",
+                    "REPORTING_PASSWORD", "SECRET_KEY"):
+            assert f"{key}=" in store_text
+        return store
+
+    def _seed_publication_inputs(self, rt, admin_pw):
+        (rt / "collect-runtime-a.txt").write_text(
+            "tests/test_file_a.py::test_one\n", encoding="utf-8", newline="\n"
+        )
+        (rt / "shard-plan.receipt.json").write_text("{}\n", encoding="utf-8", newline="\n")
+        (rt / "supply-plan.json").write_text("{}\n", encoding="utf-8", newline="\n")
+        (rt / "pytest-stdout.txt").write_text(
+            f"log line postgresql://u:{admin_pw}@h/db\n", encoding="utf-8", newline="\n"
+        )
+        (rt / "pytest-stderr.txt").write_text("quiet\n", encoding="utf-8", newline="\n")
+        return (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<testsuites><testsuite name="s" tests="1" failures="0" errors="0" skipped="0">'
+            '<testcase name="test_one" classname="tests.test_file_a" />'
+            "</testsuite></testsuites>"
+        )
+
+    def _run_publication_scope(self, tmp_path, rt, junit_text, github_env=None):
+        """Runs the REAL sanitize fragment in a SEPARATE process whose env is
+        exactly: os.environ + job-level env + the GITHUB_ENV channel — never
+        the provision step's env."""
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        sanitize = self._step(doc, "Sanitize shard evidence")
+        env = dict(os.environ)
+        env["RUNNER_TEMP"] = self._posix(rt)
+        env.update(self._job_env(tmp_path))
+        if github_env is not None and github_env.is_file():
+            for line in github_env.read_text(encoding="utf-8").splitlines():
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    env[key] = value
+        junit_in_repo = REPO_ROOT / "junit-runtime-a.xml"
+        try:
+            junit_in_repo.write_text(junit_text, encoding="utf-8", newline="\n")
+            script = sanitize["run"].replace("${{ matrix.shard }}", "runtime-a")
+            return self._run_script(script, env, self._posix(REPO_ROOT)), junit_in_repo
+        finally:
+            junit_in_repo.unlink(missing_ok=True)
+
+    def test_publication_scope_shares_job_env_store_and_publishes(self, tmp_path):
+        bin_dir = self._bin_dir(tmp_path, psql=True, poetry_pass=True)
+        rec = tmp_path / "records"
+        rec.mkdir()
+        github_env = tmp_path / "github-env"
+        github_env.write_text("", encoding="utf-8")
+        store = self._supply_scope_store(tmp_path, bin_dir, github_env, rec)
+        admin_pw = re.search(
+            r"^CI_PG_ADMIN_PASSWORD=(.*)$", github_env.read_text(encoding="utf-8"), re.M
+        ).group(1)
+        rt = tmp_path
+        junit_text = self._seed_publication_inputs(rt, admin_pw)
+        proc, _junit = self._run_publication_scope(tmp_path, rt, junit_text, github_env)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        pub = rt / "publish"
+        names = sorted(p.name for p in pub.iterdir())
+        assert "junit-runtime-a.sanitized.xml" in names
+        assert "collect-runtime-a.sanitized.txt" in names
+        assert "pytest-stdout-runtime-a.sanitized.txt" in names
+        sanitized_log = (pub / "pytest-stdout-runtime-a.sanitized.txt").read_text(encoding="utf-8")
+        assert admin_pw not in sanitized_log
+        assert list(rt.glob("GAP-*.txt")) == [], "no evidence gaps on a complete publication scope"
+        assert store.is_file(), "the store survives for the cleanup step"
+
+    def test_store_missing_refuses_entire_outlet_with_valueless_receipt(self, tmp_path):
+        rt = tmp_path
+        junit_text = self._seed_publication_inputs(rt, "unused-admin-pw-value")
+        (tmp_path / "c91-task-credentials.env").unlink(missing_ok=True)
+        proc, _ = self._run_publication_scope(tmp_path, rt, junit_text)
+        assert proc.returncode == 0, "the step itself stays green; the GAP turns the job red"
+        assert (rt / "GAP-publication.txt").is_file()
+        pub = rt / "publish"
+        refusal = json.loads((pub / "publication-refusal.json").read_text(encoding="utf-8"))
+        assert refusal == {
+            "tool": "prepare_test_evidence.py refusal-receipt",
+            "refused": True,
+            "reason": "secrets_store_unavailable",
+            "values_included": False,
+            "payload_published": False,
+        }
+        payloads = [p for p in pub.iterdir()
+                    if ".sanitized." in p.name and not p.name.startswith("GAP-")]
+        assert not payloads, (
+            "no payload may be published from an unavailable store"
+        )
+
+    def test_incomplete_store_with_admin_env_refuses_every_payload(self, tmp_path):
+        rt = tmp_path
+        junit_text = self._seed_publication_inputs(rt, "unused-admin-pw-value")
+        # an admin value IS present in the scope, but the store lacks four
+        # required keys — admin-only must not rescue the outlet
+        (rt / "c91-task-credentials.env").write_text(
+            "APP_PASSWORD=lonely\n", encoding="utf-8", newline="\n"
+        )
+        gh_admin = tmp_path / "github-env"
+        gh_admin.write_text(
+            "CI_PG_ADMIN_PASSWORD=" + secrets.token_hex(16) + "\n",
+            encoding="utf-8", newline="\n",
+        )
+        proc, _ = self._run_publication_scope(tmp_path, rt, junit_text, gh_admin)
+        assert proc.returncode == 0
+        assert (rt / "GAP-junit-runtime-a.sanitized.xml.txt").is_file()
+        assert "REFUSED" in proc.stdout
+        pub = rt / "publish"
+        payloads = [p for p in pub.iterdir()
+                    if ".sanitized." in p.name and not p.name.startswith("GAP-")]
+        assert not payloads
+
+    def test_body_fragment_keeps_console_clean_and_preserves_rc(self, tmp_path):
+        bin_dir = self._bin_dir(tmp_path, timeout=True, poetry=True, docker=False)
+        fake_pytest = tmp_path / "fake_pytest.py"
+        fake_pytest.write_text(FAKE_PYTEST_EMITTER, encoding="utf-8", newline="\n")
+        rec = tmp_path / "records"
+        rec.mkdir()
+        rt = tmp_path / "rt"
+        rt.mkdir()
+        (rt / "c91-test-env.sh").write_text(
+            "export TEST_ADMIN_DATABASE_URL=''\n", encoding="utf-8", newline="\n"
+        )
+        (rt / "profile-runtime-a.tests").write_text(
+            "tests/test_file_a.py\n", encoding="utf-8", newline="\n"
+        )
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        body = self._step(doc, "Run shard test body")
+        script = (
+            body["run"]
+            .replace("${{ matrix.shard }}", "runtime-a")
+            .replace("${{ matrix.pytest-timeout }}", "1m")
+        )
+        secret = secrets.token_hex(12)
+        env = dict(os.environ)
+        env.update({
+            "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+            "RUNNER_TEMP": self._posix(rt),
+            "C91_FAKE_DIR": self._posix(rec),
+            "FAKE_PYTEST_SCRIPT": self._posix(fake_pytest),
+            "FAKE_PYTEST_RC": "3",
+            "FAKE_PYTEST_SECRET": secret,
+        })
+        junit_in_repo = REPO_ROOT / "junit-runtime-a.xml"
+        try:
+            proc = self._run_script(script, env, self._posix(REPO_ROOT / "backend"))
+        finally:
+            junit_in_repo.unlink(missing_ok=True)
+        assert proc.returncode == 3, proc.stdout + proc.stderr
+        assert (rt / "pytest-rc.txt").read_text(encoding="utf-8").strip() == "3"
+        for marker in ("SCRAM-SHA-256$", "db.example.com", secret):
+            assert marker not in proc.stdout, "raw output leaked to the Actions console"
+            assert marker not in proc.stderr
+        raw = (rt / "pytest-stdout.txt").read_text(encoding="utf-8")
+        assert "SCRAM-SHA-256$" in raw and "db.example.com" in raw and secret in raw
+        # the captured raw log then passes the REAL sanitizer cleanly
+        store = tmp_path / "store.env"
+        store.write_text(
+            "".join(f"{k}={secrets.token_hex(16)}\n" for k in
+                    ("MIGRATE_PASSWORD", "APP_PASSWORD", "OPERATOR_PASSWORD",
+                     "REPORTING_PASSWORD", "SECRET_KEY")),
+            encoding="utf-8", newline="\n",
+        )
+        clean_env = dict(os.environ)
+        clean_env["FAKE_PYTEST_SECRET"] = secret
+        proc2 = subprocess.run(
+            [sys.executable, str(EVIDENCE_TOOL), "sanitize",
+             "--input", rt / "pytest-stdout.txt",
+             "--output", tmp_path / "clean.txt",
+             "--receipt", tmp_path / "clean.receipt.json",
+             "--secrets-file", store, "--extra-env", "FAKE_PYTEST_SECRET"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=clean_env, stdin=subprocess.DEVNULL,
+        )
+        assert proc2.returncode == 0, proc2.stderr
+        clean = (tmp_path / "clean.txt").read_text(encoding="utf-8")
+        # the DSN host is not a credential and may survive; the secret and
+        # the verifier shape must not
+        assert "SCRAM-SHA-256$" not in clean
+        assert secret not in clean
+        assert "postgresql+asyncpg://u:" + secret not in clean
+        # the poetry argv stays free of the synthetic value
+        poetry_argv = (rec / "poetry-0.argv").read_text(encoding="utf-8")
+        assert secret not in poetry_argv
+
+    def test_cleanup_removes_only_label_verified_own_resources(self, tmp_path):
+        bin_dir = self._bin_dir(tmp_path)
+        rt = tmp_path / "rt"
+        rt.mkdir()
+        store = rt / "c91-task-credentials.env"
+        store.write_text("APP_PASSWORD=x\n", encoding="utf-8", newline="\n")
+        (rt / "c91-test-env.sh").write_text("export X=1\n", encoding="utf-8", newline="\n")
+        (rt / "unrelated-keep.txt").write_text("keep\n", encoding="utf-8", newline="\n")
+        github_env = tmp_path / "github-env"
+        github_env.write_text(
+            chr(10).join([
+                "CI_PG_CONTAINER_ID=own-task-id-1",
+                "CI_REDIS_CONTAINER_ID=foreign-id-2",
+            ]) + chr(10),
+            newline="\n",
+        )
+        rec = tmp_path / "records"
+        rec.mkdir()
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        cleanup = self._step(doc, "Cleanup task-owned resources")
+        env = self._fragment_env(tmp_path, bin_dir, github_env, rec)
+        # GitHub materializes GITHUB_ENV exports into every later step's
+        # environment; the harness mirrors that for the container IDs
+        env["CI_PG_CONTAINER_ID"] = "own-task-id-1"
+        env["CI_REDIS_CONTAINER_ID"] = "foreign-id-2"
+        env["RUNNER_TEMP"] = self._posix(rt)
+        env["CI_CREDENTIALS_FILE"] = self._posix(store)
+        env["C91_FAKE_OWNER_IDS"] = "own-task-id-1"
+        proc = self._run_script(cleanup["run"], env, str(tmp_path))
+        assert proc.returncode == 0, proc.stderr
+        all_argv = [p.read_text(encoding="utf-8").strip() for p in sorted(rec.glob("docker-*.argv"))]
+        # inspecting BOTH ids is correct (label verification); REMOVING is
+        # restricted to the label-verified own id
+        inspect_argv = [a for a in all_argv if a.startswith("inspect")]
+        assert len(inspect_argv) == 2, all_argv
+        rm_calls = [a for a in all_argv if a.startswith("rm -f -v")]
+        assert rm_calls == ["rm -f -v own-task-id-1"], "only the label-verified own ID is removed"
+        assert (rt / "GAP-cleanup.txt").is_file(), "the foreign container is disclosed as a gap"
+        assert not store.exists() and not (rt / "c91-test-env.sh").exists()
+        assert (rt / "unrelated-keep.txt").exists(), "exact-path discipline: unrelated files survive"
+
+        # second run: both containers are own-labeled → both removed, no gap
+        github_env.write_text(
+            "CI_PG_CONTAINER_ID=own-a\nCI_REDIS_CONTAINER_ID=own-b\n",
+            encoding="utf-8", newline="\n",
+        )
+        store.write_text("APP_PASSWORD=x\n", encoding="utf-8", newline="\n")
+        (rt / "c91-test-env.sh").write_text("export X=1\n", encoding="utf-8", newline="\n")
+        rec2 = tmp_path / "records2"
+        rec2.mkdir()
+        env2 = self._fragment_env(tmp_path, bin_dir, github_env, rec2)
+        env2["CI_PG_CONTAINER_ID"] = "own-a"
+        env2["CI_REDIS_CONTAINER_ID"] = "own-b"
+        env2["RUNNER_TEMP"] = self._posix(rt)
+        env2["CI_CREDENTIALS_FILE"] = self._posix(store)
+        env2["C91_FAKE_OWNER_IDS"] = "own-a own-b"
+        (rt / "GAP-cleanup.txt").unlink(missing_ok=True)
+        proc2 = self._run_script(cleanup["run"], env2, str(tmp_path))
+        assert proc2.returncode == 0, proc2.stderr
+        assert not (rt / "GAP-cleanup.txt").exists(), "both-own cleanup leaves no gap"
+        rm2 = [p.read_text(encoding="utf-8").strip() for p in sorted(rec2.glob("docker-*.argv"))
+               if p.read_text(encoding="utf-8").startswith("rm -f -v")]
+        assert sorted(rm2) == ["rm -f -v own-a", "rm -f -v own-b"]

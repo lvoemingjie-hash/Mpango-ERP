@@ -71,6 +71,10 @@ jobs:
             expected-nodes: "92"
     env:
       CI_OWNER_LABEL: zcode-mvp-invariants-ci-deploy-staging-r6
+      # R6R1 (F-01): the task credential store is declared at JOB scope so
+      # the supply step and every publication/cleanup step resolve the SAME
+      # private store path; a step-scoped key would not cross steps.
+      CI_CREDENTIALS_FILE: ${{ runner.temp }}/c91-task-credentials.env
 
     steps:
       - uses: actions/checkout@v4
@@ -91,8 +95,12 @@ jobs:
         run: |
           PW="$(python -c 'import secrets; print(secrets.token_urlsafe(24))')"
           echo "::add-mask::$PW"
+          # R6R1 (F-05): the admin credential crosses to docker through the
+          # environment-NAME channel (-e POSTGRES_PASSWORD, no value on the
+          # docker argv / process listing).
+          export POSTGRES_PASSWORD="$PW"
           NAME="c91-r6-pg-${{ matrix.shard }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          CID=$(docker run -d --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" -p 127.0.0.1::5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD="$PW" postgres:16-alpine)
+          CID=$(docker run -d --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" -p 127.0.0.1::5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD postgres:16-alpine)
           PGPORT=$(docker inspect --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' "$CID")
           {
             echo "CI_PG_CONTAINER_ID=$CID"
@@ -115,7 +123,6 @@ jobs:
         env:
           CI_PG_HOST: 127.0.0.1
           CI_PG_ADMIN_USER: postgres
-          CI_CREDENTIALS_FILE: ${{ runner.temp }}/c91-task-credentials.env
           CI_TEST_DB: test_ci_mpango
           CI_TEST_TENANT_SCHEMA: t_test
           CI_REDIS_URL: redis://127.0.0.1:${{ env.CI_REDIS_PORT }}/0
@@ -189,8 +196,9 @@ jobs:
                   time.sleep(5)
           PYOBS
           OBS_PID=$!
+          echo "shard ${{ matrix.shard }} test body started (raw pytest output goes to private runner staging, never to this console)"
           set +e
-          timeout --signal=INT --kill-after=60s ${{ matrix.pytest-timeout }} poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests") -q --tb=short --junitxml=../junit-${{ matrix.shard }}.xml
+          timeout --signal=INT --kill-after=60s ${{ matrix.pytest-timeout }} poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests") -q --tb=short --junitxml=../junit-${{ matrix.shard }}.xml > "$RUNNER_TEMP/pytest-stdout.txt" 2> "$RUNNER_TEMP/pytest-stderr.txt"
           rc=$?
           set -e
           kill "$OBS_PID" 2>/dev/null || true
@@ -200,6 +208,17 @@ jobs:
           echo "shard ${{ matrix.shard }} pytest rc=$rc"
           exit "$rc"
 
+      - name: Reconcile junit against the frozen collect (fail-closed closure)
+        if: always()
+        run: |
+          RC_ARG="$(cat "$RUNNER_TEMP/pytest-rc.txt" 2>/dev/null || echo never_ran)"
+          if python tools/ci/prepare_test_evidence.py reconcile-junit --junit "junit-${{ matrix.shard }}.xml" --collect "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" --shard "${{ matrix.shard }}" --pytest-rc "$RC_ARG" --receipt "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.json" --not-run-file "$RUNNER_TEMP/not-run-${{ matrix.shard }}.nodeids.txt"; then
+            echo "reconcile complete: receipt + not-run list recorded"
+          else
+            echo "reconcile REFUSED (missing/truncated/contradictory junit, unknown nodeids, or an incomplete green) — recording an evidence gap"
+            echo "reconcile_refused" > "$RUNNER_TEMP/GAP-reconcile.txt"
+          fi
+
       - name: Sanitize shard evidence for publication (fail-closed)
         if: always()
         run: |
@@ -207,14 +226,24 @@ jobs:
           PUB="$RUNNER_TEMP/publish"
           mkdir -p "$PUB"
           SECRETS="${CI_CREDENTIALS_FILE:-}"
-          if [ -z "$SECRETS" ] || [ ! -f "$SECRETS" ]; then
-            echo "credential store unavailable; every artifact below will be refused and recorded as an evidence gap"
-            echo "secrets_store_absent" > "$RUNNER_TEMP/GAP-secrets-store.txt"
-            SECRETS=""
+          if [ -z "$SECRETS" ] || [ ! -s "$SECRETS" ]; then
+            echo "task credential store missing/empty — refusing the ENTIRE payload outlet (no admin-only fallback)"
+            python tools/ci/prepare_test_evidence.py refusal-receipt --reason secrets_store_unavailable --out "$PUB/publication-refusal.json" || true
+            echo "publication_refused_all" > "$RUNNER_TEMP/GAP-publication.txt"
+            cp "$RUNNER_TEMP"/GAP-*.txt "$PUB"/ 2>/dev/null || true
+            exit 0
           fi
           sanitize() {
-            src="$1"; dst="$2"
-            if [ ! -f "$src" ]; then echo "skip (absent): $src"; return 0; fi
+            src="$1"; dst="$2"; required="$3"
+            if [ ! -f "$src" ]; then
+              if [ "$required" = "required" ]; then
+                echo "required input absent: $src — recording an evidence gap (absence is not completeness)"
+                echo "required_input_absent" > "$RUNNER_TEMP/GAP-$dst.txt"
+              else
+                echo "skip (absent, optional): $src"
+              fi
+              return 0
+            fi
             if python tools/ci/prepare_test_evidence.py sanitize --input "$src" --output "$PUB/$dst" --receipt "$PUB/$dst.receipt.json" --secrets-file "$SECRETS" --extra-env CI_PG_ADMIN_PASSWORD; then
               echo "sanitized: $dst"
             else
@@ -222,10 +251,15 @@ jobs:
               echo "sanitize_refused" > "$RUNNER_TEMP/GAP-$dst.txt"
             fi
           }
-          sanitize "junit-${{ matrix.shard }}.xml" "junit-${{ matrix.shard }}.sanitized.xml"
-          sanitize "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" "collect-${{ matrix.shard }}.sanitized.txt"
-          sanitize "$RUNNER_TEMP/connections-${{ matrix.shard }}.csv" "connections-${{ matrix.shard }}.sanitized.csv"
-          sanitize "$RUNNER_TEMP/supply-plan.json" "supply-plan-${{ matrix.shard }}.sanitized.json"
+          sanitize "junit-${{ matrix.shard }}.xml" "junit-${{ matrix.shard }}.sanitized.xml" required
+          sanitize "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" "collect-${{ matrix.shard }}.sanitized.txt" required
+          sanitize "$RUNNER_TEMP/shard-plan.receipt.json" "shard-plan-${{ matrix.shard }}.sanitized.json" required
+          sanitize "$RUNNER_TEMP/supply-plan.json" "supply-plan-${{ matrix.shard }}.sanitized.json" required
+          sanitize "$RUNNER_TEMP/pytest-stdout.txt" "pytest-stdout-${{ matrix.shard }}.sanitized.txt" required
+          sanitize "$RUNNER_TEMP/pytest-stderr.txt" "pytest-stderr-${{ matrix.shard }}.sanitized.txt" required
+          sanitize "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.json" "reconcile-${{ matrix.shard }}.sanitized.json" optional
+          sanitize "$RUNNER_TEMP/not-run-${{ matrix.shard }}.nodeids.txt" "not-run-${{ matrix.shard }}.sanitized.nodeids.txt" optional
+          sanitize "$RUNNER_TEMP/connections-${{ matrix.shard }}.csv" "connections-${{ matrix.shard }}.sanitized.csv" optional
           cp "$RUNNER_TEMP"/GAP-*.txt "$PUB"/ 2>/dev/null || true
 
       - name: Upload sanitized shard evidence (never masks the test rc)
@@ -235,6 +269,33 @@ jobs:
           name: test-evidence-${{ matrix.shard }}-run${{ github.run_id }}-attempt${{ github.run_attempt }}
           if-no-files-found: error
           path: ${{ runner.temp }}/publish
+
+      - name: Cleanup task-owned resources (exact IDs re-verified before removal)
+        if: always()
+        run: |
+          set -u
+          fail=0
+          for cid_name in CI_PG_CONTAINER_ID CI_REDIS_CONTAINER_ID; do
+            cid="${!cid_name:-}"
+            if [ -n "$cid" ]; then
+              label="$(docker inspect --format '{{ index .Config.Labels "mpango.owner" }}' "$cid" 2>/dev/null || true)"
+              if [ "$label" = "$CI_OWNER_LABEL" ]; then
+                docker rm -f -v "$cid" || fail=1
+              else
+                echo "container $cid has a mismatched/unknown owner label — NOT removed (exact-ID discipline, no prune/prefix deletion)"
+                fail=1
+              fi
+            fi
+          done
+          rm -f "$CI_CREDENTIALS_FILE" "$RUNNER_TEMP/c91-test-env.sh" || fail=1
+          rm -rf "$RUNNER_TEMP/c91-resource-root" || fail=1
+          if [ "$fail" -ne 0 ]; then
+            echo "cleanup_failed" > "$RUNNER_TEMP/GAP-cleanup.txt"
+          fi
+          # Disclosure: on cancellation or a hard job-level timeout this step
+          # may never execute. Hosted runners are decommissioned by the
+          # platform and their containers/filesystems are destroyed with the
+          # VM; no per-item destruction receipt is claimed in that case.
 
       - name: Assert shard outcome (pytest rc is final; uploads never mask it)
         if: always()

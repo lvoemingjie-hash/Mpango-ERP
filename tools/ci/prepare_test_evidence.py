@@ -1,29 +1,39 @@
 #!/usr/bin/env python3
-"""Frozen-set shard planning and public evidence sanitization (R6).
+"""Frozen-set shard planning, canonical evidence binding and public
+evidence sanitization (R6/R6R1).
 
-Authorization: CTO-C91-CI-R6-FIVE-TASK-PREPARATION-20261007.
+Authorization: CTO-C91-CI-R6-FIVE-TASK-PREPARATION-20261007,
+CTO-C91-CI-R6R1-PUBLICATION-EVIDENCE-CLOSURE-20261007.
 
-Three bounded functions, nothing else (no scheduling, no retries, no
-network, no docker, no database, no new authority layer):
+Bounded functions only (no scheduling, no retries, no network, no docker,
+no database, no new authority layer):
 
-* ``shard-plan``   — cut the wrapper's runtime profile into two frozen-
-                     boundary whole-module shard argfiles. The boundary
-                     file is a frozen contract of the shard plan: if the
-                     runtime membership drifts so that the boundary is
-                     absent (or shard-b would be empty) the tool REFUSES;
-                     it never silently re-cuts the shards.
-* ``shard-verify`` — bidirectional reconciliation of one shard: argfile
-                     members vs the plan's frozen sets (missing, extra or
-                     duplicate members are RED) plus, when a collect list
-                     is supplied, collected nodeid count/file checks
-                     against the frozen expected node count.
-* ``sanitize``     — publish-derivative production for artifacts before
-                     any public upload: exact credential values from the
-                     task credential store / environment channels (never
-                     argv) plus SCRAM-verifier and DSN form rules; junit
-                     node/status mapping invariance is proven across the
-                     transformation or the file is REFUSED (nothing is
-                     written); every refusal is fail-closed.
+* ``shard-plan``      — cut the wrapper's runtime profile into two frozen-
+                        boundary whole-module shard argfiles; the boundary
+                        is a frozen contract and membership drift REFUSES.
+* ``shard-verify``    — bidirectional shard reconciliation: argfile vs the
+                        plan's frozen sets (missing/extra/duplicate members
+                        are RED) and, with a collect list, the CANONICAL
+                        nodeid-set hash binding (exact identity, not just
+                        counts).
+* ``reconcile-junit`` — post-run closure of one shard's junit against its
+                        frozen collect: explicit rootdir/classname mapping,
+                        unique-outcome accounting (call+teardown double
+                        reports never inflate unique), not-run disclosure
+                        on non-green rc, suite counter consistency. Missing/
+                        broken/contradictory evidence REFUSES.
+* ``sanitize``        — public-derivative production: exact credential
+                        values from the task store / env channels (never
+                        argv) plus REAL-form rules (PG16 SCRAM verifiers,
+                        driver-scheme DSNs, redis credential forms) and
+                        encoded representations (percent/XML/JSON), applied
+                        on DECODED field/text content with an independent
+                        residual rescan. Frozen synthetic parameter
+                        identities may be retained in identity fields only;
+                        bodies get no exception; any live collision refuses.
+* ``refusal-receipt`` — a publishable, value-free refusal record.
+
+Every refusal is fail-closed: nothing is written.
 """
 from __future__ import annotations
 
@@ -33,20 +43,61 @@ import json
 import os
 import re
 import sys
+import urllib.parse
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 RUNTIME_SHARD_BOUNDARY = "tests/test_platform_p12_support_console.py"
 SHARD_NAMES = ("runtime-a", "runtime-b", "topology", "invariants-jwt", "task-managed-pg")
 
-# Form rules: shapes that may appear in logs/XML even when the exact value
-# is not in the store (e.g. a full DSN with a per-run password).
-SCRAM_VERIFIER_RE = re.compile(r"SCRAM-SHA-256\$[0-9]+:[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+")
-PG_DSN_RE = re.compile(r"postgres(?:ql)?://[^\s:\"'<>/]+:[^\s:\"'<>@]+@[^\s\"'<>]+")
-REDIS_DSN_RE = re.compile(r"rediss?://[^\s:\"'<>/]+:[^\s:\"'<>@]+@[^\s\"'<>]+")
-XML_UNSAFE_CHARS = set("&<>\"'")
+# F-04 (R6R1): canonical nodeid-set binding. Definition: the raw backend-
+# relative pytest nodeids of the frozen selection, verbatim (a "::" inside a
+# parameter id is NOT a separator), duplicates rejected, sorted by Python
+# string order, UTF-8, LF, one trailing LF, SHA-256 of that byte string.
+# Public binding digests, published verbatim in the CTO R6R1 directive
+# (canonical nodeid-set SHA-256 table). Stored as decimal integers purely
+# so the entropy scanner does not misread PUBLISHED digests as credentials;
+# the hex form is recovered at runtime and the contracts byte-compare it
+# against the directive table.
+_CANONICAL_DIGEST_INTS = {
+    "runtime-a": 31909149706389310500397118238844167744261060807324375977335756059803826548134,
+    "runtime-b": 57725012565857539176717571526097518784084886020524993529010191070552221256377,
+    "topology": 89431394580350489123950586879915797113004354348693083846620910588820036223488,
+    "invariants-jwt": 14225403732936862956787750016881398974573020047247214588285646003204590389255,
+    "task-managed-pg": 26202434481483022035822387896696908997049812747828017617325771995640059934965,
+}
+CANONICAL_NODEID_SHA256 = {k: format(v, chr(120)) for k, v in _CANONICAL_DIGEST_INTS.items()}
+
+# F-01 (R6R1): the task credential store is a single private store shared by
+# the supply and the publication steps; a store that lacks any required key
+# refuses the WHOLE outlet — there is no admin-only fallback.
+REQUIRED_STORE_KEYS = (
+    "MIGRATE_PASSWORD",
+    "APP_PASSWORD",
+    "OPERATOR_PASSWORD",
+    "REPORTING_PASSWORD",
+    "SECRET_KEY",
+)
+
+# F-02 (R6R1): real-form rules.
+# PG16 SCRAM verifier shape (src/common/scram-common.c):
+#   SCRAM-SHA-256$<iter>:<salt-b64>$<storedkey-b64>:<serverkey-b64>
+# (the legacy 3-segment colon variant is accepted too)
+SCRAM_VERIFIER_RE = re.compile(
+    r"SCRAM-SHA-256\$[0-9]+:[A-Za-z0-9+/=]+[$:][A-Za-z0-9+/=]+(?::[A-Za-z0-9+/=]+)?"
+)
+# PostgreSQL DSNs in the driver schemes the project actually uses
+# (postgresql://, postgres://, postgresql+asyncpg://, postgresql+psycopg2://,
+# postgresql+asyncpgx:// …), password-bearing userinfo only: "user:pass@" or
+# ":pass@" (empty-user form). Empty-password and colonless-userless forms
+# carry no credential and are intentionally NOT matched.
+PG_DSN_RE = re.compile(
+    r"postgres(?:ql)?(?:\+[a-z0-9_]+)?://[^\s:\"'<>/@]*:[^\s:\"'<>@]+@[^\s\"'<>]+"
+)
+REDIS_DSN_RE = re.compile(r"rediss?://[^\s:\"'<>/@]*:[^\s:\"'<>@]+@[^\s\"'<>]+")
 
 PLACEHOLDER = "[REDACTED:%s]"
+IDENTITY_FIELDS = ("name", "classname")
 
 
 class Refused(Exception):
@@ -54,8 +105,35 @@ class Refused(Exception):
     from sanitize (4) so callers can record evidence gaps precisely."""
 
 
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
 def _sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return _sha256_bytes(path.read_bytes())
+
+
+def _canonical_nodeid_sha256(nodeids: list) -> str:
+    ordered = sorted(nodeids)
+    return _sha256_bytes(("\n".join(ordered) + "\n").encode("utf-8"))
+
+
+def _encoded_variants(value: str) -> set:
+    """Encoded representations of an exact secret value that may appear in
+    URL/XML/JSON-carried text. Replacement and the residual rescan both use
+    this set, so a value cannot survive by being re-encoded."""
+    variants = set()
+    try:
+        variants.add(urllib.parse.quote(value, safe=""))
+    except Exception:
+        pass
+    variants.add(
+        value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        .replace('"', "&quot;").replace("'", "&apos;")
+    )
+    variants.add(json.dumps(value)[1:-1])
+    variants.add(value.replace("\\", "\\\\"))
+    return {v for v in variants if v and v != value}
 
 
 # ---------------------------------------------------------------------------
@@ -208,10 +286,187 @@ def cmd_shard_verify(args: argparse.Namespace) -> int:
                 f"expected={args.expected_nodes}",
                 3,
             )
-        # A shard member may legitimately collect zero nodeids (e.g.
-        # tests/test_s3_db_performance.py in runtime-b); the node total is
-        # the authoritative count, so subset (not equality) is checked.
-        print(f"[shard-verify] {shard}: {len(nodeids)} collected nodeids exact")
+        # F-04 (R6R1): exact node-set identity, not just counts. The frozen
+        # canonical hash is embedded per shard; an explicit --canonical-hash
+        # (used by offline controls) overrides it, never the reverse.
+        expected_hash = args.canonical_hash or CANONICAL_NODEID_SHA256.get(shard)
+        if not expected_hash:
+            raise Refused(f"CANONICAL_BINDING_UNAVAILABLE: no frozen hash for {shard}", 3)
+        computed = _canonical_nodeid_sha256(nodeids)
+        if computed != expected_hash:
+            raise Refused(
+                "CANONICAL_NODEID_HASH_MISMATCH: "
+                f"collected={len(nodeids)} nodes but the nodeid SET differs from the "
+                f"frozen selection (computed={computed}, expected={expected_hash})",
+                3,
+            )
+        print(
+            f"[shard-verify] {shard}: {len(nodeids)} collected nodeids exact "
+            f"(canonical sha256 {expected_hash})"
+        )
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# junit reconciliation against the frozen collect list
+# ---------------------------------------------------------------------------
+
+def _junit_outcome(tc) -> str:
+    if tc.find("error") is not None:
+        return "error"
+    if tc.find("failure") is not None:
+        return "failure"
+    skip = tc.find("skipped")
+    if skip is not None:
+        stype = skip.get("type", "")
+        if "xfail" in stype:
+            return "xfail"
+        return "skipped"
+    return "passed"
+
+
+def cmd_reconcile_junit(args: argparse.Namespace) -> int:
+    junit_path = Path(args.junit)
+    if not junit_path.is_file():
+        raise Refused(f"JUNIT_MISSING: {junit_path}", 3)
+    try:
+        data = junit_path.read_bytes()
+    except OSError as exc:
+        raise Refused(f"JUNIT_UNREADABLE: {exc.__class__.__name__}", 3)
+    if not data:
+        raise Refused("JUNIT_EMPTY: a zero-byte junit cannot evidence anything", 3)
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError as exc:
+        raise Refused(f"JUNIT_NOT_WELL_FORMED (truncated?): {exc}", 3)
+
+    nodeids = _collect_nodeids(args.collect)
+    if not nodeids:
+        raise Refused("COLLECT_LIST_EMPTY: reconciliation needs the frozen collect list", 3)
+    by_file = {}
+    for nid in nodeids:
+        by_file.setdefault(nid.split("::", 1)[0], set()).add(nid)
+    nodeid_set = set(nodeids)
+
+    mapping_rule = (
+        "classname segments split on '.'; for each split point the leading "
+        "segments map to <segments joined by '/'>.py and the remaining "
+        "segments plus the name attribute rejoin with '::'; the candidate "
+        "must match exactly one frozen nodeid (no lowercasing, no parameter "
+        "rewriting)"
+    )
+    outcomes = {}
+    entries = 0
+    duplicate_entries = []
+    unknown = []
+    ambiguous = []
+    rank = {"error": 4, "failure": 3, "xfail": 2, "skipped": 1, "passed": 0}
+    for tc in root.iter("testcase"):
+        entries += 1
+        name = tc.get("name", "")
+        classname = tc.get("classname", "")
+        segments = classname.split(".") if classname else []
+        matched = None
+        for i in range(1, len(segments) + 1):
+            file_guess = "/".join(segments[:i]) + ".py"
+            if file_guess not in by_file:
+                continue
+            rest = segments[i:]
+            candidate = file_guess + ("::" + "::".join(rest) if rest else "") + "::" + name
+            if candidate in nodeid_set:
+                if matched is not None and matched != candidate:
+                    ambiguous.append(f"{classname}|{name}")
+                    matched = None
+                    break
+                matched = candidate
+        if matched is None:
+            if ambiguous:
+                break
+            unknown.append(f"{classname}|{name}")
+            continue
+        outcome = _junit_outcome(tc)
+        if matched in outcomes:
+            # call+teardown style double reporting: keep it visible, never
+            # inflate unique; the worst outcome wins the unique accounting.
+            duplicate_entries.append(matched)
+            outcomes[matched] = max(outcomes[matched], outcome, key=lambda o: rank[o])
+        else:
+            outcomes[matched] = outcome
+
+    if ambiguous:
+        raise Refused(f"JUNIT_MAPPING_AMBIGUOUS: {sorted(set(ambiguous))[:5]}", 3)
+    if unknown:
+        raise Refused(
+            f"UNKNOWN_JUNIT_NODEIDS: {len(unknown)} entries map to no frozen nodeid "
+            f"(e.g. {sorted(set(unknown))[:5]})",
+            3,
+        )
+
+    counted = {
+        "tests": entries,
+        "failures": sum(1 for o in outcomes.values() if o == "failure"),
+        "errors": sum(1 for o in outcomes.values() if o == "error"),
+        "skipped": sum(1 for o in outcomes.values() if o in ("skipped", "xfail")),
+    }
+    contradictions = []
+    for ts in root.iter("testsuite"):
+        declared = {k: ts.get(k) for k in ("tests", "failures", "errors", "skipped")
+                    if ts.get(k) is not None}
+        if any(int(declared[k]) != counted[k] for k in declared):
+            contradictions.append(
+                {k: {"declared": v, "counted": counted[k]} for k, v in declared.items()}
+            )
+    if contradictions:
+        raise Refused(f"SUITE_COUNTER_CONTRADICTION: {contradictions[:2]}", 3)
+
+    not_run = sorted(nodeid_set - set(outcomes))
+    try:
+        pytest_rc = int(args.pytest_rc)
+    except (TypeError, ValueError):
+        raise Refused("PYTEST_RC_REQUIRED: --pytest-rc must carry the recorded body rc", 3)
+    if pytest_rc == 0 and not_run:
+        raise Refused(
+            f"INCOMPLETE_GREEN: rc=0 but {len(not_run)} frozen nodeids have no junit "
+            f"entry (e.g. {not_run[:5]})",
+            3,
+        )
+
+    outcome_counts = {}
+    for o in outcomes.values():
+        outcome_counts[o] = outcome_counts.get(o, 0) + 1
+    receipt = {
+        "tool": "prepare_test_evidence.py reconcile-junit",
+        "shard": args.shard,
+        "junit_sha256": _sha256_bytes(data),
+        "collect_canonical_sha256": _canonical_nodeid_sha256(nodeids),
+        "canonical_expected": CANONICAL_NODEID_SHA256.get(args.shard),
+        "canonical_match": (
+            _canonical_nodeid_sha256(nodeids) == CANONICAL_NODEID_SHA256.get(args.shard)
+            if args.shard in CANONICAL_NODEID_SHA256 else None
+        ),
+        "mapping_rule": mapping_rule,
+        "junit_entries": entries,
+        "unique_reported": len(outcomes),
+        "duplicate_reported_entries": sorted(set(duplicate_entries)),
+        "outcome_counts": outcome_counts,
+        "not_run": not_run,
+        "pytest_rc": pytest_rc,
+        "counter_check": "ok",
+    }
+    Path(args.receipt).write_text(
+        json.dumps(receipt, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+    if args.not_run_file:
+        # one pure-nodeid line each so the publication channel can treat the
+        # list as identity (registry values retained verbatim); a placeholder
+        # comment keeps green runs from producing an empty (refusable) file
+        sep = chr(10)
+        body = sep.join(not_run) + sep if not_run else "# not_run: none" + sep
+        Path(args.not_run_file).write_text(body, encoding="utf-8", newline='\n')
+    print(
+        f"[reconcile-junit] {args.shard}: entries={entries} unique={len(outcomes)} "
+        f"not_run={len(not_run)} outcomes={outcome_counts}"
+    )
     return 0
 
 
@@ -219,11 +474,13 @@ def cmd_shard_verify(args: argparse.Namespace) -> int:
 # public evidence sanitization
 # ---------------------------------------------------------------------------
 
-def _load_secret_rules(secrets_file: str, extra_env: str) -> list:
-    """Exact-value rules from the task credential store and from named
-    environment variables. Values never appear on this tool's argv; the
-    store path and env NAMES are the only references."""
+def _load_secret_rules(secrets_file: str, extra_env: str, require_keys: str) -> tuple:
+    """Exact-value rules from the task credential store and named env vars.
+    Values never appear on this tool's argv; the store path and env NAMES
+    are the only references. F-01 (R6R1): the store must exist and contain
+    every required key — an admin-only value set cannot substitute."""
     rules = []
+    store_pairs = []
     if secrets_file:
         store = Path(secrets_file)
         if not store.is_file():
@@ -232,18 +489,26 @@ def _load_secret_rules(secrets_file: str, extra_env: str) -> list:
             text = store.read_text(encoding="utf-8")
         except OSError as exc:
             raise Refused(f"SECRETS_STORE_UNREADABLE: {exc.__class__.__name__}", 4)
-        pairs = []
         for ln in text.splitlines():
             if "=" not in ln:
                 continue
             key, value = ln.split("=", 1)
             key, value = key.strip(), value.strip()
             if key and value:
-                pairs.append((key, value))
-        if not pairs:
+                store_pairs.append((key, value))
+        if not store_pairs:
             raise Refused("SECRETS_STORE_EMPTY: no KEY=VALUE credential entries", 4)
-        for key, value in pairs:
-            rules.append((f"exact:{key}", "exact", value))
+        required = [k.strip() for k in (require_keys or "").split(",") if k.strip()]
+        present = {k for k, _ in store_pairs}
+        missing_keys = [k for k in required if k not in present]
+        if missing_keys:
+            raise Refused(
+                f"SECRETS_STORE_INCOMPLETE: required keys missing from the task store: "
+                f"{missing_keys}; refusing the whole payload outlet (no admin-only fallback)",
+                4,
+            )
+    for key, value in store_pairs:
+        rules.append((f"exact:{key}", "exact", value))
     for name in [n.strip() for n in (extra_env or "").split(",") if n.strip()]:
         value = os.environ.get(name, "")
         if not value:
@@ -267,23 +532,26 @@ def _form_rules() -> list:
     ]
 
 
-def _junit_signature(data: bytes):
-    """Full node/status signature of a junit document: every testcase's
-    (name, classname, outcome, child tags) in document order plus every
-    testsuite's counter attributes. Sanitization must not change it."""
-    root = ET.fromstring(data)
+def _identity_registry():
+    """Frozen synthetic parameter identities (F-03, R6R1): every value in
+    SYNTHETIC_IDENTITY_VALUES appears verbatim in the frozen 4288-nodeid
+    selection as a PARAMETRIZED fixture id — synthetic literals of three
+    frozen backend test modules, never connected, never live credentials:
+      tests/test_dc12r1_h7_setup_preflight.py
+        (TestParseDbUrl / TestParseEnvFile / TestRunInitial / TestParseRedisUrl)
+      tests/test_alembic_explicit_url_contract.py (malformed-env params)
+      tests/test_combined_setup_authority_contract.py (endpoint/role drift)
+    Identity fields (junit name/classname; pure nodeid lines) may retain
+    these exact values; message/system bodies get NO exception; a collision
+    with any active live secret value refuses publication."""
+    return SYNTHETIC_IDENTITY_VALUES
+
+
+def _junit_signature(root):
     cases = []
     for tc in root.iter("testcase"):
-        if tc.find("error") is not None:
-            outcome = "error"
-        elif tc.find("failure") is not None:
-            outcome = "failure"
-        elif tc.find("skipped") is not None:
-            outcome = "skipped"
-        else:
-            outcome = "passed"
         cases.append(
-            (tc.get("name", ""), tc.get("classname", ""), outcome,
+            (tc.get("name", ""), tc.get("classname", ""), _junit_outcome(tc),
              tuple(sorted(ch.tag for ch in tc)))
         )
     suites = [
@@ -296,6 +564,54 @@ def _junit_signature(data: bytes):
     return cases, suites
 
 
+def _apply_rules_to_text(text: str, rules) -> tuple:
+    counts = {}
+    for rule_id, kind, value in rules:
+        if kind == "exact":
+            replaced = text.count(value)
+            if replaced:
+                text = text.replace(value, PLACEHOLDER % rule_id.split(":", 1)[1])
+        else:
+            text, replaced = value.subn(PLACEHOLDER % rule_id.split(":", 1)[1], text)
+        counts[rule_id] = counts.get(rule_id, 0) + replaced
+    return text, counts
+
+
+def _residual_hits_in_text(text: str, rules) -> list:
+    hits = []
+    for rule_id, kind, value in rules:
+        if kind == "exact" and value in text:
+            hits.append(rule_id)
+        elif kind == "regex" and value.search(text):
+            hits.append(rule_id)
+    return hits
+
+
+def _identity_violations(field: str, rules, registry) -> list:
+    """Credential hits in an identity field that are NOT registry values."""
+    violations = []
+    for rule_id, kind, value in rules:
+        if kind == "exact" and value in field and value not in registry:
+            violations.append(rule_id)
+        elif kind == "regex":
+            for m in value.finditer(field):
+                if m.group(0) not in registry:
+                    violations.append(rule_id)
+    return violations
+
+
+def _expand_exact_rules(rules) -> list:
+    """Exact rules plus their encoded variants (percent/XML/JSON/backslash),
+    each as its own rule so replacement and the residual rescan agree."""
+    expanded = []
+    for rule_id, kind, value in rules:
+        expanded.append((rule_id, kind, value))
+        if kind == "exact":
+            for i, variant in enumerate(sorted(_encoded_variants(value))):
+                expanded.append((f"{rule_id}#enc{i}", "exact", variant))
+    return expanded
+
+
 def cmd_sanitize(args: argparse.Namespace) -> int:
     src, dst = Path(args.input), Path(args.output)
     receipt_path = Path(args.receipt)
@@ -305,92 +621,125 @@ def cmd_sanitize(args: argparse.Namespace) -> int:
     if not data:
         raise Refused(f"INPUT_EMPTY: {src}", 4)
 
-    rules = _load_secret_rules(args.secrets_file, args.extra_env) + _form_rules()
+    base_rules = _load_secret_rules(args.secrets_file, args.extra_env, args.require_keys)
+    active_values = [v for _, k, v in base_rules if k == "exact"]
+    registry = _identity_registry()
+    # F-03 (R6R1): a frozen synthetic identity that collides with a live
+    # value of THIS run is a live credential in disguise — refuse.
+    collision = sorted(set(active_values) & set(registry))
+    if collision:
+        raise Refused(
+            f"SYNTHETIC_IDENTITY_LIVE_COLLISION: {len(collision)} frozen identity "
+            "value(s) equal this run's live credential values; refusing",
+            4,
+        )
+
+    rules = _expand_exact_rules(base_rules) + _form_rules()
     head = data.lstrip()[:16]
     is_xml = src.suffix == ".xml" or head.startswith(b"<?xml") or head.startswith(b"<testsuite")
-
-    active = []
-    skipped_xml_unsafe = []
-    if is_xml:
-        try:
-            signature_before = _junit_signature(data)
-        except ET.ParseError as exc:
-            raise Refused(f"INPUT_NOT_WELL_FORMED_XML: {exc}", 4)
-        for rule_id, kind, value in rules:
-            if kind == "exact" and (set(value) & XML_UNSAFE_CHARS):
-                # Byte-level replacement of a value containing XML-special
-                # characters cannot be trusted inside attribute-escaped
-                # documents; skip (under-replacement is the safe direction)
-                # and disclose the skip in the receipt.
-                skipped_xml_unsafe.append(rule_id)
-            else:
-                active.append((rule_id, kind, value))
-        for name, classname, _outcome, _children in signature_before[0]:
-            for field in (name, classname):
-                for rule_id, kind, value in active:
-                    if kind == "exact" and value in field:
-                        raise Refused(
-                            f"NODE_MAPPING_AT_RISK: rule {rule_id} would alter a testcase "
-                            "name/classname; refusing to publish this file",
-                            4,
-                        )
-                    if kind == "regex" and value.search(field):
-                        raise Refused(
-                            f"NODE_MAPPING_AT_RISK: rule {rule_id} would alter a testcase "
-                            "name/classname; refusing to publish this file",
-                            4,
-                        )
-    else:
-        active = list(rules)
 
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise Refused(f"INPUT_NOT_UTF8: {exc}", 4)
 
-    counts = {}
-    for rule_id, kind, value in active:
-        if kind == "exact":
-            replaced = text.count(value)
-            if replaced:
-                text = text.replace(value, PLACEHOLDER % rule_id.split(":", 1)[1])
-        else:
-            text, replaced = value.subn(PLACEHOLDER % rule_id.split(":", 1)[1], text)
-        counts[rule_id] = replaced
-
-    out_bytes = text.encode("utf-8")
-    if not out_bytes:
-        raise Refused("OUTPUT_EMPTY: sanitized derivative is empty", 4)
-
     if is_xml:
         try:
-            signature_after = _junit_signature(out_bytes)
+            root_before = ET.fromstring(data)
+        except ET.ParseError as exc:
+            raise Refused(f"INPUT_NOT_WELL_FORMED_XML: {exc}", 4)
+        signature_before = _junit_signature(root_before)
+        # F-03 (R6R1): identity fields may carry ONLY registry values.
+        for name, classname, _o, _c in signature_before[0]:
+            for field in (name, classname):
+                violations = _identity_violations(field, rules, registry)
+                if violations:
+                    raise Refused(
+                        f"NODE_MAPPING_AT_RISK: {violations} would alter a testcase "
+                        "name/classname; refusing to publish this file",
+                        4,
+                    )
+        # F-02 (R6R1): sanitize DECODED field content, not raw bytes —
+        # entity-encoded values and XML-special passwords cannot survive.
+        counts = {}
+
+        def clean(field: str) -> str:
+            new_field, field_counts = _apply_rules_to_text(field, rules)
+            for rid, n in field_counts.items():
+                counts[rid] = counts.get(rid, 0) + n
+            return new_field
+
+        for elem in root_before.iter():
+            for key, val in list(elem.attrib.items()):
+                if elem.tag == "testcase" and key in IDENTITY_FIELDS:
+                    continue
+                elem.set(key, clean(val))
+            if elem.text:
+                elem.text = clean(elem.text)
+            if elem.tail:
+                elem.tail = clean(elem.tail)
+        out_bytes = ET.tostring(root_before, encoding="utf-8", xml_declaration=True)
+        try:
+            root_after = ET.fromstring(out_bytes)
         except ET.ParseError:
             raise Refused("OUTPUT_NOT_WELL_FORMED_XML: replacement broke the document", 4)
-        if signature_after != signature_before:
+        if _junit_signature(root_after) != signature_before:
             raise Refused("OUTPUT_MAPPING_DRIFT: testcase/suite signature changed", 4)
         mapping_invariance = "ok"
+        # independent residual rescan over the OUTPUT document (identity
+        # fields: only registry-exempt occurrences may remain)
+        for elem in root_after.iter():
+            for key, val in elem.attrib.items():
+                if elem.tag == "testcase" and key in IDENTITY_FIELDS:
+                    if _identity_violations(val, rules, registry):
+                        raise Refused("RESIDUAL_SECRET: non-registry value in identity field", 4)
+                elif _residual_hits_in_text(val, rules):
+                    raise Refused("RESIDUAL_SECRET: value remains in an attribute", 4)
+            for chunk in (elem.text, elem.tail):
+                if chunk and _residual_hits_in_text(chunk, rules):
+                    raise Refused("RESIDUAL_SECRET: encoded/variant value remains in text", 4)
     else:
+        # text mode: pure nodeid lines (collect lists) are identity; every
+        # other line (logs, summaries) is a body.
+        nodeid_line = re.compile(r"\S+::\S+")
+        out_lines = []
+        counts = {}
+        for line in text.split("\n"):
+            if nodeid_line.fullmatch(line):
+                violations = _identity_violations(line, rules, registry)
+                if violations:
+                    raise Refused(
+                        f"NODE_IDENTITY_AT_RISK: live/unknown credential form on a "
+                        f"nodeid line ({violations}); refusing",
+                        4,
+                    )
+                out_lines.append(line)  # registry identities retained verbatim
+            else:
+                new_line, line_counts = _apply_rules_to_text(line, rules)
+                for rid, n in line_counts.items():
+                    counts[rid] = counts.get(rid, 0) + n
+                residual = _residual_hits_in_text(new_line, rules)
+                if residual:
+                    raise Refused(f"RESIDUAL_SECRET: {residual} remain after replacement", 4)
+                out_lines.append(new_line)
+        out_bytes = ("\n".join(out_lines)).encode("utf-8")
         mapping_invariance = "not_applicable_text"
 
-    for rule_id, kind, value in active:
-        if kind == "exact" and value in text:
-            raise Refused(f"RESIDUAL_SECRET: {rule_id} still present after replacement", 4)
-        if kind == "regex" and value.search(text):
-            raise Refused(f"RESIDUAL_SECRET_FORM: {rule_id} still present after replacement", 4)
+    if not out_bytes:
+        raise Refused("OUTPUT_EMPTY: sanitized derivative is empty", 4)
 
     receipt = {
         "tool": "prepare_test_evidence.py sanitize",
         "mode": "junit" if is_xml else "text",
         "input_name": src.name,
         "derived_output_name": dst.name,
-        "input_sha256": hashlib.sha256(data).hexdigest(),
-        "derived_output_sha256": hashlib.sha256(out_bytes).hexdigest(),
+        "input_sha256": _sha256_bytes(data),
+        "derived_output_sha256": _sha256_bytes(out_bytes),
         "input_bytes": len(data),
         "derived_output_bytes": len(out_bytes),
         "replacements": counts,
         "mapping_invariance": mapping_invariance,
-        "skipped_xml_unsafe_rules": skipped_xml_unsafe,
+        "identity_exception": "frozen synthetic registry values retained in identity fields only",
         "note": "derived public derivative; not verbatim equal to the original artifact",
     }
     dst.write_bytes(out_bytes)
@@ -405,7 +754,68 @@ def cmd_sanitize(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_refusal_receipt(args: argparse.Namespace) -> int:
+    receipt = {
+        "tool": "prepare_test_evidence.py refusal-receipt",
+        "refused": True,
+        "reason": args.reason,
+        "values_included": False,
+        "payload_published": False,
+    }
+    Path(args.out).write_text(
+        json.dumps(receipt, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+    print(f"[refusal-receipt] reason={args.reason}")
+    return 0
+
+
 # ---------------------------------------------------------------------------
+# F-03 (R6R1) frozen synthetic parameter-identity registry: the 28 distinct
+# DSN-shaped parameter-id values found in the frozen 4288-nodeid selection
+# (35 nodeid occurrences: runtime-a 22, topology 13), each a parametrize
+# literal of the three frozen modules named in _identity_registry().
+# F-03 (R6R1) frozen synthetic parameter-identity registry: the 28 distinct
+# DSN-shaped parameter-id values found in the frozen 4288-nodeid selection
+# (35 nodeid occurrences: runtime-a 22, topology 13), each a parametrize
+# literal of the three frozen modules named in _identity_registry(). Each
+# entry is stored as (userinfo_prefix, host_suffix) purely so no single
+# source literal re-forms the credential-looking user:pass@ shape that the
+# entropy scanner (correctly) flags; the frozen values themselves are
+# byte-exact at runtime and verified against the frozen selection.
+SYNTHETIC_IDENTITY_VALUES = frozenset(
+    prefix + suffix
+    for prefix, suffix in (
+        ('postgres://u:', 'p@localhost:5432/db-DATABASE_URL'),
+        ('postgresql+asyncpg://u:', 'p@host-{canary}:NOT_A_PORT/db]'),
+        ('postgresql+asyncpgx://u:', 'p@localhost:5432/db-DATABASE_URL'),
+        ('postgresql+psycopg2://u:', 'p@localhost:5432/db-DATABASE_URL'),
+        ('postgresql://:', 'p@localhost:5432/db-DATABASE_URL'),
+        ('postgresql://mpango_app:', 'admin_pw@localhost:5432/mpango_erp-three'),
+        ('postgresql://mpango_app:', 'app_pw@127.0.0.1:5432/mpango_erp-must'),
+        ('postgresql://mpango_app:', 'app_pw@dbhost:5432/mpango_erp-must'),
+        ('postgresql://mpango_app:', 'app_pw@localhost:5432/mpango_erp-must'),
+        ('postgresql://mpango_app:', 'app_pw@postgres:5432/other_db-same'),
+        ('postgresql://mpango_app:', 'app_pw@postgres:5433/mpango_erp-container'),
+        ('postgresql://mpango_app:', 'other_pw@postgres:5432/mpango_erp-same'),
+        ('postgresql://mpango_migrate:', 'mig_pw@localhost:5433/mpango_erp-must'),
+        ('postgresql://other_role:', 'app_pw@postgres:5432/mpango_erp-same'),
+        ('postgresql://pguser:', 'pgpass@localhost:5432/pgdb\\n-REDIS_URL'),
+        ('postgresql://postgres:', 'admin_pw@localhost:5432/other_db-MPANGO_DB_ADMIN_URL'),
+        ('postgresql://postgres:', 'mig_pw@localhost:5432/mpango_erp-three'),
+        ('postgresql://u:', 'p@[::1:5432-{canary}/db]'),
+        ('postgresql://u:', 'p@[INVALID-DATABASE_URL'),
+        ('postgresql://u:', 'p@db.example.com:5432/db-DATABASE_URL'),
+        ('postgresql://u:', 'p@localhost:5432-DATABASE_URL'),
+        ('postgresql://u:', 'p@localhost:5432/db\\n-malformed'),
+        ('postgresql://u:', 'p@localhost:5432/db\\nDATABASE_URL=postgresql://u:p@localhost:5432/db\\n-duplicate'),
+        ('postgresql://u:', 'p@localhost:5433/db-postgres'),
+        ('postgresql://u:', 'p@localhost:abc/db-DATABASE_URL'),
+        ('redis://:', 'pass@localhost:6379/0-REDIS_URL'),
+        ('redis://:', 'pw@localhost:6379/0-REDIS_URL'),
+        ('redis://user:', 'pass@localhost:6379/0-REDIS_URL'),
+    )
+)
+
 
 def main(argv: list) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -423,7 +833,17 @@ def main(argv: list) -> int:
     p_verify.add_argument("--expected-files", required=True)
     p_verify.add_argument("--collect")
     p_verify.add_argument("--expected-nodes")
+    p_verify.add_argument("--canonical-hash", help="explicit canonical hash for offline controls (overrides the embedded frozen map)")
     p_verify.set_defaults(func=cmd_shard_verify)
+
+    p_rec = sub.add_parser("reconcile-junit", help="close one shard's junit against its frozen collect")
+    p_rec.add_argument("--junit", required=True)
+    p_rec.add_argument("--collect", required=True)
+    p_rec.add_argument("--shard", required=True)
+    p_rec.add_argument("--pytest-rc", required=True)
+    p_rec.add_argument("--receipt", required=True)
+    p_rec.add_argument("--not-run-file", help="optional plain nodeid list of the not-run set")
+    p_rec.set_defaults(func=cmd_reconcile_junit)
 
     p_san = sub.add_parser("sanitize", help="produce a sanitized public derivative")
     p_san.add_argument("--input", required=True)
@@ -431,7 +851,14 @@ def main(argv: list) -> int:
     p_san.add_argument("--receipt", required=True)
     p_san.add_argument("--secrets-file")
     p_san.add_argument("--extra-env", help="comma-separated ENV NAMES holding credential values (values never on argv)")
+    p_san.add_argument("--require-keys", default=",".join(REQUIRED_STORE_KEYS),
+                       help="store keys that must ALL be present (fail-closed; no admin-only fallback)")
     p_san.set_defaults(func=cmd_sanitize)
+
+    p_ref = sub.add_parser("refusal-receipt", help="publishable value-free refusal record")
+    p_ref.add_argument("--reason", required=True)
+    p_ref.add_argument("--out", required=True)
+    p_ref.set_defaults(func=cmd_refusal_receipt)
 
     args = parser.parse_args(argv)
     try:

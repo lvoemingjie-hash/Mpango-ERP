@@ -1,23 +1,30 @@
-"""Offline CI gate contracts and discriminating counterexamples (R3).
+"""Offline CI gate contracts and discriminating counterexamples (R3/R6).
 
-Authorization: CTO-C91-CI-EXECUTABLE-CONTRACT-ZCODEW-R3-20261006.
+Authorization: CTO-C91-CI-EXECUTABLE-CONTRACT-ZCODEW-R3-20261006,
+CTO-C91-CI-R6-FIVE-TASK-PREPARATION-20261007.
 
-Covers the R3 candidate bytes:
+Covers the candidate bytes:
 
 * AST no-print gate: real builtin prints (including spaced calls, explicit
   ``builtins.print``, aliases) rejected; names/strings/comments pass; an
   unambiguous module-level shadow exempts only call sites AFTER the binding
   (a print before a later ``def print`` stays a finding); unparseable files
   fail closed.
-* Deploy Staging test job: task-owned labeled containers (exact IDs),
-  five-phase wrapper provisioning, versioned env file, four mutually
-  exclusive pytest profiles, outer timeouts + junit, publish=false can
-  never enter build/deploy.
+* Deploy Staging test job (R6: five instance-independent matrix legs):
+  task-owned labeled containers with per-run random admin credentials,
+  five-phase wrapper provisioning, frozen-boundary runtime shard argfiles,
+  shard membership gates (file and node level), ONE pytest body per leg
+  with per-leg outer timeouts + junit, sanitized-only artifact publication,
+  and a final outcome gate that keeps the pytest rc authoritative.
 * Bootstrap wrapper: real-mode execution against FAKE psql/poetry tools —
   call order, failure blocking, credential channels (argv clean; secrets
   only via env/stdin; canary byte-identical in the real channel) — plus
   preflight refusals (missing tests source, empty selection, role-name
   drift, non-distinct identities) and plan-file idempotence.
+* R6 load-bearing controls (each with a discriminating counterexample):
+  missing/duplicate shard members are RED; a failed pytest rc cannot be
+  washed green by upload steps; removing artifact sanitization is caught
+  by the tool's own fail-closed residual scan on a high-entropy positive.
 
 Everything runs offline on synthetic fixtures; no network, no docker, no
 database. Windows hosts pin PYTHON_BIN/BASH explicitly (the store-stub
@@ -28,6 +35,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -40,6 +48,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 GATE = REPO_ROOT / "tools" / "ci" / "no_print_gate.py"
 BOOTSTRAP = REPO_ROOT / "tools" / "ci" / "bootstrap_backend_test_db.sh"
+EVIDENCE_TOOL = REPO_ROOT / "tools" / "ci" / "prepare_test_evidence.py"
 DEPLOY_WF = REPO_ROOT / ".github" / "workflows" / "deploy-staging.yml"
 S27_WF = REPO_ROOT / ".github" / "workflows" / "s2-7-ci-gates.yml"
 BASH = shutil.which("bash") or "bash"
@@ -219,11 +228,21 @@ class TestDeployWorkflowContract:
             assert "--label mpango.owner=" in run
             assert "CI_PG_CONTAINER_ID=" in run or "CI_REDIS_CONTAINER_ID=" in run
             assert "docker inspect" in run
+            # matrix key is part of the task ownership identity
+            assert "${{ matrix.shard }}" in run
         assert "postgres:16-alpine" in pg and "redis:7-alpine" in redis
         # no service-container block remains: the guard contract needs labels
         assert "services" not in self.test_job
+        # R6: the admin credential is generated per run (high entropy), is
+        # masked before any value can reach an output stream, and never
+        # exists as a literal in the workflow bytes.
+        assert "token_urlsafe" in pg
+        assert "::add-mask::" in pg.split("CI_PG_ADMIN_PASSWORD=")[0]
+        workflow_text = DEPLOY_WF.read_text(encoding="utf-8")
+        assert "CI_PG_ADMIN_PASSWORD: postgres" not in workflow_text
+        assert "POSTGRES_PASSWORD=postgres" not in workflow_text
 
-    def test_provision_step_and_four_profiles_gated(self):
+    def test_provision_step_and_shard_pipeline_gated(self):
         provision = next(s for s in self.steps if "Provision test database" in s.get("name", ""))
         assert provision["id"] == "provision"
         assert "bootstrap_backend_test_db.sh" in provision["run"]
@@ -232,21 +251,153 @@ class TestDeployWorkflowContract:
         assert "CI_REDIS_URL" in provision["env"]
         assert "${{ env.CI_REDIS_PORT }}" in provision["env"]["CI_REDIS_URL"]
         assert "CI_REDIS_URL" not in provision["run"]  # no post-hoc GITHUB_ENV echo
-        profile_steps = [s for s in self.steps if s.get("name", "").startswith("Run backend tests")]
-        assert len(profile_steps) == 4
-        for step in profile_steps:
-            assert step["if"] == "steps.provision.outcome == 'success'"
-            assert 'timeout --signal=INT' in step["run"]
-            assert "--junitxml=" in step["run"]
-            assert '. "$RUNNER_TEMP/c91-test-env.sh"' in step["run"]
-            # empty/missing argfiles must refuse instead of falling back to
-            # full-suite collection
-            profile = re.search(r"\(([^)]+) profile\)", step.get("name", "")).group(1)
-            assert f'test -s "$RUNNER_TEMP/profile-{profile}.tests"' in step["run"]
-        topology = next(s for s in profile_steps if "topology" in s["name"])
-        assert topology["env"]["MPANGO_ALLOW_TEMP_DB_CREATE"] == "1"
-        invariants = next(s for s in profile_steps if "invariants-jwt" in s["name"])
-        assert "MPANGO_ENV=staging" in invariants["run"]
+        # R6: the task credential store is declared so the sanitize stage has
+        # a fail-closed secret source; the admin credential reaches this step
+        # through the GITHUB_ENV channel, not through YAML literals.
+        assert "${{ runner.temp }}/c91-task-credentials.env" == provision["env"]["CI_CREDENTIALS_FILE"]
+        assert "CI_PG_ADMIN_PASSWORD" not in provision["env"]
+
+        shard_plan = next(s for s in self.steps if "Cut frozen runtime shard" in s.get("name", ""))
+        assert shard_plan["if"] == "steps.provision.outcome == 'success'"
+        assert "prepare_test_evidence.py shard-plan" in shard_plan["run"]
+
+        gate = next(s for s in self.steps if "Shard gate" in s.get("name", ""))
+        assert gate["if"] == "steps.provision.outcome == 'success'"
+        # empty/missing argfiles must refuse instead of falling back to
+        # full-suite collection
+        assert 'test -s "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests"' in gate["run"]
+        # file-level and node-level reconciliation against the frozen plan
+        assert gate["run"].count("prepare_test_evidence.py shard-verify") == 2
+        assert '--collect "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt"' in gate["run"]
+        assert '--expected-nodes "${{ matrix.expected-nodes }}"' in gate["run"]
+        assert "--collect-only -q" in gate["run"]
+        # per-shard premise wiring: topology/task-managed opt-in, real JWT
+        # staging env, private resource root
+        assert "topology|task-managed-pg) export MPANGO_ALLOW_TEMP_DB_CREATE=1" in gate["run"]
+        assert "invariants-jwt) export MPANGO_ENV=staging" in gate["run"]
+        assert 'export C91_R3_RESOURCE_ROOT="$RUNNER_TEMP/c91-resource-root"' in gate["run"]
+        assert "chmod 700" in gate["run"]
+
+        body = next(s for s in self.steps if "Run shard test body" in s.get("name", ""))
+        assert body["if"] == "steps.provision.outcome == 'success'"
+        assert "continue-on-error" not in body
+        # exactly ONE pytest test-body invocation per leg
+        pytest_lines = [
+            ln for ln in body["run"].splitlines()
+            if "poetry run pytest" in ln and "--collect-only" not in ln
+        ]
+        assert len(pytest_lines) == 1
+        pytest_line = pytest_lines[0]
+        assert "timeout --signal=INT --kill-after=60s ${{ matrix.pytest-timeout }}" in pytest_line
+        assert "--junitxml=../junit-${{ matrix.shard }}.xml" in pytest_line
+        assert 'xargs -a "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests"' in pytest_line
+        # the recorded rc — not a later step's success — decides the leg
+        assert 'echo "$rc" > "$RUNNER_TEMP/pytest-rc.txt"' in body["run"]
+        assert 'exit "$rc"' in body["run"]
+        # the pytest command itself is never softened with || true / || exit 0
+        assert "|| true" not in pytest_line and "|| exit 0" not in pytest_line
+        assert "set -o pipefail" in body["run"]
+
+    def test_five_legs_budget_and_isolation(self):
+        strategy = self.test_job["strategy"]
+        assert strategy["fail-fast"] is False
+        assert strategy["max-parallel"] == 2
+        include = strategy["matrix"]["include"]
+        expected = {
+            "runtime-a": (30, "18m", "93", "1655"),
+            "runtime-b": (30, "18m", "97", "1651"),
+            "topology": (50, "38m", "39", "798"),
+            "invariants-jwt": (25, "13m", "3", "92"),
+            "task-managed-pg": (25, "13m", "4", "92"),
+        }
+        assert {leg["shard"] for leg in include} == set(expected)
+        for leg in include:
+            got = (
+                leg["job-timeout-minutes"], leg["pytest-timeout"],
+                leg["expected-files"], leg["expected-nodes"],
+            )
+            assert got == expected[leg["shard"]], leg["shard"]
+        # the owner-approved hard budget cap is exactly 160 runner-minutes
+        assert sum(leg["job-timeout-minutes"] for leg in include) == 160
+        # no leg (and no step) may convert a failure into success
+        workflow_text = DEPLOY_WF.read_text(encoding="utf-8")
+        assert "continue-on-error" not in workflow_text
+        assert self.test_job["env"]["CI_OWNER_LABEL"] == "zcode-mvp-invariants-ci-deploy-staging-r6"
+
+    def test_publication_pipeline_sanitizes_before_upload_and_never_uploads_raw(self):
+        def index_of(fragment):
+            return self.names.index(next(n for n in self.names if fragment in n))
+
+        order = [
+            index_of("Cut frozen runtime shard"),
+            index_of("Shard gate"),
+            index_of("Run shard test body"),
+            index_of("Sanitize shard evidence"),
+            index_of("Upload sanitized shard evidence"),
+            index_of("Assert shard outcome"),
+        ]
+        assert order == sorted(order), "evidence pipeline steps are out of order"
+
+        sanitize = next(s for s in self.steps if "Sanitize shard evidence" in s.get("name", ""))
+        assert sanitize["if"] == "always()"
+        assert "prepare_test_evidence.py sanitize" in sanitize["run"]
+        assert '--secrets-file "$SECRETS"' in sanitize["run"]
+        assert "--extra-env CI_PG_ADMIN_PASSWORD" in sanitize["run"]
+        # a refused sanitization records a gap and never uploads the raw file
+        assert 'echo "sanitize_refused" > "$RUNNER_TEMP/GAP-$dst.txt"' in sanitize["run"]
+
+        upload = next(s for s in self.steps if "Upload sanitized shard evidence" in s.get("name", ""))
+        assert upload["if"] == "always()"
+        assert upload["uses"] == "actions/upload-artifact@v4"
+        # artifact identity includes shard/run/attempt (no matrix collisions)
+        assert upload["with"]["name"] == (
+            "test-evidence-${{ matrix.shard }}-run${{ github.run_id }}"
+            "-attempt${{ github.run_attempt }}"
+        )
+        # ONLY the sanitized publish directory is uploaded — never a raw
+        # junit/collect/connections/supply-plan path
+        assert upload["with"]["path"] == "${{ runner.temp }}/publish"
+        assert upload["with"]["if-no-files-found"] == "error"
+
+        final = next(s for s in self.steps if "Assert shard outcome" in s.get("name", ""))
+        assert final["if"] == "always()"
+        assert "$RUNNER_TEMP/pytest-rc.txt" in final["run"]
+        assert '"$rc" != "0"' in final["run"]
+        assert '"$gaps" -ne 0' in final["run"]
+
+    def test_connection_observer_is_read_only_and_5s_sampled(self):
+        body = next(s for s in self.steps if "Run shard test body" in s.get("name", ""))["run"]
+        segments = body.split("PYOBS")
+        assert len(segments) == 3, "the observer heredoc must open and close exactly once"
+        observer = segments[1]
+        assert "pg_stat_activity" in observer
+        assert "c91_observer" in observer
+        assert "time.sleep(5)" in observer
+        # read-only observation: no SQL text, no locals, no passwords — only
+        # identity/state/wait columns and counts
+        for ln in observer.splitlines():
+            if "SELECT" in ln:
+                assert "query" not in ln.lower(), ln
+        assert "readonly=True" in observer
+
+    def test_publish_gate_closed_for_non_dispatch_events(self):
+        build_if = self.doc["jobs"]["build"]["if"]
+
+        def evaluate(cond: str, *, event: str) -> bool:
+            expr = cond.strip().removeprefix("${{").removesuffix("}}").strip()
+            expr = expr.replace("github.event_name == 'workflow_dispatch'", repr(event == "workflow_dispatch"))
+            expr = expr.replace("inputs.publish == true", "True")
+            expr = expr.replace("needs.test.result == 'success'", "True")
+            expr = expr.replace("needs.build.result == 'success'", "True")
+            expr = expr.replace("&&", " and ").replace("||", " or ")
+            assert re.fullmatch(r"[()\s!&|=A-Za-z0-9']+", expr), expr
+            return bool(eval(expr, {"__builtins__": {}}, {}))
+
+        # push (main) and pull_request events can never publish, even with
+        # every other condition satisfied
+        assert evaluate(build_if, event="push") is False
+        assert evaluate(build_if, event="pull_request") is False
+        assert evaluate(build_if, event="workflow_dispatch") is True
 
     def test_no_static_reporting_password_literal(self):
         assert "ReportingPass" not in DEPLOY_WF.read_text(encoding="utf-8")
@@ -559,6 +710,9 @@ class TestWorkflowRedisWiringExecuted:
         return tmp_path, bin_dir, rec, github_env
 
     def _run_fragment(self, bin_dir, rec, github_env_path, run_block, extra_env):
+        # GitHub renders ${{ }} expressions before the shell sees the script;
+        # the harness renders the representative matrix leg the same way.
+        run_block = run_block.replace("${{ matrix.shard }}", "runtime-a")
         env = dict(os.environ)
         env.update(
             {
@@ -577,10 +731,28 @@ class TestWorkflowRedisWiringExecuted:
             stdin=subprocess.DEVNULL,
         )
 
-    def _provision_env_and_run(self):
+    def _provision_env_and_run(self, sandbox):
+        """Workflow step env + the GITHUB_ENV channel, with GitHub's own
+        ${{ env.* }} / ${{ runner.temp }} substitution rules applied."""
+        tmp_path = sandbox[0]
         doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
         step = next(s for s in doc["jobs"]["test"]["steps"] if "Provision" in s.get("name", ""))
-        env = {k: str(v).replace("${{ env.CI_REDIS_PORT }}", "36379") for k, v in step["env"].items()}
+        posix_tmp = str(tmp_path).replace(chr(92), "/")
+        env = {
+            k: str(v)
+            .replace("${{ env.CI_REDIS_PORT }}", "36379")
+            .replace("${{ runner.temp }}", posix_tmp)
+            for k, v in step["env"].items()
+        }
+        # GitHub semantics: lines exported to GITHUB_ENV by earlier steps are
+        # part of every later step's environment. Only the credential/port
+        # channel keys are merged here; container-ID ownership verification
+        # is exercised by the wrapper fake-tool controls instead.
+        github_env = sandbox[3].read_text(encoding="utf-8")
+        for key in ("CI_PG_ADMIN_PASSWORD", "CI_PG_PORT", "CI_REDIS_PORT"):
+            m = re.search(rf"^{key}=(.*)$", github_env, re.M)
+            if m:
+                env[key] = m.group(1)
         return env, step["run"]
 
     def _run_wrapper_with_merged_env(self, sandbox, prov_env, out_prefix):
@@ -618,13 +790,21 @@ class TestWorkflowRedisWiringExecuted:
     def test_wrapper_receives_registered_redis_and_emits_db0_db15(self, sandbox):
         tmp_path, bin_dir, rec, github_env = sandbox
         doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        pg_step = next(s for s in doc["jobs"]["test"]["steps"] if "Postgres 16" in s.get("name", ""))
+        proc_pg = self._run_fragment(bin_dir, rec, github_env, pg_step["run"], {})
+        assert proc_pg.returncode == 0, proc_pg.stderr
         redis_step = next(s for s in doc["jobs"]["test"]["steps"] if "Redis 7" in s.get("name", ""))
         proc = self._run_fragment(bin_dir, rec, github_env, redis_step["run"], {})
         assert proc.returncode == 0, proc.stderr
         gh = github_env.read_text(encoding="utf-8")
         assert "CI_REDIS_PORT=36379" in gh and "CI_REDIS_CONTAINER_ID=fakedockerid" in gh
+        assert "CI_PG_PORT=36379" in gh and "CI_PG_CONTAINER_ID=fakedockerid" in gh
+        # R6: the admin credential travels via the GITHUB_ENV channel —
+        # generated per run (high entropy), never the old fixed literal
+        m = re.search(r"^CI_PG_ADMIN_PASSWORD=(\S+)$", gh, re.M)
+        assert m and len(m.group(1)) >= 24
 
-        prov_env, _ = self._provision_env_and_run()
+        prov_env, _ = self._provision_env_and_run(sandbox)
         assert prov_env["CI_REDIS_URL"] == "redis://127.0.0.1:36379/0"
         proc2, env_file = self._run_wrapper_with_merged_env(sandbox, prov_env, "wf")
         assert proc2.returncode == 0, proc2.stderr
@@ -632,9 +812,13 @@ class TestWorkflowRedisWiringExecuted:
         assert "export REDIS_URL='redis://127.0.0.1:36379/0'" in text
         assert "export PW1R3_TEST_REDIS_URL='redis://127.0.0.1:36379/15'" in text
         assert "redis://localhost:6379" not in text
+        # R6: the task credential store the sanitize stage depends on is live
+        store = Path(prov_env["CI_CREDENTIALS_FILE"])
+        assert store.is_file()
+        assert "MIGRATE_PASSWORD=" in store.read_text(encoding="utf-8")
 
     def test_mutation_dropping_step_env_wiring_is_semantic_red(self, sandbox):
-        prov_env, _ = self._provision_env_and_run()
+        prov_env, _ = self._provision_env_and_run(sandbox)
         mutated = {k: v for k, v in prov_env.items() if k != "CI_REDIS_URL"}
         proc, env_file = self._run_wrapper_with_merged_env(sandbox, mutated, "mut")
         assert proc.returncode != 0, "missing wiring must refuse, not silently default"
@@ -826,3 +1010,387 @@ class TestTopologyHelperClassification:
         negative = "tests/test_s5_5_ledger_hardening.py"
         assert negative in plan["profiles"]["runtime"]["files"]
         assert negative not in plan["profiles"]["topology"]["files"]
+
+
+class TestR6ShardPlanControls:
+    """Load-bearing control 1 (missing/duplicate shard members are RED):
+    drive the REAL prepare_test_evidence.py shard-plan/shard-verify against
+    a synthetic frozen plan — never string matching — and prove the exact
+    frozen-boundary partition, the boundary-drift refusals, and RED on
+    dropped, duplicated, extra or miscounted members at both the file and
+    the node level."""
+
+    RUNTIME_FILES = [
+        "tests/test_m00.py",
+        "tests/test_m01.py",
+        "tests/test_m02.py",
+        "tests/test_platform_p12_support_console.py",  # frozen boundary: last of a
+        "tests/test_platform_p17dc_backup_models.py",  # frozen boundary: first of b
+        "tests/test_z9_zero_nodes.py",
+    ]
+
+    @staticmethod
+    def _write_plan(tmp_path, runtime_files):
+        plan = {
+            "profiles": {
+                "runtime": {"files": sorted(runtime_files), "count": len(runtime_files)},
+                "topology": {"files": ["tests/test_topo_a.py"], "count": 1},
+                "invariants-jwt": {"files": ["tests/test_inv_a.py"], "count": 1},
+                "task-managed-pg": {"files": ["tests/test_task_a.py"], "count": 1},
+            }
+        }
+        plan_path = tmp_path / "supply-plan.json"
+        plan_path.write_text(json.dumps(plan), encoding="utf-8", newline="\n")
+        return plan_path
+
+    def _run(self, *args):
+        return subprocess.run(
+            [sys.executable, str(EVIDENCE_TOOL), *[str(a) for a in args]],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            stdin=subprocess.DEVNULL,
+        )
+
+    @staticmethod
+    def _collect_file(tmp_path, nodeids):
+        path = tmp_path / "collect.txt"
+        body = "\n".join(nodeids) + "\n== 3 tests collected in 0.01s ==\n"
+        path.write_text(body, encoding="utf-8", newline="\n")
+        return path
+
+    def test_shard_plan_cuts_exact_partition_and_receipt(self, tmp_path):
+        plan_path = self._write_plan(tmp_path, self.RUNTIME_FILES)
+        proc = self._run("shard-plan", "--plan", plan_path, "--profile-dir", tmp_path)
+        assert proc.returncode == 0, proc.stderr
+        shard_a = (tmp_path / "profile-runtime-a.tests").read_text(encoding="utf-8").splitlines()
+        shard_b = (tmp_path / "profile-runtime-b.tests").read_text(encoding="utf-8").splitlines()
+        assert shard_a[-1] == "tests/test_platform_p12_support_console.py"
+        assert shard_b[0] == "tests/test_platform_p17dc_backup_models.py"
+        assert sorted(shard_a + shard_b) == sorted(self.RUNTIME_FILES)
+        assert not set(shard_a) & set(shard_b)
+        receipt = json.loads((tmp_path / "shard-plan.receipt.json").read_text(encoding="utf-8"))
+        assert receipt["runtime-a"]["files"] == 4
+        assert receipt["runtime-b"]["files"] == 2
+        assert receipt["runtime_total"] == 6
+
+    def test_shard_plan_refuses_boundary_missing(self, tmp_path):
+        drifted = [f for f in self.RUNTIME_FILES if "p12_support_console" not in f]
+        plan_path = self._write_plan(tmp_path, drifted)
+        proc = self._run("shard-plan", "--plan", plan_path, "--profile-dir", tmp_path)
+        assert proc.returncode == 3
+        assert "RUNTIME_SHARD_BOUNDARY_MISSING" in proc.stderr
+        assert not (tmp_path / "profile-runtime-a.tests").exists()
+
+    def test_shard_plan_refuses_empty_shard_b(self, tmp_path):
+        plan_path = self._write_plan(tmp_path, ["tests/test_platform_p12_support_console.py"])
+        proc = self._run("shard-plan", "--plan", plan_path, "--profile-dir", tmp_path)
+        assert proc.returncode == 3
+        assert "RUNTIME_SHARD_B_EMPTY" in proc.stderr
+
+    def test_shard_verify_green_with_zero_nodeid_member(self, tmp_path):
+        plan_path = self._write_plan(tmp_path, self.RUNTIME_FILES)
+        assert self._run("shard-plan", "--plan", plan_path, "--profile-dir", tmp_path).returncode == 0
+        # shard-b: three nodeids from the first member; the z9 member
+        # collects zero nodeids (mirrors tests/test_s3_db_performance.py in
+        # the real frozen set) — the node total stays authoritative
+        collect = self._collect_file(tmp_path, [
+            "tests/test_platform_p17dc_backup_models.py::test_alpha",
+            "tests/test_platform_p17dc_backup_models.py::test_beta",
+            "tests/test_platform_p17dc_backup_models.py::test_gamma",
+        ])
+        proc = self._run(
+            "shard-verify", "--plan", plan_path, "--shard", "runtime-b",
+            "--argfile", tmp_path / "profile-runtime-b.tests",
+            "--expected-files", "2", "--collect", collect, "--expected-nodes", "3",
+        )
+        assert proc.returncode == 0, proc.stderr
+
+    def test_shard_verify_red_on_missing_member(self, tmp_path):
+        plan_path = self._write_plan(tmp_path, self.RUNTIME_FILES)
+        assert self._run("shard-plan", "--plan", plan_path, "--profile-dir", tmp_path).returncode == 0
+        argfile = tmp_path / "argfile-b-dropped.tests"
+        argfile.write_text(
+            "tests/test_platform_p17dc_backup_models.py\n", encoding="utf-8", newline="\n"
+        )
+        proc = self._run(
+            "shard-verify", "--plan", plan_path, "--shard", "runtime-b",
+            "--argfile", argfile, "--expected-files", "2",
+        )
+        assert proc.returncode == 3
+        assert "SHARD_MEMBERSHIP_MISMATCH" in proc.stderr
+        assert "tests/test_z9_zero_nodes.py" in proc.stderr
+
+    def test_shard_verify_red_on_duplicate_member(self, tmp_path):
+        plan_path = self._write_plan(tmp_path, self.RUNTIME_FILES)
+        argfile = tmp_path / "argfile-b-dup.tests"
+        argfile.write_text(
+            "tests/test_platform_p17dc_backup_models.py\n"
+            "tests/test_platform_p17dc_backup_models.py\n"
+            "tests/test_z9_zero_nodes.py\n",
+            encoding="utf-8", newline="\n",
+        )
+        proc = self._run(
+            "shard-verify", "--plan", plan_path, "--shard", "runtime-b",
+            "--argfile", argfile, "--expected-files", "3",
+        )
+        assert proc.returncode == 3
+        assert "DUPLICATE_SHARD_MEMBERS" in proc.stderr
+
+    def test_shard_verify_red_on_extra_member(self, tmp_path):
+        plan_path = self._write_plan(tmp_path, self.RUNTIME_FILES)
+        argfile = tmp_path / "argfile-topo-extra.tests"
+        argfile.write_text(
+            "tests/test_topo_a.py\ntests/test_task_a.py\n", encoding="utf-8", newline="\n"
+        )
+        proc = self._run(
+            "shard-verify", "--plan", plan_path, "--shard", "topology",
+            "--argfile", argfile, "--expected-files", "1",
+        )
+        assert proc.returncode == 3
+        assert "SHARD_MEMBERSHIP_MISMATCH" in proc.stderr
+        assert "tests/test_task_a.py" in proc.stderr
+
+    def test_shard_verify_red_on_node_count_drift(self, tmp_path):
+        plan_path = self._write_plan(tmp_path, self.RUNTIME_FILES)
+        assert self._run("shard-plan", "--plan", plan_path, "--profile-dir", tmp_path).returncode == 0
+        collect = self._collect_file(tmp_path, [
+            "tests/test_platform_p17dc_backup_models.py::test_alpha",
+        ])
+        proc = self._run(
+            "shard-verify", "--plan", plan_path, "--shard", "runtime-b",
+            "--argfile", tmp_path / "profile-runtime-b.tests",
+            "--expected-files", "2", "--collect", collect, "--expected-nodes", "3",
+        )
+        assert proc.returncode == 3
+        assert "SHARD_NODE_COUNT_MISMATCH" in proc.stderr
+
+    def test_shard_verify_red_on_outsider_collected_file(self, tmp_path):
+        plan_path = self._write_plan(tmp_path, self.RUNTIME_FILES)
+        assert self._run("shard-plan", "--plan", plan_path, "--profile-dir", tmp_path).returncode == 0
+        collect = self._collect_file(tmp_path, [
+            "tests/test_platform_p17dc_backup_models.py::test_alpha",
+            "tests/test_m00.py::test_outsider",
+        ])
+        proc = self._run(
+            "shard-verify", "--plan", plan_path, "--shard", "runtime-b",
+            "--argfile", tmp_path / "profile-runtime-b.tests",
+            "--expected-files", "2", "--collect", collect, "--expected-nodes", "2",
+        )
+        assert proc.returncode == 3
+        assert "COLLECTED_FILE_NOT_IN_SHARD" in proc.stderr
+
+
+class TestR6OutcomePropagationControls:
+    """Load-bearing control 2 (a failed pytest rc cannot be washed green by
+    upload steps): EXECUTE the workflow's real final-gate script under the
+    recorded-outcome filesystem states — rc!=0, outer-timeout 124, a
+    never-run body, or evidence gaps all fail the leg; only rc=0 with
+    complete sanitized evidence passes."""
+
+    def _final_gate_script(self):
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        step = next(
+            s for s in doc["jobs"]["test"]["steps"] if "Assert shard outcome" in s.get("name", "")
+        )
+        return step["run"].replace("${{ matrix.shard }}", "runtime-a")
+
+    def _run_final_gate(self, tmp_path, *, rc_value=None, gap_files=()):
+        runner_temp = tmp_path / "runner-temp"
+        runner_temp.mkdir(exist_ok=True)
+        if rc_value is not None:
+            (runner_temp / "pytest-rc.txt").write_text(str(rc_value), encoding="utf-8")
+        for name in gap_files:
+            (runner_temp / f"GAP-{name}.txt").write_text("sanitize_refused", encoding="utf-8")
+        env = dict(os.environ)
+        env["RUNNER_TEMP"] = str(runner_temp).replace(chr(92), "/")
+        return subprocess.run(
+            [BASH, "-c", self._final_gate_script()],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=env, stdin=subprocess.DEVNULL,
+        )
+
+    def test_failed_rc_fails_the_leg_despite_uploads(self, tmp_path):
+        proc = self._run_final_gate(tmp_path, rc_value=1)
+        assert proc.returncode == 1
+        assert "rc=1" in proc.stdout
+
+    def test_outer_timeout_rc_124_fails_the_leg(self, tmp_path):
+        proc = self._run_final_gate(tmp_path, rc_value=124)
+        assert proc.returncode == 1
+        assert "124=outer timeout" in proc.stdout
+
+    def test_never_ran_body_fails_the_leg(self, tmp_path):
+        proc = self._run_final_gate(tmp_path, rc_value=None)
+        assert proc.returncode == 1
+
+    def test_green_rc_passes_only_without_evidence_gaps(self, tmp_path):
+        green = self._run_final_gate(tmp_path, rc_value=0)
+        assert green.returncode == 0
+        with_gap = self._run_final_gate(tmp_path, rc_value=0, gap_files=("junit",))
+        assert with_gap.returncode == 1
+        assert "evidence gaps" in with_gap.stdout
+
+
+class TestR6SanitizeControls:
+    """Load-bearing control 3 (removing artifact sanitization is caught by a
+    high-entropy positive): the REAL sanitizer replaces generated
+    high-entropy credentials plus DSN/SCRAM form matches in junit
+    derivatives while proving node/status mapping invariance; refusals are
+    fail-closed (no output file is written); and a mutant with the exact-
+    value replacement disabled is caught by the tool's own residual scan —
+    proving the control discriminates, not just exists."""
+
+    @staticmethod
+    def _junit(name, classname, inner=""):
+        return (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<testsuites><testsuite name="s" tests="1" failures="0" errors="0" skipped="0">'
+            f'<testcase name="{name}" classname="{classname}">{inner}</testcase>'
+            "</testsuite></testsuites>"
+        )
+
+    def _run_sanitize(self, tmp_path, content, *, store=None, extra_env=None,
+                      tool=None, store_exists=True, input_name="junit.xml"):
+        src = tmp_path / input_name
+        src.write_text(content, encoding="utf-8", newline="\n")
+        out = tmp_path / (input_name + ".sanitized")
+        receipt = tmp_path / "receipt.json"
+        store_path = tmp_path / "store.env"
+        if store_exists:
+            if store is None:
+                store = {"APP_PASSWORD": secrets.token_hex(16), "SECRET_KEY": secrets.token_hex(32)}
+            store_path.write_text(
+                "".join(f"{k}={v}\n" for k, v in store.items()),
+                encoding="utf-8", newline="\n",
+            )
+        argv = [
+            sys.executable, str(tool or EVIDENCE_TOOL), "sanitize",
+            "--input", src, "--output", out, "--receipt", receipt,
+            "--secrets-file", store_path,
+        ]
+        if extra_env:
+            argv += ["--extra-env", ",".join(extra_env)]
+        env = dict(os.environ)
+        for name, value in (extra_env or {}).items():
+            if value is not None:
+                env[name] = value
+        proc = subprocess.run(
+            argv, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=env, stdin=subprocess.DEVNULL,
+        )
+        return proc, out, receipt
+
+    def test_high_entropy_values_replaced_with_mapping_invariance(self, tmp_path):
+        app_secret = secrets.token_hex(16)
+        # foreign-password DSN built at runtime (high entropy, no literal
+        # credential shape in source): exercises the form rule for values
+        # that are NOT in the credential store
+        foreign_pw = "fwd-" + secrets.token_hex(12)
+        foreign_dsn = f"postgresql://mpango_app:{foreign_pw}@127.0.0.1:55432/test_ci_mpango"
+        content = self._junit(
+            "test_example", "tests.test_example",
+            f'<failure message="connect failed: postgresql://mpango_app:{app_secret}'
+            f'@127.0.0.1:55432/test_ci_mpango retry {app_secret}" type="OperationalError">'
+            f"<system-err>alt endpoint {foreign_dsn}</system-err></failure>",
+        )
+        proc, out, receipt = self._run_sanitize(
+            tmp_path, content, store={"APP_PASSWORD": app_secret}
+        )
+        assert proc.returncode == 0, proc.stderr
+        sanitized = out.read_text(encoding="utf-8")
+        assert app_secret not in sanitized
+        assert foreign_pw not in sanitized
+        assert "[REDACTED:APP_PASSWORD]" in sanitized
+        assert "[REDACTED:pg-dsn]" in sanitized
+        data = json.loads(receipt.read_text(encoding="utf-8"))
+        assert data["mapping_invariance"] == "ok"
+        assert data["replacements"]["exact:APP_PASSWORD"] >= 2
+        assert data["replacements"]["form:pg-dsn"] >= 1
+        # the node identity survived byte-level replacement
+        assert 'name="test_example"' in sanitized
+        assert app_secret not in receipt.read_text(encoding="utf-8")
+
+    def test_scram_verifier_form_rule(self, tmp_path):
+        verifier = "SCRAM-SHA-256$4096:c3RvcmVrZXlzdG9yZWtleQ==:c2FsdHNhbHRzYWx0"
+        content = self._junit(
+            "test_roles", "tests.test_roles",
+            f'<failure message="role row leaked {verifier}" type="AssertionError"/>',
+        )
+        proc, out, _ = self._run_sanitize(tmp_path, content)
+        assert proc.returncode == 0, proc.stderr
+        sanitized = out.read_text(encoding="utf-8")
+        assert verifier not in sanitized
+        assert "[REDACTED:scram-verifier]" in sanitized
+
+    def test_missing_store_refuses_fail_closed(self, tmp_path):
+        proc, out, _ = self._run_sanitize(
+            tmp_path, self._junit("t", "c"), store_exists=False
+        )
+        assert proc.returncode == 4
+        assert "SECRETS_STORE_MISSING" in proc.stderr
+        assert not out.exists()
+
+    def test_empty_store_refuses_fail_closed(self, tmp_path):
+        proc, out, _ = self._run_sanitize(
+            tmp_path, self._junit("t", "c"),
+            store_exists=True, store={"APP_PASSWORD": ""},
+        )
+        assert proc.returncode == 4
+        assert "SECRETS_STORE_EMPTY" in proc.stderr
+        assert not out.exists()
+
+    def test_unset_extra_env_refuses_fail_closed(self, tmp_path):
+        proc, out, _ = self._run_sanitize(
+            tmp_path, self._junit("t", "c"),
+            extra_env={"C91_SYNTH_ADMIN_TOKEN": None},
+        )
+        assert proc.returncode == 4
+        assert "SECRETS_ENV_MISSING" in proc.stderr
+        assert not out.exists()
+
+    def test_secret_touching_a_node_name_refuses(self, tmp_path):
+        app_secret = secrets.token_hex(16)
+        content = self._junit(f"test_{app_secret}", "tests.test_example")
+        proc, out, _ = self._run_sanitize(
+            tmp_path, content, store={"APP_PASSWORD": app_secret}
+        )
+        assert proc.returncode == 4
+        assert "NODE_MAPPING_AT_RISK" in proc.stderr
+        assert not out.exists()
+
+    def test_mutant_without_replacement_is_caught_by_residual_scan(self, tmp_path):
+        source = EVIDENCE_TOOL.read_text(encoding="utf-8")
+        disabled = "text = text.replace(value, PLACEHOLDER % rule_id.split(\":\", 1)[1])"
+        assert disabled in source
+        mutant = tmp_path / "prepare_test_evidence_mutant.py"
+        mutant.write_text(
+            source.replace(disabled, "text = text  # mutant: replacement disabled"),
+            encoding="utf-8", newline="\n",
+        )
+        app_secret = secrets.token_hex(16)
+        content = self._junit(
+            "t", "c", f'<failure message="leak {app_secret}" type="E"/>'
+        )
+        proc, out, _ = self._run_sanitize(
+            tmp_path, content, store={"APP_PASSWORD": app_secret}, tool=mutant
+        )
+        assert proc.returncode == 4
+        assert "RESIDUAL_SECRET" in proc.stderr
+        assert not out.exists(), "a bypassed sanitizer must not publish anything"
+
+    def test_text_mode_replaces_in_collect_lists(self, tmp_path):
+        app_secret = secrets.token_hex(16)
+        content = (
+            "tests/test_ok.py::test_one\n"
+            f"tests/test_skipped.py::test_skip reason=dsn postgres://u:{app_secret}@h/db\n"
+            "== 2 tests collected in 0.01s ==\n"
+        )
+        proc, out, receipt = self._run_sanitize(
+            tmp_path, content, store={"APP_PASSWORD": app_secret},
+            input_name="collect.txt",
+        )
+        assert proc.returncode == 0, proc.stderr
+        sanitized = out.read_text(encoding="utf-8")
+        assert app_secret not in sanitized
+        assert "tests/test_ok.py::test_one" in sanitized
+        data = json.loads(receipt.read_text(encoding="utf-8"))
+        assert data["mapping_invariance"] == "not_applicable_text"

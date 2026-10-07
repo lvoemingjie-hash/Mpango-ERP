@@ -31,11 +31,46 @@ jobs:
   # Gate: Backend Tests (must pass before any deployment)
   # ---------------------------------------------------------------------------
   test:
-    name: Backend Tests (Gatekeeper)
+    name: Backend Tests (${{ matrix.shard }})
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.job-timeout-minutes }}
+    strategy:
+      # Five instance-independent tasks (R6): each leg is an isolated runner
+      # with its own PG16/Redis7/credentials/database. fail-fast stays false
+      # so independent legs keep their evidence when one leg fails; a failed
+      # leg still fails the workflow — nothing below swallows a failure.
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        # Hard budget cap: 30+30+50+25+25 = 160 runner-minutes total.
+        include:
+          - shard: runtime-a
+            job-timeout-minutes: 30
+            pytest-timeout: 18m
+            expected-files: "93"
+            expected-nodes: "1655"
+          - shard: runtime-b
+            job-timeout-minutes: 30
+            pytest-timeout: 18m
+            expected-files: "97"
+            expected-nodes: "1651"
+          - shard: topology
+            job-timeout-minutes: 50
+            pytest-timeout: 38m
+            expected-files: "39"
+            expected-nodes: "798"
+          - shard: invariants-jwt
+            job-timeout-minutes: 25
+            pytest-timeout: 13m
+            expected-files: "3"
+            expected-nodes: "92"
+          - shard: task-managed-pg
+            job-timeout-minutes: 25
+            pytest-timeout: 13m
+            expected-files: "4"
+            expected-nodes: "92"
     env:
-      CI_OWNER_LABEL: zcode-mvp-invariants-ci-deploy-staging-r3
+      CI_OWNER_LABEL: zcode-mvp-invariants-ci-deploy-staging-r6
 
     steps:
       - uses: actions/checkout@v4
@@ -54,84 +89,171 @@ jobs:
 
       - name: Start task-owned Postgres 16 (labeled, exact ID recorded)
         run: |
-          NAME="c91-r3-pg-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          CID=$(docker run -d --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" -p 127.0.0.1::5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres postgres:16-alpine)
+          PW="$(python -c 'import secrets; print(secrets.token_urlsafe(24))')"
+          echo "::add-mask::$PW"
+          NAME="c91-r6-pg-${{ matrix.shard }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          CID=$(docker run -d --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" -p 127.0.0.1::5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD="$PW" postgres:16-alpine)
           PGPORT=$(docker inspect --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' "$CID")
-          echo "CI_PG_CONTAINER_ID=$CID" >> "$GITHUB_ENV"
-          echo "CI_PG_PORT=$PGPORT" >> "$GITHUB_ENV"
-          echo "PG container $CID on 127.0.0.1:$PGPORT (label mpango.owner=$CI_OWNER_LABEL)"
+          {
+            echo "CI_PG_CONTAINER_ID=$CID"
+            echo "CI_PG_PORT=$PGPORT"
+            echo "CI_PG_ADMIN_PASSWORD=$PW"
+          } >> "$GITHUB_ENV"
+          echo "PG container $CID on 127.0.0.1:$PGPORT (shard ${{ matrix.shard }}, label mpango.owner=$CI_OWNER_LABEL)"
 
       - name: Start task-owned Redis 7 (labeled, exact ID recorded)
         run: |
-          NAME="c91-r3-redis-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          NAME="c91-r6-redis-${{ matrix.shard }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           CID=$(docker run -d --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" -p 127.0.0.1::6379 redis:7-alpine)
           RPORT=$(docker inspect --format '{{(index (index .NetworkSettings.Ports "6379/tcp") 0).HostPort}}' "$CID")
           echo "CI_REDIS_CONTAINER_ID=$CID" >> "$GITHUB_ENV"
           echo "CI_REDIS_PORT=$RPORT" >> "$GITHUB_ENV"
-          echo "Redis container $CID on 127.0.0.1:$RPORT (label mpango.owner=$CI_OWNER_LABEL)"
+          echo "Redis container $CID on 127.0.0.1:$RPORT (shard ${{ matrix.shard }})"
 
       - name: Provision test database via the five-phase product recipe
         id: provision
         env:
           CI_PG_HOST: 127.0.0.1
           CI_PG_ADMIN_USER: postgres
-          CI_PG_ADMIN_PASSWORD: postgres
+          CI_CREDENTIALS_FILE: ${{ runner.temp }}/c91-task-credentials.env
           CI_TEST_DB: test_ci_mpango
           CI_TEST_TENANT_SCHEMA: t_test
           CI_REDIS_URL: redis://127.0.0.1:${{ env.CI_REDIS_PORT }}/0
         run: |
           bash tools/ci/bootstrap_backend_test_db.sh --github-env "$GITHUB_ENV" --env-file "$RUNNER_TEMP/c91-test-env.sh" --plan-file "$RUNNER_TEMP/supply-plan.json" --profile-dir "$RUNNER_TEMP"
 
-      - name: Run backend tests (runtime profile)
+      - name: Cut frozen runtime shard argfiles (fail-closed)
         if: steps.provision.outcome == 'success'
-        working-directory: backend
         run: |
-          test -s "$RUNNER_TEMP/profile-runtime.tests" || { echo "profile runtime argfile missing/empty; refusing to fall back to full collection"; exit 1; }
-          . "$RUNNER_TEMP/c91-test-env.sh"
-          timeout --signal=INT --kill-after=60s 20m poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-runtime.tests") -q --tb=short --junitxml=../junit-runtime.xml
+          python tools/ci/prepare_test_evidence.py shard-plan --plan "$RUNNER_TEMP/supply-plan.json" --profile-dir "$RUNNER_TEMP"
 
-      - name: Run backend tests (topology profile)
+      - name: Shard gate (argfile + collect-only membership check)
         if: steps.provision.outcome == 'success'
-        working-directory: backend
-        env:
-          MPANGO_ALLOW_TEMP_DB_CREATE: "1"
         run: |
-          test -s "$RUNNER_TEMP/profile-topology.tests" || { echo "profile topology argfile missing/empty; refusing to fall back to full collection"; exit 1; }
-          . "$RUNNER_TEMP/c91-test-env.sh"
-          timeout --signal=INT --kill-after=60s 20m poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-topology.tests") -q --tb=short --junitxml=../junit-topology.xml
-
-      - name: Run backend tests (invariants-jwt profile)
-        if: steps.provision.outcome == 'success'
-        working-directory: backend
-        run: |
-          test -s "$RUNNER_TEMP/profile-invariants-jwt.tests" || { echo "profile invariants-jwt argfile missing/empty; refusing to fall back to full collection"; exit 1; }
+          test -s "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests" || { echo "shard ${{ matrix.shard }} argfile missing/empty; refusing to fall back to full collection"; exit 1; }
+          python tools/ci/prepare_test_evidence.py shard-verify --plan "$RUNNER_TEMP/supply-plan.json" --shard "${{ matrix.shard }}" --argfile "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests" --expected-files "${{ matrix.expected-files }}"
+          cd backend
           set -a; . "$RUNNER_TEMP/c91-test-env.sh"; set +a
-          MPANGO_ENV=staging timeout --signal=INT --kill-after=60s 20m poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-invariants-jwt.tests") -q --tb=short --junitxml=../junit-invariants.xml
+          case "${{ matrix.shard }}" in
+            topology|task-managed-pg) export MPANGO_ALLOW_TEMP_DB_CREATE=1 ;;
+            invariants-jwt) export MPANGO_ENV=staging ;;
+          esac
+          case "${{ matrix.shard }}" in
+            task-managed-pg) export C91_R3_RESOURCE_ROOT="$RUNNER_TEMP/c91-resource-root"; mkdir -p "$C91_R3_RESOURCE_ROOT"; chmod 700 "$C91_R3_RESOURCE_ROOT" ;;
+          esac
+          poetry run pytest --collect-only -q $(xargs -a "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests") > "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt"
+          cd ..
+          python tools/ci/prepare_test_evidence.py shard-verify --plan "$RUNNER_TEMP/supply-plan.json" --shard "${{ matrix.shard }}" --argfile "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests" --expected-files "${{ matrix.expected-files }}" --collect "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" --expected-nodes "${{ matrix.expected-nodes }}"
 
-      - name: Run backend tests (task-managed-pg profile)
+      - name: Run shard test body (single pytest invocation)
         if: steps.provision.outcome == 'success'
         working-directory: backend
-        env:
-          C91_R3_RESOURCE_ROOT: ${{ runner.temp }}/c91-resource-root
-          MPANGO_ALLOW_TEMP_DB_CREATE: "1"
         run: |
-          mkdir -p "$C91_R3_RESOURCE_ROOT" && chmod 700 "$C91_R3_RESOURCE_ROOT"
-          test -s "$RUNNER_TEMP/profile-task-managed-pg.tests" || { echo "profile task-managed-pg argfile missing/empty; refusing to fall back to full collection"; exit 1; }
-          . "$RUNNER_TEMP/c91-test-env.sh"
-          timeout --signal=INT --kill-after=60s 20m poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-task-managed-pg.tests") -q --tb=short --junitxml=../junit-taskmanaged.xml
+          set -o pipefail
+          set -a; . "$RUNNER_TEMP/c91-test-env.sh"; set +a
+          case "${{ matrix.shard }}" in
+            topology|task-managed-pg) export MPANGO_ALLOW_TEMP_DB_CREATE=1 ;;
+            invariants-jwt) export MPANGO_ENV=staging ;;
+          esac
+          case "${{ matrix.shard }}" in
+            task-managed-pg) export C91_R3_RESOURCE_ROOT="$RUNNER_TEMP/c91-resource-root"; mkdir -p "$C91_R3_RESOURCE_ROOT"; chmod 700 "$C91_R3_RESOURCE_ROOT" ;;
+          esac
+          poetry run python - "$RUNNER_TEMP/connections-${{ matrix.shard }}.csv" <<'PYOBS' &
+          import csv, os, sys, time
+          import psycopg2
+          out_path = sys.argv[1]
+          dsn = os.environ.get("TEST_ADMIN_DATABASE_URL", "")
+          if not dsn:
+              sys.exit(0)
+          DETAIL = ("SELECT COALESCE(datname,''), COALESCE(usename,''), COALESCE(application_name,''), "
+                    "COALESCE(state,''), COALESCE(wait_event_type,''), count(*) "
+                    "FROM pg_stat_activity GROUP BY 1,2,3,4,5")
+          TOTAL = "SELECT count(*) FROM pg_stat_activity"
+          with open(out_path, "w", newline="") as fh:
+              w = csv.writer(fh)
+              w.writerow(["kind","ts","datname","usename","application_name","state","wait_event_type","connections"])
+              while True:
+                  try:
+                      conn = psycopg2.connect(dsn, application_name="c91_observer")
+                      conn.set_session(readonly=True, autocommit=True)
+                      with conn.cursor() as cur:
+                          cur.execute(TOTAL)
+                          w.writerow(["total", time.time(), "", "", "", "", "", cur.fetchone()[0]])
+                          cur.execute(DETAIL)
+                          for row in cur.fetchall():
+                              w.writerow(["detail", time.time()] + list(row))
+                      fh.flush()
+                      conn.close()
+                  except Exception:
+                      pass
+                  time.sleep(5)
+          PYOBS
+          OBS_PID=$!
+          set +e
+          timeout --signal=INT --kill-after=60s ${{ matrix.pytest-timeout }} poetry run pytest $(xargs -a "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests") -q --tb=short --junitxml=../junit-${{ matrix.shard }}.xml
+          rc=$?
+          set -e
+          kill "$OBS_PID" 2>/dev/null || true
+          wait "$OBS_PID" 2>/dev/null || true
+          [ -s "$RUNNER_TEMP/connections-${{ matrix.shard }}.csv" ] || echo "observation_absent" > "$RUNNER_TEMP/connections-${{ matrix.shard }}.csv"
+          echo "$rc" > "$RUNNER_TEMP/pytest-rc.txt"
+          echo "shard ${{ matrix.shard }} pytest rc=$rc"
+          exit "$rc"
 
-      - name: Upload test evidence (junit + supply plan)
+      - name: Sanitize shard evidence for publication (fail-closed)
+        if: always()
+        run: |
+          set -u
+          PUB="$RUNNER_TEMP/publish"
+          mkdir -p "$PUB"
+          SECRETS="${CI_CREDENTIALS_FILE:-}"
+          if [ -z "$SECRETS" ] || [ ! -f "$SECRETS" ]; then
+            echo "credential store unavailable; every artifact below will be refused and recorded as an evidence gap"
+            echo "secrets_store_absent" > "$RUNNER_TEMP/GAP-secrets-store.txt"
+            SECRETS=""
+          fi
+          sanitize() {
+            src="$1"; dst="$2"
+            if [ ! -f "$src" ]; then echo "skip (absent): $src"; return 0; fi
+            if python tools/ci/prepare_test_evidence.py sanitize --input "$src" --output "$PUB/$dst" --receipt "$PUB/$dst.receipt.json" --secrets-file "$SECRETS" --extra-env CI_PG_ADMIN_PASSWORD; then
+              echo "sanitized: $dst"
+            else
+              echo "sanitize REFUSED for $src — recording an evidence gap; the raw file is NOT uploaded"
+              echo "sanitize_refused" > "$RUNNER_TEMP/GAP-$dst.txt"
+            fi
+          }
+          sanitize "junit-${{ matrix.shard }}.xml" "junit-${{ matrix.shard }}.sanitized.xml"
+          sanitize "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" "collect-${{ matrix.shard }}.sanitized.txt"
+          sanitize "$RUNNER_TEMP/connections-${{ matrix.shard }}.csv" "connections-${{ matrix.shard }}.sanitized.csv"
+          sanitize "$RUNNER_TEMP/supply-plan.json" "supply-plan-${{ matrix.shard }}.sanitized.json"
+          cp "$RUNNER_TEMP"/GAP-*.txt "$PUB"/ 2>/dev/null || true
+
+      - name: Upload sanitized shard evidence (never masks the test rc)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: backend-test-evidence
-          if-no-files-found: ignore
-          path: |
-            junit-runtime.xml
-            junit-topology.xml
-            junit-invariants.xml
-            junit-taskmanaged.xml
-            ${{ runner.temp }}/supply-plan.json
+          name: test-evidence-${{ matrix.shard }}-run${{ github.run_id }}-attempt${{ github.run_attempt }}
+          if-no-files-found: error
+          path: ${{ runner.temp }}/publish
+
+      - name: Assert shard outcome (pytest rc is final; uploads never mask it)
+        if: always()
+        run: |
+          rc="never_ran"
+          if [ -f "$RUNNER_TEMP/pytest-rc.txt" ]; then rc="$(cat "$RUNNER_TEMP/pytest-rc.txt")"; fi
+          gaps=0
+          for g in "$RUNNER_TEMP"/GAP-*.txt; do
+            if [ -e "$g" ]; then gaps=$((gaps+1)); fi
+          done
+          if [ "$rc" != "0" ]; then
+            echo "shard ${{ matrix.shard }} pytest rc=$rc (124=outer timeout) — the job FAILS regardless of upload outcomes"
+            exit 1
+          fi
+          if [ "$gaps" -ne 0 ]; then
+            echo "evidence gaps present ($gaps): sanitized publication incomplete on a green run — the job FAILS"
+            exit 1
+          fi
+          echo "shard ${{ matrix.shard }} green with complete sanitized evidence"
 
   # Build: Docker image
   # ---------------------------------------------------------------------------

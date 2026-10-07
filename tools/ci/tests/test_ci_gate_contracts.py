@@ -65,6 +65,29 @@ DEPLOY_WF = REPO_ROOT / ".github" / "workflows" / "deploy-staging.yml"
 S27_WF = REPO_ROOT / ".github" / "workflows" / "s2-7-ci-gates.yml"
 BASH = shutil.which("bash") or "bash"
 
+# R6R3 (control A): the platform context-availability table —
+# jobs.<job_id>.env allows github/needs/strategy/matrix/vars/secrets/inputs
+# and NOT runner/job/steps/env. The gate below runs BEFORE any local
+# rendering or fragment execution so an illegal expression can never be
+# silently substituted-then-accepted.
+_JOB_ENV_FORBIDDEN_CONTEXT_RE = re.compile(r"\$\{\{\s*(runner|job|steps|env)\.")
+
+
+def validate_job_env_contexts(doc, job_id="test"):
+    """Refuse disallowed contexts in jobs.<job_id>.env values with a named
+    category/location; must be invoked before rendering env values or
+    executing any fragment against them."""
+    env = (doc.get("jobs", {}).get(job_id) or {}).get("env") or {}
+    for key, value in env.items():
+        match = _JOB_ENV_FORBIDDEN_CONTEXT_RE.search(str(value))
+        if match:
+            raise AssertionError(
+                f"JOB_ENV_CONTEXT_ILLEGAL: jobs.{job_id}.env.{key} uses the "
+                f"'{match.group(1)}' context, which the platform context-"
+                f"availability table does not allow at this location: {value!r}"
+            )
+    return doc
+
 FROZEN_IGNORES = {
     "tests/test_s3c_cache.py",
     "tests/test_s3c_integration.py",
@@ -273,13 +296,22 @@ class TestDeployWorkflowContract:
         # R6: the task credential store is declared so the sanitize stage has
         # a fail-closed secret source; the admin credential reaches this step
         # through the GITHUB_ENV channel, not through YAML literals.
-        # R6R1 (F-01): the store path is declared at JOB scope so provision
-        # and the publication steps resolve the SAME private store — a
-        # step-scoped key would not cross steps.
+        # R6R3: the store PATH is registered ONCE in the PG-start step via
+        # GITHUB_ENV ($RUNNER_TEMP shell variable, before any docker call) —
+        # job-level env does not support the runner context (the R6R2
+        # dispatch was refused by the platform with HTTP 422 on exactly
+        # that), and no step env carries the key.
         assert "CI_CREDENTIALS_FILE" not in provision["env"]
-        assert self.test_job["env"]["CI_CREDENTIALS_FILE"] == (
-            "${{ runner.temp }}/c91-task-credentials.env"
+        assert "CI_CREDENTIALS_FILE" not in self.test_job["env"]
+        pg_run = next(s for s in self.steps if "Postgres 16" in s.get("name", ""))["run"]
+        registration = 'echo "CI_CREDENTIALS_FILE=$RUNNER_TEMP/c91-task-credentials.env" >> "$GITHUB_ENV"'
+        assert registration in pg_run
+        docker_line = next(ln for ln in pg_run.splitlines() if "docker run -d" in ln)
+        assert pg_run.index(registration) < pg_run.index(docker_line), (
+            "the store-path registration must precede any docker call"
         )
+        # job env values must stay within the platform's allowed contexts
+        validate_job_env_contexts(yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8")))
         assert "CI_PG_ADMIN_PASSWORD" not in provision["env"]
 
         shard_plan = next(s for s in self.steps if "Cut frozen runtime shard" in s.get("name", ""))
@@ -834,6 +866,9 @@ class TestWorkflowRedisWiringExecuted:
                 "GITHUB_RUN_ID": "r3r1",
                 "GITHUB_RUN_ATTEMPT": "1",
                 "CI_OWNER_LABEL": "zcode-mvp-invariants-ci-deploy-staging-r3",
+                # the platform provides RUNNER_TEMP; the PG fragment's store
+                # registration resolves the absolute path from it
+                "RUNNER_TEMP": str(Path(rec).parent).replace(chr(92), "/"),
             }
         )
         env.update(extra_env)
@@ -845,28 +880,33 @@ class TestWorkflowRedisWiringExecuted:
 
     def _provision_env_and_run(self, sandbox):
         """Workflow JOB env + step env + the GITHUB_ENV channel, with
-        GitHub's own ${{ env.* }} / ${{ runner.temp }} substitution rules
-        applied. R6R1: the credential store path comes from JOB scope."""
+        GitHub's own ${{ env.* }} substitution rules applied. R6R3: the
+        credential-store path arrives via the GITHUB_ENV channel (the
+        PG-start registration line), never via job env expressions."""
         tmp_path = sandbox[0]
-        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        doc = validate_job_env_contexts(
+            yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        )
         step = next(s for s in doc["jobs"]["test"]["steps"] if "Provision" in s.get("name", ""))
         posix_tmp = str(tmp_path).replace(chr(92), "/")
         env = {
-            k: str(v)
-            .replace("${{ env.CI_REDIS_PORT }}", "36379")
-            .replace("${{ runner.temp }}", posix_tmp)
+            k: str(v).replace("${{ env.CI_REDIS_PORT }}", "36379")
             for k, v in step["env"].items()
         }
         for key, value in doc["jobs"]["test"].get("env", {}).items():
-            env.setdefault(
-                key, str(value).replace("${{ runner.temp }}", posix_tmp)
-            )
+            env.setdefault(key, str(value))
         # GitHub semantics: lines exported to GITHUB_ENV by earlier steps are
         # part of every later step's environment. Only the credential/port
         # channel keys are merged here; container-ID ownership verification
-        # is exercised by the wrapper fake-tool controls instead.
+        # is exercised by the wrapper fake-tool controls instead. R6R3: the
+        # registered store path is one of those consumed keys.
         github_env = sandbox[3].read_text(encoding="utf-8")
-        for key in ("CI_PG_ADMIN_PASSWORD", "CI_PG_PORT", "CI_REDIS_PORT"):
+        for key in (
+            "CI_CREDENTIALS_FILE",
+            "CI_PG_ADMIN_PASSWORD",
+            "CI_PG_PORT",
+            "CI_REDIS_PORT",
+        ):
             m = re.search(rf"^{key}=(.*)$", github_env, re.M)
             if m:
                 env[key] = m.group(1)
@@ -2160,21 +2200,29 @@ class TestR6R1FragmentControls:
         )
 
     def _job_env(self, tmp_path):
-        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
-        posix_tmp = self._posix(tmp_path)
-        return {
-            k: str(v).replace("${{ runner.temp }}", posix_tmp)
-            for k, v in doc["jobs"]["test"]["env"].items()
-        }
+        # R6R3 (control A gate): validate the ACTUAL job env against the
+        # platform context-availability table BEFORE any rendering — an
+        # illegal expression must never be silently substituted and then
+        # treated as platform-legal.
+        doc = validate_job_env_contexts(
+            yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        )
+        return {k: str(v) for k, v in doc["jobs"]["test"]["env"].items()}
 
     def _fragment_env(self, tmp_path, bin_dir, github_env, rec):
         env = dict(os.environ)
+        # R6R3 (control B): no host-inherited store path — cross-step
+        # resolution must come from the GITHUB_ENV channel only
+        env.pop("CI_CREDENTIALS_FILE", None)
         env.update({
             "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
             "C91_FAKE_DIR": self._posix(rec),
             "GITHUB_ENV": self._posix(github_env),
             "GITHUB_RUN_ID": "r6r1",
             "GITHUB_RUN_ATTEMPT": "1",
+            # the platform provides RUNNER_TEMP to every step; the PG-start
+            # registration line resolves the store path from it
+            "RUNNER_TEMP": self._posix(tmp_path),
         })
         env.update(self._job_env(tmp_path))
         return env
@@ -2202,6 +2250,11 @@ class TestR6R1FragmentControls:
         gh = github_env.read_text(encoding="utf-8")
         pw = re.search(r"^CI_PG_ADMIN_PASSWORD=(\S+)$", gh, re.M).group(1)
         assert len(pw) >= 24
+        # R6R3: the store-path registration lands in GITHUB_ENV (path only)
+        reg = re.search(r"^CI_CREDENTIALS_FILE=(.+)$", gh, re.M)
+        assert reg, "the PG-start fragment must register the store path"
+        assert reg.group(1).endswith("/c91-task-credentials.env")
+        assert pw not in reg.group(1)
         argv_texts = [p.read_text(encoding="utf-8") for p in sorted(rec.glob("docker-*.argv"))]
         # one `run` + one HostPort `inspect` are expected from the fragment
         run_argv = [a for a in argv_texts if a.startswith("run -d")]
@@ -2235,7 +2288,7 @@ class TestR6R1FragmentControls:
         for key, value in provision["env"].items():
             env[key] = str(value).replace("${{ env.CI_REDIS_PORT }}", "36379")
         gh = github_env.read_text(encoding="utf-8")
-        for key in ("CI_PG_ADMIN_PASSWORD", "CI_PG_PORT", "CI_REDIS_PORT"):
+        for key in ("CI_CREDENTIALS_FILE", "CI_PG_ADMIN_PASSWORD", "CI_PG_PORT", "CI_REDIS_PORT"):
             env[key] = re.search(rf"^{key}=(.*)$", gh, re.M).group(1)
         proc = subprocess.run(
             [BASH, self._posix(BOOTSTRAP), "--repo-root", self._posix(REPO_ROOT),
@@ -2248,7 +2301,13 @@ class TestR6R1FragmentControls:
         )
         assert proc.returncode == 0, proc.stderr
         store = tmp_path / "c91-task-credentials.env"
-        assert store.is_file(), "the job-scoped store must exist after supply"
+        assert store.is_file(), "the registered store must exist after supply"
+        # R6R3 (control B): the wrapper wrote the store at EXACTLY the
+        # GITHUB_ENV-registered absolute path (cross-step identity)
+        registered = re.search(
+            r"^CI_CREDENTIALS_FILE=(.+)$", gh, re.M
+        ).group(1).replace(chr(92), "/")
+        assert registered == self._posix(store), (registered, store)
         store_text = store.read_text(encoding="utf-8")
         for key in ("MIGRATE_PASSWORD", "APP_PASSWORD", "OPERATOR_PASSWORD",
                     "REPORTING_PASSWORD", "SECRET_KEY"):
@@ -2277,11 +2336,14 @@ class TestR6R1FragmentControls:
 
     def _run_publication_scope(self, tmp_path, rt, junit_text, github_env=None):
         """Runs the REAL sanitize fragment in a SEPARATE process whose env is
-        exactly: os.environ + job-level env + the GITHUB_ENV channel — never
-        the provision step's env."""
-        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        exactly: os.environ (store path stripped) + job-level env + the
+        GITHUB_ENV channel — never the provision step's env."""
+        doc = validate_job_env_contexts(
+            yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        )
         sanitize = self._step(doc, "Sanitize shard evidence")
         env = dict(os.environ)
+        env.pop("CI_CREDENTIALS_FILE", None)  # no host-env rescue (control B)
         env["RUNNER_TEMP"] = self._posix(rt)
         env.update(self._job_env(tmp_path))
         if github_env is not None and github_env.is_file():
@@ -2345,7 +2407,8 @@ class TestR6R1FragmentControls:
         (rt / "pytest-rc.txt").write_text("0", encoding="utf-8", newline="\n")
         gh_admin = tmp_path / "github-env"
         gh_admin.write_text(
-            "CI_PG_ADMIN_PASSWORD=" + secrets.token_hex(16) + "\n",
+            "CI_CREDENTIALS_FILE=" + self._posix(rt / "c91-task-credentials.env") + "\n"
+            + "CI_PG_ADMIN_PASSWORD=" + secrets.token_hex(16) + "\n",
             encoding="utf-8", newline="\n",
         )
         proc, _ = self._run_publication_scope(tmp_path, rt, junit_text, gh_admin)
@@ -2371,7 +2434,8 @@ class TestR6R1FragmentControls:
         (rt / "pytest-stderr.txt").unlink()
         gh_admin = tmp_path / "github-env"
         gh_admin.write_text(
-            "CI_PG_ADMIN_PASSWORD=" + secrets.token_hex(16) + "\n",
+            "CI_CREDENTIALS_FILE=" + self._posix(rt / "c91-task-credentials.env") + "\n"
+            + "CI_PG_ADMIN_PASSWORD=" + secrets.token_hex(16) + "\n",
             encoding="utf-8", newline="\n",
         )
         proc, _ = self._run_publication_scope(tmp_path, rt, junit_text, gh_admin)
@@ -2397,8 +2461,11 @@ class TestR6R1FragmentControls:
         doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
         sanitize = self._step(doc, "Sanitize shard evidence")
         env = dict(os.environ)
+        env.pop("CI_CREDENTIALS_FILE", None)  # no host-env rescue (control B)
         env["RUNNER_TEMP"] = self._posix(rt)
         env.update(self._job_env(tmp_path))
+        # simulated GITHUB_ENV channel: the PG-start registration + the admin value
+        env["CI_CREDENTIALS_FILE"] = self._posix(rt / "c91-task-credentials.env")
         env["CI_PG_ADMIN_PASSWORD"] = secrets.token_hex(16)
         junit_in_repo = REPO_ROOT / "junit-runtime-a.xml"
         try:
@@ -2590,6 +2657,154 @@ class TestR6R1FragmentControls:
         poetry_argv = (rec / "poetry-0.argv").read_text(encoding="utf-8")
         assert secret not in poetry_argv
 
+    def test_job_env_context_boundary_gate_precedes_rendering(self, tmp_path):
+        """R6R3 control A: jobs.test.env must stay within the platform's
+        allowed contexts; a mutant copy restoring the old runner.temp line
+        is refused with a named category/location BEFORE any rendering or
+        fake-tool side effect. The gate is wired into the render path, not a
+        detached string check."""
+        import inspect
+        # the render entry used by every fragment simulator validates first
+        self._job_env(tmp_path)  # real workflow passes the gate
+        assert "validate_job_env_contexts" in inspect.getsource(self._job_env)
+        assert "validate_job_env_contexts" in inspect.getsource(
+            TestWorkflowRedisWiringExecuted._provision_env_and_run
+        )
+        # mutant copy restores the exact HTTP-422-causing line
+        source = DEPLOY_WF.read_text(encoding="utf-8")
+        anchor = "      CI_OWNER_LABEL: zcode-mvp-invariants-ci-deploy-staging-r6"
+        assert anchor in source
+        mutant = source.replace(
+            anchor,
+            anchor + "\n      CI_CREDENTIALS_FILE: ${{ runner.temp }}/c91-task-credentials.env",
+            1,
+        )
+        assert mutant != source
+        mutant_doc = yaml.safe_load(mutant)
+        rec = tmp_path / "records"
+        rec.mkdir()
+        with pytest.raises(AssertionError, match=r"JOB_ENV_CONTEXT_ILLEGAL.*CI_CREDENTIALS_FILE.*runner"):
+            validate_job_env_contexts(mutant_doc)
+        # the refusal happened before ANY shell execution or fake-tool side
+        # effect: no record files exist because nothing was ever run
+        assert not list(rec.glob("docker-*.argv"))
+        assert not list(rec.glob("poetry-*.argv"))
+        # the mutant never entered the source tree
+        assert DEPLOY_WF.read_text(encoding="utf-8") == source
+
+    def test_missing_registration_line_blocks_cross_step_resolution(self, tmp_path):
+        """R6R3 control C: single-point deletion of the store-path
+        registration from the PG-start fragment — later scopes must not
+        recover the path from job env, provision env, admin credentials or
+        leftovers; the publication outlet refuses wholesale and the final
+        gate turns red. The candidate bytes (real fragment) stay GREEN."""
+        bin_dir = self._bin_dir(tmp_path)
+        rec = tmp_path / "records"
+        rec.mkdir()
+        github_env = tmp_path / "github-env"
+        github_env.write_text("", encoding="utf-8")
+        doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+        pg = self._step(doc, "Postgres 16")
+        registration = 'echo "CI_CREDENTIALS_FILE=$RUNNER_TEMP/c91-task-credentials.env" >> "$GITHUB_ENV"'
+        assert registration in pg["run"]
+        mutant_run = pg["run"].replace(registration + "\n", "", 1)
+        assert registration not in mutant_run
+        # 1) run the MUTANT PG fragment: GITHUB_ENV carries no registration
+        env = self._fragment_env(tmp_path, bin_dir, github_env, rec)
+        proc = self._run_script(mutant_run.replace("${{ matrix.shard }}", "runtime-a"), env, str(tmp_path))
+        assert proc.returncode == 0, proc.stderr
+        gh_text = github_env.read_text(encoding="utf-8")
+        assert "CI_CREDENTIALS_FILE=" not in gh_text
+        # 2) publication scope over that channel (host env cleared by the
+        # helper): no path resolvable -> whole-outlet refusal + GAP + red
+        rt = tmp_path
+        junit_text = self._seed_publication_inputs(rt, "unused-admin-pw-value")
+        (rt / "pytest-rc.txt").write_text("0", encoding="utf-8", newline="\n")
+        proc, _ = self._run_publication_scope(tmp_path, rt, junit_text, github_env)
+        assert proc.returncode == 0, "the step tolerates the refusal with a GAP"
+        assert (rt / "GAP-publication.txt").is_file()
+        pub = rt / "publish"
+        payloads = [p for p in pub.iterdir()
+                    if ".sanitized." in p.name and not p.name.startswith("GAP-")]
+        assert not payloads, "no payload may be published without the registered path"
+        gate_script = TestR6OutcomePropagationControls()._final_gate_script()
+        gate_proc = self._run_script(
+            gate_script, {**os.environ, "RUNNER_TEMP": self._posix(rt)}, str(tmp_path)
+        )
+        assert gate_proc.returncode == 1
+        # 3) restore: the REAL fragment registers the path (positive GREEN
+        # path through supply+publication is proven by the same-store control)
+        github_env.write_text("", encoding="utf-8")
+        rec2 = tmp_path / "records2"
+        rec2.mkdir()
+        env = self._fragment_env(tmp_path, bin_dir, github_env, rec2)
+        proc = self._run_script(pg["run"].replace("${{ matrix.shard }}", "runtime-a"), env, str(tmp_path))
+        assert proc.returncode == 0, proc.stderr
+        assert re.search(r"^CI_CREDENTIALS_FILE=.+/c91-task-credentials\.env$",
+                         github_env.read_text(encoding="utf-8"), re.M)
+        # the single-point mutant never entered the source bytes
+        assert registration in DEPLOY_WF.read_text(encoding="utf-8")
+
+    def test_store_missing_refuses_entire_outlet_with_valueless_receipt(self, tmp_path):
+        """Restored R6R1 fragment control (dropped by the R6R2 span
+        replacement; disclosed in the R6R3 report): a GITHUB_ENV channel
+        whose registered store is absent refuses the WHOLE outlet with a
+        valueless receipt — no admin-only fallback, no per-artifact rescue."""
+        rt = tmp_path
+        junit_text = self._seed_publication_inputs(rt, "unused-admin-pw-value")
+        gh = tmp_path / "github-env"
+        gh.write_text(
+            "CI_CREDENTIALS_FILE=" + self._posix(rt / "c91-task-credentials.env") + "\n"
+            + "CI_PG_ADMIN_PASSWORD=" + secrets.token_hex(16) + "\n",
+            encoding="utf-8", newline="\n",
+        )
+        (rt / "c91-task-credentials.env").unlink(missing_ok=True)
+        proc, _ = self._run_publication_scope(tmp_path, rt, junit_text, gh)
+        assert proc.returncode == 0, "the step itself stays green; the GAP turns the job red"
+        assert (rt / "GAP-publication.txt").is_file()
+        pub = rt / "publish"
+        refusal = json.loads((pub / "publication-refusal.json").read_text(encoding="utf-8"))
+        assert refusal == {
+            "tool": "prepare_test_evidence.py refusal-receipt",
+            "refused": True,
+            "reason": "secrets_store_unavailable",
+            "values_included": False,
+            "payload_published": False,
+        }
+        payloads = [p for p in pub.iterdir()
+                    if ".sanitized." in p.name and not p.name.startswith("GAP-")]
+        assert not payloads
+
+    def test_incomplete_store_with_admin_env_refuses_every_payload(self, tmp_path):
+        """Restored R6R1 fragment control (dropped by the R6R2 span
+        replacement; disclosed in the R6R3 report): a registered but
+        incomplete store with the admin value present still refuses every
+        payload — admin-only cannot rescue the outlet."""
+        rt = tmp_path
+        junit_text = self._seed_publication_inputs(rt, "unused-admin-pw-value")
+        (rt / "c91-task-credentials.env").write_text(
+            "APP_PASSWORD=lonely\n", encoding="utf-8", newline="\n"
+        )
+        gh = tmp_path / "github-env"
+        gh.write_text(
+            "CI_CREDENTIALS_FILE=" + self._posix(rt / "c91-task-credentials.env") + "\n"
+            + "CI_PG_ADMIN_PASSWORD=" + secrets.token_hex(16) + "\n",
+            encoding="utf-8", newline="\n",
+        )
+        proc, _ = self._run_publication_scope(tmp_path, rt, junit_text, gh)
+        assert proc.returncode == 0
+        # R6R3: the OUTLET store-integrity gate refuses before ANY sanitize
+        # call (including the valid empty stderr log — the empty-log branch
+        # must never be reachable under an incomplete store)
+        assert (rt / "GAP-publication.txt").is_file()
+        assert "store incomplete" in proc.stdout
+        pub = rt / "publish"
+        refusal = json.loads((pub / "publication-refusal.json").read_text(encoding="utf-8"))
+        assert refusal["reason"] == "secrets_store_incomplete"
+        assert refusal["values_included"] is False
+        payloads = [p for p in pub.iterdir()
+                    if ".sanitized." in p.name and not p.name.startswith("GAP-")]
+        assert not payloads
     def test_cleanup_removes_only_label_verified_own_resources(self, tmp_path):
         bin_dir = self._bin_dir(tmp_path)
         rt = tmp_path / "rt"
@@ -2612,10 +2827,12 @@ class TestR6R1FragmentControls:
         cleanup = self._step(doc, "Cleanup task-owned resources")
         env = self._fragment_env(tmp_path, bin_dir, github_env, rec)
         # GitHub materializes GITHUB_ENV exports into every later step's
-        # environment; the harness mirrors that for the container IDs
+        # environment; the harness mirrors that for the container IDs and
+        # the registered store path (host-inherited value already stripped)
         env["CI_PG_CONTAINER_ID"] = "own-task-id-1"
         env["CI_REDIS_CONTAINER_ID"] = "foreign-id-2"
         env["RUNNER_TEMP"] = self._posix(rt)
+        assert "CI_CREDENTIALS_FILE" not in env
         env["CI_CREDENTIALS_FILE"] = self._posix(store)
         env["C91_FAKE_OWNER_IDS"] = "own-task-id-1"
         proc = self._run_script(cleanup["run"], env, str(tmp_path))
@@ -2644,6 +2861,7 @@ class TestR6R1FragmentControls:
         env2["CI_PG_CONTAINER_ID"] = "own-a"
         env2["CI_REDIS_CONTAINER_ID"] = "own-b"
         env2["RUNNER_TEMP"] = self._posix(rt)
+        assert "CI_CREDENTIALS_FILE" not in env2
         env2["CI_CREDENTIALS_FILE"] = self._posix(store)
         env2["C91_FAKE_OWNER_IDS"] = "own-a own-b"
         (rt / "GAP-cleanup.txt").unlink(missing_ok=True)

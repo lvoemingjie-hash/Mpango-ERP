@@ -71,10 +71,13 @@ jobs:
             expected-nodes: "92"
     env:
       CI_OWNER_LABEL: zcode-mvp-invariants-ci-deploy-staging-r6
-      # R6R1 (F-01): the task credential store is declared at JOB scope so
-      # the supply step and every publication/cleanup step resolve the SAME
-      # private store path; a step-scoped key would not cross steps.
-      CI_CREDENTIALS_FILE: ${{ runner.temp }}/c91-task-credentials.env
+      # R6R1 (F-01) intended ONE credential-store path visible to the supply
+      # and publication steps. R6R3 corrects the mechanism: job-level env
+      # supports only github/needs/strategy/matrix/vars/secrets/inputs
+      # contexts — NOT runner — so the store path is registered once in the
+      # PG-start step via GITHUB_ENV ($RUNNER_TEMP shell variable at line
+      # start, before any docker call). GitHub's context-availability table:
+      # https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#context-availability
 
     steps:
       - uses: actions/checkout@v4
@@ -93,6 +96,11 @@ jobs:
 
       - name: Start task-owned Postgres 16 (labeled, exact ID recorded)
         run: |
+          # R6R3: register the task credential-store PATH (never a secret
+          # value) once, before any docker call, so every later step —
+          # supply wrapper, sanitizer, cleanup — resolves the SAME absolute
+          # store path through the GITHUB_ENV channel.
+          echo "CI_CREDENTIALS_FILE=$RUNNER_TEMP/c91-task-credentials.env" >> "$GITHUB_ENV"
           PW="$(python -c 'import secrets; print(secrets.token_urlsafe(24))')"
           echo "::add-mask::$PW"
           # R6R1 (F-05): the admin credential crosses to docker through the
@@ -250,6 +258,19 @@ jobs:
             cp "$RUNNER_TEMP"/GAP-*.txt "$PUB"/ 2>/dev/null || true
             exit 0
           fi
+          # R6R3: store-INTEGRITY gate stays FIRST for every payload —
+          # including valid empty logs (the sanitizer's empty-log branch
+          # must never be reachable under an incomplete store). Mirrors the
+          # tool's --require-keys set at the outlet.
+          for req_key in MIGRATE_PASSWORD APP_PASSWORD OPERATOR_PASSWORD REPORTING_PASSWORD SECRET_KEY; do
+            if ! grep -q "^${req_key}=" "$SECRETS"; then
+              echo "task credential store incomplete (missing ${req_key}) — refusing the ENTIRE payload outlet"
+              python tools/ci/prepare_test_evidence.py refusal-receipt --reason secrets_store_incomplete --out "$PUB/publication-refusal.json" || true
+              echo "publication_refused_all" > "$RUNNER_TEMP/GAP-publication.txt"
+              cp "$RUNNER_TEMP"/GAP-*.txt "$PUB"/ 2>/dev/null || true
+              exit 0
+            fi
+          done
           sanitize() {
             src="$1"; dst="$2"; required="$3"; allow_empty="${4:-no}"
             if [ ! -f "$src" ]; then

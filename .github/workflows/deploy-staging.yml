@@ -163,7 +163,13 @@ jobs:
           case "${{ matrix.shard }}" in
             task-managed-pg) export C91_R3_RESOURCE_ROOT="$RUNNER_TEMP/c91-resource-root"; mkdir -p "$C91_R3_RESOURCE_ROOT"; chmod 700 "$C91_R3_RESOURCE_ROOT" ;;
           esac
-          if ! poetry run pytest --collect-only -q $(xargs -a "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests") > "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" 2> "$RUNNER_TEMP/collect-${{ matrix.shard }}.err"; then
+          # R6R4: backend/pytest.ini addopts carries -v, so a single CLI -q
+          # cancels to verbosity 0 and --collect-only emits the verbose tree
+          # (run37713568999 gate refusals). The explicit numeric verbosity
+          # locks the plain-nodeid collect format the frozen canonical
+          # parses, regardless of ini -v or injected PYTEST_ADDOPTS; ini
+          # addopts (incl. --strict-markers) still apply unchanged.
+          if ! poetry run pytest --collect-only --verbosity=-1 $(xargs -a "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests") > "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" 2> "$RUNNER_TEMP/collect-${{ matrix.shard }}.err"; then
             echo "collect-only FAILED (raw output in private runner staging)"
             exit 1
           fi

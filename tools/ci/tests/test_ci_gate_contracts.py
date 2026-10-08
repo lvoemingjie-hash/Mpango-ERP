@@ -327,7 +327,17 @@ class TestDeployWorkflowContract:
         assert gate["run"].count("prepare_test_evidence.py shard-verify") == 2
         assert '--collect "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt"' in gate["run"]
         assert '--expected-nodes "${{ matrix.expected-nodes }}"' in gate["run"]
-        assert "--collect-only -q" in gate["run"]
+        # R6R4: the collect format is pinned by an EXPLICIT numeric
+        # verbosity — backend/pytest.ini addopts carries -v, so the old
+        # single CLI -q cancelled to verbosity 0 and emitted the verbose
+        # collection tree (run37713568999 gate refusals); --verbosity=-1
+        # locks the plain-nodeid format regardless of ini or PYTEST_ADDOPTS
+        # (see TestR6R4RealGeneratorControls for real pytest-8.4.2 proof)
+        collect_line = next(
+            ln for ln in gate["run"].splitlines() if "--collect-only" in ln and "poetry run pytest" in ln
+        )
+        assert "--collect-only --verbosity=-1" in collect_line
+        assert " -q" not in collect_line
         # R6R2 (F-02): shard-verify raw output goes to private staging; the
         # console sees only the fixed refusal category
         assert '--diagnostics-file "$RUNNER_TEMP/gate-verify-files.diag.json"' in gate["run"]
@@ -2948,3 +2958,215 @@ class TestR6R1FragmentControls:
         )
         assert diagnostics["category"] == "DUPLICATE_COLLECTED_NODEIDS"
         assert any(secret in nid for nid in diagnostics["details"]["duplicated_nodeids"])
+
+
+PYTEST842_DEFAULT = (
+    r"C:/Users/Jeff0/MPANGO ERP/_c91_ci_r6r3_replacement_run_zcodew_20261008"
+    r"/private/pytest842env/Scripts/python.exe"
+)
+
+SYNTH_MODULE = (
+    "import pytest\n"
+    "\n"
+    "def test_plain_module_level():\n"
+    "    raise AssertionError('controls never run the body')\n"
+    "\n"
+    "class TestGroup:\n"
+    "    def test_inside_class(self):\n"
+    "        raise AssertionError('controls never run the body')\n"
+    "\n"
+    "async def test_async_node():\n"
+    "    raise AssertionError('controls never run the body')\n"
+    "\n"
+    "@pytest.mark.parametrize('payload', ['a b c', 'u:p@localhost/db'])\n"
+    "def test_space_bearing_param(payload):\n"
+    "    raise AssertionError('controls never run the body')\n"
+)
+
+SYNTH_MARKER_PROBE = (
+    "import pytest\n"
+    "\n"
+    "@pytest.mark.totally_unknown_r6r4_control_marker\n"
+    "def test_marker_probe():\n"
+    "    raise AssertionError('never runs')\n"
+)
+
+
+class TestR6R4RealGeneratorControls:
+    """R6R4: REAL pytest-8.4.2 subprocess collection controls (never fake
+    emitters). CTO-determined root cause of run37713568999: backend/
+    pytest.ini addopts carries -v, so a single CLI -q cancels to verbosity
+    0 and --collect-only prints the verbose tree the frozen parser cannot
+    use. The workflow now pins --collect-only --verbosity=-1 (explicit
+    numeric value immune to ini -v and injected PYTEST_ADDOPTS); ini
+    addopts, including --strict-markers, keep applying. The tested option
+    list is EXTRACTED from the workflow's actual collection line and the
+    REAL candidate backend/pytest.ini is loaded via -c. Synthetic sandbox
+    only (bodies raise if ever executed; collect-only; plugin autoload
+    disabled for the synthetic control process only — never written into
+    the workflow)."""
+
+    EXPECTED = [
+        "test_synth.py::TestGroup::test_inside_class",
+        "test_synth.py::test_async_node",
+        "test_synth.py::test_plain_module_level",
+        "test_synth.py::test_space_bearing_param[a b c]",
+        "test_synth.py::test_space_bearing_param[u:p@localhost/db]",
+    ]
+
+    @classmethod
+    def _parse_via_real_parser(cls, module, combined_text, tmp_path):
+        out = Path(tmp_path) / ("collect-" + secrets.token_hex(4) + ".txt")
+        out.write_text(combined_text, encoding="utf-8", newline="\n")
+        return module._collect_nodeids(str(out))
+
+    @staticmethod
+    def _pytest842():
+        exe = os.environ.get("C91_PYTEST842_PYTHON", PYTEST842_DEFAULT)
+        return exe if Path(exe).is_file() else None
+
+    @classmethod
+    def _skip_if_no_real_generator(cls):
+        exe = cls._pytest842()
+        if exe is None:
+            pytest.skip("real pytest-8.4.2 interpreter not available (C91_PYTEST842_PYTHON)")
+        return exe
+
+    @staticmethod
+    def _evidence_module():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("pte_r6r4", EVIDENCE_TOOL)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _extract_collect_options(run_text):
+        """Pull the collect options from the workflow's ACTUAL collection
+        line so the control constrains what ships, not a parallel command."""
+        line = next(
+            ln for ln in run_text.splitlines()
+            if "poetry run pytest" in ln and "--collect-only" in ln
+        )
+        head = line.split("$(xargs")[0]
+        return [
+            tok for tok in head.split()
+            if tok not in ("if", "!", "poetry", "run", "pytest")
+        ]
+
+    def _run_real_collect(self, exe, sandbox, options, extra_env=None):
+        env = dict(os.environ)
+        # synthetic-control-only: zero third-party plugin autoload (never
+        # written into the workflow; the candidate's real CI keeps its env)
+        env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+        env.pop("PYTEST_ADDOPTS", None)
+        if extra_env:
+            env.update(extra_env)
+        ini = REPO_ROOT / "backend" / "pytest.ini"
+        assert ini.is_file()
+        return subprocess.run(
+            [exe, "-m", "pytest", "-c", str(ini), *options, "test_synth.py",
+             f"--rootdir={sandbox}", f"--confcutdir={sandbox}",
+             "-p", "no:cacheprovider"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=str(sandbox), env=env, stdin=subprocess.DEVNULL,
+        )
+
+    @staticmethod
+    def _sandbox(tmp_path, module_text=SYNTH_MODULE, name="test_synth.py"):
+        box = tmp_path / "synthbox"
+        box.mkdir(parents=True)
+        (box / name).write_text(module_text, encoding="utf-8", newline="\n")
+        return box
+
+    def test_generator_version_is_recorded_842(self):
+        exe = self._skip_if_no_real_generator()
+        proc = subprocess.run(
+            [exe, "-m", "pytest", "--version"],
+            capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL,
+        )
+        assert "8.4.2" in (proc.stdout + proc.stderr), "the real generator must be pytest 8.4.2"
+
+    def test_control_A_base_old_short_quiet_yields_verbose_tree(self, tmp_path):
+        """BASE behaviour: the real ini's -v plus a single CLI -q cancel to
+        verbosity 0 — verbose tree output, and the frozen parser starves."""
+        exe = self._skip_if_no_real_generator()
+        box = self._sandbox(tmp_path)
+        options = ["--collect-only", "-q"]  # the exact BASE gate form
+        proc = self._run_real_collect(exe, box, options)
+        assert proc.returncode == 0, proc.stderr
+        combined = proc.stdout + proc.stderr
+        assert "test session starts" in combined, "verbosity 0 banner expected"
+        assert "<Module" in combined, "verbose collection tree expected"
+        parsed = self._parse_via_real_parser(self._evidence_module(), combined, tmp_path)
+        assert parsed != self.EXPECTED, "the frozen parser must NOT obtain the expected set"
+
+    def test_control_B_workflow_explicit_verbosity_pins_plain_nodeids(self, tmp_path):
+        exe = self._skip_if_no_real_generator()
+        box = self._sandbox(tmp_path)
+        options = self._extract_collect_options(self._gate_run_text())
+        assert "--verbosity=-1" in options, options
+        proc = self._run_real_collect(exe, box, options)
+        assert proc.returncode == 0, proc.stderr
+        combined = proc.stdout + proc.stderr
+        assert "test session starts" not in combined, "verbosity must be -1 (no banner)"
+        parsed = sorted(self._parse_via_real_parser(self._evidence_module(), combined, tmp_path))
+        assert parsed == sorted(self.EXPECTED), parsed
+        assert len(parsed) == len(set(parsed)), "nodeids must be unique"
+
+    def test_control_C_injected_addopts_cannot_override_and_strict_markers_hold(self, tmp_path):
+        exe = self._skip_if_no_real_generator()
+        box = self._sandbox(tmp_path)
+        options = self._extract_collect_options(self._gate_run_text())
+        proc = self._run_real_collect(exe, box, options, extra_env={"PYTEST_ADDOPTS": "-vv"})
+        assert proc.returncode == 0, proc.stderr
+        combined = proc.stdout + proc.stderr
+        assert "test session starts" not in combined, "explicit --verbosity=-1 must lock the format"
+        parsed = sorted(self._parse_via_real_parser(self._evidence_module(), combined, tmp_path))
+        assert parsed == sorted(self.EXPECTED)
+        # ini addopts still apply: --strict-markers rejects an unknown mark
+        probe = self._sandbox(tmp_path / "probe", SYNTH_MARKER_PROBE)
+        ini = REPO_ROOT / "backend" / "pytest.ini"
+        strict = subprocess.run(
+            [exe, "-m", "pytest", "-c", str(ini), *options, "test_synth.py",
+             f"--rootdir={probe}", f"--confcutdir={probe}", "-p", "no:cacheprovider"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=str(probe),
+            env={**os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"},
+            stdin=subprocess.DEVNULL,
+        )
+        assert strict.returncode != 0, "--strict-markers must stay active via the real ini"
+        combined_strict = strict.stdout + strict.stderr
+        assert "totally_unknown_r6r4_control_marker" in combined_strict, combined_strict[:400]
+        assert "marker" in combined_strict.lower()
+
+    def test_control_D_reverting_to_short_quiet_is_red_and_source_restored(self, tmp_path):
+        exe = self._skip_if_no_real_generator()
+        original = DEPLOY_WF.read_text(encoding="utf-8")
+        assert "--collect-only --verbosity=-1" in original
+        mutant = original.replace(
+            "--collect-only --verbosity=-1", "--collect-only -q", 1
+        )
+        assert mutant != original
+        box = self._sandbox(tmp_path)
+        options = self._extract_collect_options(self._gate_run_text(mutant))
+        assert options == ["--collect-only", "-q"], options
+        proc = self._run_real_collect(exe, box, options)
+        assert proc.returncode == 0, proc.stderr
+        combined = proc.stdout + proc.stderr
+        # permanent control semantics: the reverted form fails the contract
+        parsed = sorted(self._parse_via_real_parser(self._evidence_module(), combined, tmp_path))
+        assert parsed != sorted(self.EXPECTED), "mutant output must not satisfy the set contract"
+        assert "test session starts" in combined or "<Module" in combined
+        # the failure is an output/set mismatch, not an import/path/dependency error
+        assert "ModuleNotFoundError" not in combined and "ImportError" not in combined
+        # byte-exact restore; the mutant never enters the tree
+        assert DEPLOY_WF.read_text(encoding="utf-8") == original
+
+    @staticmethod
+    def _gate_run_text(text=None):
+        doc = yaml.safe_load((text or DEPLOY_WF.read_text(encoding="utf-8")))
+        step = next(
+            s for s in doc["jobs"]["test"]["steps"] if "Shard gate" in s.get("name", "")
+        )
+        return step["run"]

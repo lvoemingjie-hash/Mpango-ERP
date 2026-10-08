@@ -81,6 +81,24 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # E-01 (R6R5): the u6h2/u6h3 forbidden-path drift gate runs
+          # `git diff --name-only 6a8ddcf3...` — that baseline object is
+          # unreachable under the default fetch-depth:1 checkout (run
+          # 37735586099 triage). Full history is supplied HERE, in the test
+          # job only; the build/deploy job checkouts are untouched.
+          fetch-depth: 0
+
+      - name: Verify frozen git baseline is resolvable (read-only, fail-closed)
+        run: |
+          # E-01 (R6R5): prove the frozen BASE_REF resolves BEFORE any test
+          # body runs. Read-only cat-file; named refusal, no skip/ignore
+          # fallback, no change to BASE_REF / FORBIDDEN_EDIT_PATHS.
+          if ! git cat-file -e 6a8ddcf348e9b1bdcc902929011e6212cc675cf8^{commit}; then
+            echo "GIT_BASELINE_UNRESOLVABLE: 6a8ddcf348e9b1bdcc902929011e6212cc675cf8^{commit} absent from this checkout — the forbidden-path drift gate cannot run; refusing"
+            exit 1
+          fi
+          echo "git baseline 6a8ddcf3... resolvable (full history present)"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -137,10 +155,67 @@ jobs:
         run: |
           bash tools/ci/bootstrap_backend_test_db.sh --github-env "$GITHUB_ENV" --env-file "$RUNNER_TEMP/c91-test-env.sh" --plan-file "$RUNNER_TEMP/supply-plan.json" --profile-dir "$RUNNER_TEMP"
 
+      - name: Generate and register the synthetic test-admin password (R6R5 E-02)
+        if: steps.provision.outcome == 'success'
+        run: |
+          # E-02 (R6R5): the S6E permission-registry tests consume
+          # MPANGO_TEST_ADMIN_PASSWORD through
+          # backend/scripts/seed_test_tenant.py::_require_admin_password
+          # (its MISSING/EMPTY/WHITESPACE refusals are product behavior and
+          # stay untouched — TEST_ADMIN_PASSWORD_MISSING is the wrong-token
+          # error, MPANGO_TEST_ADMIN_PASSWORD is the real key). A fresh random
+          # short-lived value is generated AFTER the supply wrapper wrote the
+          # store (so the wrapper never overwrites it) and BEFORE collect/body.
+          # Masked first, then carried ONLY through env-NAME channels: appended
+          # to the SAME private credential store the sanitizer reads, and
+          # exported to later steps via GITHUB_ENV. Never on any argv, never
+          # in plain logs; not reused from any PG/migration/app/operator/
+          # reporting password.
+          SECRETS="${CI_CREDENTIALS_FILE:-}"
+          if [ -z "$SECRETS" ] || [ ! -s "$SECRETS" ]; then
+            echo "TEST_ADMIN_CHANNEL_UNAVAILABLE: credential store missing/empty after provision — refusing"
+            exit 1
+          fi
+          APW="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          echo "::add-mask::$APW"
+          chmod 600 "$SECRETS" || true
+          printf 'MPANGO_TEST_ADMIN_PASSWORD=%s\n' "$APW" >> "$SECRETS"
+          echo "MPANGO_TEST_ADMIN_PASSWORD=$APW" >> "$GITHUB_ENV"
+          echo "MPANGO_TEST_ADMIN_PASSWORD registered (masked; store + GITHUB_ENV channels only)"
+
       - name: Cut frozen runtime shard argfiles (fail-closed)
         if: steps.provision.outcome == 'success'
         run: |
           python tools/ci/prepare_test_evidence.py shard-plan --plan "$RUNNER_TEMP/supply-plan.json" --profile-dir "$RUNNER_TEMP"
+
+      - name: Pre-pull exact postgres:16 image for the task-owned helper (R6R5 E-03)
+        if: steps.provision.outcome == 'success' && matrix.shard == 'task-managed-pg'
+        run: |
+          # E-03 (R6R5): task_owned_pg_resources._postgres_image_id() inspects
+          # the EXACT local tag postgres:16 (sha256:-prefixed 71-char Id) and
+          # the helper starts containers with --pull=never, so a missing local
+          # image failed INSIDE task_postgres AFTER its volume was already
+          # created (run 37735586086 triage: 1F + 67E). This leg-scoped
+          # precondition pulls and inspects BEFORE any collect/body that may
+          # call task_postgres, and refuses by name before the helper can
+          # create anything. No retagging (postgres:16-alpine never impersonates
+          # postgres:16); the helper itself is untouched (--pull=never, image
+          # Id, labels, mounts, role checks all unchanged).
+          if ! docker pull postgres:16; then
+            echo "POSTGRES_IMAGE_PULL_FAILED: docker pull postgres:16 failed — refusing before the task-owned helper can create any volume"
+            exit 1
+          fi
+          IMAGE_ID="$(docker image inspect postgres:16 --format '{{.Id}}')"
+          if [ "${#IMAGE_ID}" -ne 71 ] || [ "${IMAGE_ID:0:7}" != "sha256:" ]; then
+            echo "POSTGRES_IMAGE_ID_REFUSED: unexpected image Id shape for postgres:16 — refusing before the task-owned helper can create any volume"
+            exit 1
+          fi
+          DIGEST="$(docker image inspect postgres:16 --format '{{index .RepoDigests 0}}')"
+          {
+            echo "postgres:16 image id: $IMAGE_ID"
+            echo "postgres:16 repo digest: $DIGEST"
+          } | tee "$RUNNER_TEMP/postgres-image-record.txt"
+          echo "postgres:16 local image precondition satisfied (id + digest recorded for later reconciliation)"
 
       - name: Shard gate (argfile + collect-only membership check)
         if: steps.provision.outcome == 'success'
@@ -267,8 +342,13 @@ jobs:
           # R6R3: store-INTEGRITY gate stays FIRST for every payload —
           # including valid empty logs (the sanitizer's empty-log branch
           # must never be reachable under an incomplete store). Mirrors the
-          # tool's --require-keys set at the outlet.
-          for req_key in MIGRATE_PASSWORD APP_PASSWORD OPERATOR_PASSWORD REPORTING_PASSWORD SECRET_KEY; do
+          # tool's --require-keys set at the outlet. R6R5 (E-02): the
+          # synthetic test-admin channel joins the required set — a store
+          # that was never registered with MPANGO_TEST_ADMIN_PASSWORD means
+          # the run could not have supplied what the S6E tests consume, so
+          # the WHOLE outlet refuses rather than publish evidence from an
+          # unsupplied credential channel.
+          for req_key in MIGRATE_PASSWORD APP_PASSWORD OPERATOR_PASSWORD REPORTING_PASSWORD SECRET_KEY MPANGO_TEST_ADMIN_PASSWORD; do
             if ! grep -q "^${req_key}=" "$SECRETS"; then
               echo "task credential store incomplete (missing ${req_key}) — refusing the ENTIRE payload outlet"
               python tools/ci/prepare_test_evidence.py refusal-receipt --reason secrets_store_incomplete --out "$PUB/publication-refusal.json" || true
@@ -277,6 +357,11 @@ jobs:
               exit 0
             fi
           done
+          # R6R5 (E-02): the sanitizer's required-key set (tool-level, per
+          # call) now includes MPANGO_TEST_ADMIN_PASSWORD alongside the
+          # frozen five; the two lists stay in lockstep with the outlet
+          # gate above.
+          REQUIRE_KEYS="MIGRATE_PASSWORD,APP_PASSWORD,OPERATOR_PASSWORD,REPORTING_PASSWORD,SECRET_KEY,MPANGO_TEST_ADMIN_PASSWORD"
           sanitize() {
             src="$1"; dst="$2"; required="$3"; allow_empty="${4:-no}"
             if [ ! -f "$src" ]; then
@@ -288,9 +373,9 @@ jobs:
               fi
               return 0
             fi
-            EXTRA_ARGS=""
+            EXTRA_ARGS="--require-keys $REQUIRE_KEYS"
             if [ "$allow_empty" = "allow-empty" ]; then
-              EXTRA_ARGS="--allow-empty"
+              EXTRA_ARGS="$EXTRA_ARGS --allow-empty"
             fi
             if python tools/ci/prepare_test_evidence.py sanitize --input "$src" --output "$PUB/$dst" --receipt "$PUB/$dst.receipt.json" --secrets-file "$SECRETS" --extra-env CI_PG_ADMIN_PASSWORD $EXTRA_ARGS; then
               echo "sanitized: $dst"

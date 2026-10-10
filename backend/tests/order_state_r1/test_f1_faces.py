@@ -284,6 +284,15 @@ async def test_adapter_transition_refuses_confirm_and_cancel(
 # ---------------------------------------------------------------------------
 
 
+async def _quoted_client_create(http, token, items):
+    headers = {"Authorization": f"Bearer {token}"}
+    preview = await http.post('/api/v1/client/orders/quote', json={'items': items}, headers=headers)
+    assert preview.status_code == 200, 'S1_CLIENT_CANCEL_CONTROL_QUOTE_PREPARATION'
+    return await http.post('/api/v1/client/orders',
+        json={'items': items, 'quote_token': preview.json()['data']['quote_token']},
+        headers={**headers, 'X-Idempotency-Key': 'r1-client-' + uuid.uuid4().hex})
+
+
 async def test_client_repeated_and_paid_cancel_return_stable_409(
     r1_client, s2_clean_db, provisioned_pool, cashier_identity, two_tenants
 ):
@@ -310,10 +319,7 @@ async def test_client_repeated_and_paid_cancel_return_stable_409(
     # create via admin on the bound retailer; the client user owns it via
     # the binding created in make_bound_retailer (tenant_user random) —
     # instead create through the CLIENT API itself for correct ownership
-    resp = await r1_client.post(
-        "/api/v1/client/orders",
-        json={"items": [{"sku_code": sku, "quantity": 2}]},
-        headers={"Authorization": f"Bearer {token_c}"})
+    resp = await _quoted_client_create(r1_client, token_c, [{"sku_code": sku, "quantity": 2}])
     assert resp.status_code == 201, resp.text
     oid = resp.json()["data"]["id"]
 
@@ -326,10 +332,7 @@ async def test_client_repeated_and_paid_cancel_return_stable_409(
     assert errcode(second) == "CANCEL_NOT_ALLOWED", second.text
 
     # paid cancel: same stable 409 (workflow code surfaces)
-    resp2 = await r1_client.post(
-        "/api/v1/client/orders",
-        json={"items": [{"sku_code": sku, "quantity": 2}]},
-        headers={"Authorization": f"Bearer {token_c}"})
+    resp2 = await _quoted_client_create(r1_client, token_c, [{"sku_code": sku, "quantity": 2}])
     oid2 = resp2.json()["data"]["id"]
     assert (await http_action(r1_client, admin, oid2, "confirm")).status_code == 200
     pay = await http_action(r1_client, admin, oid2, "pay",
@@ -698,10 +701,7 @@ async def test_client_domain_errors_map_to_409_clean(
     ret_id = await _resolve_binding_retailer(db, a["ws_id"], uid_a)
     sku, _sid = await seed_sku_with_stock(db, schema, ret_id, price="10.00")
 
-    created = await r1_client.post(
-        "/api/v1/client/orders",
-        json={"items": [{"sku_code": sku, "quantity": 1}]},
-        headers={"Authorization": f"Bearer {token_c}"})
+    created = await _quoted_client_create(r1_client, token_c, [{"sku_code": sku, "quantity": 1}])
     assert created.status_code == 201, created.text
     oid = created.json()["data"]["id"]
     first = await r1_client.post(f"/api/v1/client/orders/{oid}/cancel",

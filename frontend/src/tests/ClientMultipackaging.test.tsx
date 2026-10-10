@@ -71,7 +71,8 @@ function productPayload() {
             sku_code: 'JUICE-BTL',
             unit: 'bottle',
             package_quantity: 1,
-            price: 25.5,
+            price: '25.50',
+            currency: 'KES',
             in_stock: true,
             stock_level: 'MEDIUM',
             can_order: true,
@@ -81,7 +82,8 @@ function productPayload() {
             sku_code: 'JUICE-CASE',
             unit: 'case',
             package_quantity: 12,
-            price: 289.0,
+            price: '289.00',
+            currency: 'KES',
             in_stock: true,
             stock_level: 'HIGH',
             can_order: true,
@@ -163,6 +165,12 @@ describe('R1 product-level multipackaging UX', () => {
     const user = userEvent.setup();
     const { bodies } = installAdapter({
       'GET /client/products/juice-detail': (c) => ok(c, apiResponse(detailPayload())),
+      'POST /client/orders/quote': (c) => ok(c, apiResponse({
+        quote_token: 'synthetic-server-quote', currency: 'KES', total: '289.00',
+        lines: [{ sku_id: CASE_ID, product_name: 'Riverside Juice', quantity: 1,
+          unit: 'case', display_label: 'case', package_quantity: '12',
+          unit_price: '289.00', subtotal: '289.00' }],
+      })),
       'POST /client/orders': (c) => ok(c, apiResponse({ id: 'order-1' })),
     });
     render(
@@ -179,18 +187,23 @@ describe('R1 product-level multipackaging UX', () => {
     await user.click(screen.getByRole('button', { name: 'Add to Order' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Submit Order/i })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Review server quote' })).toBeEnabled();
     });
-    await user.click(screen.getByRole('button', { name: /Submit Order/i }));
+    await user.click(screen.getByRole('button', { name: 'Review server quote' }));
+    const accept = await screen.findByRole('button', { name: 'Accept these prices and create draft' });
+    expect(bodies['POST /client/orders']).toBeUndefined();
+    await user.click(accept);
 
     await waitFor(() => {
       expect(bodies['POST /client/orders']).toBeTruthy();
     });
     const submitted = bodies['POST /client/orders'] as {
       items: Array<{ sellable_unit_id: string; sku_code: string }>;
+      quote_token: string;
     };
     expect(submitted.items).toHaveLength(1);
     expect(submitted.items[0].sellable_unit_id).toBe(CASE_ID);
     expect(submitted.items[0].sku_code).toBe('JUICE-CASE');
+    expect(submitted.quote_token).toBe('synthetic-server-quote');
   });
 });

@@ -71,6 +71,8 @@ function rejectWith(status: number, body: unknown): { response: { status: number
 
 const STATEMENT: StatementPrintView = {
   document_type: 'statement',
+  currency: 'KES',
+  currency_status: 'VERIFIED',
   supplier_name: 'Sunrise Wholesalers',
   retailer_name: 'Kibera Duka',
   period_from: '2026-08-01',

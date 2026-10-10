@@ -133,7 +133,7 @@ describe('SKU catalog identity vertical slice', () => {
       expect(catalogProductService.updateSellableUnit).toHaveBeenCalledWith(
         product.id,
         sellableUnit.id,
-        { unit: 'bag', package_quantity: 1, is_active: false },
+        { unit: 'bag', display_label: 'bag', package_quantity: 1, is_active: false },
       );
     });
   });

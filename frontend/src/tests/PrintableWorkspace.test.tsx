@@ -85,6 +85,7 @@ function renderAt(path: string) {
 
 const ORDER_PRINT = {
   document_type: 'order',
+  currency: 'KES',
   order_id: 'ord-123',
   status: 'CONFIRMED',
   supplier_name: 'Sunrise Wholesalers',
@@ -113,6 +114,7 @@ const ORDER_PRINT_BIG = {
 
 const DECL_PENDING = {
   document_type: 'payment_declaration',
+  currency: 'KES',
   declaration_id: 'dec-pending',
   order_id: 'ord-123',
   supplier_name: 'Sunrise Wholesalers',
@@ -155,6 +157,7 @@ const DECL_CONFIRMED = {
 
 const RECEIPT = {
   document_type: 'receipt',
+  currency: 'KES',
   declaration_id: 'dec-confirmed',
   order_id: 'ord-123',
   supplier_name: 'Sunrise Wholesalers',
@@ -239,7 +242,7 @@ describe('OrderPrintPage', () => {
     expect(await screen.findByTestId('order-print-document')).toBeInTheDocument();
     expect(screen.getByText('Sunrise Wholesalers')).toBeInTheDocument();
     expect(screen.getByText('Kibera Duka')).toBeInTheDocument();
-    expect(screen.getByText('Sugar 1kg')).toBeInTheDocument();
+    expect(screen.getByText('Sugar 1kg (UNIT_UNVERIFIED; package unknown)')).toBeInTheDocument();
     // Exact server string rendered (no recompute): KES 1,091.00
     expect(screen.getByTestId('order-print-total')).toHaveTextContent('KES 1,091.00');
     // Exactly one GET, no writes.

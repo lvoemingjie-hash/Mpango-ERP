@@ -22,7 +22,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (  # noqa: F401
     _create_binding,
     _create_retailer,
-    provisioned_pool,  # noqa: F401
     s2_clean_db,  # noqa: F401
 )
 
@@ -30,6 +29,57 @@ from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (  # noqa: F401
 def skip_without_task_db() -> None:
     if not os.environ.get("TEST_DATABASE_URL"):
         pytest.skip("R1_SKIP: task PostgreSQL URL not provided")
+
+
+@pytest_asyncio.fixture(scope="module")
+async def provisioned_pool():
+    """New KE fixtures, not currency backfills on retained TZ history.
+
+    Preserve the original ownership registry, sentinel and teardown proofs.
+    Only registration input differs, before the real provisioner sees it.
+    """
+    from tests import test_dc12r1_s2_supplier_scoped_retailer_login as shared
+    from database.session import AsyncSessionLocal
+    from services.tenant_provisioning_service import TenantProvisioningService
+
+    class PricingPool(shared._TenantPool):
+        async def _provision_one(self, code_prefix):
+            code = code_prefix + uuid.uuid4().hex[:8].upper()
+            reg_id = uuid.uuid4()
+            async with AsyncSessionLocal() as session:
+                await session.execute(text(
+                    "INSERT INTO public.tenant_registrations "
+                    "(id,company_name,tenant_code,country,owner_email,status,expires_at,email_verified_at) "
+                    "VALUES (:id,'S1 R1 regression',:code,'KE',:email,'email_verified',"
+                    "now()+interval '1 day',now())"
+                ), {'id': reg_id, 'code': code, 'email': code.lower() + '@example.com'})
+                await session.commit()
+                service = TenantProvisioningService(session)
+                claim = await service.claim_registration_for_provisioning(str(reg_id))
+                assert claim.action == 'claimed'
+                await session.commit()
+                result = await service.provision_wholesaler_and_schema(str(reg_id))
+                assert result.action == 'provisioned'
+                await session.commit()
+                row = (await session.execute(text(
+                    'SELECT wholesaler_id,tenant_schema FROM public.tenant_registrations WHERE id=:id'
+                ), {'id': reg_id})).one()
+                return str(row.wholesaler_id), row.tenant_schema, str(reg_id), code
+
+    pool = PricingPool()
+    await pool.provision()
+    shared._pool_instance = pool
+    try:
+        yield pool
+    finally:
+        await pool.teardown_target()
+        await pool.assert_zero_residue(pool.target)
+        await pool.verify_sentinel_unchanged()
+        await pool.teardown_protected()
+        await pool.assert_zero_residue(pool.protected)
+        await pool.teardown_target()
+        await pool.teardown_protected()
+        shared._pool_instance = None
 
 
 # ---------------------------------------------------------------------------
@@ -47,9 +97,9 @@ async def seed_sku_with_stock(
     code = f"R1{uuid.uuid4().hex[:8].upper()}"
     row = (await db.execute(text(
         f'INSERT INTO "{schema}".skus '
-        "(sku_code, name, unit, is_active, is_deleted, catalog_product_id, package_quantity) "
-        "VALUES (:c, 'R1', 'piece', true, false, :p, 1.000) RETURNING id"),
-        {"c": code, "p": product.id})).fetchone()
+        "(sku_code, name, unit, is_active, is_deleted, catalog_product_id, package_quantity, base_price) "
+        "VALUES (:c, 'R1', 'piece', true, false, :p, 1.000, :price) RETURNING id"),
+        {"c": code, "p": product.id, "price": price})).fetchone()
     sid = str(row.id)
     await db.execute(text(
         f'INSERT INTO "{schema}".inventory_stocks (sku_id, quantity_on_hand, is_deleted) '
@@ -172,10 +222,15 @@ def errcode(resp) -> str:
 
 
 async def http_create_order(client, token, retailer_id, items: list[dict]) -> str:
+    headers = {"Authorization": f"Bearer {token}"}
+    preview = await client.post("/api/v1/orders/quote",
+        json={"retailer_id": retailer_id, "items": items}, headers=headers)
+    assert preview.status_code == 200, f"S1 quote preparation failed: {preview.status_code}"
     resp = await client.post(
         "/api/v1/orders",
-        json={"retailer_id": retailer_id, "items": items, "notes": "r1"},
-        headers={"Authorization": f"Bearer {token}"})
+        json={"retailer_id": retailer_id, "items": items, "notes": "r1",
+              "quote_token": preview.json()["data"]["quote_token"]},
+        headers={**headers, "X-Idempotency-Key": f"r1-{uuid.uuid4().hex}"})
     assert resp.status_code == 201, f"create failed: {resp.status_code} {resp.text}"
     return resp.json()["data"]["id"]
 

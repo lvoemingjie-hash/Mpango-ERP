@@ -175,6 +175,13 @@ class OrderCommandService:
                 )
         stocks = await self._prelock_stocks(items, require_active=True)
 
+        # Existing inventory queries lock joined SKU rows as well. Acquire
+        # that sorted lock set before refreshing quote inputs, avoiding a
+        # SKU -> stock / stock -> SKU cycle with cancel. No economic writes
+        # occur until both stock eligibility and quote consent pass.
+        from services.order_creation_service import validate_draft_for_confirmation
+        await validate_draft_for_confirmation(self.db, order)
+
         reservations = await self._reserve_inventory(order, stocks)
 
         self._assign_status(order, OrderState.CONFIRMED, updated_by)

@@ -12,6 +12,18 @@ class ClientFinanceRepository:
     """Read-only client finance projections scoped by supplier and retailer."""
 
     @staticmethod
+    async def currency_projection(db, *, wholesaler_id, retailer_id):
+        rows = (await db.execute(text(
+            "SELECT DISTINCT currency_snapshot FROM orders WHERE wholesaler_id=:wid AND retailer_id=:rid"
+        ), {"wid": wholesaler_id, "rid": retailer_id})).scalars().all()
+        known = {value for value in rows if value in ("KES", "UGX")}
+        if any(value not in ("KES", "UGX") for value in rows) or not rows:
+            return None, "LEGACY_CURRENCY_UNVERIFIED"
+        if len(known) != 1:
+            return None, "MIXED_CURRENCY"
+        return next(iter(known)), "KNOWN"
+
+    @staticmethod
     def _require_uuid(value: uuid.UUID, name: str) -> uuid.UUID:
         if not isinstance(value, uuid.UUID):
             raise TypeError(f"{name} must be a validated UUID")
@@ -68,7 +80,7 @@ class ClientFinanceRepository:
         page_params["offset"] = (page - 1) * size
         rows = (await db.execute(
             text(
-                "SELECT p.id, p.order_id, p.amount, p.method, p.status, p.created_at "
+                "SELECT p.id, p.order_id, p.amount, p.method, p.status, p.created_at, o.currency_snapshot "
                 f"{from_join_sql} WHERE {where_sql} "
                 "ORDER BY p.created_at DESC, p.id DESC LIMIT :limit OFFSET :offset"
             ),

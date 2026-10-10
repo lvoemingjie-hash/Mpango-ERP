@@ -162,6 +162,9 @@ async def build_order_print(
         PrintOrderItemView(
             product_name=item.product_name,
             sku_code=item.sku_code,
+            unit_snapshot=item.unit_snapshot,
+            package_quantity_snapshot=item.package_quantity_snapshot,
+            display_label_snapshot=item.display_label_snapshot,
             quantity=item.quantity,
             unit_price=item.unit_price,
             subtotal=item.subtotal,
@@ -171,6 +174,8 @@ async def build_order_print(
 
     return OrderPrintView(
         order_id=str(order.id),
+        currency=order.currency_snapshot,
+        currency_status='KNOWN' if order.currency_snapshot else 'LEGACY_CURRENCY_UNVERIFIED',
         status=map_order_status_for_client(order.status.value),
         supplier_name=supplier_name,
         retailer_name=retailer_name,
@@ -249,6 +254,8 @@ async def build_declaration_print(
     return DeclarationPrintView(
         declaration_id=str(row["id"]),
         order_id=str(row["order_id"]),
+        currency=row.get("currency_snapshot"),
+        currency_status='KNOWN' if row.get("currency_snapshot") else 'LEGACY_CURRENCY_UNVERIFIED',
         supplier_name=supplier_name,
         retailer_name=retailer_name,
         status=status,
@@ -400,6 +407,8 @@ async def build_receipt_print(
     order_status = map_order_status_for_client(order.status.value)
 
     return ReceiptPrintView(
+        currency=order.currency_snapshot,
+        currency_status='KNOWN' if order.currency_snapshot else 'LEGACY_CURRENCY_UNVERIFIED',
         declaration_id=str(row["id"]),
         order_id=str(row["order_id"]),
         supplier_name=supplier_name,
@@ -651,7 +660,12 @@ async def build_statement_print(
         for r in pending_rows
     ]
 
+    from repositories.client_finance_repository import ClientFinanceRepository
+    currency, currency_status = await ClientFinanceRepository.currency_projection(
+        db, wholesaler_id=wholesaler_id, retailer_id=retailer_id)
+
     view = StatementPrintView(
+        currency=currency, currency_status=currency_status,
         supplier_name=supplier_name,
         retailer_name=retailer_name,
         period_from=date_from,

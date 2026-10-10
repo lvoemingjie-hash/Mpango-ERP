@@ -65,6 +65,12 @@ export function formatKes(value: string | null | undefined): string {
   return `KES ${grouped}`;
 }
 
+/** Currency is a server snapshot, never inferred from the viewer's locale. */
+export function formatMoney(value: string | number | null | undefined, currency?: string | null): string {
+  const label = currency === 'KES' || currency === 'UGX' ? currency : 'LEGACY_CURRENCY_UNVERIFIED';
+  return label + ' ' + formatDecimalMoney(value == null ? value : String(value));
+}
+
 /**
  * Format an ISO timestamp for display using only the Date's locale string
  * (display layer only — never used on money). Returns '' for falsy input.

@@ -52,11 +52,14 @@ async def get_client_finance_balance(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "BINDING_NOT_ACTIVE", "message": "No active relationship with this supplier"},
         )
+    currency, currency_status = await ClientFinanceRepository.currency_projection(
+        db, wholesaler_id=wholesaler_uuid, retailer_id=retailer_uuid)
     outstanding_balance = row["outstanding_balance"]
     return DataResponse(
         success=True,
         data=ClientFinanceBalanceView(
             outstanding_balance=outstanding_balance,
+            currency=currency, currency_status=currency_status,
             has_outstanding_balance=outstanding_balance != 0,
             updated_at=row["updated_at"],
         ),

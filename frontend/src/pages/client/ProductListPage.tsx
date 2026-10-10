@@ -1,3 +1,4 @@
+import { formatMoney } from '@/utils/printFormat';
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { MagnifyingGlassIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
@@ -52,11 +53,8 @@ export function ProductListPage() {
     load();
   };
 
-  const lowestPrice = (product: ClientProduct): number | null => {
-    const priced = product.units
-      .map((u) => u.price)
-      .filter((p): p is number => p !== null);
-    return priced.length ? Math.min(...priced) : null;
+  const lowestPrice = (product: ClientProduct): string | null => {
+    return product.units.find(u => u.can_order && u.price !== null)?.price || null;
   };
 
   return (
@@ -128,7 +126,7 @@ export function ProductListPage() {
                     </h3>
                     {fromPrice !== null ? (
                       <span className="text-sm font-bold text-gray-900 whitespace-nowrap">
-                        KES {fromPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {formatMoney(fromPrice, product.units[0]?.currency)}
                       </span>
                     ) : (
                       <span className="text-xs font-medium text-gray-500 italic whitespace-nowrap mt-0.5">

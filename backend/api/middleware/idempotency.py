@@ -9,6 +9,7 @@ Implements generic idempotency key handling:
 Uses in-memory cache for MVP (Redis in production).
 """
 import hashlib
+import re
 import json
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Callable, Protocol
@@ -79,6 +80,15 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request with idempotency handling."""
+
+        # S1 create/replacement replay must execute current JWT/RBAC/binding
+        # checks and the durable transaction, never an outer memory cache.
+        path = request.url.path.rstrip('/')
+        if request.method == 'POST' and (
+            path in {'/api/v1/orders', '/api/v1/client/orders'}
+            or re.fullmatch(r'/api/v1/(?:client/)?orders/[0-9a-f-]{36}/replace-draft', path)
+        ):
+            return await call_next(request)
 
         # Skip non-mutating methods
         if request.method not in IDEMPOTENT_METHODS:

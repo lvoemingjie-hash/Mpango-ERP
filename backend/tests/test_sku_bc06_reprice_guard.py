@@ -79,7 +79,7 @@ from services.sku_service import SKUService  # noqa: E402
 DB_URL = os.environ["DATABASE_URL"]
 ASYNC_DB_URL = DB_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-_SCHEMA_PREFIX = "t_bc06_"
+_SCHEMA_PREFIX = "t_"
 
 _CATALOG = CatalogProductService()
 _SKU_SERVICE = SKUService()
@@ -107,16 +107,51 @@ async def _bc06_schema():
     schema = _SCHEMA_PREFIX + uuid.uuid4().hex
     admin_engine = create_async_engine(ASYNC_DB_URL, isolation_level="AUTOCOMMIT")
     owned = False
+    identity = _tenant_uuid(schema)
+    reg_id = uuid.uuid4()
+    registered = False
     try:
         async with admin_engine.connect() as conn:
             await conn.execute(text(f'CREATE SCHEMA "{schema}"'))
             owned = True
-        await bootstrap(schema, ASYNC_DB_URL)
+        # New synthetic tenants use the real provisioning lifecycle. No
+        # registration is invented for retained legacy business history.
+        from db.tenant_filter import mark_session_as_system
+        from services.tenant_provisioning_service import TenantProvisioningService
+        factory = async_sessionmaker(admin_engine, expire_on_commit=False)
+        async with factory() as db:
+            mark_session_as_system(db, reason='BC06 synthetic provisioning')
+            await db.execute(text("INSERT INTO public.wholesalers(id,code,name,status) "
+                "VALUES(:id,:code,'BC06 synthetic','provisioning')"),
+                {'id': identity, 'code': 'BC06' + identity.hex[:20]})
+            await db.execute(text("INSERT INTO public.tenant_registrations "
+                "(id,company_name,country,owner_email,status,wholesaler_id,tenant_schema,expires_at,email_verified_at) "
+                "VALUES(:id,'BC06 synthetic','KE',:email,'provisioning',:wid,:schema,now()+interval '1 day',now())"),
+                {'id': reg_id, 'email': reg_id.hex + '@example.invalid', 'wid': identity, 'schema': schema})
+            await db.commit()
+            registered = True
+            failures = []
+            async def controlled_bootstrap(name, url):
+                try:
+                    await bootstrap(name, url)
+                except BaseException as exc:
+                    failures.append(exc)
+                    raise
+            result = await TenantProvisioningService(db, bootstrap_func=controlled_bootstrap,
+                database_url=ASYNC_DB_URL).provision_wholesaler_and_schema(reg_id)
+            if failures:
+                raise failures[0]
+            assert result.action == 'reconciled', 'S1_BC06_REAL_PROVISIONER'
+            await db.commit()
         yield schema
     finally:
         try:
             if owned:
                 await _drop_bc06_schema(admin_engine, schema)
+            if registered:
+                async with admin_engine.connect() as db:
+                    await db.execute(text('DELETE FROM public.tenant_registrations WHERE id=:id'), {'id': reg_id})
+                    await db.execute(text('DELETE FROM public.wholesalers WHERE id=:id'), {'id': identity})
         finally:
             await admin_engine.dispose()
 
@@ -339,7 +374,7 @@ def _tenant_uuid(schema: str) -> uuid.UUID:
     rows (import_runs, intake_*): the global tenant filter injects
     ``tenant_id == session.info['tenant_id']`` into ORM selects, so rows must
     carry the SAME uuid the session is bound to."""
-    return uuid.uuid5(uuid.NAMESPACE_URL, f"bc06:{schema}")
+    return uuid.UUID(schema.removeprefix('t_'))
 
 
 async def _create_baseline_unit(session: AsyncSession, code: str) -> tuple[str, str, str]:

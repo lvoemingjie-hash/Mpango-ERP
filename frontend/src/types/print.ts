@@ -25,6 +25,9 @@
 export interface PrintOrderItemView {
   product_name: string;
   sku_code: string;
+  unit_snapshot?: string | null;
+  package_quantity_snapshot?: string | null;
+  display_label_snapshot?: string | null;
   quantity: number;
   /** Server-authoritative unit price (KES) as a decimal string. */
   unit_price: string;
@@ -34,6 +37,8 @@ export interface PrintOrderItemView {
 
 /** Contract A — printable order document (server-authoritative). */
 export interface OrderPrintView {
+  currency?: string | null;
+  currency_status?: string;
   /** Document discriminator; server sends "order". */
   document_type: string;
   order_id: string;
@@ -54,6 +59,8 @@ export interface OrderPrintView {
 
 /** Contract B — printable payment declaration document. */
 export interface DeclarationPrintView {
+  currency?: string | null;
+  currency_status?: string;
   /** Document discriminator; server sends "payment_declaration". */
   document_type: string;
   declaration_id: string;
@@ -87,6 +94,8 @@ export interface DeclarationPrintView {
 
 /** Contract C — confirmed receipt (receipt-eligible only). */
 export interface ReceiptPrintView {
+  currency?: string | null;
+  currency_status?: string;
   /** Document discriminator; server sends "receipt". */
   document_type: string;
   declaration_id: string;

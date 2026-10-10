@@ -12,6 +12,7 @@ from repositories.sku_repository import SKURepository
 from repositories.inventory_repository import InventoryRepository
 from services.package_identity import (
     ensure_package_quantity_change_allowed,
+    ensure_unit_definition_change_allowed,
     lock_sku_row,
     package_quantity_changed,
 )
@@ -113,6 +114,7 @@ class SKUService:
         category: str | None,
         is_active: bool | None,
         updated_by: str | None,
+        display_label: str | None = None,
     ) -> SKU:
         sku = await self._sku_repo.get_by_code(db, sku_code=sku_code)
         if not sku:
@@ -133,10 +135,8 @@ class SKUService:
                 detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
             )
         sku = locked
-        if package_quantity_changed(sku.package_quantity, package_quantity):
-            await ensure_package_quantity_change_allowed(
-                db, sku=sku, new_package_quantity=package_quantity
-            )
+        await ensure_unit_definition_change_allowed(
+            db, sku=sku, new_unit=unit, new_package_quantity=package_quantity)
 
         if name is not None:
             sku.catalog_product.name = name
@@ -144,6 +144,8 @@ class SKUService:
             sku.catalog_product.description = description
         if unit is not None:
             sku.unit = unit
+        if display_label is not None:
+            sku.display_label = display_label
         if package_quantity is not None:
             sku.package_quantity = package_quantity
         if category is not None:

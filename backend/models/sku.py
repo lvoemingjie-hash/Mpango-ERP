@@ -13,7 +13,7 @@ from typing import Optional
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,6 +28,8 @@ class SKU(BaseModel):
         Index("ix_skus_is_active", "is_active"),
         Index("ix_skus_created_at", "created_at"),
         CheckConstraint("package_quantity > 0", name="ck_skus_package_quantity_positive"),
+        CheckConstraint("base_price IS NULL OR base_price > 0", name="ck_skus_base_price_positive"),
+        CheckConstraint("pricing_revision >= 0", name="ck_skus_pricing_revision"),
     )
 
     catalog_product_id: Mapped[uuid.UUID] = mapped_column(
@@ -39,6 +41,9 @@ class SKU(BaseModel):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     unit: Mapped[str] = mapped_column(String(32), nullable=False, default="unit")
+    display_label: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    base_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    pricing_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     package_quantity: Mapped[Decimal] = mapped_column(
         Numeric(precision=12, scale=3), nullable=False, default=Decimal("1.000")
     )

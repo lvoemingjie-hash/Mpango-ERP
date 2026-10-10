@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeftIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import { clientOrderService } from '@/services/clientOrderService';
 import { normalizeApiError } from '@/utils/errorHandling';
+import { formatMoney } from '@/utils/printFormat';
 import type { ClientOrder } from '@/types/client';
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -54,12 +55,7 @@ export function OrderDetailPage() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES',
-    }).format(amount);
-  };
+  const formatCurrency = (amount: string) => formatMoney(amount, order?.currency);
 
   const formatDate = (iso: string) => {
     return new Date(iso).toLocaleString('en-KE', {
@@ -169,7 +165,7 @@ export function OrderDetailPage() {
               </div>
               <div className="ml-4 text-right">
                 <p className="text-sm text-gray-900">
-                  {item.quantity} &times; {formatCurrency(item.unit_price)}
+                  {item.quantity} {item.display_label_snapshot || item.unit_snapshot || "UNIT_UNVERIFIED"} (package {item.package_quantity_snapshot || "unknown"}) &times; {formatCurrency(item.unit_price)}
                 </p>
                 <p className="text-xs font-medium text-gray-500">
                   {formatCurrency(item.subtotal)}
@@ -228,6 +224,8 @@ export function OrderDetailPage() {
         </div>
       </div>
 
+      {order.status === 'CREATED' && <Link to={`/client/orders/new?replace=${order.id}`}
+        className="btn-secondary block text-center">Review new quote and replace this draft</Link>}
       {/* Cancel Button */}
       {canCancel && (
         <button

@@ -2,6 +2,7 @@ import { api } from '@/services/api';
 import type { ApiResponse, PaginatedData } from '@/types/api';
 import type { Order, WholesalerOrderCreateRequest } from '@/types/order';
 import type { OrderPrintView } from '@/types/print';
+import type { ServerQuote } from '@/types/pricing';
 
 export type PaymentMethod = 'cash' | 'transfer' | 'credit';
 
@@ -28,8 +29,14 @@ export const orderService = {
   getById: (id: string) =>
     api.get<ApiResponse<Order>>(`/orders/${id}`),
 
-  create: (data: WholesalerOrderCreateRequest) =>
-    api.post<ApiResponse<Order>>('/orders', data),
+  preview: (data: Omit<WholesalerOrderCreateRequest, 'quote_token' | 'notes'>) =>
+    api.post<ApiResponse<ServerQuote>>('/orders/quote', data),
+
+  create: (data: WholesalerOrderCreateRequest, key: string) =>
+    api.post<ApiResponse<Order>>('/orders', data, { headers: { 'X-Idempotency-Key': key } }),
+
+  replaceDraft: (id: string, data: WholesalerOrderCreateRequest, key: string) =>
+    api.post<ApiResponse<Order>>(`/orders/${id}/replace-draft`, data, { headers: { 'X-Idempotency-Key': key } }),
 
   confirm: (id: string) =>
     api.post<ApiResponse<{ order_id: string; status: string }>>(`/orders/${id}/confirm`),

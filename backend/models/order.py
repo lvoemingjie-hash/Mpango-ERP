@@ -6,9 +6,9 @@ from typing import Optional, List
 from enum import Enum as PyEnum
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, String, Text, Enum, Numeric, Integer, ForeignKey, Index
+from sqlalchemy import CheckConstraint, String, Text, Enum, Numeric, Integer, ForeignKey, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 
 from models.base import BaseModel
@@ -17,7 +17,7 @@ from models.base import BaseModel
 class OrderStatus(str, PyEnum):
     """
     Order status enum per openapi.yaml OrderStatus schema.
-    
+
     Extended for S5-A Order State Machine with additional states:
     - PARTIALLY_PAID: Order has received partial payment
     - PAID: Order is fully paid
@@ -51,6 +51,18 @@ class Order(BaseModel):
         Index('ix_orders_retailer_id', 'retailer_id'),
         Index('ix_orders_status', 'status'),
         Index('ix_orders_created_at', 'created_at'),
+        Index('ux_orders_creation_intent', 'wholesaler_id', 'retailer_id', 'created_by',
+              'creation_operation', 'creation_key_digest', unique=True,
+              postgresql_where=text('creation_key_digest IS NOT NULL')),
+        Index('ux_orders_replacement', 'replaces_order_id', unique=True,
+              postgresql_where=text('replaces_order_id IS NOT NULL')),
+        CheckConstraint("currency_snapshot IS NULL OR currency_snapshot IN ('KES', 'UGX')",
+                        name="ck_orders_s1_currency"),
+        CheckConstraint("(creation_key_digest IS NULL AND creation_fingerprint IS NULL "
+                        "AND creation_operation IS NULL) OR "
+                        "(creation_key_digest IS NOT NULL AND creation_fingerprint IS NOT NULL "
+                        "AND creation_operation IS NOT NULL AND created_by IS NOT NULL "
+                        "AND currency_snapshot IS NOT NULL)", name="ck_orders_creation_intent"),
     )
 
     wholesaler_id: Mapped[uuid.UUID] = mapped_column(
@@ -80,6 +92,16 @@ class Order(BaseModel):
         Text,
         nullable=True
     )
+    country_snapshot: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    currency_snapshot: Mapped[Optional[str]] = mapped_column(String(3), nullable=True)
+    registration_snapshot_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    creation_operation: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    creation_key_digest: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    creation_fingerprint: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    quote_seen: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    quote_resolved: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    replaces_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey('orders.id', ondelete='RESTRICT'), nullable=True)
 
     # Relationships
     items: Mapped[List["OrderItem"]] = relationship(
@@ -145,6 +167,8 @@ class OrderItem(BaseModel):
         index=True
     )
     unit_snapshot: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    package_quantity_snapshot: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 3), nullable=True)
+    display_label_snapshot: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     quantity: Mapped[int] = mapped_column(
         Integer,
         nullable=False

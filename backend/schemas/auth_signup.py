@@ -37,7 +37,10 @@ class SignupRequest(BaseModel):
     @field_validator("country")
     @classmethod
     def normalize_country(cls, value: str) -> str:
-        return value.strip().upper()
+        country = value.strip().upper()
+        if country not in {'UG', 'KE'}:
+            raise ValueError('Supported registration countries are UG and KE')
+        return country
 
     @field_validator("email")
     @classmethod

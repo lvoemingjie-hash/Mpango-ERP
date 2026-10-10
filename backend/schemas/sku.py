@@ -20,6 +20,7 @@ class SKUCreateRequest(BaseModel):
 
 
 class SKUUpdateRequest(BaseModel):
+    display_label: Optional[str] = Field(default=None, min_length=1, max_length=32)
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     description: Optional[str] = None
     unit: Optional[str] = Field(default=None, min_length=1, max_length=32)
@@ -36,6 +37,9 @@ class SKURead(CamelModel):
     name: str
     description: Optional[str] = None
     unit: str
+    display_label: Optional[str] = None
+    base_price: Optional[Decimal] = None
+    pricing_revision: int = 0
     package_quantity: Decimal = Decimal("1.000")
     category: Optional[str] = None
     is_active: bool

@@ -77,6 +77,8 @@ class DeclarationView(BaseModel):
     confirmation_payment_id: Optional[str] = None
     receipt_number: Optional[str] = None
     order_status: Optional[str] = None
+    currency: Optional[str] = None
+    currency_status: str = 'LEGACY_CURRENCY_UNVERIFIED'
 
     model_config = {"from_attributes": True}
 
@@ -100,6 +102,8 @@ class ClientDeclarationView(BaseModel):
     reason: Optional[str] = None
     receipt_number: Optional[str] = None
     order_status: Optional[str] = None
+    currency: Optional[str] = None
+    currency_status: str = 'LEGACY_CURRENCY_UNVERIFIED'
 
     model_config = {"from_attributes": True}
 

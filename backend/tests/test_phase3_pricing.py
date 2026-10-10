@@ -18,7 +18,13 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tests.conftest import TEST_TENANT_SCHEMA
+from tests.s1_pricing_quote.conftest import world  # noqa: F401
+
+
+@pytest_asyncio.fixture
+async def async_session(world):
+    async with world['session']() as db:
+        yield db
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +42,7 @@ TENANT_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 @pytest_asyncio.fixture
 async def seed_products(async_session: AsyncSession):
     """Seed SKUs, inventory, and retailer prices for pricing tests."""
-    schema = TEST_TENANT_SCHEMA
+    schema = async_session.info['tenant_schema']
 
     # Clean previous test data
     await async_session.execute(text(f'DELETE FROM "{schema}".retailer_prices'))
@@ -115,6 +121,9 @@ async def seed_products(async_session: AsyncSession):
         "flour_id": sku_flour_id,
     })
 
+    # S1 requires a base even where an override exists; rice stays unpriced.
+    await async_session.execute(text(f'UPDATE "{schema}".skus SET base_price=1200 '
+        'WHERE id IN (:flour,:sugar)'), {'flour': sku_flour_id, 'sugar': sku_sugar_id})
     await async_session.commit()
 
     return {
@@ -163,6 +172,8 @@ async def test_get_prices_bulk(async_session: AsyncSession, seed_products):
 async def test_set_price_creates_new(async_session: AsyncSession, seed_products):
     """set_price should create a new price record for an unpriced SKU."""
     from repositories.pricing_repository import set_price, get_price
+    await async_session.execute(text('UPDATE skus SET base_price=400 WHERE id=:id'),
+                                {'id': seed_products['rice_id']})
     record = await set_price(
         async_session, RETAILER_A_ID, seed_products["rice_id"], Decimal("350.00")
     )
@@ -202,10 +213,11 @@ async def test_retailer_price_isolation(async_session: AsyncSession, seed_produc
 
 @pytest.mark.asyncio
 async def test_retailer_b_has_no_sugar_price(async_session: AsyncSession, seed_products):
-    """Retailer B has no sugar price — should return None."""
+    """No B override: S1 uses the base, never A's 4800.50 override."""
     from repositories.pricing_repository import get_price
     price = await get_price(async_session, RETAILER_B_ID, seed_products["sugar_id"])
-    assert price is None
+    assert price == Decimal('1200.00')
+    assert price != Decimal('4800.50')
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +230,7 @@ async def test_product_query_with_price_join(async_session: AsyncSession, seed_p
     Simulate the GET /client/products SQL join — verify retailer A sees
     correct prices and rice shows sell_price=NULL.
     """
-    schema = TEST_TENANT_SCHEMA
+    schema = async_session.info['tenant_schema']
     sql = text(f"""
         SELECT
             s.sku_code,
@@ -248,7 +260,7 @@ async def test_product_query_with_price_join(async_session: AsyncSession, seed_p
 @pytest.mark.asyncio
 async def test_product_query_price_isolation_between_retailers(async_session: AsyncSession, seed_products):
     """Retailer B should see different price for flour and no sugar price."""
-    schema = TEST_TENANT_SCHEMA
+    schema = async_session.info['tenant_schema']
     sql = text(f"""
         SELECT
             s.sku_code,
@@ -288,7 +300,7 @@ async def test_order_total_from_resolved_prices(async_session: AsyncSession, see
     ]
 
     # Resolve SKU IDs
-    schema = TEST_TENANT_SCHEMA
+    schema = async_session.info['tenant_schema']
     result = await async_session.execute(
         text(f'SELECT id, sku_code FROM "{schema}".skus WHERE sku_code IN (:s1, :s2)'),
         {"s1": "FLOUR-25KG", "s2": "SUGAR-50KG"},
@@ -346,7 +358,7 @@ async def test_unpriced_product_has_can_order_false(async_session: AsyncSession,
     A product without a retailer_prices record should have can_order=false.
     Simulates the logic in the products API.
     """
-    schema = TEST_TENANT_SCHEMA
+    schema = async_session.info['tenant_schema']
     sql = text(f"""
         SELECT
             s.sku_code,
@@ -420,7 +432,7 @@ async def test_zero_price_rejected_at_order_time(async_session: AsyncSession, se
     We simulate by inserting via raw SQL with CHECK deferred, then
     verifying the application-level guard catches it.
     """
-    schema = TEST_TENANT_SCHEMA
+    schema = async_session.info['tenant_schema']
 
     # The DB CHECK constraint should block price=0 at the DB level.
     # Verify the CHECK works:
@@ -445,7 +457,7 @@ async def test_negative_price_rejected_at_db_level(async_session: AsyncSession, 
     """
     Inserting a negative price must be rejected by the DB CHECK(price > 0).
     """
-    schema = TEST_TENANT_SCHEMA
+    schema = async_session.info['tenant_schema']
 
     with pytest.raises(Exception):
         await async_session.execute(text(f"""

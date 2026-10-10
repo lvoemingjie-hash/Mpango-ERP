@@ -31,9 +31,12 @@ class PrintOrderItemView(BaseModel):
 
     product_name: str = Field(..., description="Product name at order time")
     sku_code: str = Field(..., description="SKU code at order time")
+    unit_snapshot: Optional[str] = None
+    package_quantity_snapshot: Optional[Decimal] = None
+    display_label_snapshot: Optional[str] = None
     quantity: int = Field(..., description="Quantity ordered")
-    unit_price: Decimal = Field(..., description="Server-authoritative unit price (KES)")
-    subtotal: Decimal = Field(..., description="Server-authoritative line subtotal (KES)")
+    unit_price: Decimal = Field(..., description="Server-authoritative unit price (currency snapshot; NULL is unknown)")
+    subtotal: Decimal = Field(..., description="Server-authoritative line subtotal (currency snapshot; NULL is unknown)")
 
     model_config = {"from_attributes": True}
 
@@ -41,13 +44,15 @@ class PrintOrderItemView(BaseModel):
 class OrderPrintView(BaseModel):
     """Contract A — printable order document (server-authoritative)."""
 
+    currency: Optional[str] = None
+    currency_status: str = "LEGACY_CURRENCY_UNVERIFIED"
     document_type: str = Field("order", description="Document discriminator")
     order_id: str = Field(..., description="Order identifier")
     status: str = Field(..., description="Client-mapped order status")
     supplier_name: str = Field(..., description="Wholesaler/supplier business name")
     retailer_name: str = Field(..., description="Retailer business name")
     items: List[PrintOrderItemView] = Field(default_factory=list)
-    total_amount: Decimal = Field(..., description="Server-authoritative order total (KES)")
+    total_amount: Decimal = Field(..., description="Server-authoritative order total (currency snapshot; NULL is unknown)")
     item_count: int = Field(..., description="Number of line items")
     notes: Optional[str] = Field(None, description="Order notes (sanitized text)")
     created_at: datetime = Field(..., description="Authoritative UTC creation timestamp")
@@ -64,13 +69,15 @@ class DeclarationPrintView(BaseModel):
     a prominent ``non_receipt_notice`` and ``is_receipt=False``.
     """
 
+    currency: Optional[str] = None
+    currency_status: str = "LEGACY_CURRENCY_UNVERIFIED"
     document_type: str = Field("payment_declaration", description="Document discriminator")
     declaration_id: str = Field(..., description="Declaration identifier")
     order_id: str = Field(..., description="Originating order identifier")
     supplier_name: str = Field(..., description="Wholesaler/supplier business name")
     retailer_name: str = Field(..., description="Retailer business name")
     status: str = Field(..., description="Declaration status: pending|confirmed|rejected")
-    declared_amount: Decimal = Field(..., description="Declared amount (KES)")
+    declared_amount: Decimal = Field(..., description="Declared amount (currency snapshot; NULL is unknown)")
     method: str = Field(..., description="Declared method: cash|transfer")
     transfer_reference: Optional[str] = Field(None, description="Transfer reference (transfer only)")
     is_receipt: bool = Field(False, description="True only when receipt eligibility passes")
@@ -98,19 +105,21 @@ class ReceiptPrintView(BaseModel):
     is the canonical ``RCT-YYYYMMDD-NNNNNN`` identifier, rendered verbatim.
     """
 
+    currency: Optional[str] = None
+    currency_status: str = "LEGACY_CURRENCY_UNVERIFIED"
     document_type: str = Field("receipt", description="Document discriminator")
     declaration_id: str = Field(..., description="Originating declaration identifier")
     order_id: str = Field(..., description="Originating order identifier")
     supplier_name: str = Field(..., description="Wholesaler/supplier business name")
     retailer_name: str = Field(..., description="Retailer business name")
     receipt_number: str = Field(..., description="Canonical receipt number RCT-YYYYMMDD-NNNNNN")
-    confirmed_amount: Decimal = Field(..., description="Confirmed/settled amount (KES)")
+    confirmed_amount: Decimal = Field(..., description="Confirmed/settled amount (currency snapshot; NULL is unknown)")
     method: str = Field(..., description="Payment method: cash|transfer")
     confirmed_at: datetime = Field(..., description="Authoritative UTC confirmation timestamp")
     confirmed_at_eat: datetime = Field(..., description="Fixed Africa/Nairobi (EAT) display timestamp")
-    declared_amount: Decimal = Field(..., description="Originally declared amount (KES)")
+    declared_amount: Decimal = Field(..., description="Originally declared amount (currency snapshot; NULL is unknown)")
     order_status: Optional[str] = Field(None, description="Client-mapped order status")
-    order_total_amount: Optional[Decimal] = Field(None, description="Server-authoritative order total (KES)")
+    order_total_amount: Optional[Decimal] = Field(None, description="Server-authoritative order total (currency snapshot; NULL is unknown)")
 
     model_config = {"from_attributes": True}
 
@@ -135,8 +144,8 @@ class StatementMovementView(BaseModel):
     kind: Literal["charge", "collection"] = Field(..., description="Movement direction: charge|collection")
     date: datetime = Field(..., description="Authoritative UTC transaction date")
     date_eat: datetime = Field(..., description="Fixed Africa/Nairobi (EAT) display timestamp")
-    signed_amount: Decimal = Field(..., description="Signed amount: +charge / -collection (KES)")
-    display_amount: Decimal = Field(..., description="abs(signed_amount) (KES)")
+    signed_amount: Decimal = Field(..., description="Signed amount: +charge / -collection (currency snapshot; NULL is unknown)")
+    display_amount: Decimal = Field(..., description="abs(signed_amount) (currency snapshot; NULL is unknown)")
     description: Optional[str] = Field(None, description="Ledger entry description (sanitized)")
     reference_type: str = Field(..., description="Ledger reference type: order|refund")
     reference_id: str = Field(..., description="Order identifier referenced by the movement")
@@ -155,7 +164,7 @@ class StatementSettledPaymentView(BaseModel):
     date: datetime = Field(..., description="Authoritative UTC payment created_at")
     date_eat: datetime = Field(..., description="Fixed Africa/Nairobi (EAT) display timestamp")
     order_id: str = Field(..., description="Order identifier of the settled payment")
-    amount: Decimal = Field(..., description="Settled amount (KES)")
+    amount: Decimal = Field(..., description="Settled amount (currency snapshot; NULL is unknown)")
     method: str = Field(..., description="Payment method: cash|transfer")
     receipt_number: Optional[str] = Field(None, description="Canonical receipt number, if present")
 
@@ -170,7 +179,7 @@ class StatementPendingDeclarationView(BaseModel):
 
     declaration_id: str = Field(..., description="Declaration identifier")
     order_id: str = Field(..., description="Order identifier")
-    declared_amount: Decimal = Field(..., description="Declared amount (KES)")
+    declared_amount: Decimal = Field(..., description="Declared amount (currency snapshot; NULL is unknown)")
     method: str = Field(..., description="Declared method: cash|transfer")
     status: str = Field(..., description="Declaration status: pending|rejected")
     submitted_at: datetime = Field(..., description="Authoritative UTC submission timestamp")
@@ -191,17 +200,19 @@ class StatementPrintView(BaseModel):
     server strings verbatim.
     """
 
+    currency: Optional[str] = None
+    currency_status: str = "LEGACY_CURRENCY_UNVERIFIED"
     document_type: str = Field("statement", description="Document discriminator")
     supplier_name: str = Field(..., description="Wholesaler/supplier business name")
     retailer_name: str = Field(..., description="Retailer business name")
     period_from: date = Field(..., description="Inclusive period start (EAT calendar day)")
     period_to: date = Field(..., description="Inclusive period end (EAT calendar day)")
-    opening_balance: Decimal = Field(..., description="Receivable sum strictly before the period (KES)")
-    closing_balance: Decimal = Field(..., description="opening + net_movement (KES)")
-    charge_total: Decimal = Field(..., description="Sum of positive movements (KES)")
-    collection_total: Decimal = Field(..., description="Absolute sum of negative movements (KES)")
-    net_movement: Decimal = Field(..., description="charge_total - collection_total, signed (KES)")
-    settled_total: Decimal = Field(..., description="Sum of settled_payments[].amount only (KES)")
+    opening_balance: Decimal = Field(..., description="Receivable sum strictly before the period (currency snapshot; NULL is unknown)")
+    closing_balance: Decimal = Field(..., description="opening + net_movement (currency snapshot; NULL is unknown)")
+    charge_total: Decimal = Field(..., description="Sum of positive movements (currency snapshot; NULL is unknown)")
+    collection_total: Decimal = Field(..., description="Absolute sum of negative movements (currency snapshot; NULL is unknown)")
+    net_movement: Decimal = Field(..., description="charge_total - collection_total, signed (currency snapshot; NULL is unknown)")
+    settled_total: Decimal = Field(..., description="Sum of settled_payments[].amount only (currency snapshot; NULL is unknown)")
     movements: List[StatementMovementView] = Field(default_factory=list)
     settled_payments: List[StatementSettledPaymentView] = Field(default_factory=list)
     pending_declarations: List[StatementPendingDeclarationView] = Field(

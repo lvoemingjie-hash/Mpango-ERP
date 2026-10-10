@@ -36,7 +36,8 @@ const signupSchema = z.object({
     .string()
     .trim()
     .regex(/^[A-Za-z]{2}$/, 'Country must be a 2-letter code (e.g. KE)')
-    .transform((v) => v.toUpperCase()),
+    .transform((v) => v.toUpperCase())
+    .refine((v): boolean => v === 'UG' || v === 'KE', 'Supported countries: UG or KE'),
   email: z.string().trim().email('Please enter a valid email address'),
   phone: z
     .string()
@@ -216,7 +217,7 @@ export function SignupPage() {
               htmlFor="country"
               className="mb-1 block text-sm font-medium text-gray-700"
             >
-              Country (2-letter code)
+              Country (UG or KE)
             </label>
             <input
               id="country"

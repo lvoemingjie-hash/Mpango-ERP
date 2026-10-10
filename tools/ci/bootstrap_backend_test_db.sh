@@ -15,7 +15,7 @@
 #   phase 1c pgcrypto pre-install (admin, task DB, before/after catalog
 #            facts) — tests need it; app never gains public CREATE
 #   phase 2  migrate    (migration authority)    alembic through exactly
-#            039_order_credit_holds + REPORTING_USER_PASSWORD (migration 011)
+#            040_s1_pricing_quote_contract + REPORTING_USER_PASSWORD (migration 011)
 #   phase 3  grants     (migration authority)    provisioner --apply-grants
 #   phase 4  verify     (read-only)              provisioner --verify
 #   phase 4b read-only capability probe          operator attributes and
@@ -300,7 +300,7 @@ plan = {
         {"phase": 1, "name": "provision", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--provision", "identity": "admin (maintenance DB)", "roles": [migrate_user, app_user]},
         {"phase": "1b", "name": "task operator supply", "tool": "psql via private stdin", "identity": "admin (maintenance DB)", "grants": ["LOGIN", "CREATEDB (task authorization)", "CREATEROLE (task authorization)", "SET-only membership of " + migrate_user + " (non-inheriting)"]},
         {"phase": "1c", "name": "pgcrypto pre-install", "tool": "psql admin on task DB", "identity": "admin", "evidence": "before/after pg_extension catalog facts"},
-        {"phase": 2, "name": "migrate", "tool": "alembic upgrade head", "head": "039_order_credit_holds", "identity": "migration authority (database owner)"},
+        {"phase": 2, "name": "migrate", "tool": "alembic upgrade head", "head": "040_s1_pricing_quote_contract", "identity": "migration authority (database owner)"},
         {"phase": 3, "name": "apply-grants", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--apply-grants", "identity": "migration authority"},
         {"phase": 4, "name": "verify", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--verify", "identity": "read-only"},
         {"phase": "4b", "name": "capability probe", "tool": "read-only catalog SELECTs", "checks": ["operator rolcreatedb/rolcreaterole true, rolsuper/rolinherit false", "SET-only membership (set_option true, inherit_option false)"]},
@@ -514,8 +514,8 @@ echo "[supply] phase 2/5 migrate (migration authority; alembic upgrade head)"
     poetry run alembic upgrade head 2>&1 | REDACTED_TOOL_PIPE
 )
 HEAD_ROW="$(run_psql "$MIGRATE_USER" "$MIGRATE_PASSWORD" "$TEST_DB" "SELECT version_num FROM public.alembic_version")"
-[ "$HEAD_ROW" = "039_order_credit_holds" ] || refuse "alembic head is '$HEAD_ROW', expected exactly 039_order_credit_holds"
-echo "[supply] alembic head verified: 039_order_credit_holds"
+[ "$HEAD_ROW" = "040_s1_pricing_quote_contract" ] || refuse "alembic head is '$HEAD_ROW', expected exactly 040_s1_pricing_quote_contract"
+echo "[supply] alembic head verified: 040_s1_pricing_quote_contract"
 
 # ---- phase 3: minimum runtime grants ----------------------------------------
 echo "[supply] phase 3/5 apply-grants (migration authority)"

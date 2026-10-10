@@ -7,6 +7,7 @@ export interface WholesalerOrderItemCreate {
 }
 
 export interface WholesalerOrderCreateRequest {
+  quote_token: string;
   retailer_id: string;
   items: WholesalerOrderItemCreate[];
   notes?: string | null;
@@ -19,9 +20,11 @@ export interface OrderItem {
   product_name: string;
   sku_code: string;
   unit_snapshot: string | null;
+  package_quantity_snapshot?: string | null;
+  display_label_snapshot?: string | null;
   quantity: number;
-  unit_price: number;
-  subtotal: number;
+  unit_price: string;
+  subtotal: string;
 }
 
 export interface Order {
@@ -30,7 +33,10 @@ export interface Order {
   retailer_id: string;
   retailer_name: string | null;
   status: OrderStatus;
-  total_amount: number;
+  total_amount: string | number;
+  currency?: string | null;
+  currency_status?: string;
+  replaces_order_id?: string | null;
   items: OrderItem[];
   notes: string | null;
   created_by: string | null;

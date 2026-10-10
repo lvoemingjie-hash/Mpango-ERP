@@ -74,6 +74,8 @@ _ALLOWED_STATUSES = {"pending", "confirmed", "rejected"}
 
 def _to_view(row) -> DeclarationView:
     return DeclarationView(
+        currency=row.get("currency_snapshot"),
+        currency_status="KNOWN" if row.get("currency_snapshot") else "LEGACY_CURRENCY_UNVERIFIED",
         id=str(row["id"]),
         order_id=str(row["order_id"]),
         retailer_id=str(row["retailer_id"]),

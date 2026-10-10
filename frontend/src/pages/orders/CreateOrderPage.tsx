@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PlusIcon, ShoppingBagIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { orderService } from '@/services/orderService';
 import { retailerService, type RetailerWithBinding } from '@/services/retailerService';
@@ -7,9 +7,10 @@ import { skuService, type SKU } from '@/services/skuService';
 import { pricingService } from '@/services/pricingService';
 import { inventoryService } from '@/services/inventoryService';
 import { useAuthStore } from '@/stores/authStore';
-import { normalizeApiError } from '@/utils/errorHandling';
 import { PageHeader } from '@/components/layout/PageHeader';
 import type { WholesalerOrderItemCreate } from '@/types/order';
+import { QuoteConsent } from '@/components/pricing/QuoteConsent';
+import { formatMoney } from '@/utils/printFormat';
 import type { RetailerPriceView } from '@/types/pricing';
 
 interface OrderLineItem {
@@ -17,32 +18,24 @@ interface OrderLineItem {
   sku_code: string;
   name: string;
   quantity: number;
-  price?: number | null;
+  price?: string | null;
   stock?: number;
-}
-
-interface OrderValidationError {
-  response?: {
-    data?: {
-      detail?: {
-        errors?: string[];
-      };
-    };
-  };
 }
 
 export function CreateOrderPage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const replacing = params.get('replace');
   const user = useAuthStore((s) => s.user);
   const hasCreatePermission = user?.permissions.includes('orders:create') || user?.roles.includes('admin');
 
   // Form State
-  const [retailerId, setRetailerId] = useState<string>('');
+  const [retailerId, setRetailerId] = useState<string>(params.get('retailer') || '');
   const [items, setItems] = useState<OrderLineItem[]>([]);
   const [notes, setNotes] = useState('');
 
   // UI State
-  const [submitting, setSubmitting] = useState(false);
+  const [currency, setCurrency] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Data State
@@ -52,7 +45,7 @@ export function CreateOrderPage() {
   // Picker State
   const [showPicker, setShowPicker] = useState(false);
   const [skus, setSkus] = useState<SKU[]>([]);
-  const [prices, setPrices] = useState<Record<string, number>>({});
+  const [prices, setPrices] = useState<Record<string, string>>({});
   const [stocks, setStocks] = useState<Record<string, number>>({});
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -87,11 +80,12 @@ export function CreateOrderPage() {
 
       setSkus(skusRes.data.data.items);
 
-      const priceMap: Record<string, number> = {};
+      const priceMap: Record<string, string> = {};
       pricesRes.data.data.items.forEach((p: RetailerPriceView) => {
-        priceMap[p.sku_code] = p.price;
+        if (p.price) priceMap[p.sku_code] = p.price;
       });
       setPrices(priceMap);
+      setCurrency(pricesRes.data.data.items[0]?.currency || null);
 
       const stockMap: Record<string, number> = {};
       stocksRes.data.data.items.forEach((s) => {
@@ -152,50 +146,10 @@ export function CreateOrderPage() {
     setItems(items.filter((i) => i.sellable_unit_id !== sellableUnitId));
   };
 
-  const calculateTotal = () => {
-    return items.reduce((total, item) => {
-      return total + ((item.price || 0) * item.quantity);
-    }, 0);
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES',
-    }).format(amount);
-  };
-
-  const handleSubmit = async () => {
-    if (!retailerId || items.length === 0) return;
-    setSubmitting(true);
-    setError(null);
-
-    try {
-      const orderItems: WholesalerOrderItemCreate[] = items.map((i) => ({
-        sellable_unit_id: i.sellable_unit_id,
-        sku_code: i.sku_code,
-        quantity: i.quantity,
-      }));
-
-      await orderService.create({
-        retailer_id: retailerId,
-        items: orderItems,
-        notes: notes || null,
-      });
-
-      navigate('/orders');
-    } catch (err: unknown) {
-      // Backend returns accumulated errors in detail.errors
-      const validationError = err as OrderValidationError;
-      if (validationError.response?.data?.detail?.errors) {
-        setError(validationError.response.data.detail.errors.join(' | '));
-      } else {
-        setError(normalizeApiError(err));
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const formatCurrency = (amount: string) => formatMoney(amount, currency);
+  const orderItems: WholesalerOrderItemCreate[] = items.map(i => ({
+    sellable_unit_id: i.sellable_unit_id, sku_code: i.sku_code, quantity: i.quantity,
+  }));
 
   return (
     <div>
@@ -270,7 +224,7 @@ export function CreateOrderPage() {
                       <div className="flex justify-between text-base font-medium text-gray-900">
                         <h3>{item.name}</h3>
                         <p className="ml-4">
-                          {item.price ? formatCurrency(item.price * item.quantity) : <span className="text-red-500 text-sm">No Price</span>}
+                          {item.price ? formatCurrency(item.price) : <span className="text-red-500 text-sm">No Price</span>}
                         </p>
                       </div>
                       <p className="mt-1 text-sm text-gray-500 font-mono">{item.sku_code}</p>
@@ -336,7 +290,7 @@ export function CreateOrderPage() {
           <div className="border-t border-gray-200 pt-4">
             <div className="flex justify-between text-base font-medium text-gray-900">
               <p>Estimated Total</p>
-              <p>{formatCurrency(calculateTotal())}</p>
+              <p>Review the server quote below</p>
             </div>
             <p className="mt-0.5 text-sm text-gray-500">
               Pricing is validated server-side. Errors will be shown if prices are missing or stock is insufficient.
@@ -351,15 +305,18 @@ export function CreateOrderPage() {
             >
               Cancel
             </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={submitting || items.length === 0 || !retailerId || !hasCreatePermission}
-              title={!hasCreatePermission ? "Permission Denied" : undefined}
-              className="inline-flex justify-center rounded-md border border-transparent bg-primary-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {submitting ? 'Creating Order...' : 'Create Order'}
-            </button>
+            <QuoteConsent
+              intent={JSON.stringify({ retailerId, orderItems, notes })}
+              disabled={!items.length || !retailerId || !hasCreatePermission}
+              replacing={Boolean(replacing)}
+              preview={async () => (await orderService.preview({ retailer_id: retailerId, items: orderItems })).data.data}
+              submit={async (quote, key) => {
+                const data = { retailer_id: retailerId, items: orderItems, notes: notes || null, quote_token: quote.quote_token };
+                if (replacing) await orderService.replaceDraft(replacing, data, key);
+                else await orderService.create(data, key);
+                navigate('/orders');
+              }}
+            />
           </div>
         </div>
       </div>

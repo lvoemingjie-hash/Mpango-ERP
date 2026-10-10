@@ -80,6 +80,9 @@ def _sku_to_read(sku) -> SKURead:
         name=sku.name,
         description=sku.description,
         unit=sku.unit,
+        display_label=sku.display_label,
+        base_price=sku.base_price,
+        pricing_revision=sku.pricing_revision,
         package_quantity=sku.package_quantity,
         category=sku.category,
         is_active=sku.is_active,
@@ -125,6 +128,9 @@ async def _list_skus_cached(
                 "name": s.name,
                 "description": s.description,
                 "unit": s.unit,
+                "display_label": s.display_label,
+                "base_price": str(s.base_price) if s.base_price is not None else None,
+                "pricing_revision": s.pricing_revision,
                 "package_quantity": str(s.package_quantity),
                 "category": s.category,
                 "is_active": s.is_active,
@@ -180,6 +186,9 @@ async def list_skus(
                 name=item["name"],
                 description=item["description"],
                 unit=item["unit"],
+                display_label=item["display_label"],
+                base_price=item["base_price"],
+                pricing_revision=item["pricing_revision"],
                 package_quantity=item["package_quantity"],
                 category=item["category"],
                 is_active=item["is_active"],
@@ -394,6 +403,7 @@ async def update_sku(
             category=request.category,
             is_active=request.is_active,
             updated_by=token.user_id,
+            display_label=request.display_label,
         )
 
         result = DataResponse(success=True, data=_sku_to_read(sku), timestamp=datetime.utcnow())

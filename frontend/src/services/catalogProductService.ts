@@ -2,6 +2,9 @@ import { api } from '@/services/api';
 import type { ApiResponse, PaginatedData } from '@/types/api';
 
 export interface SellableUnit {
+  display_label?: string | null;
+  base_price?: string | null;
+  pricing_revision?: number;
   id: string;
   catalog_product_id: string;
   sku_code: string;
@@ -46,6 +49,7 @@ export interface CatalogProductUpdateRequest {
 }
 
 export interface SellableUnitUpdateRequest {
+  display_label?: string | null;
   unit?: string;
   package_quantity?: number;
   is_active?: boolean;

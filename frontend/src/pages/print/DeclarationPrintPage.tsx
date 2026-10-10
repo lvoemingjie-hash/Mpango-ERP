@@ -24,7 +24,7 @@ import {
   getCashierDeclarationPrint,
 } from '@/services/declarationService';
 import { sanitizePrintError } from '@/utils/printError';
-import { formatKes, formatPrintDate } from '@/utils/printFormat';
+import { formatMoney, formatPrintDate } from '@/utils/printFormat';
 import type { DeclarationPrintView } from '@/types/print';
 
 interface DeclarationPrintPageProps {
@@ -150,7 +150,7 @@ export function DeclarationPrintPage({ mode }: DeclarationPrintPageProps) {
               {STATUS_LABEL[doc.status] ?? doc.status}
             </dd>
             <dt className="text-gray-500">Declared amount</dt>
-            <dd className="text-gray-900">{formatKes(doc.declared_amount)}</dd>
+            <dd className="text-gray-900">{formatMoney(doc.declared_amount, doc.currency)}</dd>
             <dt className="text-gray-500">Method</dt>
             <dd className="text-gray-900">{doc.method}</dd>
             {doc.transfer_reference && (

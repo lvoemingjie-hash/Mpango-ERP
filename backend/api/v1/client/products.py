@@ -46,32 +46,56 @@ from schemas.client import (
     product_stock_level,
 )
 from schemas.common import DataResponse, Pagination
+from repositories.pricing_repository import effective_price
+from services.pricing_quote_service import amount_string, money, resolve_currency
 
 
 router = APIRouter()
 
 
-def _unit_option(row) -> ClientSellableUnitOption:
+async def _catalog_currency(db, wholesaler_id):
+    try:
+        return (await resolve_currency(db, wholesaler_id)).currency
+    except HTTPException as exc:
+        if exc.detail['code'] != 'TENANT_CURRENCY_UNRESOLVED':
+            raise
+        return None
+
+
+def _unit_option(row, currency=None) -> ClientSellableUnitOption:
     qty = Decimal(str(row.quantity_on_hand))
     in_stock = qty > 0
-    sell_price = Decimal(str(row.sell_price)) if row.sell_price is not None else None
-    has_price = sell_price is not None
+    sell_price, origin, reason = effective_price(row.base_price, row.sell_price)
+    if not currency:
+        reason = 'TENANT_CURRENCY_UNRESOLVED'
+    elif not reason:
+        try:
+            money(row.base_price, currency)
+            money(sell_price, currency)
+        except HTTPException as exc:
+            reason = exc.detail['code']
+    if not row.unit or not row.unit.strip():
+        reason = 'UNIT_DEFINITION_UNVERIFIED'
+    has_price = reason is None
     return ClientSellableUnitOption(
         sellable_unit_id=str(row.unit_id),
         sku_code=row.sku_code,
         unit=row.unit,
         package_quantity=row.package_quantity,
-        price=sell_price,
+        price=amount_string(sell_price, currency) if has_price else None,
+        base_price=format(row.base_price, 'f') if row.base_price is not None else None,
+        currency=currency, price_source=origin, unorderable_reason=reason,
+        display_label=row.display_label or row.unit, pricing_revision=row.pricing_revision,
         in_stock=in_stock,
         stock_level=compute_stock_level(qty),
         can_order=in_stock and has_price,
     )
 
 
-def _product_summary(rows, *, with_description: bool) -> ClientProductSummary | ClientProductDetail:
+def _product_summary(rows, *, with_description: bool, currency=None) -> ClientProductSummary | ClientProductDetail:
     """Group one product's unit rows into a single product container."""
     first = rows[0]
-    units = [_unit_option(row) for row in rows]
+    units = [_unit_option(row, currency) for row in rows]
     unit_levels = [unit.stock_level for unit in units]
     kwargs = dict(
         id=str(first.product_id),
@@ -98,6 +122,7 @@ _UNIT_SELECT = """
         s.sku_code,
         s.unit,
         s.package_quantity,
+        s.base_price, s.display_label, s.pricing_revision,
         COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand,
         rp.price AS sell_price
     FROM catalog_products p
@@ -146,6 +171,7 @@ async def list_products(
     ``units``. Pagination counts PRODUCTS (not units). Stock is a business-safe
     level enum; raw inventory numbers are never exposed.
     """
+    currency = await _catalog_currency(db, client.tenant_id)
     conditions: list[str] = [_VISIBLE_PRODUCT]
     params: dict = {"retailer_id": client.retailer_id}
 
@@ -194,7 +220,7 @@ async def list_products(
         for product_id in product_ids:
             rows = grouped.get(product_id)
             if rows:
-                items.append(_product_summary(rows, with_description=False).model_dump())
+                items.append(_product_summary(rows, with_description=False, currency=currency).model_dump())
 
     pages = ceil(total / size) if total > 0 else 0
 
@@ -293,7 +319,8 @@ async def get_product(
             detail={"code": "PRODUCT_NOT_FOUND", "message": "Product not found"},
         )
 
-    detail: ClientProductDetail = _product_summary(rows, with_description=True)  # type: ignore[assignment]
+    currency = await _catalog_currency(db, client.tenant_id)
+    detail: ClientProductDetail = _product_summary(rows, with_description=True, currency=currency)  # type: ignore[assignment]
 
     return DataResponse(
         success=True,

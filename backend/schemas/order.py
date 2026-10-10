@@ -94,6 +94,8 @@ class OrderItem(CamelModel):
     product_name: str = Field(..., description="Product name snapshot")
     sku_code: str = Field(..., description="SKU code snapshot")
     unit_snapshot: Optional[str] = Field(None, description="Unit at order time")
+    package_quantity_snapshot: Optional[Decimal] = None
+    display_label_snapshot: Optional[str] = None
     quantity: int = Field(..., description="Item quantity")
     unit_price: Decimal = Field(..., description="Unit price")
     subtotal: Decimal = Field(..., description="Line item subtotal")
@@ -195,6 +197,7 @@ class WholesalerOrderCreateRequest(BaseModel):
         description="Order line items with stable sellable-unit identity"
     )
     notes: str | None = Field(None, max_length=1000, description="Order notes")
+    quote_token: str = Field(..., min_length=1, max_length=100000)
 
     @field_validator("notes")
     @classmethod
@@ -272,6 +275,10 @@ class Order(CamelModel):
     created_by: str | None = Field(None, description="Creator user UUID")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
+    currency: Optional[str] = None
+    country: Optional[str] = None
+    currency_status: str = 'LEGACY_CURRENCY_UNVERIFIED'
+    replaces_order_id: Optional[str] = None
 
 
 class OrderResponse(BaseModel):

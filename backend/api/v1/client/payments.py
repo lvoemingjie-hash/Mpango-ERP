@@ -83,7 +83,7 @@ async def list_client_payments(
     return DataResponse(
         success=True,
         data={
-            "items": [ClientPaymentView(id=str(row["id"]), order_id=str(row["order_id"]), amount=row["amount"], method=row["method"], status=row["status"], created_at=row["created_at"]).model_dump() for row in rows],
+            "items": [ClientPaymentView(currency=row.get("currency_snapshot"), currency_status="KNOWN" if row.get("currency_snapshot") else "LEGACY_CURRENCY_UNVERIFIED", id=str(row["id"]), order_id=str(row["order_id"]), amount=row["amount"], method=row["method"], status=row["status"], created_at=row["created_at"]).model_dump() for row in rows],
             "pagination": Pagination(page=page, size=size, total=total, pages=pages).model_dump(),
         },
         timestamp=datetime.now(timezone.utc),

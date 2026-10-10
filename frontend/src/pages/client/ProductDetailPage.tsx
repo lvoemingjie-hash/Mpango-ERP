@@ -1,3 +1,4 @@
+import { formatMoney } from '@/utils/printFormat';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeftIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
@@ -11,9 +12,7 @@ const STOCK_BADGE: Record<string, { label: string; className: string }> = {
   OUT_OF_STOCK: { label: 'Out of Stock', className: 'bg-red-100 text-red-700' },
 };
 
-function formatKES(amount: number): string {
-  return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+
 
 /**
  * DC-12R1-MVP-L1-SKU-R0-M1-R1-R1: the detail page IS the product container.
@@ -61,7 +60,8 @@ export function ProductDetailPage() {
           sku_code: selectedUnit.sku_code,
           name: product.name,
           quantity,
-          price: selectedUnit.price
+          price: selectedUnit.price,
+          currency: selectedUnit.currency
         }],
       },
     });
@@ -125,7 +125,7 @@ export function ProductDetailPage() {
         <div className="text-right">
           {selectedUnit?.price !== null && selectedUnit !== null ? (
             <div className="text-2xl font-bold text-gray-900">
-              KES {formatKES(selectedUnit.price as number)}
+              {formatMoney(selectedUnit.price, selectedUnit.currency)}
             </div>
           ) : (
             <div className="text-sm font-medium text-gray-500 italic mt-1.5">
@@ -165,7 +165,7 @@ export function ProductDetailPage() {
                 {unit.package_quantity} × {unit.unit}
               </span>
               <span className="block text-xs text-gray-500">
-                {unit.price !== null ? `KES ${formatKES(unit.price)}` : 'Contact Supplier'}
+                {unit.price !== null ? formatMoney(unit.price, unit.currency) : 'Contact Supplier'}
               </span>
             </button>
           ))}
@@ -233,7 +233,7 @@ export function ProductDetailPage() {
               <div className="flex justify-between items-center py-2 border-t border-gray-100">
                 <span className="text-sm text-gray-600">Subtotal</span>
                 <span className="text-base font-bold text-gray-900">
-                  KES {formatKES(selectedUnit.price * quantity)}
+                  {formatMoney(selectedUnit.price, selectedUnit.currency)} per unit; total shown in server quote
                 </span>
               </div>
             )}

@@ -53,6 +53,8 @@ export interface StatementPendingDeclarationView {
 
 /** Contract D — printable relationship account statement. */
 export interface StatementPrintView {
+  currency?: string | null;
+  currency_status?: string;
   document_type: string;
   supplier_name: string;
   retailer_name: string;

@@ -2,12 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ScaleIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import { clientFinanceService } from '@/services/clientFinanceService';
-import { eatMonthRange } from '@/utils/printFormat';
+import { eatMonthRange, formatMoney } from '@/utils/printFormat';
 import type { ClientFinanceBalance } from '@/types/client';
 
-function formatMoney(amount: string) {
-  return `KES ${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString('en-KE', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -68,7 +66,7 @@ export function ClientFinanceBalancePage() {
             </div>
             <div>
               <p className="text-sm text-gray-500">Outstanding Balance</p>
-              <p className="text-2xl font-bold text-gray-900">{formatMoney(balance.outstanding_balance)}</p>
+              <p className="text-2xl font-bold text-gray-900">{formatMoney(balance.outstanding_balance, balance.currency)}</p>
             </div>
           </div>
           <p className="mt-4 text-sm text-gray-600">

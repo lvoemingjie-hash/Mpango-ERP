@@ -4,6 +4,7 @@ import { ClipboardDocumentListIcon, PlusIcon } from '@heroicons/react/24/outline
 import { clientOrderService } from '@/services/clientOrderService';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
+import { formatMoney } from '@/utils/printFormat';
 import type { ClientOrder } from '@/types/client';
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -57,12 +58,7 @@ export function ClientOrderListPage() {
     });
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES',
-    }).format(amount);
-  };
+
 
   return (
     <div className="space-y-4">
@@ -159,7 +155,7 @@ export function ClientOrderListPage() {
 
                   <div className="mt-2 flex items-center justify-between">
                     <span className="text-sm font-semibold text-gray-900">
-                      {formatCurrency(order.total_amount)}
+                      {formatMoney(order.total_amount, order.currency)}
                     </span>
                     <span className="text-xs text-gray-400">
                       {formatDate(order.created_at)}

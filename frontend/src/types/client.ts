@@ -17,7 +17,10 @@ export interface ClientSellableUnit {
   sku_code: string;
   unit: string;
   package_quantity: number;
-  price: number | null;
+  price: string | null;
+  currency?: 'KES' | 'UGX' | null;
+  display_label?: string | null;
+  unorderable_reason?: string | null;
   in_stock: boolean;
   stock_level: StockLevel;
   can_order: boolean;
@@ -44,9 +47,11 @@ export interface ClientOrderItem {
   product_name: string;
   sku_code: string;
   unit_snapshot: string | null;
+  package_quantity_snapshot?: string | null;
+  display_label_snapshot?: string | null;
   quantity: number;
-  unit_price: number;
-  subtotal: number;
+  unit_price: string;
+  subtotal: string;
 }
 
 export type ClientOrderStatus = 'CREATED' | 'CONFIRMED' | 'DELIVERED' | 'CANCELLED' | 'RETURNED';
@@ -54,7 +59,10 @@ export type ClientOrderStatus = 'CREATED' | 'CONFIRMED' | 'DELIVERED' | 'CANCELL
 export interface ClientOrder {
   id: string;
   status: ClientOrderStatus;
-  total_amount: number;
+  total_amount: string;
+  currency?: string | null;
+  currency_status?: string;
+  replaces_order_id?: string | null;
   item_count: number;
   notes: string | null;
   items: ClientOrderItem[];
@@ -68,6 +76,7 @@ export interface CreateOrderItem {
 }
 
 export interface CreateOrderRequest {
+  quote_token: string;
   items: CreateOrderItem[];
   notes?: string;
 }
@@ -76,6 +85,8 @@ export type ClientPaymentMethod = 'cash' | 'transfer' | 'credit';
 export type ClientPaymentStatus = 'pending' | 'completed';
 
 export interface ClientPayment {
+  currency?: string | null;
+  currency_status?: string;
   id: string;
   order_id: string;
   amount: string;
@@ -85,6 +96,8 @@ export interface ClientPayment {
 }
 
 export interface ClientFinanceBalance {
+  currency?: string | null;
+  currency_status?: string;
   outstanding_balance: string;
   has_outstanding_balance: boolean;
   updated_at: string;

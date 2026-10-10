@@ -66,6 +66,10 @@ from services.canonical_payment_service import (
 
 router = APIRouter()
 
+from schemas.pricing_quote import QuoteRequest
+from services.pricing_quote_service import build_quote, quote_view
+from services.order_creation_service import assert_binding, submit_draft
+
 
 async def _supplier_binding_active(db: AsyncSession, ws_uuid, rt_uuid) -> bool:
     """R1: verify the relationship binding is active and non-deleted."""
@@ -197,6 +201,10 @@ def order_to_schema(order, retailer_name: str | None = None) -> OrderSchema:
         retailer_name=retailer_name,
         status=OrderStatus(order.status.value),
         total_amount=order.total_amount,
+        currency=order.currency_snapshot,
+        country=order.country_snapshot,
+        currency_status='KNOWN' if order.currency_snapshot else 'LEGACY_CURRENCY_UNVERIFIED',
+        replaces_order_id=str(order.replaces_order_id) if order.replaces_order_id else None,
         items=[
             OrderItemSchema(
                 id=str(item.id),
@@ -205,6 +213,8 @@ def order_to_schema(order, retailer_name: str | None = None) -> OrderSchema:
                 product_name=item.product_name,
                 sku_code=item.sku_code,
                 unit_snapshot=item.unit_snapshot,
+                package_quantity_snapshot=item.package_quantity_snapshot,
+                display_label_snapshot=item.display_label_snapshot,
                 quantity=item.quantity,
                 unit_price=item.unit_price,
                 subtotal=item.subtotal
@@ -283,170 +293,60 @@ async def list_orders(
     )
 
 
+@router.post("/quote", response_model=DataResponse[dict])
+async def preview_order_quote(
+    request: QuoteRequest,
+    token: TokenPayload = Depends(RequirePermission("orders:create")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+):
+    if request.retailer_id is None:
+        raise HTTPException(422, detail={"code": "RETAILER_REQUIRED", "message": "Select a retailer"})
+    try:
+        retailer = str(UUID(request.retailer_id))
+    except ValueError:
+        raise HTTPException(422, detail={"code": "RETAILER_REQUIRED", "message": "Select a valid retailer"}) from None
+    await assert_binding(db, token.tenant_id, retailer)
+    payload = await build_quote(db, wholesaler_id=token.tenant_id, retailer_id=retailer,
+                                actor_id=token.user_id, operation="merchant-create",
+                                items=[item.model_dump() for item in request.items])
+    return DataResponse(success=True, data=quote_view(payload), timestamp=datetime.utcnow())
+
+
 @router.post("", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(
     request: WholesalerOrderCreateRequest,
-    token: TokenPayload = Depends(RequirePermission("orders:create")),  # S2.5: Added RBAC
-    db: AsyncSession = Depends(get_tenant_db_session)
+    token: TokenPayload = Depends(RequirePermission("orders:create")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+    idempotency_key: Optional[str] = Header(None, alias="X-Idempotency-Key"),
 ):
-    """
-    Create a new order with server-resolved pricing.
-
-    Phase 4: Price authority is enforced server-side.
-    The request contains only sku_code + quantity per item.
-    product_name and unit_price are resolved from the SKU catalog
-    and retailer_prices table respectively. Any client-supplied
-    price is structurally impossible (not in the request schema).
-
-    Returns:
-        OrderResponse with created order
-    """
-    from sqlalchemy import text as sa_text
-
-    # ---------------------------------------------------------------
-    # Step 1: Validate retailer binding exists for this tenant
-    # ---------------------------------------------------------------
-    binding_sql = """
-        SELECT id FROM public.wholesaler_retailer_bindings
-        WHERE wholesaler_id = :tenant_id
-          AND retailer_id = :retailer_id
-          AND status = 'active'
-        LIMIT 1
-    """
-    binding_result = await db.execute(
-        sa_text(binding_sql),
-        {"tenant_id": token.tenant_id, "retailer_id": request.retailer_id},
+    order, replayed = await submit_draft(
+        db, wholesaler_id=token.tenant_id, retailer_id=request.retailer_id,
+        actor_id=token.user_id, operation="merchant-create",
+        items=[item.model_dump() for item in request.items], notes=request.notes,
+        quote_token=request.quote_token, idempotency_key=idempotency_key,
     )
-    if binding_result.fetchone() is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "RETAILER_NOT_BOUND",
-                "message": "Retailer is not bound to this wholesaler or binding is inactive",
-            },
-        )
+    return OrderResponse(success=True, data=order_to_schema(order),
+                         message="Existing draft replayed" if replayed else "Order created successfully",
+                         timestamp=datetime.utcnow())
 
-    # ---------------------------------------------------------------
-    # Step 2: Resolve SKU data + retailer-specific pricing server-side
-    # ---------------------------------------------------------------
-    sku_codes = [item.sku_code for item in request.items if item.sku_code]
-    sku_ids = [item.sellable_unit_id for item in request.items if item.sellable_unit_id]
-    placeholders = ", ".join([f":sku_{i}" for i in range(len(sku_codes))])
-    sku_params = {f"sku_{i}": code for i, code in enumerate(sku_codes)}
-    id_placeholders = ", ".join([f":sku_id_{i}" for i in range(len(sku_ids))])
-    sku_params.update({f"sku_id_{i}": value for i, value in enumerate(sku_ids)})
-    selectors = []
-    if placeholders:
-        selectors.append(f"s.sku_code IN ({placeholders})")
-    if id_placeholders:
-        selectors.append(f"s.id::text IN ({id_placeholders})")
-    selector_sql = " OR ".join(selectors)
 
-    sku_sql = f"""
-        SELECT
-            s.id   AS sku_id,
-            s.sku_code,
-            p.name,
-            s.unit,
-            (s.is_active AND p.is_active) AS is_active,
-            COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand,
-            rp.price AS sell_price
-        FROM skus s
-        JOIN catalog_products p ON p.id = s.catalog_product_id AND p.is_deleted IS NOT TRUE
-        LEFT JOIN inventory_stocks i
-            ON i.sku_id = s.id AND i.is_deleted IS NOT TRUE
-        LEFT JOIN retailer_prices rp
-            ON rp.sku_id = s.id
-            AND rp.retailer_id = :retailer_id
-            AND rp.is_deleted IS NOT TRUE
-        WHERE ({selector_sql})
-          AND s.is_deleted IS NOT TRUE
-    """
-    sku_params["retailer_id"] = request.retailer_id
-    result = await db.execute(sa_text(sku_sql), sku_params)
-    sku_rows = {row.sku_code: row for row in result.fetchall()}
-    sku_rows_by_id = {str(row.sku_id): row for row in sku_rows.values()}
-
-    # ---------------------------------------------------------------
-    # Step 3: Validate each item and build server-resolved order items
-    # ---------------------------------------------------------------
-    errors = []
-    order_items = []
-    for item in request.items:
-        by_id = sku_rows_by_id.get(item.sellable_unit_id) if item.sellable_unit_id else None
-        by_code = sku_rows.get(item.sku_code) if item.sku_code else None
-        if item.sellable_unit_id and item.sku_code:
-            if by_id is None or by_code is None or by_id.sku_id != by_code.sku_id:
-                errors.append("Sellable unit ID does not match SKU code")
-                continue
-        sku_row = by_id or by_code
-        selector = item.sku_code or item.sellable_unit_id
-        if sku_row is None:
-            errors.append(f"Product '{selector}' not found")
-            continue
-        if not sku_row.is_active:
-            errors.append(f"Product '{selector}' is no longer available")
-            continue
-
-        qty_available = float(sku_row.quantity_on_hand)
-        if qty_available < item.quantity:
-            errors.append(
-                f"Insufficient stock for '{selector}': "
-                f"requested {item.quantity}, available {int(qty_available)}"
-            )
-            continue
-
-        if sku_row.sell_price is None:
-            errors.append(
-                f"No price configured for '{selector}' for this retailer. "
-                f"Set a price before creating orders."
-            )
-            continue
-
-        resolved_price = Decimal(str(sku_row.sell_price))
-        if resolved_price <= 0:
-            errors.append(
-                f"Invalid price for '{selector}'. Price must be positive."
-            )
-            continue
-
-        order_items.append({
-            "sellable_unit_id": sku_row.sku_id,
-            "product_name": sku_row.name,
-            "sku_code": sku_row.sku_code,
-            "unit_snapshot": sku_row.unit,
-            "quantity": item.quantity,
-            "unit_price": resolved_price,
-        })
-
-    if errors:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "ORDER_VALIDATION_FAILED",
-                "message": "Some items cannot be ordered",
-                "errors": errors,
-            },
-        )
-
-    # ---------------------------------------------------------------
-    # Step 4: Create order via existing CRUD (all prices server-resolved)
-    # ---------------------------------------------------------------
-    order = await crud_create_order(
-        db=db,
-        wholesaler_id=token.tenant_id,
-        retailer_id=request.retailer_id,
-        items=order_items,
-        notes=request.notes,
-        created_by=token.user_id
+@router.post("/{order_id}/replace-draft", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
+async def replace_merchant_draft(
+    order_id: UUID,
+    request: WholesalerOrderCreateRequest,
+    token: TokenPayload = Depends(RequirePermission("orders:create")),
+    _update: TokenPayload = Depends(RequirePermission("orders:update")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+    idempotency_key: Optional[str] = Header(None, alias="X-Idempotency-Key"),
+):
+    order, _ = await submit_draft(
+        db, wholesaler_id=token.tenant_id, retailer_id=request.retailer_id,
+        actor_id=token.user_id, operation="merchant-create",
+        items=[item.model_dump() for item in request.items], notes=request.notes,
+        quote_token=request.quote_token, idempotency_key=idempotency_key, replaces_order_id=order_id,
     )
-
-    return OrderResponse(
-        success=True,
-        data=order_to_schema(order),
-        message="Order created successfully",
-        timestamp=datetime.utcnow()
-    )
+    return OrderResponse(success=True, data=order_to_schema(order),
+                         message="Old draft cancelled and replacement created", timestamp=datetime.utcnow())
 
 
 @router.get("/{order_id}", response_model=OrderResponse, status_code=status.HTTP_200_OK)

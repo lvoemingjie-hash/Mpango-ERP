@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeftIcon, TrashIcon, PlusIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
 import { clientProductService } from '@/services/clientProductService';
 import { clientOrderService } from '@/services/clientOrderService';
-import { normalizeApiError } from '@/utils/errorHandling';
+import { QuoteConsent } from '@/components/pricing/QuoteConsent';
+import { formatMoney } from '@/utils/printFormat';
 import type { ClientProduct, ClientSellableUnit, CreateOrderItem } from '@/types/client';
 
 interface OrderLineItem {
@@ -11,15 +12,17 @@ interface OrderLineItem {
   sku_code: string;
   name: string;
   quantity: number;
-  price?: number | null;
+  price?: string | null;
+  currency?: string | null;
 }
 
 export function CreateOrderPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const replacing = params.get('replace');
   const [items, setItems] = useState<OrderLineItem[]>([]);
   const [notes, setNotes] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Product picker state
@@ -45,7 +48,7 @@ export function CreateOrderPage() {
       // Product-level contract: keep products that have at least one orderable unit.
       setProducts(res.data.data.items.filter((p) => p.units.some((u) => u.can_order)));
     } catch {
-      // Silently fail — picker just shows empty
+      setError('Failed to load products. Please retry the product selection.');
     } finally {
       setLoadingProducts(false);
     }
@@ -71,7 +74,8 @@ export function CreateOrderPage() {
         sku_code: unit.sku_code,
         name: product.name,
         quantity: 1,
-        price: unit.price
+        price: unit.price,
+        currency: unit.currency
       }]);
     }
     setShowPicker(false);
@@ -91,37 +95,10 @@ export function CreateOrderPage() {
     setItems(items.filter((i) => i.sellable_unit_id !== sellableUnitId));
   };
 
-  const handleSubmit = async () => {
-    if (items.length === 0) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const orderItems: CreateOrderItem[] = items.map((i) => ({
-        sellable_unit_id: i.sellable_unit_id,
-        sku_code: i.sku_code,
-        quantity: i.quantity,
-      }));
-      const res = await clientOrderService.create({ items: orderItems, notes: notes || undefined });
-      navigate(`/client/orders/${res.data.data.id}`, { replace: true });
-    } catch (err) {
-      setError(normalizeApiError(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES',
-    }).format(amount);
-  };
-
-  const calculateTotal = () => {
-    return items.reduce((total, item) => {
-      return total + ((item.price || 0) * item.quantity);
-    }, 0);
-  };
+  const formatCurrency = (amount: string, currency?: string | null) => formatMoney(amount, currency);
+  const orderItems: CreateOrderItem[] = items.map(i => ({
+    sellable_unit_id: i.sellable_unit_id, sku_code: i.sku_code, quantity: i.quantity,
+  }));
 
   return (
     <div className="space-y-4">
@@ -161,7 +138,7 @@ export function CreateOrderPage() {
                   <p className="text-xs text-gray-400 font-mono">{item.sku_code}</p>
                   {item.price !== undefined && item.price !== null && (
                     <span className="text-xs font-medium text-gray-600">
-                      {formatCurrency(item.price)}
+                      {formatCurrency(item.price, item.currency)}
                     </span>
                   )}
                 </div>
@@ -260,7 +237,7 @@ export function CreateOrderPage() {
                       </span>
                       {u.price !== null && (
                         <span className="text-sm font-medium text-gray-900">
-                          {formatCurrency(u.price)}
+                          {formatCurrency(u.price, u.currency)}
                         </span>
                       )}
                     </button>
@@ -286,26 +263,19 @@ export function CreateOrderPage() {
         />
       </div>
 
-      {/* Order Total */}
-      {items.length > 0 && (
-        <div className="rounded-xl bg-gray-50 p-4 flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700">Estimated Total</span>
-          <span className="text-lg font-bold text-gray-900">
-            {formatCurrency(calculateTotal())}
-          </span>
-        </div>
-      )}
-
-      {/* Submit */}
-      <button
-        onClick={handleSubmit}
-        disabled={items.length === 0 || submitting}
-        className="w-full rounded-xl bg-primary-600 px-4 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
-      >
-        {submitting
-          ? 'Submitting...'
-          : `Submit Order (${items.reduce((sum, i) => sum + i.quantity, 0)} items)`}
-      </button>
+      <QuoteConsent
+        intent={JSON.stringify({ orderItems, notes })}
+        disabled={!items.length}
+        replacing={Boolean(replacing)}
+        preview={async () => (await clientOrderService.preview({ items: orderItems })).data.data}
+        submit={async (quote, key) => {
+          const data = { items: orderItems, notes: notes || undefined, quote_token: quote.quote_token };
+          const result = replacing
+            ? await clientOrderService.replaceDraft(replacing, data, key)
+            : await clientOrderService.create(data, key);
+          navigate(`/client/orders/${result.data.data.id}`, { replace: true });
+        }}
+      />
     </div>
   );
 }

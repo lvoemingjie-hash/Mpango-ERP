@@ -3,6 +3,7 @@ import { BanknotesIcon, ReceiptRefundIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { clientFinanceService } from '@/services/clientFinanceService';
+import { formatMoney } from '@/utils/printFormat';
 import type { ClientPayment } from '@/types/client';
 
 const METHOD_LABEL: Record<string, string> = {
@@ -16,9 +17,7 @@ const STATUS_LABEL: Record<string, string> = {
   completed: 'Completed',
 };
 
-function formatMoney(amount: string) {
-  return `KES ${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('en-KE', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -94,7 +93,7 @@ export function ClientPaymentHistoryPage() {
                   </div>
                   <div className="flex items-center gap-2 text-right">
                     <BanknotesIcon className="h-5 w-5 text-primary-500" />
-                    <span className="text-sm font-bold text-gray-900">{formatMoney(payment.amount)}</span>
+                    <span className="text-sm font-bold text-gray-900">{formatMoney(payment.amount, payment.currency)}</span>
                   </div>
                 </div>
               </article>

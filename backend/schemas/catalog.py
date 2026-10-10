@@ -41,6 +41,7 @@ class CatalogProductUpdate(BaseModel):
 
 
 class SellableUnitUpdate(BaseModel):
+    display_label: Optional[str] = Field(default=None, min_length=1, max_length=32)
     unit: Optional[str] = Field(default=None, min_length=1, max_length=32)
     package_quantity: Optional[Decimal] = Field(default=None, gt=0, max_digits=12, decimal_places=3)
     is_active: Optional[bool] = None
@@ -51,6 +52,9 @@ class SellableUnitRead(CamelModel):
     catalog_product_id: str
     sku_code: str
     unit: str
+    display_label: Optional[str] = None
+    base_price: Optional[Decimal] = None
+    pricing_revision: int = 0
     package_quantity: Decimal
     is_active: bool
     created_at: datetime

@@ -19,7 +19,7 @@ import { useParams, Link } from 'react-router-dom';
 import { PrinterIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { getClientReceipt, getCashierReceipt } from '@/services/declarationService';
 import { sanitizePrintError } from '@/utils/printError';
-import { formatKes, formatPrintDate } from '@/utils/printFormat';
+import { formatMoney, formatPrintDate } from '@/utils/printFormat';
 import type { ReceiptPrintView } from '@/types/print';
 
 interface ReceiptPrintPageProps {
@@ -132,10 +132,10 @@ export function ReceiptPrintPage({ mode }: ReceiptPrintPageProps) {
             <dd className="text-gray-900">{doc.method}</dd>
             <dt className="text-gray-500">Amount received</dt>
             <dd className="text-gray-900" data-testid="receipt-confirmed-amount">
-              {formatKes(doc.confirmed_amount)}
+              {formatMoney(doc.confirmed_amount, doc.currency)}
             </dd>
             <dt className="text-gray-500">Declared amount</dt>
-            <dd className="text-gray-900">{formatKes(doc.declared_amount)}</dd>
+            <dd className="text-gray-900">{formatMoney(doc.declared_amount, doc.currency)}</dd>
             {doc.order_status && (
               <>
                 <dt className="text-gray-500">Order status</dt>
@@ -145,7 +145,7 @@ export function ReceiptPrintPage({ mode }: ReceiptPrintPageProps) {
             {doc.order_total_amount && (
               <>
                 <dt className="text-gray-500">Order total</dt>
-                <dd className="text-gray-900">{formatKes(doc.order_total_amount)}</dd>
+                <dd className="text-gray-900">{formatMoney(doc.order_total_amount, doc.currency)}</dd>
               </>
             )}
           </dl>

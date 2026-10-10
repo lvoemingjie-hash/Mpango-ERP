@@ -2390,6 +2390,103 @@ async def _require_alembic_revision(db, required_revision: str) -> str:
     return required_revision
 
 
+S1_COLUMN_TYPES = {
+    'skus': {'base_price': 'numeric(12,2)', 'pricing_revision': 'integer',
+             'display_label': 'character varying(32)'},
+    'orders': {'country_snapshot': 'character varying(2)', 'currency_snapshot': 'character varying(3)',
+               'registration_snapshot_id': 'uuid', 'creation_operation': 'character varying(32)',
+               'creation_key_digest': 'character varying(64)', 'creation_fingerprint': 'character varying(64)',
+               'quote_seen': 'jsonb', 'quote_resolved': 'jsonb', 'replaces_order_id': 'uuid'},
+    'order_items': {'package_quantity_snapshot': 'numeric(12,3)',
+                    'display_label_snapshot': 'character varying(32)'},
+}
+
+S1_CONSTRAINT_DEFINITIONS = {
+    'ck_skus_base_price_positive': 'CHECK (((base_price IS NULL) OR (base_price > (0)::numeric)))',
+    'ck_skus_pricing_revision': 'CHECK ((pricing_revision >= 0))',
+    'ck_orders_s1_currency': "CHECK (((currency_snapshot IS NULL) OR ((currency_snapshot)::text = ANY ((ARRAY['KES'::character varying, 'UGX'::character varying])::text[]))))",
+    'ck_orders_creation_intent': 'CHECK ((((creation_key_digest IS NULL) AND (creation_fingerprint IS NULL) AND (creation_operation IS NULL)) OR ((creation_key_digest IS NOT NULL) AND (creation_fingerprint IS NOT NULL) AND (creation_operation IS NOT NULL) AND (created_by IS NOT NULL) AND (currency_snapshot IS NOT NULL))))',
+    'orders_replaces_order_id_fkey': 'FOREIGN KEY (replaces_order_id) REFERENCES orders(id) ON DELETE RESTRICT',
+}
+
+
+async def _assert_s1_pricing_contract(db, ts: str) -> None:
+    """Read-only S1 types and durable intent/price constraint checks."""
+    from sqlalchemy import text
+    rows = (await db.execute(text(
+        'SELECT c.relname, a.attname, format_type(a.atttypid,a.atttypmod) AS typ, '
+        'a.attnotnull,pg_get_expr(d.adbin,d.adrelid) AS default_value '
+        'FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid '
+        'JOIN pg_namespace n ON n.oid=c.relnamespace '
+        'LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum '
+        'WHERE n.nspname=:s AND a.attnum>0 AND NOT a.attisdropped'
+    ), {'s': ts})).mappings().all()
+    actual = {(r['relname'], r['attname']): r['typ'] for r in rows}
+    shapes = {(r['relname'], r['attname']): (r['attnotnull'], r['default_value']) for r in rows}
+    for table, columns in S1_COLUMN_TYPES.items():
+        for name, typ in columns.items():
+            if actual.get((table, name)) != typ:
+                raise RuntimeError('S1_SCHEMA_COLUMN_MISMATCH')
+            expected_shape = (True, '0') if name == 'pricing_revision' else (False, None)
+            if shapes[(table, name)] != expected_shape:
+                raise RuntimeError('S1_SCHEMA_COLUMN_SHAPE_MISMATCH')
+    constraints = dict((await db.execute(text(
+        'SELECT conname,pg_get_constraintdef(c.oid) FROM pg_constraint c '
+        'JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname=:s'
+    ), {'s': ts})).all())
+    for name, definition in S1_CONSTRAINT_DEFINITIONS.items():
+        observed = constraints.get(name, '').replace('"', '').replace(ts + '.', '')
+        if observed != definition:
+            raise RuntimeError('S1_SCHEMA_CONSTRAINT_MISMATCH')
+    for name, columns, predicate in (
+        ('ux_orders_creation_intent', ['wholesaler_id','retailer_id','created_by',
+                                      'creation_operation','creation_key_digest'], 'creation_key_digest IS NOT NULL'),
+        ('ux_orders_replacement', ['replaces_order_id'], 'replaces_order_id IS NOT NULL'),
+    ):
+        row = (await db.execute(text(
+            'SELECT i.indisunique, i.indisvalid, pg_get_expr(i.indpred,i.indrelid) AS predicate, '
+            'ARRAY(SELECT a.attname::text FROM unnest(i.indkey) WITH ORDINALITY k(num,ord) '
+            'JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.num ORDER BY k.ord) AS columns '
+            'FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid '
+            'JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=:s AND c.relname=:name'
+        ), {'s': ts, 'name': name})).mappings().one_or_none()
+        if (row is None or not row['indisunique'] or not row['indisvalid']
+                or row['columns'] != columns or (row['predicate'] or '').strip('()') != predicate):
+            raise RuntimeError('S1_SCHEMA_INTENT_INDEX_MISMATCH')
+
+
+async def _reconcile_s1_pricing(db, ts: str) -> None:
+    """Fresh tenant DDL only; never repair a populated divergent 040 schema."""
+    from sqlalchemy import text
+    existing = (await db.execute(text(
+        "SELECT a.attname FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid "
+        "JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=:s "
+        "AND c.relname='skus' AND a.attnum>0 AND NOT a.attisdropped"
+    ), {'s': ts})).scalars().all()
+    if 'base_price' in existing:
+        await _assert_s1_pricing_contract(db, ts)
+        return
+    q = '"' + ts + '"'
+    retained = (await db.execute(text(
+        f'SELECT (SELECT count(*) FROM {q}.skus) + (SELECT count(*) FROM {q}.orders) '
+        f'+ (SELECT count(*) FROM {q}.order_items)'))).scalar_one()
+    if retained:
+        raise RuntimeError('S1_POPULATED_SCHEMA_REQUIRES_MIGRATION')
+    # Frozen independently from migration 040: no runtime/historical import.
+    statements = (
+        'ALTER TABLE {q}.skus ADD COLUMN base_price NUMERIC(12,2), ADD COLUMN pricing_revision INTEGER NOT NULL DEFAULT 0, ADD COLUMN display_label VARCHAR(32)',
+        'ALTER TABLE {q}.skus ADD CONSTRAINT ck_skus_base_price_positive CHECK (base_price IS NULL OR base_price > 0), ADD CONSTRAINT ck_skus_pricing_revision CHECK (pricing_revision >= 0)',
+        'ALTER TABLE {q}.orders ADD COLUMN country_snapshot VARCHAR(2), ADD COLUMN currency_snapshot VARCHAR(3), ADD COLUMN registration_snapshot_id UUID, ADD COLUMN creation_operation VARCHAR(32), ADD COLUMN creation_key_digest VARCHAR(64), ADD COLUMN creation_fingerprint VARCHAR(64), ADD COLUMN quote_seen JSONB, ADD COLUMN quote_resolved JSONB, ADD COLUMN replaces_order_id UUID REFERENCES {q}.orders(id) ON DELETE RESTRICT',
+        "ALTER TABLE {q}.orders ADD CONSTRAINT ck_orders_s1_currency CHECK (currency_snapshot IS NULL OR currency_snapshot IN ('KES','UGX')), ADD CONSTRAINT ck_orders_creation_intent CHECK ((creation_key_digest IS NULL AND creation_fingerprint IS NULL AND creation_operation IS NULL) OR (creation_key_digest IS NOT NULL AND creation_fingerprint IS NOT NULL AND creation_operation IS NOT NULL AND created_by IS NOT NULL AND currency_snapshot IS NOT NULL))",
+        'CREATE UNIQUE INDEX ux_orders_creation_intent ON {q}.orders (wholesaler_id, retailer_id, created_by, creation_operation, creation_key_digest) WHERE creation_key_digest IS NOT NULL',
+        'CREATE UNIQUE INDEX ux_orders_replacement ON {q}.orders (replaces_order_id) WHERE replaces_order_id IS NOT NULL',
+        'ALTER TABLE {q}.order_items ADD COLUMN package_quantity_snapshot NUMERIC(12,3), ADD COLUMN display_label_snapshot VARCHAR(32)',
+    )
+    for statement in statements:
+        await db.execute(text(statement.format(q=q)))
+    await _assert_s1_pricing_contract(db, ts)
+
+
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
     """Create tenant schema and all required tables."""
     from sqlalchemy import text
@@ -2428,7 +2525,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # C5 deployment-order gate (Order stream): refuse BEFORE creating ANY
         # tenant object.
-        await _require_alembic_revision(db, "039_order_credit_holds")
+        await _require_alembic_revision(db, "040_s1_pricing_quote_contract")
 
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))
@@ -2814,6 +2911,8 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # --- SKU-M1: reconcile bootstrap-only tenants that Alembic cannot see ---
         await _reconcile_catalog_identity(db, ts)
+
+        await _reconcile_s1_pricing(db, ts)
 
         await db.commit()
 

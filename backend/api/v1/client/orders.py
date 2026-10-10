@@ -70,6 +70,10 @@ from services.print_service import build_order_print
 
 router = APIRouter()
 
+from schemas.pricing_quote import QuoteRequest
+from services.pricing_quote_service import build_quote, quote_view
+from services.order_creation_service import assert_binding, submit_draft
+
 
 # ---------------------------------------------------------------------------
 # Helper: Convert Order ORM → ClientOrderView
@@ -84,6 +88,8 @@ def _order_to_client_view(order) -> ClientOrderView:
             identity_status=item.identity_status,
             sku_code=item.sku_code,
             unit_snapshot=item.unit_snapshot,
+            package_quantity_snapshot=item.package_quantity_snapshot,
+            display_label_snapshot=item.display_label_snapshot,
             quantity=item.quantity,
             unit_price=item.unit_price,
             subtotal=item.subtotal,
@@ -99,6 +105,10 @@ def _order_to_client_view(order) -> ClientOrderView:
         notes=order.notes,
         items=items,
         created_at=order.created_at,
+        currency=order.currency_snapshot,
+        country=order.country_snapshot,
+        currency_status="KNOWN" if order.currency_snapshot else "LEGACY_CURRENCY_UNVERIFIED",
+        replaces_order_id=str(order.replaces_order_id) if order.replaces_order_id else None,
     )
 
 
@@ -106,141 +116,59 @@ def _order_to_client_view(order) -> ClientOrderView:
 # POST /client/orders — Create order (retailer_id from JWT, NOT request)
 # ---------------------------------------------------------------------------
 
+@router.post("/quote", response_model=DataResponse[dict])
+async def preview_order_quote(
+    request: QuoteRequest,
+    client: ClientIdentity = Depends(resolve_client_identity),
+    _perm: TokenPayload = Depends(RequirePermission("client:orders:create")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+):
+    if request.retailer_id is not None:
+        raise HTTPException(400, detail={"code": "QUOTE_CONTEXT_CHANGED", "message": "Retailer comes from your identity"})
+    await assert_binding(db, client.tenant_id, client.retailer_id)
+    payload = await build_quote(db, wholesaler_id=client.tenant_id, retailer_id=client.retailer_id,
+                                actor_id=client.user_id, operation="client-create",
+                                items=[item.model_dump() for item in request.items])
+    return DataResponse(success=True, data=quote_view(payload), timestamp=datetime.utcnow())
+
+
 @router.post("", response_model=DataResponse[ClientOrderView], status_code=status.HTTP_201_CREATED)
 async def create_order(
     request: ClientCreateOrderRequest,
     client: ClientIdentity = Depends(resolve_client_identity),
     _perm: TokenPayload = Depends(RequirePermission("client:orders:create")),
     db: AsyncSession = Depends(get_tenant_db_session),
+    idempotency_key: Optional[str] = Header(None, alias="X-Idempotency-Key"),
 ):
-    """
-    Create an order on behalf of the authenticated retailer.
-
-    Security: retailer_id is derived from the authenticated user's
-    server-side identity resolution. It is NEVER accepted from the
-    request body. Any attempt to inject a foreign retailer_id is
-    structurally impossible.
-
-    DC-12R1-S3-S1: requires the ``client:orders:create`` permission. MVP
-    create authority also covers cancellation of the retailer's own
-    DRAFT/CONFIRMED order (no separate cancel permission in this slice).
-    """
-    # Validate all SKUs exist, are active, and have stock
-    sku_codes = [item.sku_code for item in request.items if item.sku_code]
-    sku_ids = [item.sellable_unit_id for item in request.items if item.sellable_unit_id]
-    placeholders = ", ".join([f":sku_{i}" for i in range(len(sku_codes))])
-    sku_params = {f"sku_{i}": code for i, code in enumerate(sku_codes)}
-    id_placeholders = ", ".join([f":sku_id_{i}" for i in range(len(sku_ids))])
-    sku_params.update({f"sku_id_{i}": value for i, value in enumerate(sku_ids)})
-    selectors = []
-    if placeholders:
-        selectors.append(f"s.sku_code IN ({placeholders})")
-    if id_placeholders:
-        selectors.append(f"s.id::text IN ({id_placeholders})")
-    selector_sql = " OR ".join(selectors)
-
-    sku_sql = f"""
-        SELECT
-            s.id AS sku_id,
-            s.sku_code,
-            p.name,
-            s.unit,
-            (s.is_active AND p.is_active) AS is_active,
-            COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand,
-            rp.price AS sell_price
-        FROM skus s
-        JOIN catalog_products p ON p.id = s.catalog_product_id AND p.is_deleted IS NOT TRUE
-        LEFT JOIN inventory_stocks i ON i.sku_id = s.id AND i.is_deleted IS NOT TRUE
-        LEFT JOIN retailer_prices rp
-            ON rp.sku_id = s.id
-            AND rp.retailer_id = :retailer_id
-            AND rp.is_deleted IS NOT TRUE
-        WHERE ({selector_sql})
-          AND s.is_deleted IS NOT TRUE
-    """
-    sku_params["retailer_id"] = client.retailer_id
-    result = await db.execute(text(sku_sql), sku_params)
-    sku_rows = {row.sku_code: row for row in result.fetchall()}
-    sku_rows_by_id = {str(row.sku_id): row for row in sku_rows.values()}
-
-    # Validate each requested item and resolve server-side pricing
-    errors = []
-    order_items = []
-    for item in request.items:
-        by_id = sku_rows_by_id.get(item.sellable_unit_id) if item.sellable_unit_id else None
-        by_code = sku_rows.get(item.sku_code) if item.sku_code else None
-        if item.sellable_unit_id and item.sku_code:
-            if by_id is None or by_code is None or by_id.sku_id != by_code.sku_id:
-                errors.append("Sellable unit ID does not match SKU code")
-                continue
-        sku_row = by_id or by_code
-        selector = item.sku_code or item.sellable_unit_id
-        if sku_row is None:
-            errors.append(f"Product '{selector}' not found")
-            continue
-        if not sku_row.is_active:
-            errors.append(f"Product '{selector}' is no longer available")
-            continue
-        qty_available = float(sku_row.quantity_on_hand)
-        if qty_available < item.quantity:
-            errors.append(
-                f"Insufficient stock for '{selector}': "
-                f"requested {item.quantity}, available {int(qty_available)}"
-            )
-            continue
-
-        # P0: Price is resolved server-side from retailer_prices, NEVER from client
-        if sku_row.sell_price is None:
-            errors.append(
-                f"No price configured for '{selector}'. "
-                f"Please contact your supplier."
-            )
-            continue
-
-        resolved_price = Decimal(str(sku_row.sell_price))
-
-        if resolved_price <= 0:
-            errors.append(
-                f"Invalid price for '{selector}'. "
-                f"Please contact your supplier."
-            )
-            continue
-
-        order_items.append({
-            "sellable_unit_id": sku_row.sku_id,
-            "product_name": sku_row.name,
-            "sku_code": sku_row.sku_code,
-            "unit_snapshot": sku_row.unit,
-            "quantity": item.quantity,
-            "unit_price": resolved_price,
-        })
-
-    if errors:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "ORDER_VALIDATION_FAILED",
-                "message": "Some items cannot be ordered",
-                "errors": errors,
-            },
-        )
-
-    # Create order — retailer_id is from server-side resolution
-    order = await crud_create_order(
-        db=db,
-        wholesaler_id=client.tenant_id,
-        retailer_id=client.retailer_id,  # P0: NEVER from request
-        items=order_items,
-        notes=request.notes,
-        created_by=client.user_id,
+    order, replayed = await submit_draft(
+        db, wholesaler_id=client.tenant_id, retailer_id=client.retailer_id,
+        actor_id=client.user_id, operation="client-create",
+        items=[item.model_dump() for item in request.items], notes=request.notes,
+        quote_token=request.quote_token, idempotency_key=idempotency_key,
     )
+    return DataResponse(success=True, data=_order_to_client_view(order),
+                        message="Existing draft replayed" if replayed else "Order submitted successfully",
+                        timestamp=datetime.utcnow())
 
-    return DataResponse(
-        success=True,
-        data=_order_to_client_view(order),
-        message="Order submitted successfully",
-        timestamp=datetime.utcnow(),
+
+@router.post("/{order_id}/replace-draft", response_model=DataResponse[ClientOrderView],
+             status_code=status.HTTP_201_CREATED)
+async def replace_client_draft(
+    order_id: uuid.UUID,
+    request: ClientCreateOrderRequest,
+    client: ClientIdentity = Depends(resolve_client_identity),
+    _perm: TokenPayload = Depends(RequirePermission("client:orders:create")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+    idempotency_key: Optional[str] = Header(None, alias="X-Idempotency-Key"),
+):
+    order, _ = await submit_draft(
+        db, wholesaler_id=client.tenant_id, retailer_id=client.retailer_id,
+        actor_id=client.user_id, operation="client-create",
+        items=[item.model_dump() for item in request.items], notes=request.notes,
+        quote_token=request.quote_token, idempotency_key=idempotency_key, replaces_order_id=order_id,
     )
+    return DataResponse(success=True, data=_order_to_client_view(order),
+                        message="Old draft cancelled and replacement created", timestamp=datetime.utcnow())
 
 
 # ---------------------------------------------------------------------------
@@ -530,6 +458,8 @@ def _validate_declaration_idempotency_key(value: str | None) -> str:
 
 def _declaration_to_client_view(row) -> ClientDeclarationView:
     return ClientDeclarationView(
+        currency=row.get("currency_snapshot"),
+        currency_status="KNOWN" if row.get("currency_snapshot") else "LEGACY_CURRENCY_UNVERIFIED",
         id=str(row["id"]),
         order_id=str(row["order_id"]),
         declared_amount=row["declared_amount"],

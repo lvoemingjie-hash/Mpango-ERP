@@ -16,7 +16,7 @@ import { PrinterIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { clientOrderService } from '@/services/clientOrderService';
 import { orderService } from '@/services/orderService';
 import { sanitizePrintError } from '@/utils/printError';
-import { formatKes, formatPrintDate } from '@/utils/printFormat';
+import { formatMoney, formatPrintDate } from '@/utils/printFormat';
 import type { OrderPrintView } from '@/types/print';
 
 interface OrderPrintPageProps {
@@ -138,11 +138,11 @@ export function OrderPrintPage({ mode }: OrderPrintPageProps) {
             <tbody>
               {doc.items.map((item, idx) => (
                 <tr key={idx} className="border-b border-gray-100 align-top">
-                  <td className="py-2 pr-2 text-gray-900">{item.product_name}</td>
+                  <td className="py-2 pr-2 text-gray-900">{item.product_name} ({item.display_label_snapshot || item.unit_snapshot || "UNIT_UNVERIFIED"}; package {item.package_quantity_snapshot || "unknown"})</td>
                   <td className="py-2 px-2 font-mono text-xs text-gray-500">{item.sku_code}</td>
                   <td className="py-2 px-2 text-right text-gray-900">{item.quantity}</td>
-                  <td className="py-2 px-2 text-right text-gray-900">{formatKes(item.unit_price)}</td>
-                  <td className="py-2 pl-2 text-right text-gray-900">{formatKes(item.subtotal)}</td>
+                  <td className="py-2 px-2 text-right text-gray-900">{formatMoney(item.unit_price, doc.currency)}</td>
+                  <td className="py-2 pl-2 text-right text-gray-900">{formatMoney(item.subtotal, doc.currency)}</td>
                 </tr>
               ))}
             </tbody>
@@ -154,7 +154,7 @@ export function OrderPrintPage({ mode }: OrderPrintPageProps) {
               className="text-base font-bold text-gray-900"
               data-testid="order-print-total"
             >
-              {formatKes(doc.total_amount)}
+              {formatMoney(doc.total_amount, doc.currency)}
             </span>
           </div>
 

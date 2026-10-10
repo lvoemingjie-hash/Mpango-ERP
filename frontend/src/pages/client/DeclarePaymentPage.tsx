@@ -1,6 +1,7 @@
 /** Retailer payment declaration submission (DC-12R1-S3-S2B-I2B). */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { clientOrderService } from '@/services/clientOrderService';
 import { submitDeclaration } from '@/services/declarationService';
 
 /**
@@ -29,6 +30,11 @@ function neutralDeclarationError(err: unknown): string {
 export default function DeclarePaymentPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
+  const [currency, setCurrency] = useState<string | null>(null);
+  useEffect(() => {
+    if (orderId) clientOrderService.getById(orderId).then(res => setCurrency(res.data.data.currency || null))
+      .catch(() => setCurrency(null));
+  }, [orderId]);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<'cash' | 'transfer'>('cash');
   const [transferRef, setTransferRef] = useState('');
@@ -82,8 +88,8 @@ export default function DeclarePaymentPage() {
       <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow p-6 space-y-4">
         {error && <div className="bg-red-50 text-red-700 text-sm p-3 rounded">{error}</div>}
         <div>
-          <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">Amount (KES)</label>
-          <input id="amount" type="number" step="0.01" min="0.01" required value={amount} onChange={e => setAmount(e.target.value)}
+          <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">Amount ({currency || "LEGACY_CURRENCY_UNVERIFIED"})</label>
+          <input id="amount" type="number" step={currency === "UGX" ? "1" : "0.01"} min={currency === "UGX" ? "1" : "0.01"} required value={amount} onChange={e => setAmount(e.target.value)}
             className="w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
         </div>
         <div>

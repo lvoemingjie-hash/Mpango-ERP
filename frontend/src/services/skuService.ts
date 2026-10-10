@@ -8,6 +8,9 @@ export interface SKU {
   name: string;
   description: string | null;
   unit: string;
+  display_label?: string | null;
+  base_price?: string | null;
+  pricing_revision?: number;
   package_quantity: number;
   category: string | null;
   is_active: boolean;
@@ -27,6 +30,7 @@ export interface SKUCreateRequest {
 }
 
 export interface SKUUpdateRequest {
+  display_label?: string | null;
   name?: string;
   description?: string;
   unit?: string;

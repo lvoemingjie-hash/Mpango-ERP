@@ -16,6 +16,7 @@ from repositories.inventory_repository import InventoryRepository
 from schemas.catalog import CatalogProductCreate, CatalogProductUpdate, SellableUnitCreate, SellableUnitUpdate
 from services.package_identity import (
     ensure_package_quantity_change_allowed,
+    ensure_unit_definition_change_allowed,
     lock_sku_row,
     package_quantity_changed,
 )
@@ -220,10 +221,9 @@ class CatalogProductService:
             # Concurrently soft-deleted between precheck and lock.
             raise HTTPException(status_code=404, detail={"code": "SELLABLE_UNIT_NOT_FOUND", "message": "Sellable unit not found"})
         unit = locked
-        if package_quantity_changed(unit.package_quantity, updates.get("package_quantity")):
-            await ensure_package_quantity_change_allowed(
-                db, sku=unit, new_package_quantity=updates["package_quantity"]
-            )
+        await ensure_unit_definition_change_allowed(
+            db, sku=unit, new_unit=updates.get('unit'),
+            new_package_quantity=updates.get('package_quantity'))
         for field, value in updates.items():
             setattr(unit, field, value)
         unit.updated_by = actor_id

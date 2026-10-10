@@ -10,4 +10,7 @@ export const pricingService = {
 
   setPrice: (data: SetPriceRequest) =>
     api.put<ApiResponse<SetPriceResponse>>('/pricing/prices', data),
+
+  setBasePrice: (skuId: string, price: string, expected_revision: number) =>
+    api.put(`/pricing/base-prices/${skuId}`, { price, expected_revision }),
 };

@@ -22,6 +22,7 @@ export function AddSellableUnitModal({
 }: AddSellableUnitModalProps) {
   const [skuCode, setSkuCode] = useState('');
   const [unit, setUnit] = useState('unit');
+  const [displayLabel, setDisplayLabel] = useState('');
   const [packageQuantity, setPackageQuantity] = useState(1);
   const [isActive, setIsActive] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -30,6 +31,7 @@ export function AddSellableUnitModal({
     if (isOpen) {
       setSkuCode(sellableUnit?.sku_code || '');
       setUnit(sellableUnit?.unit || 'unit');
+      setDisplayLabel(sellableUnit?.display_label || '');
       setPackageQuantity(sellableUnit?.package_quantity ?? 1);
       setIsActive(sellableUnit?.is_active ?? true);
     }
@@ -43,14 +45,15 @@ export function AddSellableUnitModal({
     try {
       if (sellableUnit) {
         await catalogProductService.updateSellableUnit(product.id, sellableUnit.id, {
-          unit: unit.trim(),
+          unit,
+          display_label: displayLabel || unit,
           package_quantity: packageQuantity,
           is_active: isActive,
         });
       } else {
         await catalogProductService.addSellableUnit(product.id, {
           sku_code: skuCode.trim(),
-          unit: unit.trim(),
+          unit,
           package_quantity: packageQuantity,
           is_active: isActive,
         });
@@ -101,6 +104,14 @@ export function AddSellableUnitModal({
                 <input id="package-unit" required value={unit} onChange={(event) => setUnit(event.target.value)} className="mt-1 block w-full rounded-md border-gray-300 sm:text-sm" />
               </div>
             </div>
+            <div className="flex items-center">
+              {sellableUnit && <div className="w-full">
+                <label htmlFor="package-display-label" className="text-sm font-medium">Display label (does not change unit definition)</label>
+                <input id="package-display-label" maxLength={32} value={displayLabel}
+                  onChange={event => setDisplayLabel(event.target.value)} className="block w-full rounded-md border-gray-300" />
+              </div>}
+            </div>
+            <p className="text-xs text-gray-600">Unit is a case-sensitive identity. After use, a real definition or pack change requires a new SKU.</p>
             <div className="flex items-center">
               <input
                 id="package-active"

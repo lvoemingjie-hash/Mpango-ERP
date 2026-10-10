@@ -42,7 +42,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { PrinterIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { getRetailerStatementPrint, getSupplierStatementPrint } from '@/services/statementService';
 import { sanitizePrintError } from '@/utils/printError';
-import { formatKes, formatPrintDate, eatDefaultRange } from '@/utils/printFormat';
+import { formatMoney, formatPrintDate, eatDefaultRange } from '@/utils/printFormat';
 import type { StatementPrintView } from '@/types/statement';
 
 interface StatementPrintPageProps {
@@ -184,7 +184,7 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
                 className="mt-1 text-base font-bold text-gray-900"
                 data-testid="statement-opening-balance"
               >
-                {formatKes(doc.opening_balance)}
+                {formatMoney(doc.opening_balance, doc.currency)}
               </dd>
             </div>
             <div className="rounded-lg bg-gray-50 p-3">
@@ -193,7 +193,7 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
                 className="mt-1 text-base font-bold text-gray-900"
                 data-testid="statement-charge-total"
               >
-                {formatKes(doc.charge_total)}
+                {formatMoney(doc.charge_total, doc.currency)}
               </dd>
             </div>
             <div className="rounded-lg bg-gray-50 p-3">
@@ -202,7 +202,7 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
                 className="mt-1 text-base font-bold text-gray-900"
                 data-testid="statement-collection-total"
               >
-                {formatKes(doc.collection_total)}
+                {formatMoney(doc.collection_total, doc.currency)}
               </dd>
             </div>
             <div className="rounded-lg bg-gray-50 p-3">
@@ -211,7 +211,7 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
                 className="mt-1 text-base font-bold text-gray-900"
                 data-testid="statement-net-movement"
               >
-                {formatKes(doc.net_movement)}
+                {formatMoney(doc.net_movement, doc.currency)}
               </dd>
             </div>
             <div className="rounded-lg bg-gray-50 p-3">
@@ -220,7 +220,7 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
                 className="mt-1 text-base font-bold text-gray-900"
                 data-testid="statement-settled-total"
               >
-                {formatKes(doc.settled_total)}
+                {formatMoney(doc.settled_total, doc.currency)}
               </dd>
             </div>
             <div className="rounded-lg bg-primary-50 p-3">
@@ -229,7 +229,7 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
                 className="mt-1 text-base font-bold text-primary-900"
                 data-testid="statement-closing-balance"
               >
-                {formatKes(doc.closing_balance)}
+                {formatMoney(doc.closing_balance, doc.currency)}
               </dd>
             </div>
           </dl>
@@ -274,7 +274,7 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
                         {shortRef(m.reference_id)}
                       </td>
                       <td className="py-2 pl-2 text-right text-gray-900">
-                        {formatKes(m.display_amount)}
+                        {formatMoney(m.display_amount, doc.currency)}
                       </td>
                     </tr>
                   ))}
@@ -316,7 +316,7 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
                       <td className="py-2 px-2 text-gray-700">{p.method}</td>
                       <td className="py-2 px-2 text-gray-700">{p.receipt_number || '—'}</td>
                       <td className="py-2 pl-2 text-right text-gray-900">
-                        {formatKes(p.amount)}
+                        {formatMoney(p.amount, doc.currency)}
                       </td>
                     </tr>
                   ))}
@@ -361,7 +361,7 @@ export function StatementPrintPage({ mode }: StatementPrintPageProps) {
                       <td className="py-2 px-2 text-gray-700">{d.transfer_reference || '—'}</td>
                       <td className="py-2 px-2 text-gray-700">{d.status}</td>
                       <td className="py-2 pl-2 text-right text-gray-900">
-                        {formatKes(d.declared_amount)}
+                        {formatMoney(d.declared_amount, doc.currency)}
                       </td>
                     </tr>
                   ))}

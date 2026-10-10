@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { formatMoney } from '@/utils/printFormat';
 import { orderService } from '@/services/orderService';
 import type { PayOrderData } from '@/services/orderService';
 import { financeService } from '@/services/financeService';
@@ -44,7 +45,7 @@ export function calculatePaymentModalState(order: Order, payments: PaymentData[]
   }
 
   return {
-    remainingAmount: Math.max(order.total_amount - collectionTotal, 0),
+    remainingAmount: Math.max(Number(order.total_amount) - collectionTotal, 0),
     allowCreditSale: collectionTotal === 0 && order.status !== 'paid',
   };
 }
@@ -426,10 +427,14 @@ export function OrderListPage() {
                     <StatusBadge status={o.status} />
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    KES {o.total_amount.toLocaleString()}
+                    {formatMoney(o.total_amount, o.currency)}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
                     <div className="flex justify-end gap-2">
+                      {o.status === 'draft' && hasCreatePermission && hasUpdatePermission && <Link
+                        className="text-amber-700" to={`/orders/create?replace=${o.id}&retailer=${o.retailer_id}`}>
+                        Review quote / replace draft
+                      </Link>}
                       {canConfirm(o.status) && (
                         <button
                           onClick={() => handleConfirm(o.id)}
@@ -517,8 +522,8 @@ export function OrderListPage() {
           }}
           onSubmit={handlePaySubmit}
           orderId={payModalOrder.id}
-          orderTotal={payModalOrder.total_amount}
-          remainingAmount={payRemaining ?? payModalOrder.total_amount}
+          orderTotal={Number(payModalOrder.total_amount)}
+          remainingAmount={payRemaining ?? Number(payModalOrder.total_amount)}
           allowCreditSale={payAllowCreditSale}
           loading={actionLoading === payModalOrder.id}
         />

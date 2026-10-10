@@ -168,7 +168,7 @@ export function SKUListPage() {
                         </div>
                         <div>
                           <p className="text-xs text-gray-500">Pack size</p>
-                          <p className="text-sm text-gray-900">{unit.package_quantity} {unit.unit}</p>
+                          <p className="text-sm text-gray-900">{unit.display_label || unit.unit} (definition {unit.unit}; package {unit.package_quantity})</p>
                         </div>
                         <div>
                           <p className="text-xs text-gray-500">Availability</p>

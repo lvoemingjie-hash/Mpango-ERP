@@ -61,7 +61,13 @@ class ClientSellableUnitOption(BaseModel):
     sku_code: str
     unit: str
     package_quantity: Decimal
-    price: Optional[Decimal] = Field(None, description="Retailer-specific selling price (null if not priced)")
+    price: Optional[str] = Field(None, description="Exact effective price; unavailable until base is complete")
+    base_price: Optional[str] = None
+    price_source: Optional[str] = None
+    currency: Optional[str] = None
+    unorderable_reason: Optional[str] = None
+    display_label: Optional[str] = None
+    pricing_revision: int = 0
     in_stock: bool
     stock_level: StockLevel
     can_order: bool = Field(..., description="True if in stock AND priced for this retailer")
@@ -132,8 +138,10 @@ class ClientOrderItemRequest(BaseModel):
 
 class ClientCreateOrderRequest(BaseModel):
     """Order creation request — retailer_id is NOT here (derived from JWT)."""
-    items: List[ClientOrderItemRequest] = Field(..., min_length=1)
-    notes: Optional[str] = None
+    items: List[ClientOrderItemRequest] = Field(..., min_length=1, max_length=100)
+    notes: Optional[str] = Field(None, max_length=1000)
+    quote_token: str = Field(..., min_length=1, max_length=100000)
+    model_config = {'extra': 'forbid'}
 
 
 class ClientOrderItemView(BaseModel):
@@ -143,6 +151,8 @@ class ClientOrderItemView(BaseModel):
     identity_status: str = "legacy"
     sku_code: str
     unit_snapshot: Optional[str] = None
+    package_quantity_snapshot: Optional[Decimal] = None
+    display_label_snapshot: Optional[str] = None
     quantity: int
     unit_price: Decimal
     subtotal: Decimal
@@ -159,6 +169,10 @@ class ClientOrderView(BaseModel):
     notes: Optional[str] = None
     items: List[ClientOrderItemView] = []
     created_at: datetime
+    currency: Optional[str] = None
+    country: Optional[str] = None
+    currency_status: str = 'LEGACY_CURRENCY_UNVERIFIED'
+    replaces_order_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -168,6 +182,8 @@ class ClientOrderView(BaseModel):
 # ---------------------------------------------------------------------------
 
 class ClientPaymentView(BaseModel):
+    currency: Optional[str] = None
+    currency_status: str = "LEGACY_CURRENCY_UNVERIFIED"
     """Retailer-safe payment history row."""
     id: str
     order_id: str
@@ -180,6 +196,8 @@ class ClientPaymentView(BaseModel):
 
 
 class ClientFinanceBalanceView(BaseModel):
+    currency: Optional[str] = None
+    currency_status: str = 'LEGACY_CURRENCY_UNVERIFIED'
     """Retailer-safe authoritative outstanding balance view."""
     outstanding_balance: Decimal
     has_outstanding_balance: bool

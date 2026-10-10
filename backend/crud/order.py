@@ -306,6 +306,8 @@ async def create_order(
             product_name=item["product_name"],
             sku_code=item["sku_code"],
             unit_snapshot=item["unit_snapshot"],
+            package_quantity_snapshot=item.get("package_quantity_snapshot"),
+            display_label_snapshot=item.get("display_label_snapshot"),
             quantity=quantity,
             unit_price=unit_price,
             subtotal=subtotal,

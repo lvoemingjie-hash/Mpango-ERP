@@ -224,3 +224,23 @@ async def ensure_package_quantity_change_allowed(
             "package_quantity changes require the price retirement/"
             "re-confirmation workflow — create a new sellable unit instead",
         )
+
+    if sku.base_price is not None:
+        raise _conflict(CODE_REPRICE_REQUIRED, 'Configured base price requires a new or explicitly repriced unit')
+
+
+async def ensure_unit_definition_change_allowed(db, *, sku, new_unit, new_package_quantity):
+    changed = new_unit is not None and new_unit != sku.unit
+    if not changed:
+        await ensure_package_quantity_change_allowed(db, sku=sku,
+                                                     new_package_quantity=new_package_quantity)
+        return
+    if await has_identity_use_history(db, sku_id=sku.id, sku_code=sku.sku_code):
+        raise _conflict(CODE_IMMUTABLE_AFTER_USE, 'Used unit definition is immutable; create a new SKU')
+    rows = (await db.execute(text(
+        'SELECT price FROM retailer_prices WHERE sku_id=:sid AND is_deleted IS FALSE'
+    ), {'sid': sku.id})).all()
+    if any(row.price is None or not Decimal(str(row.price)).is_finite() or row.price <= 0 for row in rows):
+        raise _conflict(CODE_PRICE_DATA_INTEGRITY_RED, 'Configured price is invalid')
+    if rows or sku.base_price is not None:
+        raise _conflict(CODE_REPRICE_REQUIRED, 'Unit definition change requires explicit repricing or a new SKU')

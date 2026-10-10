@@ -2,10 +2,17 @@ import { api } from '@/services/api';
 import type { ApiResponse, PaginatedData } from '@/types/api';
 import type { ClientOrder, CreateOrderRequest } from '@/types/client';
 import type { OrderPrintView } from '@/types/print';
+import type { ServerQuote } from '@/types/pricing';
 
 export const clientOrderService = {
-  create: (data: CreateOrderRequest) =>
-    api.post<ApiResponse<ClientOrder>>('/client/orders', data),
+  preview: (data: Omit<CreateOrderRequest, 'quote_token' | 'notes'>) =>
+    api.post<ApiResponse<ServerQuote>>('/client/orders/quote', data),
+
+  create: (data: CreateOrderRequest, key: string) =>
+    api.post<ApiResponse<ClientOrder>>('/client/orders', data, { headers: { 'X-Idempotency-Key': key } }),
+
+  replaceDraft: (id: string, data: CreateOrderRequest, key: string) =>
+    api.post<ApiResponse<ClientOrder>>(`/client/orders/${id}/replace-draft`, data, { headers: { 'X-Idempotency-Key': key } }),
 
   getAll: (page = 1, size = 20, status?: string) =>
     api.get<ApiResponse<PaginatedData<ClientOrder>>>('/client/orders', {

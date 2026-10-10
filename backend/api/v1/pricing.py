@@ -76,6 +76,7 @@ async def list_retailer_prices(
         override = None if row["retired"] else row["override_price"]
         value, origin, reason = effective_price(row["base_price"], override)
         rendered = {}
+        audit_price_issues = {}
         for name, amount in (("base_price", row["base_price"]),
                              ("override_price", row["override_price"]), ("price", value)):
             try:
@@ -84,7 +85,10 @@ async def list_retailer_prices(
                 # Retained incompatible prices must be visible for correction,
                 # but never become an orderable currency-rounded value.
                 rendered[name] = str(amount)
-                reason = exc.detail['code']
+                if name == 'override_price' and row['retired']:
+                    audit_price_issues[name] = exc.detail['code']
+                else:
+                    reason = exc.detail['code']
         items.append({
             "sku_id": str(row["id"]), "sku_code": row["sku_code"], "sku_name": row["name"],
             "retailer_id": str(retailer_id), "unit": row["unit"],
@@ -92,6 +96,7 @@ async def list_retailer_prices(
             "base_price": rendered['base_price'],
             "override_price": rendered['override_price'],
             "override_retired": bool(row["retired"]),
+            "audit_price_issues": audit_price_issues,
             "price": None if reason else rendered['price'],
             "price_source": origin, "unorderable_reason": reason,
             "currency": source.currency, "pricing_revision": row["pricing_revision"],
@@ -109,12 +114,12 @@ async def set_retailer_price(
     await assert_binding(db, token.tenant_id, request.retailer_id)
     source = await resolve_currency(db, token.tenant_id)
     record = await set_price(db, request.retailer_id, request.sku_id,
-                             money(request.price, source.currency),
+                             Decimal(request.price),
                              updated_by=UUID(token.user_id),
                              expected_revision=request.expected_revision, retire=request.retire)
     return DataResponse(success=True, data={
         "sku_id": str(request.sku_id), "retailer_id": str(request.retailer_id),
-        "price": amount_string(record.price, source.currency),
+        "price": str(record.price) if request.retire else amount_string(record.price, source.currency),
         "action": "retired" if request.retire else "saved",
     }, timestamp=datetime.utcnow())
 

@@ -110,16 +110,22 @@ def _encode(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b'=').decode('ascii')
 
 
+QUOTE_TOKEN_MAX_LENGTH = 100000
+
+
 def sign_quote(payload: dict) -> str:
     body = _encode(canonical_bytes(payload))
     signature = _encode(hmac.new(_key(), ('s1.' + body).encode('ascii'), hashlib.sha256).digest())
-    return 's1.' + body + '.' + signature
+    token = 's1.' + body + '.' + signature
+    if len(token) > QUOTE_TOKEN_MAX_LENGTH:
+        refuse('QUOTE_BUDGET_EXCEEDED', 'Select fewer lines before requesting consent', status=422)
+    return token
 
 
 def read_quote(token: str, *, check_expiry: bool = True) -> dict:
     bad = False
     try:
-        if not isinstance(token, str) or len(token) > 100000:
+        if not isinstance(token, str) or len(token) > QUOTE_TOKEN_MAX_LENGTH:
             raise ValueError()
         prefix, body, signature = token.split('.')
         expected = _encode(hmac.new(_key(), ('s1.' + body).encode('ascii'), hashlib.sha256).digest())

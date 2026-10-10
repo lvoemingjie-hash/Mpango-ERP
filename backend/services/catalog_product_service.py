@@ -18,6 +18,7 @@ from services.package_identity import (
     ensure_package_quantity_change_allowed,
     ensure_unit_definition_change_allowed,
     lock_sku_row,
+    lock_product_sku_rows,
     package_quantity_changed,
 )
 from services.sku_integrity import flush_skus_or_409
@@ -152,10 +153,14 @@ class CatalogProductService:
     ) -> CatalogProduct:
         product = await self.get_product(db, product_id=product_id)
         updates = request.model_dump(exclude_unset=True)
+        shared_metadata = bool({'name', 'description', 'category'} & updates.keys())
+        siblings = await lock_product_sku_rows(db, product_id=product.id) if shared_metadata else []
+        if shared_metadata:
+            await db.refresh(product)
         for field, value in updates.items():
             setattr(product, field, value)
         product.updated_by = actor_id
-        for unit in product.sellable_units:
+        for unit in siblings:
             if "name" in updates:
                 unit.name = product.name
             if "description" in updates:

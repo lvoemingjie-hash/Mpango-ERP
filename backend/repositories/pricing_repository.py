@@ -88,7 +88,7 @@ async def set_price(
     # a price committed before a repackaging attempt makes that attempt
     # return SKU_PACKAGE_QUANTITY_REPRICE_REQUIRED / 409; a repackaging
     # committed first means this price simply applies to the new package
-    # definition. No price rows are ever deleted or retired here.
+    # definition. Retirement changes state, never the retained price amount.
     # R2-R1: the lock's return is load-bearing — a SKU that is missing or
     # concurrently soft-deleted as of lock acquisition fails closed with the
     # structured Not Found semantics and ZERO price writes; this backstop
@@ -104,8 +104,6 @@ async def set_price(
     source = await resolve_currency(db)
     if expected_revision is not None and locked.pricing_revision != expected_revision:
         refuse('PRICE_VERSION_CONFLICT', 'Reload the price before editing')
-    price = money(price, source.currency)
-
     result = await db.execute(
         select(RetailerPrice)
         .where(
@@ -117,8 +115,17 @@ async def set_price(
     )
     existing = result.scalar_one_or_none()
 
+    if retire:
+        if existing is None:
+            refuse('PRICE_OVERRIDE_NOT_FOUND', 'There is no override to retire', status=404)
+        if Decimal(str(price)) != existing.price:
+            refuse('PRICE_RETIRE_AMOUNT_MISMATCH', 'Retirement must preserve the retained amount')
+    else:
+        price = money(price, source.currency)
+
     if existing:
-        existing.price = price
+        if not retire:
+            existing.price = price
         existing.is_deleted = retire
         existing.deleted_at = datetime.now(timezone.utc) if retire else None
         if updated_by:

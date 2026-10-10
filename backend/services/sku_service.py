@@ -14,6 +14,7 @@ from services.package_identity import (
     ensure_package_quantity_change_allowed,
     ensure_unit_definition_change_allowed,
     lock_sku_row,
+    lock_product_sku_rows,
     package_quantity_changed,
 )
 from services.sku_integrity import flush_skus_or_409
@@ -127,7 +128,10 @@ class SKUService:
         # row and take the LOCKED-FRESH instance for both the change decision
         # and the write below (never the pre-lock loaded object). A refused
         # request leaves zero data changes in this transaction.
-        locked = await lock_sku_row(db, sku_id=sku.id)
+        shared_metadata = any(value is not None for value in (name, description, category))
+        siblings = await lock_product_sku_rows(db, product_id=sku.catalog_product_id) if shared_metadata else []
+        locked = next((row for row in siblings if row.id == sku.id and not row.is_deleted), None) \
+            if shared_metadata else await lock_sku_row(db, sku_id=sku.id)
         if locked is None:
             # Concurrently soft-deleted between precheck and lock.
             raise HTTPException(
@@ -138,26 +142,25 @@ class SKUService:
         await ensure_unit_definition_change_allowed(
             db, sku=sku, new_unit=unit, new_package_quantity=package_quantity)
 
-        if name is not None:
-            sku.catalog_product.name = name
-        if description is not None:
-            sku.catalog_product.description = description
+        if shared_metadata:
+            await db.refresh(sku.catalog_product)
+            if name is not None:
+                sku.catalog_product.name = name
+            if description is not None:
+                sku.catalog_product.description = description
+            if category is not None:
+                sku.catalog_product.category = category
         if unit is not None:
             sku.unit = unit
         if display_label is not None:
             sku.display_label = display_label
         if package_quantity is not None:
             sku.package_quantity = package_quantity
-        if category is not None:
-            sku.catalog_product.category = category
         if is_active is not None:
             sku.is_active = is_active
-        # BC06-R1: the sibling sync must not trigger a lazy collection load —
-        # in the async session that raises MissingGreenlet (latent defect on
-        # the frozen base: this entry was never exercised against real PG).
-        # Load the units in an explicit awaited boundary instead.
-        await db.refresh(sku.catalog_product, ["sellable_units"])
-        for sibling in sku.catalog_product.sellable_units:
+        # Local edits must not touch sibling audit rows. Shared metadata uses
+        # the complete, globally ordered lock set acquired above.
+        for sibling in siblings:
             sibling.name = sku.catalog_product.name
             sibling.description = sku.catalog_product.description
             sibling.category = sku.catalog_product.category

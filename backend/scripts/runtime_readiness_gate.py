@@ -232,12 +232,12 @@ def evaluate_contract(database_url: str, tenant: str = "t_dev",
         engine = create_async_engine(normalize_async_url(database_url))
         try:
             async with engine.connect() as conn:
-                head = (await conn.execute(
-                    text("SELECT version_num FROM public.alembic_version")
-                )).scalar()
-                if head != REQUIRED_REVISION:
+                versions = list((await conn.execute(
+                    text("SELECT version_num FROM public.alembic_version ORDER BY version_num")
+                )).scalars())
+                if versions != [REQUIRED_REVISION]:
                     reason(
-                        f"migration head is {head!r}, requires exactly "
+                        f"migration heads are {versions!r}, requires exactly "
                         f"{REQUIRED_REVISION!r} - the five-stage setup has "
                         "not completed")
                     return

@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 import re
 from schemas.base import CamelModel
 from schemas.payment import PaymentMethod
+from services.pricing_quote_service import QUOTE_TOKEN_MAX_LENGTH
 
 
 # S2.5: Regex patterns for input validation
@@ -197,7 +198,7 @@ class WholesalerOrderCreateRequest(BaseModel):
         description="Order line items with stable sellable-unit identity"
     )
     notes: str | None = Field(None, max_length=1000, description="Order notes")
-    quote_token: str = Field(..., min_length=1, max_length=100000)
+    quote_token: str = Field(..., min_length=1, max_length=QUOTE_TOKEN_MAX_LENGTH)
 
     @field_validator("notes")
     @classmethod

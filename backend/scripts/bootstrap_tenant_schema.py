@@ -2430,12 +2430,15 @@ async def _assert_s1_pricing_contract(db, ts: str) -> None:
             expected_shape = (True, '0') if name == 'pricing_revision' else (False, None)
             if shapes[(table, name)] != expected_shape:
                 raise RuntimeError('S1_SCHEMA_COLUMN_SHAPE_MISMATCH')
-    constraints = dict((await db.execute(text(
-        'SELECT conname,pg_get_constraintdef(c.oid) FROM pg_constraint c '
-        'JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname=:s'
-    ), {'s': ts})).all())
+    constraints = {(table, name): definition for table, name, definition in
+        (await db.execute(text(
+            'SELECT t.relname,c.conname,pg_get_constraintdef(c.oid) FROM pg_constraint c '
+            'JOIN pg_class t ON t.oid=c.conrelid '
+            'JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname=:s'
+        ), {'s': ts})).all()}
     for name, definition in S1_CONSTRAINT_DEFINITIONS.items():
-        observed = constraints.get(name, '').replace('"', '').replace(ts + '.', '')
+        table = 'skus' if name.startswith('ck_skus_') else 'orders'
+        observed = constraints.get((table, name), '').replace('"', '').replace(ts + '.', '')
         if observed != definition:
             raise RuntimeError('S1_SCHEMA_CONSTRAINT_MISMATCH')
     for name, columns, predicate in (
@@ -2448,7 +2451,10 @@ async def _assert_s1_pricing_contract(db, ts: str) -> None:
             'ARRAY(SELECT a.attname::text FROM unnest(i.indkey) WITH ORDINALITY k(num,ord) '
             'JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.num ORDER BY k.ord) AS columns '
             'FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid '
-            'JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=:s AND c.relname=:name'
+            'JOIN pg_class t ON t.oid=i.indrelid '
+            'JOIN pg_namespace n ON n.oid=c.relnamespace '
+            'WHERE n.nspname=:s AND c.relname=:name AND t.relname=\'orders\' '
+            'AND t.relnamespace=n.oid'
         ), {'s': ts, 'name': name})).mappings().one_or_none()
         if (row is None or not row['indisunique'] or not row['indisvalid']
                 or row['columns'] != columns or (row['predicate'] or '').strip('()') != predicate):
@@ -2492,11 +2498,14 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import NullPool
 
     if database_url.startswith("postgresql://"):
         database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-    engine = create_async_engine(database_url, echo=False)
+    # A refused bootstrap must not retain idle connections after its caller's
+    # loop closes. This one-shot command does not need a reusable pool.
+    engine = create_async_engine(database_url, echo=False, poolclass=NullPool)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     ts = tenant_schema

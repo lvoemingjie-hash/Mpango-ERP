@@ -86,6 +86,20 @@ async def lock_sku_row(db: AsyncSession, *, sku_id) -> SKU | None:
     return result.scalar_one_or_none()
 
 
+async def lock_product_sku_rows(db: AsyncSession, *, product_id) -> list[SKU]:
+    """Determine the shared metadata write set before taking any SKU lock."""
+    with db.no_autoflush:
+        ids = list((await db.execute(select(SKU.id).where(
+            SKU.catalog_product_id == product_id).order_by(SKU.id))).scalars())
+        rows = []
+        for sku_id in ids:
+            row = (await db.execute(select(SKU).where(SKU.id == sku_id)
+                .with_for_update().execution_options(populate_existing=True))).scalar_one_or_none()
+            if row is not None:
+                rows.append(row)
+    return rows
+
+
 def package_quantity_changed(current, new) -> bool:
     """True only when the requested package_quantity actually differs from
     the stored one. Numeric Decimal equality (12 == 12.0 == 12.000), so a

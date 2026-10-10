@@ -15,6 +15,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from services.pricing_quote_service import QUOTE_TOKEN_MAX_LENGTH
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +141,7 @@ class ClientCreateOrderRequest(BaseModel):
     """Order creation request — retailer_id is NOT here (derived from JWT)."""
     items: List[ClientOrderItemRequest] = Field(..., min_length=1, max_length=100)
     notes: Optional[str] = Field(None, max_length=1000)
-    quote_token: str = Field(..., min_length=1, max_length=100000)
+    quote_token: str = Field(..., min_length=1, max_length=QUOTE_TOKEN_MAX_LENGTH)
     model_config = {'extra': 'forbid'}
 
 

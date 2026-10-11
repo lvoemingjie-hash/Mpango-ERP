@@ -133,8 +133,15 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         )
 
         # Check for cached response
-        cached = await self._get_cached_response(cache_key)
+        durable_create = request.method == 'POST' and path in {
+            '/api/v1/orders', '/api/v1/client/orders'
+        }
+        cached = await self._get_cached_response(cache_key, durable_create=durable_create)
         if cached is not None:
+            if cached.get("in_progress"):
+                # S1's durable intent lock waits for the first transaction.
+                # This waiter neither owns nor removes its cache marker.
+                return await call_next(request)
             from api.middleware.replay_authority import replay_currently_authorized
 
             try:
@@ -208,7 +215,9 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         combined = f"{tenant_schema}:{user_id}:{method}:{path}:{body_hash}:{idempotency_key}"
         return hashlib.sha256(combined.encode()).hexdigest()
 
-    async def _get_cached_response(self, cache_key: str) -> Optional[Dict[str, Any]]:
+    async def _get_cached_response(
+        self, cache_key: str, *, durable_create: bool = False
+    ) -> Optional[Dict[str, Any]]:
         """Get cached response if exists and not expired."""
         cached = await self._store.get(cache_key)
 
@@ -217,6 +226,8 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
 
         # Check if in-progress (concurrent request)
         if cached.get("in_progress"):
+            if durable_create:
+                return cached
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={

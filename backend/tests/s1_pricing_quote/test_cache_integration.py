@@ -222,3 +222,109 @@ async def test_s1_commit_publication(r1_client, world, monkeypatch, mode):
             except asyncio.TimeoutError:
                 task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.parametrize("client", [False, True], ids=["merchant", "client"])
+async def test_same_process_create_waits_for_commit(r1_client, world, monkeypatch, client):
+    import database.session as ds
+    from fastapi import HTTPException
+    from models.order import Order
+
+    quote = await preview(r1_client, world, client=client)
+    path = "/api/v1/client/orders" if client else "/api/v1/orders"
+    body = {"items": selection(world), "quote_token": quote["quote_token"], "notes": "F01 same intent"}
+    if not client:
+        body["retailer_id"] = world["rid"]
+    raw = json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode()
+    key = "f01-create-" + uuid.uuid4().hex
+    request_headers = headers(world, client=client, key=key)
+    cache = cache_for(r1_client)
+    cache_key = cache._make_cache_key(
+        idempotency_key=key, tenant_schema=world["schema"],
+        user_id=world["customer"] if client else world["actor"],
+        method="POST", path=path, body_hash=hashlib.sha256(raw).hexdigest(),
+    )
+    before = await vector(world)
+    entered, release, second_observed = (asyncio.Event() for _ in range(3))
+    trace, observations, tasks = [], [], []
+    real_factory, real_lookup = ds.AsyncSessionLocal, cache._get_cached_response
+
+    def instrumented_factory():
+        session = real_factory()
+        state = {"writes_order": False}
+
+        @event.listens_for(session.sync_session, "after_flush")
+        def flushed(sync, _context):
+            state["writes_order"] = state["writes_order"] or any(
+                isinstance(obj, Order) for obj in sync.new
+            )
+
+        real_commit = session.commit
+
+        async def commit():
+            if not state["writes_order"]:
+                return await real_commit()
+            trace.append("write_commit_begin")
+            entered.set()
+            await release.wait()
+            result = await real_commit()
+            trace.append("write_commit_end")
+            return result
+
+        session.commit = commit
+        return session
+
+    async def observed_lookup(observed_key, *args, **kwargs):
+        pending = await cache._store.get(observed_key)
+        if observed_key == cache_key and pending is not None and pending.get("in_progress"):
+            observations.append("same_key_in_progress")
+            second_observed.set()
+        return await real_lookup(observed_key, *args, **kwargs)
+
+    async def response(task):
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), 30)
+        except HTTPException as exc:
+            if exc.status_code == 409 and isinstance(exc.detail, dict) and exc.detail.get("code") == "IDEMPOTENCY_CONFLICT":
+                raise AssertionError("F01_IN_PROGRESS_UNHANDLED_HTTP409") from exc
+            raise
+
+    monkeypatch.setattr(ds, "AsyncSessionLocal", instrumented_factory)
+    monkeypatch.setattr(cache, "_get_cached_response", observed_lookup)
+    try:
+        tasks.append(asyncio.create_task(r1_client.post(path, content=raw, headers=request_headers)))
+        await asyncio.wait_for(entered.wait(), 30)
+        pending = await cache._store.get(cache_key)
+        assert pending is not None and pending.get("in_progress") is True, "F01_REAL_PENDING_MARKER"
+        tasks.append(asyncio.create_task(r1_client.post(path, content=raw, headers=request_headers)))
+        await asyncio.wait_for(second_observed.wait(), 30)
+        assert observations == ["same_key_in_progress"], "F01_SECOND_REQUEST_ACTUALLY_REACHED_CACHE"
+        if tasks[1].done():
+            await response(tasks[1])
+            pytest.fail("F01_SECOND_RESPONSE_BEFORE_REAL_COMMIT")
+        assert not tasks[0].done(), "F01_FIRST_RESPONSE_BEFORE_REAL_COMMIT"
+        assert await vector(world) == before, "F01_UNCOMMITTED_EFFECT_NOT_VISIBLE"
+        release.set()
+        first, second = await response(tasks[0]), await response(tasks[1])
+        assert first.status_code == second.status_code == 201, "F01_BOTH_VALID_CREATES_REQUIRE_201"
+        assert first.json()["data"]["id"] == second.json()["data"]["id"], "F01_ONE_DURABLE_ORDER_ID"
+        assert trace == ["write_commit_begin", "write_commit_end"], "F01_ONE_ORDER_WRITE_COMMIT"
+        committed = await vector(world)
+        assert len(committed["orders"]) == len(committed["order_items"]) == 1, "F01_ONE_ORDER_AND_ITEM"
+        for field in ("inventory_stocks", "inventory_reservations", "inventory_movements",
+                      "order_credit_holds", "payments", "ledger_entries", "binding"):
+            assert committed[field] == before[field], "F01_NO_DUPLICATE_ECONOMIC_EFFECT"
+        hot = await r1_client.post(path, content=raw, headers=request_headers)
+        assert hot.status_code == 201 and hot.json() == first.json()
+        assert hot.headers.get("X-Idempotency-Replayed") == "true", "F01_COMPLETED_CACHE_REMAINS_ACTIVE"
+        assert await vector(world) == committed, "F01_CACHE_REPLAY_ZERO_ADDITIONAL_EFFECT"
+    finally:
+        release.set()
+        if tasks:
+            try:
+                await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), 5)
+            except asyncio.TimeoutError:
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)

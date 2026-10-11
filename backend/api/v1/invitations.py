@@ -57,6 +57,10 @@ async def create_invitation(
         expires_at=request.expires_at,
     )
 
+    # Keep the cache branch's public success boundary before the response.
+    await db.commit()
+    await db.refresh(invitation)
+
     return DataResponse(
         success=True,
         data=_invitation_to_data(invitation),

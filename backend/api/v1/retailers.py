@@ -148,6 +148,9 @@ async def register_retailer_dual_entry(
         wholesaler_code=wholesaler_code,
     )
 
+    # Both registration entrances share this durable success boundary.
+    await db.commit()
+
     return DataResponse(success=True, data=data, timestamp=datetime.utcnow())
 
 

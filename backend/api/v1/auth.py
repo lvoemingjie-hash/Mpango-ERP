@@ -388,16 +388,25 @@ async def select_tenant(
         effective_user_id = UUID(token.user_id)
 
     # 2. Verify user exists and is active in this tenant schema.
-    user_query = text(f'SELECT id, is_active FROM "{tenant_schema}".users WHERE id = :user_id')
+    user_query = text(
+        f'SELECT id, is_active, is_deleted FROM "{tenant_schema}".users '
+        "WHERE id = :user_id"
+    )
     user_result = await db.execute(user_query, {"user_id": effective_user_id})
     user = user_result.fetchone()
+
+    if user is not None and bool(user.is_deleted):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "USER_DELETED", "message": "User account has been deleted"},
+        )
 
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "code": "TENANT_ACCESS_DENIED",
-                "message": "You do not have access to this tenant"
+                "message": "You have no access to this tenant"
             }
         )
 

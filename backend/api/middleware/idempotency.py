@@ -81,12 +81,11 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request with idempotency handling."""
 
-        # S1 create/replacement replay must execute current JWT/RBAC/binding
-        # checks and the durable transaction, never an outer memory cache.
+        # Replacement retains S1's durable-only replay contract. Creation
+        # cache hits now recheck the live S1 authority without rerunning it.
         path = request.url.path.rstrip('/')
-        if request.method == 'POST' and (
-            path in {'/api/v1/orders', '/api/v1/client/orders'}
-            or re.fullmatch(r'/api/v1/(?:client/)?orders/[0-9a-f-]{36}/replace-draft', path)
+        if request.method == 'POST' and re.fullmatch(
+            r'/api/v1/(?:client/)?orders/[0-9a-f-]{36}/replace-draft', path
         ):
             return await call_next(request)
 
@@ -135,15 +134,25 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
 
         # Check for cached response
         cached = await self._get_cached_response(cache_key)
-        if cached:
-            return JSONResponse(
-                content=cached["body"],
-                status_code=cached["status_code"],
-                headers={
-                    "X-Idempotency-Replayed": "true",
-                    "X-Idempotency-Key": idempotency_key
-                }
-            )
+        if cached is not None:
+            from api.middleware.replay_authority import replay_currently_authorized
+
+            try:
+                body_json = json.loads(body_bytes.decode())
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                body_json = None
+            if await replay_currently_authorized(request, body_json):
+                return JSONResponse(
+                    content=cached["body"],
+                    status_code=cached["status_code"],
+                    headers={
+                        "X-Idempotency-Replayed": "true",
+                        "X-Idempotency-Key": idempotency_key
+                    }
+                )
+            # R3: retain completed entries on refusal, never poison them
+            # with an in-progress marker. The real stack supplies the refusal.
+            return await call_next(request)
 
         # Mark as in-progress to prevent race conditions
         await self._mark_in_progress(cache_key)
@@ -177,6 +186,8 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                     }
                 )
 
+            # Failed quotes do not consume S1's accepted intent/key.
+            await self._remove_cache(cache_key)
             return response
 
         except Exception:

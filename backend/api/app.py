@@ -81,11 +81,14 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     from api.middleware.auth import AuthenticationMiddleware
     from auth.factory import get_auth_strategy
 
-    app.add_middleware(AuthenticationMiddleware, strategy=get_auth_strategy())
+    strategy = get_auth_strategy()
+    app.state.auth_strategy = strategy
+    app.add_middleware(AuthenticationMiddleware, strategy=strategy)
 
     logger.info("Authentication middleware registered")
 
-    # Idempotency middleware
+    # The outer cache publishes only after Authentication's real commit.
+    # Cache hits use this same configured strategy and the live route guards.
     from api.middleware.idempotency import IdempotencyMiddleware
     app.add_middleware(IdempotencyMiddleware)
 

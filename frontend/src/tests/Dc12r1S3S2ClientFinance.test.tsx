@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { api } from '@/services/api';
@@ -27,6 +27,8 @@ const paymentResponse = {
           id: 'pay-1',
           order_id: 'order-1',
           amount: '1250.50',
+          currency: 'KES',
+          currency_status: 'KNOWN',
           method: 'credit',
           status: 'pending',
           created_at: '2026-07-30T08:00:00Z',
@@ -43,6 +45,8 @@ const balanceResponse = {
     success: true,
     data: {
       outstanding_balance: '345.67',
+      currency: 'KES',
+      currency_status: 'KNOWN',
       has_outstanding_balance: true,
       updated_at: '2026-07-30T08:00:00Z',
     },
@@ -95,6 +99,13 @@ beforeEach(() => {
     tenantCode: null,
     retailerPortalCode: 'SUPP42',
   });
+});
+
+afterEach(() => {
+  expect(api.post).not.toHaveBeenCalled();
+  expect(api.put).not.toHaveBeenCalled();
+  expect(api.patch).not.toHaveBeenCalled();
+  expect(api.delete).not.toHaveBeenCalled();
 });
 
 describe('DC-12R1-S3-S2 clientFinanceService', () => {
@@ -168,6 +179,86 @@ describe('DC-12R1-S3-S2 retailer finance pages', () => {
     expect(screen.getByText(/KES\s*345\.67/i)).toBeInTheDocument();
     expect(screen.getByText(/from your supplier relationship/i)).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('renders payment amounts from an explicitly sourced UGX snapshot', async () => {
+    vi.mocked(api.get).mockResolvedValueOnce({
+      ...paymentResponse,
+      data: {
+        ...paymentResponse.data,
+        data: {
+          ...paymentResponse.data.data,
+          items: [{ ...paymentResponse.data.data.items[0], amount: '1250', currency: 'UGX', currency_status: 'KNOWN' }],
+        },
+      },
+    } as never);
+    render(
+      <MemoryRouter initialEntries={['/client/payments']}>
+        <Routes><Route path="/client/payments" element={<ClientPaymentHistoryPage />} /></Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('UGX 1,250')).toBeInTheDocument();
+    expect(screen.queryByText(/^KES\s/)).not.toBeInTheDocument();
+    expect(screen.getByText(/credit sale/i)).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('/client/payments', { params: { page: 1, size: 20 } });
+  });
+
+  it('renders the authoritative balance from an explicitly sourced UGX response', async () => {
+    vi.mocked(api.get).mockResolvedValueOnce({
+      ...balanceResponse,
+      data: { ...balanceResponse.data, data: { ...balanceResponse.data.data,
+        outstanding_balance: '345', currency: 'UGX', currency_status: 'KNOWN' } },
+    } as never);
+    render(
+      <MemoryRouter initialEntries={['/client/finance']}>
+        <Routes><Route path="/client/finance" element={<ClientFinanceBalancePage />} /></Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('UGX 345')).toBeInTheDocument();
+    expect(screen.queryByText(/^KES\s/)).not.toBeInTheDocument();
+    expect(screen.getByText(/from your supplier relationship/i)).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('/client/finance/balance');
+  });
+
+  it('keeps missing or null historical payment currency unverified', async () => {
+    const historical = Object.fromEntries(Object.entries(paymentResponse.data.data.items[0]).filter(([key]) => key !== 'currency'));
+    for (const missing of [true, false]) {
+      vi.mocked(api.get).mockResolvedValueOnce({
+        ...paymentResponse,
+        data: { ...paymentResponse.data, data: { ...paymentResponse.data.data,
+          items: [{ ...historical, ...(missing ? {} : { currency: null }), currency_status: 'LEGACY_CURRENCY_UNVERIFIED' }] } },
+      } as never);
+      const view = render(
+        <MemoryRouter initialEntries={['/client/payments']}>
+          <Routes><Route path="/client/payments" element={<ClientPaymentHistoryPage />} /></Routes>
+        </MemoryRouter>,
+      );
+      expect(await screen.findByText('LEGACY_CURRENCY_UNVERIFIED 1,250.50')).toBeInTheDocument();
+      expect(screen.queryByText(/^KES\s/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^UGX\s/)).not.toBeInTheDocument();
+      view.unmount();
+    }
+  });
+
+  it('keeps missing or null historical balance currency unverified', async () => {
+    const historical = Object.fromEntries(Object.entries(balanceResponse.data.data).filter(([key]) => key !== 'currency'));
+    for (const missing of [true, false]) {
+      vi.mocked(api.get).mockResolvedValueOnce({
+        ...balanceResponse,
+        data: { ...balanceResponse.data, data: { ...historical, ...(missing ? {} : { currency: null }),
+          currency_status: 'LEGACY_CURRENCY_UNVERIFIED' } },
+      } as never);
+      const view = render(
+        <MemoryRouter initialEntries={['/client/finance']}>
+          <Routes><Route path="/client/finance" element={<ClientFinanceBalancePage />} /></Routes>
+        </MemoryRouter>,
+      );
+      expect(await screen.findByText('LEGACY_CURRENCY_UNVERIFIED 345.67')).toBeInTheDocument();
+      expect(screen.queryByText(/^KES\s/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^UGX\s/)).not.toBeInTheDocument();
+      expect(screen.getByText(/from your supplier relationship/i)).toBeInTheDocument();
+      view.unmount();
+    }
   });
 
   it('shows empty and error states', async () => {

@@ -65,7 +65,7 @@ function requestKey(config: AxiosRequestConfig): string {
   return `${(config.method ?? 'get').toUpperCase()} ${config.url ?? ''}`;
 }
 
-function installRealEndpointAdapter(catalogParamsList: Array<unknown>): string[] {
+function installRealEndpointAdapter(catalogParamsList: Array<unknown>, unhandled: string[]): string[] {
   const handled: string[] = [];
   const adapter: AxiosAdapter = async (config) => {
     const key = requestKey(config);
@@ -135,6 +135,7 @@ function installRealEndpointAdapter(catalogParamsList: Array<unknown>): string[]
       case 'GET /retailers?page=1&size=100':
         return ok(config, apiResponse(paginated([], 1, key.endsWith('size=100') ? 100 : 20)));
       default:
+        unhandled.push(key);
         return Promise.reject({
           isAxiosError: true,
           config,
@@ -202,7 +203,8 @@ describe('S5-B frontend real user smoke gate', () => {
   it('lets an authenticated admin click the MVP sidebar pages without 403 or 500 toasts', async () => {
     const user = userEvent.setup();
     const catalogParamsList: Array<unknown> = [];
-    const handled = installRealEndpointAdapter(catalogParamsList);
+    const unhandled: string[] = [];
+    const handled = installRealEndpointAdapter(catalogParamsList, unhandled);
 
     render(<App />);
 
@@ -256,9 +258,16 @@ describe('S5-B frontend real user smoke gate', () => {
     await assertNoGuardrailToasts();
 
     await user.click(screen.getByRole('link', { name: 'Pricing' }));
-    await screen.findByRole('heading', { name: 'Customer Pricing' });
-    expect(screen.getByRole('button', { name: 'Set New Price' })).toBeDisabled();
-    expect(screen.getByText('Select a customer to manage pricing')).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Base and Customer Pricing' });
+    const customer = screen.getByRole('combobox', { name: 'Customer' });
+    expect(customer).toHaveValue('');
+    expect(screen.getByRole('option', { name: 'Select customer' })).toHaveValue('');
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.getByRole('columnheader', { name: 'Base price' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Customer override' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Effective price / source' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(handled.filter(key => key.startsWith('GET /pricing/'))).toEqual([]);
     await assertNoGuardrailToasts();
 
     expect(handled).toEqual(
@@ -280,5 +289,7 @@ describe('S5-B frontend real user smoke gate', () => {
     for (const params of catalogParamsList) {
       expect(params).toEqual({ page: 1, size: 100 });
     }
+    expect(unhandled).toEqual([]);
+    expect(handled.filter(key => /^(POST|PUT|PATCH|DELETE) /.test(key))).toEqual([]);
   });
 });

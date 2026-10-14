@@ -7,7 +7,39 @@ import pytest_asyncio
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from tests.order_state_r1.support import r1_client  # noqa: F401
+@pytest_asyncio.fixture
+async def r1_client():
+    """Exercise the configured native strategy without replacing auth.factory.
+
+    A fresh configured application selects JWT through the real staging factory,
+    matching the S2 TCP boundary. Synthetic S1 world tokens remain
+    fixture inputs, not evidence of the separate product registration journey.
+    """
+    from api.app import configure_app
+    from core.config import get_settings
+    from core.error_codes import register_exception_handlers
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    app = FastAPI()
+    previous_env = os.environ.get("MPANGO_ENV")
+    try:
+        os.environ["MPANGO_ENV"] = "staging"
+        configure_app(app, get_settings())
+    finally:
+        if previous_env is None:
+            os.environ.pop("MPANGO_ENV", None)
+        else:
+            os.environ["MPANGO_ENV"] = previous_env
+    register_exception_handlers(app)
+
+    ip_hex = uuid.uuid4().int
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver",
+        headers={"Content-Type": "application/json",
+                 "X-Forwarded-For": f"10.{(ip_hex >> 16) & 0xFF}.{(ip_hex >> 8) & 0xFF}.{ip_hex & 0xFF}"},
+    ) as client:
+        yield client
 
 
 @pytest_asyncio.fixture

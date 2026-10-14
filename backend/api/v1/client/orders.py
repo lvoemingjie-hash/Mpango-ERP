@@ -28,7 +28,8 @@ from decimal import Decimal
 from math import ceil
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -73,6 +74,8 @@ router = APIRouter()
 from schemas.pricing_quote import QuoteRequest
 from services.pricing_quote_service import build_quote, quote_view
 from services.order_creation_service import assert_binding, submit_draft
+from schemas.reorder import ClientReorderCreateRequest, ReorderPreview, ReorderQuoteRequest
+from services.reorder_service import authorize_reorder_intent, preview_reorder, submit_reorder
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +100,9 @@ def _order_to_client_view(order) -> ClientOrderView:
         for item in (order.items or [])
     ]
 
+    reorder = (order.quote_resolved or {}).get('reorder')
+    source_order_id = (reorder.get('source_order_id') if isinstance(reorder, dict)
+                       and reorder.get('version') == 1 and order.creation_operation == 'client-reorder' else None)
     return ClientOrderView(
         id=str(order.id),
         status=map_order_status_for_client(order.status.value),
@@ -109,12 +115,35 @@ def _order_to_client_view(order) -> ClientOrderView:
         country=order.country_snapshot,
         currency_status="KNOWN" if order.currency_snapshot else "LEGACY_CURRENCY_UNVERIFIED",
         replaces_order_id=str(order.replaces_order_id) if order.replaces_order_id else None,
+        source_order_id=source_order_id,
     )
 
 
 # ---------------------------------------------------------------------------
 # POST /client/orders — Create order (retailer_id from JWT, NOT request)
 # ---------------------------------------------------------------------------
+
+class RequireReorderCreatePermission(RequirePermission):
+    """Register S2 source authority through the existing replay dependency seam."""
+
+    async def __call__(self, request: Request) -> TokenPayload:
+        token = await super().__call__(request)
+        body = await request.json()
+        if isinstance(body, dict) and 'source_order_id' in body:
+            from api.context import get_tenant_context
+            await RequirePermission('client:orders:read')(request)
+            client = await resolve_client_identity(request)
+            try:
+                reorder = ClientReorderCreateRequest.model_validate(body)
+            except ValidationError:
+                raise HTTPException(422, detail={'code': 'VALIDATION_ERROR', 'message': 'Invalid reorder request'})
+            await authorize_reorder_intent(get_tenant_context(request).session,
+                source_order_id=reorder.source_order_id, wholesaler_id=client.tenant_id,
+                retailer_id=client.retailer_id, actor_id=client.user_id,
+                selections=[selection.model_dump(exclude_none=True) for selection in reorder.selections],
+                quote_token=reorder.quote_token, notes=reorder.notes,
+                idempotency_key=request.headers.get('X-Idempotency-Key'))
+        return token
 
 @router.post("/quote", response_model=DataResponse[dict])
 async def preview_order_quote(
@@ -134,18 +163,24 @@ async def preview_order_quote(
 
 @router.post("", response_model=DataResponse[ClientOrderView], status_code=status.HTTP_201_CREATED)
 async def create_order(
-    request: ClientCreateOrderRequest,
+    request: ClientCreateOrderRequest | ClientReorderCreateRequest,
     client: ClientIdentity = Depends(resolve_client_identity),
-    _perm: TokenPayload = Depends(RequirePermission("client:orders:create")),
+    _perm: TokenPayload = Depends(RequireReorderCreatePermission("client:orders:create")),
     db: AsyncSession = Depends(get_tenant_db_session),
     idempotency_key: Optional[str] = Header(None, alias="X-Idempotency-Key"),
 ):
-    order, replayed = await submit_draft(
-        db, wholesaler_id=client.tenant_id, retailer_id=client.retailer_id,
-        actor_id=client.user_id, operation="client-create",
-        items=[item.model_dump() for item in request.items], notes=request.notes,
-        quote_token=request.quote_token, idempotency_key=idempotency_key,
-    )
+    if isinstance(request, ClientReorderCreateRequest):
+        order, replayed = await submit_reorder(db, source_order_id=request.source_order_id,
+            wholesaler_id=client.tenant_id, retailer_id=client.retailer_id, actor_id=client.user_id,
+            selections=[selection.model_dump(exclude_none=True) for selection in request.selections],
+            notes=request.notes, quote_token=request.quote_token, idempotency_key=idempotency_key)
+    else:
+        order, replayed = await submit_draft(
+            db, wholesaler_id=client.tenant_id, retailer_id=client.retailer_id,
+            actor_id=client.user_id, operation="client-create",
+            items=[item.model_dump() for item in request.items], notes=request.notes,
+            quote_token=request.quote_token, idempotency_key=idempotency_key,
+        )
     return DataResponse(success=True, data=_order_to_client_view(order),
                         message="Existing draft replayed" if replayed else "Order submitted successfully",
                         timestamp=datetime.utcnow())
@@ -169,6 +204,22 @@ async def replace_client_draft(
     )
     return DataResponse(success=True, data=_order_to_client_view(order),
                         message="Old draft cancelled and replacement created", timestamp=datetime.utcnow())
+
+
+@router.post("/{source_order_id}/reorder/quote", response_model=DataResponse[ReorderPreview])
+async def preview_reorder_quote(
+    source_order_id: uuid.UUID,
+    request: ReorderQuoteRequest,
+    client: ClientIdentity = Depends(resolve_client_identity),
+    _read: TokenPayload = Depends(RequirePermission("client:orders:read")),
+    _create: TokenPayload = Depends(RequirePermission("client:orders:create")),
+    db: AsyncSession = Depends(get_tenant_db_session),
+):
+    preview = await preview_reorder(db, source_order_id=source_order_id,
+        wholesaler_id=client.tenant_id, retailer_id=client.retailer_id, actor_id=client.user_id,
+        selections=[selection.model_dump(exclude_none=True) for selection in request.selections]
+                   if request.selections is not None else None)
+    return DataResponse(success=True, data=preview, timestamp=datetime.utcnow())
 
 
 # ---------------------------------------------------------------------------

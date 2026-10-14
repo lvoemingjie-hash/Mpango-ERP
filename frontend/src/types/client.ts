@@ -63,6 +63,7 @@ export interface ClientOrder {
   currency?: string | null;
   currency_status?: string;
   replaces_order_id?: string | null;
+  source_order_id?: string | null;
   item_count: number;
   notes: string | null;
   items: ClientOrderItem[];
@@ -78,6 +79,52 @@ export interface CreateOrderItem {
 export interface CreateOrderRequest {
   quote_token: string;
   items: CreateOrderItem[];
+  notes?: string;
+}
+
+/** Every historical row has an explicit decision; the server owns identity and money. */
+export type ReorderSelection =
+  | { source_item_id: string; action: 'keep' | 'remove' }
+  | { source_item_id: string; action: 'replace'; sellable_unit_id: string; quantity: number };
+
+export interface ReorderRow {
+  source_item_id: string;
+  original: {
+    product_name: string;
+    sku_code: string;
+    sellable_unit_id: string | null;
+    identity_status: ClientOrderItem['identity_status'];
+    unit: string | null;
+    package_quantity: string | null;
+    display_label: string | null;
+    quantity: number;
+    unit_price: string;
+    subtotal: string;
+  };
+  selection: ReorderSelection;
+  status: 'READY' | 'UNAVAILABLE' | 'REMOVED';
+  reason: string | null;
+  current: import('@/types/pricing').ServerQuote['lines'][number] | null;
+  stock_warning: 'INSUFFICIENT_STOCK' | null;
+}
+
+export interface ReorderPreview {
+  source_order_id: string;
+  order_basis: 'HISTORICAL_ITEM_ID';
+  historical_total: string;
+  historical_currency: string | null;
+  historical_currency_status: 'KNOWN' | 'LEGACY_CURRENCY_UNVERIFIED';
+  rows: ReorderRow[];
+  ready: boolean;
+  quote: import('@/types/pricing').ServerQuote | null;
+  current_total: string | null;
+  current_currency: string;
+  delta: string | null;
+}
+
+export interface ReorderRequest {
+  selections: ReorderSelection[];
+  quote_token: string;
   notes?: string;
 }
 

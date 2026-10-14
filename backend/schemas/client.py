@@ -174,6 +174,7 @@ class ClientOrderView(BaseModel):
     country: Optional[str] = None
     currency_status: str = 'LEGACY_CURRENCY_UNVERIFIED'
     replaces_order_id: Optional[str] = None
+    source_order_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

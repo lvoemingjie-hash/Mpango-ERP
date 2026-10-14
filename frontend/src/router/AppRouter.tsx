@@ -37,6 +37,7 @@ import { ProductDetailPage } from '@/pages/client/ProductDetailPage';
 import { CreateOrderPage as ClientCreateOrderPage } from '@/pages/client/CreateOrderPage';
 import { ClientOrderListPage } from '@/pages/client/OrderListPage';
 import { OrderDetailPage } from '@/pages/client/OrderDetailPage';
+import { ReorderPage } from '@/pages/client/ReorderPage';
 import { ClientPaymentHistoryPage } from '@/pages/client/PaymentHistoryPage';
 import { ClientFinanceBalancePage } from '@/pages/client/FinanceBalancePage';
 import DeclarationHistoryPage from '@/pages/client/DeclarationHistoryPage';
@@ -195,6 +196,7 @@ const router = createBrowserRouter([
               { path: '/client/orders', element: <ClientOrderListPage /> },
               { path: '/client/orders/new', element: <ClientCreateOrderPage /> },
               { path: '/client/orders/:orderId', element: <OrderDetailPage /> },
+              { path: '/client/orders/:orderId/reorder', element: <ReorderPage /> },
               { path: '/client/payments', element: <ClientPaymentHistoryPage /> },
               { path: '/client/finance', element: <ClientFinanceBalancePage /> },
               { path: '/client/declarations', element: <DeclarationHistoryPage /> },

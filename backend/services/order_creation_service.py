@@ -48,11 +48,39 @@ def _selection_matches(items, seen):
     return True
 
 
-async def submit_draft(db, *, wholesaler_id, retailer_id, actor_id, operation,
-                       items, notes, quote_token, idempotency_key, replaces_order_id=None):
-    await assert_binding(db, wholesaler_id, retailer_id)
+def creation_key_digest(idempotency_key):
     if not idempotency_key or not re.fullmatch(r'[A-Za-z0-9.:_\-]{8,64}', idempotency_key):
         refuse('MISSING_IDEMPOTENCY_KEY', 'A valid X-Idempotency-Key is required', status=400)
+    return hashlib.sha256(idempotency_key.encode('ascii')).hexdigest()
+
+
+def accepted_fingerprint(seen, *, notes, replaces_order_id=None, reorder_intent=None):
+    accepted_intent = {
+        'context': context(seen), 'lines': economic_lines(seen), 'notes': notes,
+        'replaces': str(replaces_order_id) if replaces_order_id else None,
+    }
+    # Default S1 canonical bytes stay identical to its committed contract.
+    if reorder_intent is not None:
+        accepted_intent['reorder'] = reorder_intent
+    return hashlib.sha256(canonical_bytes(accepted_intent)).hexdigest()
+
+
+def assert_committed_intent(existing, fingerprint, reorder_intent=None):
+    if (existing.creation_fingerprint != fingerprint or (reorder_intent is not None and (
+            not existing.quote_seen or not existing.quote_resolved or
+            existing.quote_seen.get('reorder') != reorder_intent or
+            existing.quote_resolved.get('reorder') != reorder_intent))):
+        refuse('ORDER_CREATE_IDEMPOTENCY_CONFLICT', 'This key already committed a different accepted intent')
+
+
+async def submit_draft(db, *, wholesaler_id, retailer_id, actor_id, operation,
+                       items, notes, quote_token, idempotency_key, replaces_order_id=None,
+                       reorder_intent=None):
+    await assert_binding(db, wholesaler_id, retailer_id)
+    if (operation == 'client-reorder') != (reorder_intent is not None) or (
+            reorder_intent is not None and replaces_order_id is not None):
+        refuse('REORDER_CONTEXT_REQUIRED', 'Reordering requires the dedicated source-selection service')
+    key_digest = creation_key_digest(idempotency_key)
     # A committed replay may outlive the quote TTL, but not authentication,
     # scope, signature or accepted-intent checks.
     seen = read_quote(quote_token, check_expiry=False)
@@ -63,11 +91,10 @@ async def submit_draft(db, *, wholesaler_id, retailer_id, actor_id, operation,
         refuse('QUOTE_CONTEXT_CHANGED', 'The quote does not belong to this authorized operation')
     if not _selection_matches(items, seen):
         refuse('QUOTE_CONTEXT_CHANGED', 'The selected lines do not match the quote')
-    key_digest = hashlib.sha256(idempotency_key.encode('ascii')).hexdigest()
-    fingerprint = hashlib.sha256(canonical_bytes({
-        'context': context(seen), 'lines': economic_lines(seen), 'notes': notes,
-        'replaces': str(replaces_order_id) if replaces_order_id else None,
-    })).hexdigest()
+    if reorder_intent is not None and seen.get('reorder') != reorder_intent:
+        refuse('QUOTE_CONTEXT_CHANGED', 'The source and every historical-line decision must match the accepted quote')
+    fingerprint = accepted_fingerprint(seen, notes=notes, replaces_order_id=replaces_order_id,
+                                       reorder_intent=reorder_intent)
     scope = {'wid': UUID(str(wholesaler_id)), 'rid': UUID(str(retailer_id)),
              'actor': UUID(str(actor_id)), 'operation': operation, 'key': key_digest}
     lock_digest = hashlib.sha256(canonical_bytes({k: str(v) for k, v in scope.items()})).digest()
@@ -78,9 +105,12 @@ async def submit_draft(db, *, wholesaler_id, retailer_id, actor_id, operation,
         Order.created_by == scope['actor'], Order.creation_operation == operation,
         Order.creation_key_digest == key_digest,
     ).execution_options(populate_existing=True))).scalar_one_or_none()
+    if reorder_intent is not None:
+        from services.reorder_service import validate_reorder_source
+        await validate_reorder_source(db, intent=reorder_intent,
+            wholesaler_id=wholesaler_id, retailer_id=retailer_id, lock=existing is None)
     if existing is not None:
-        if existing.creation_fingerprint != fingerprint:
-            refuse('ORDER_CREATE_IDEMPOTENCY_CONFLICT', 'This key already committed a different accepted intent')
+        assert_committed_intent(existing, fingerprint, reorder_intent)
         return existing, True
     read_quote(quote_token, check_expiry=True)
 
@@ -108,13 +138,30 @@ async def submit_draft(db, *, wholesaler_id, retailer_id, actor_id, operation,
 
     current = await build_quote(db, wholesaler_id=wholesaler_id, retailer_id=retailer_id,
                                 actor_id=actor_id, operation=operation, items=items, lock=True)
-    require_consent(seen, current)
-    for line in current['lines']:
-        stock = (await db.execute(text(
-            'SELECT quantity_on_hand FROM inventory_stocks WHERE sku_id=:sid AND is_deleted IS FALSE'
-        ), {'sid': UUID(line['sku_id'])})).scalar_one_or_none()
-        if stock is None or Decimal(str(stock)) < line['quantity']:
-            refuse('ORDER_VALIDATION_FAILED', 'Insufficient stock for the selected quantity', status=400)
+    if reorder_intent is not None:
+        from services.reorder_service import validate_source_selection
+        current['reorder'] = reorder_intent
+        validate_source_selection(reorder_intent, current)
+    try:
+        require_consent(seen, current)
+    except HTTPException as error:
+        if (reorder_intent is not None and context(seen) == context(current)
+                and economic_lines(seen) != economic_lines(current)):
+            from services.pricing_quote_service import quote_view
+            refuse('REORDER_PREVIEW_STALE', 'Review the current complete quote and explicitly accept again',
+                   old_total=seen['total'], new_total=current['total'],
+                   delta=format(Decimal(current['total']) - Decimal(seen['total']), 'f'),
+                   currency=current['currency'], quote=quote_view(current))
+        raise error
+    # The fixed, source-validated S2 operation can save a shortage DRAFT.
+    # HTTP callers cannot select this behavior on either ordinary S1 route.
+    if operation != 'client-reorder':
+        for line in current['lines']:
+            stock = (await db.execute(text(
+                'SELECT quantity_on_hand FROM inventory_stocks WHERE sku_id=:sid AND is_deleted IS FALSE'
+            ), {'sid': UUID(line['sku_id'])})).scalar_one_or_none()
+            if stock is None or Decimal(str(stock)) < line['quantity']:
+                refuse('ORDER_VALIDATION_FAILED', 'Insufficient stock for the selected quantity', status=400)
     order_items = [{
         'sellable_unit_id': line['sku_id'], 'product_name': line['product_name'],
         'sku_code': line['sku_code'], 'unit_snapshot': line['unit'],

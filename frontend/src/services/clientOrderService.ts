@@ -1,6 +1,6 @@
 import { api } from '@/services/api';
 import type { ApiResponse, PaginatedData } from '@/types/api';
-import type { ClientOrder, CreateOrderRequest } from '@/types/client';
+import type { ClientOrder, CreateOrderRequest, ReorderPreview, ReorderRequest, ReorderSelection } from '@/types/client';
 import type { OrderPrintView } from '@/types/print';
 import type { ServerQuote } from '@/types/pricing';
 
@@ -13,6 +13,14 @@ export const clientOrderService = {
 
   replaceDraft: (id: string, data: CreateOrderRequest, key: string) =>
     api.post<ApiResponse<ClientOrder>>(`/client/orders/${id}/replace-draft`, data, { headers: { 'X-Idempotency-Key': key } }),
+
+  previewReorder: (sourceId: string, selections?: ReorderSelection[]) =>
+    api.post<ApiResponse<ReorderPreview>>(`/client/orders/${encodeURIComponent(sourceId)}/reorder/quote`,
+      selections ? { selections } : {}),
+
+  submitReorder: (sourceId: string, data: ReorderRequest, key: string) =>
+    api.post<ApiResponse<ClientOrder>>('/client/orders', { ...data, source_order_id: sourceId },
+      { headers: { 'X-Idempotency-Key': key } }),
 
   getAll: (page = 1, size = 20, status?: string) =>
     api.get<ApiResponse<PaginatedData<ClientOrder>>>('/client/orders', {

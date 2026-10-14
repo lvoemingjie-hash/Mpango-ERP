@@ -126,7 +126,11 @@ export function OrderDetailPage() {
         </div>
 
         {/* DC-12R1-S3-S2B-I2C-I2: printable order (Contract A, retailer). */}
-        <div className="no-print mt-3">
+        <div className="no-print mt-3 flex flex-wrap gap-2">
+          <Link to={`/client/orders/${order.id}/reorder`}
+            className="inline-flex items-center rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700">
+            Order again
+          </Link>
           <Link
             to={`/client/orders/${order.id}/print`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
@@ -136,10 +140,14 @@ export function OrderDetailPage() {
           </Link>
         </div>
 
-        <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
+        <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500">
           <span>{order.item_count} item{order.item_count !== 1 ? 's' : ''}</span>
           <span>{formatDate(order.created_at)}</span>
         </div>
+
+        {order.source_order_id && <p className="mt-3 text-sm text-gray-600">
+          New draft from <Link to={`/client/orders/${order.source_order_id}`} className="text-primary-700 underline">historical order #{order.source_order_id.slice(0, 8)}</Link>.
+        </p>}
 
         {order.notes && (
           <div className="mt-3 rounded-lg bg-gray-50 p-2.5">
@@ -156,14 +164,14 @@ export function OrderDetailPage() {
         </div>
         <div className="divide-y divide-gray-100">
           {order.items.map((item, idx) => (
-            <div key={idx} className="flex items-center justify-between px-4 py-3">
+            <div key={idx} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className="text-sm font-medium text-gray-900 break-words">
                   {item.product_name}
                 </p>
-                <p className="text-xs text-gray-400 font-mono">{item.sku_code}</p>
+                <p className="text-xs text-gray-400 font-mono break-all">{item.sku_code}</p>
               </div>
-              <div className="ml-4 text-right">
+              <div className="min-w-0 break-words sm:ml-4 sm:text-right">
                 <p className="text-sm text-gray-900">
                   {item.quantity} {item.display_label_snapshot || item.unit_snapshot || "UNIT_UNVERIFIED"} (package {item.package_quantity_snapshot || "unknown"}) &times; {formatCurrency(item.unit_price)}
                 </p>

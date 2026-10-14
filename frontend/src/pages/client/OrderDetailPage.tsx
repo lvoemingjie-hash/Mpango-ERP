@@ -41,13 +41,23 @@ export function OrderDetailPage() {
   }, [load]);
 
   const handleCancel = async () => {
-    if (!orderId || !order) return;
-    if (!window.confirm('Are you sure you want to cancel this order?')) return;
+    if (!orderId || !order || cancelling) return;
+    const isReorderDraft = order.status === 'CREATED' && Boolean(order.source_order_id);
+    const confirmation = isReorderDraft
+      ? 'Cancel this draft before ordering again? Only this draft will be cancelled; the historical order will remain unchanged.'
+      : 'Are you sure you want to cancel this order?';
+    if (!window.confirm(confirmation)) return;
 
     setCancelling(true);
+    setError(null);
     try {
       const res = await clientOrderService.cancel(orderId);
-      setOrder(res.data.data);
+      const cancelledOrder = res.data?.data;
+      if (isReorderDraft && (res.data?.success !== true || !cancelledOrder || cancelledOrder.id !== order.id || cancelledOrder.status !== 'CANCELLED')) {
+        setError('Cancellation could not be confirmed. Check this draft\'s status before ordering again.');
+        return;
+      }
+      setOrder(isReorderDraft ? { ...cancelledOrder, source_order_id: order.source_order_id } : cancelledOrder);
     } catch (err) {
       setError(normalizeApiError(err));
     } finally {
@@ -94,6 +104,8 @@ export function OrderDetailPage() {
   if (!order) return null;
 
   const badge = STATUS_BADGE[order.status] ?? STATUS_BADGE.CREATED;
+  const isReorderDraft = order.status === 'CREATED' && Boolean(order.source_order_id);
+  const isCancelledReorderDraft = order.status === 'CANCELLED' && Boolean(order.source_order_id);
 
   return (
     <div className="space-y-4">
@@ -127,10 +139,10 @@ export function OrderDetailPage() {
 
         {/* DC-12R1-S3-S2B-I2C-I2: printable order (Contract A, retailer). */}
         <div className="no-print mt-3 flex flex-wrap gap-2">
-          <Link to={`/client/orders/${order.id}/reorder`}
+          {!isReorderDraft && !isCancelledReorderDraft && <Link to={`/client/orders/${order.id}/reorder`}
             className="inline-flex items-center rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700">
             Order again
-          </Link>
+          </Link>}
           <Link
             to={`/client/orders/${order.id}/print`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
@@ -232,8 +244,16 @@ export function OrderDetailPage() {
         </div>
       </div>
 
-      {order.status === 'CREATED' && <Link to={`/client/orders/new?replace=${order.id}`}
+      {order.status === 'CREATED' && !order.source_order_id && <Link to={`/client/orders/new?replace=${order.id}`}
         className="btn-secondary block text-center">Review new quote and replace this draft</Link>}
+      {isReorderDraft && <section aria-label="Reorder draft actions" className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700">
+        To review a new quote, cancel this draft first. After cancellation succeeds, order again from the historical order. The historical order will remain unchanged.
+      </section>}
+      {isCancelledReorderDraft && <section aria-label="Reorder draft actions" className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700">
+        <p role="status">This draft is cancelled. You can now review a new quote from the historical order.</p>
+        <Link to={`/client/orders/${order.source_order_id}/reorder`}
+          className="btn-secondary mt-3 block text-center">Order again from historical order</Link>
+      </section>}
       {/* Cancel Button */}
       {canCancel && (
         <button
@@ -241,7 +261,7 @@ export function OrderDetailPage() {
           disabled={cancelling}
           className="w-full rounded-xl border border-red-300 bg-white px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
-          {cancelling ? 'Cancelling...' : 'Cancel Order'}
+          {cancelling ? 'Cancelling...' : isReorderDraft ? 'Cancel this draft to order again' : 'Cancel Order'}
         </button>
       )}
     </div>

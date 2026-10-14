@@ -7,15 +7,40 @@ this vector function opens a PostgreSQL READ ONLY transaction and never writes.
 from __future__ import annotations
 
 import hashlib
+import asyncio
 import json
 import os
 import re
+import stat
 from pathlib import Path
 from uuid import UUID
+import uuid
+import time
 
 import asyncpg
 
-TASK_ROOT = Path(os.environ.get('S2_TASK_ROOT', Path(__file__).resolve().parents[4]))
+def task_root():
+    """An explicit task attachment is mandatory; no checkout ancestry fallback."""
+    value = os.environ.get('S2_TASK_ROOT')
+    if not value or not Path(value).is_absolute():
+        raise RuntimeError('S2_TASK_RUNTIME_NOT_CONFIGURED: explicit absolute S2_TASK_ROOT required')
+    root = Path(value).resolve(strict=True)
+    config_value = os.environ.get('S2_PRIVATE_CONFIG')
+    if not config_value or not Path(config_value).is_absolute():
+        raise RuntimeError('S2_TASK_RUNTIME_NOT_CONFIGURED: explicit absolute S2_PRIVATE_CONFIG required')
+    config = Path(config_value)
+    if config.is_symlink() or config.resolve(strict=True).parent != root / 'private':
+        raise RuntimeError('S2_TASK_PRIVATE_CONFIG_INVALID: config must belong to this task private directory')
+    metadata = config.stat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) != 0o600:
+        raise RuntimeError('S2_TASK_PRIVATE_CONFIG_INVALID: owned 0600 regular file required')
+    for helper in ('runtime_inputs.py', 's2_fixture_api.py', 's2_observed_app.py'):
+        if not (root / 'work' / helper).is_file():
+            raise RuntimeError('S2_TASK_RUNTIME_CAPSULE_NOT_CONFIGURED: missing ' + helper)
+    return root
+
+
+TASK_ROOT = task_root()
 
 
 def _runtime():
@@ -139,3 +164,141 @@ async def controlled_history_setup(fixture, sql, *parameters, reason):
     path = directory / (uuid.uuid4().hex + '.json')
     path.write_text(json.dumps({'reason': reason, 'sql': sql, 'parameters': parameters}, default=str, indent=2) + '\n')
     path.chmod(0o600)
+
+
+class CommitOverlapGate:
+    """Hold one real outer commit and observe the actual durable-lock waiter.
+
+    The task-only app attachment observes SQLAlchemy's outer before_commit;
+    it never replaces a handler or authority. All lock observations below use
+    a READ ONLY PostgreSQL transaction, scoped to the two exact lock identities.
+    """
+    def __init__(self, fixture, key):
+        self.fixture = fixture
+        self.key_digest = hashlib.sha256(key.encode('ascii')).hexdigest()
+        scope = {'wid': fixture.account['wholesaler'], 'rid': fixture.account['retailer'],
+                 'actor': fixture.account['customer'], 'operation': 'client-reorder',
+                 'key': self.key_digest}
+        canonical = json.dumps(scope, sort_keys=True, separators=(',', ':'),
+                               ensure_ascii=True, allow_nan=False).encode('ascii')
+        self.intent_identity = int.from_bytes(hashlib.sha256(canonical).digest()[:8], 'big', signed=True)
+        self.gate_identity = int.from_bytes(uuid.uuid4().bytes[:8], 'big', signed=True)
+        self.active_path = TASK_ROOT / 'private' / 'commit-overlap-active.json'
+        directory = TASK_ROOT / 'private' / 'concurrency-events'
+        directory.mkdir(exist_ok=True, mode=0o700)
+        self.event_path = directory / (fixture.country + '-' + uuid.uuid4().hex + '.json')
+        self.evidence_path = self.event_path.with_suffix('.locks.json')
+        self.evidence = {'country': fixture.country, 'events': [],
+                         'key_digest': self.key_digest, 'intent_identity': self.intent_identity,
+                         'gate_identity': self.gate_identity}
+        self.connection = None
+        self.released = False
+        self.first = None
+
+    async def __aenter__(self):
+        self.connection = await asyncpg.connect(self.fixture.env['APP_DB_DSN'], command_timeout=10)
+        try:
+            self.holder_pid = await self.connection.fetchval('SELECT pg_backend_pid()')
+            await self.connection.execute('SELECT pg_advisory_lock($1)', self.gate_identity)
+            descriptor = os.open(self.active_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, 'w') as stream:
+                json.dump({'operation': 'client-reorder', 'schema': self.fixture.account['schema'],
+                           'key_digest': self.key_digest, 'gate_identity': self.gate_identity,
+                           'event_path': str(self.event_path)}, stream, sort_keys=True)
+                stream.write('\n')
+        except BaseException:
+            await self.connection.close()
+            raise
+        self.evidence['events'].append({'event': 'GATE_HELD', 'pid': self.holder_pid, 'utc_ns': time.time_ns()})
+        return self
+
+    async def _lock_rows(self):
+        gate_hi, gate_lo = (self.gate_identity >> 32) & 0xffffffff, self.gate_identity & 0xffffffff
+        intent_hi, intent_lo = (self.intent_identity >> 32) & 0xffffffff, self.intent_identity & 0xffffffff
+        async with self.connection.transaction(readonly=True):
+            assert await self.connection.fetchval('SHOW transaction_read_only') == 'on'
+            return [dict(row) for row in await self.connection.fetch(
+                "SELECT l.pid,l.granted,l.mode,l.classid::bigint AS high,l.objid::bigint AS low,"
+                "a.state,a.wait_event_type,a.wait_event,a.xact_start,a.query_start,a.query,"
+                "pg_blocking_pids(l.pid) AS blocking_pids "
+                "FROM pg_locks l JOIN pg_stat_activity a ON a.pid=l.pid "
+                "WHERE l.locktype='advisory' AND l.objsubid=1 AND "
+                "((l.classid::bigint=$1 AND l.objid::bigint=$2) OR "
+                "(l.classid::bigint=$3 AND l.objid::bigint=$4)) ORDER BY l.pid,l.granted",
+                gate_hi, gate_lo, intent_hi, intent_lo)]
+
+    async def wait_first(self):
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            if self.event_path.exists():
+                try:
+                    event = json.loads(self.event_path.read_text())
+                except (json.JSONDecodeError, OSError):
+                    # The writer may still be mid-write; the deadline bounds this.
+                    await asyncio.sleep(0.02)
+                    continue
+                rows = await self._lock_rows()
+                pid = event['backend_pid']
+                gate_wait = [r for r in rows if r['pid'] == pid and not r['granted']
+                             and r['high'] == (self.gate_identity >> 32) & 0xffffffff
+                             and r['low'] == self.gate_identity & 0xffffffff]
+                intent_owned = [r for r in rows if r['pid'] == pid and r['granted']
+                                and r['high'] == (self.intent_identity >> 32) & 0xffffffff
+                                and r['low'] == self.intent_identity & 0xffffffff]
+                if gate_wait and intent_owned and self.holder_pid in gate_wait[0]['blocking_pids']:
+                    assert event['event'] == 'BEFORE_OUTER_COMMIT' and not event['nested_transaction']
+                    self.first = event
+                    self.evidence['events'].append({'event': 'FIRST_UNCOMMITTED_BEFORE_OUTER_COMMIT',
+                        'utc_ns': time.time_ns(), 'app_event': event, 'lock_rows': rows})
+                    return event
+            await asyncio.sleep(0.02)
+        self.evidence['events'].append({'event': 'FIRST_GATE_TIMEOUT', 'lock_rows': await self._lock_rows()})
+        raise AssertionError('S2_CONCURRENCY_FIRST_BEFORE_COMMIT_GATE_NOT_OBSERVED')
+
+    async def wait_second(self):
+        assert self.first is not None
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            rows = await self._lock_rows()
+            first_pid = self.first['backend_pid']
+            waits = [r for r in rows if r['pid'] not in (first_pid, self.holder_pid)
+                     and not r['granted'] and first_pid in r['blocking_pids']
+                     and r['high'] == (self.intent_identity >> 32) & 0xffffffff
+                     and r['low'] == self.intent_identity & 0xffffffff
+                     and r['wait_event_type'] == 'Lock' and r['wait_event'] == 'advisory'
+                     and 'pg_advisory_xact_lock' in r['query']]
+            first_still_waits = [r for r in rows if r['pid'] == first_pid and not r['granted']
+                                 and self.holder_pid in r['blocking_pids']]
+            if waits and first_still_waits:
+                assert waits[0]['xact_start'] is not None
+                self.evidence['events'].append({'event': 'SECOND_REAL_SUBMIT_DURABLE_LOCK_WAIT',
+                    'utc_ns': time.time_ns(), 'second_pid': waits[0]['pid'], 'first_pid': first_pid,
+                    'lock_rows': rows, 'first_order_id': self.first['order_id']})
+                return waits[0]['pid']
+            await asyncio.sleep(0.02)
+        self.evidence['events'].append({'event': 'SECOND_OVERLAP_TIMEOUT', 'lock_rows': await self._lock_rows()})
+        raise AssertionError('S2_CONCURRENCY_SECOND_BEARING_PATH_BEFORE_FIRST_COMMIT_NOT_OBSERVED')
+
+    async def release(self):
+        if not self.released:
+            self.active_path.unlink(missing_ok=True)
+            assert await self.connection.fetchval('SELECT pg_advisory_unlock($1)', self.gate_identity)
+            self.released = True
+            self.evidence['events'].append({'event': 'GATE_RELEASED', 'utc_ns': time.time_ns()})
+
+    async def __aexit__(self, *exception):
+        try:
+            await self.release()
+        finally:
+            if self.connection is not None:
+                await self.connection.close()
+            self.evidence_path.write_text(json.dumps(self.evidence, default=str, indent=2, sort_keys=True) + '\n')
+            self.evidence_path.chmod(0o600)
+
+
+def commit_overlap_gate(fixture, key):
+    return CommitOverlapGate(fixture, key)
+
+
+async def assert_two_requests_overlap(gate):
+    return await gate.wait_second()

@@ -1,20 +1,25 @@
 """Real task credentials and TCP clients; no ASGI transport or auth override."""
 import json
-import os
 import sys
 import uuid
-from pathlib import Path
 
-import pytest
 import pytest_asyncio
 
-TASK_ROOT = Path(os.environ.get('S2_TASK_ROOT', Path(__file__).resolve().parents[4]))
+from tests.s2_reorder.support import TASK_ROOT
+
+
+def pytest_configure(config):
+    """Reject an incomplete attachment during collection, never skip to green."""
+    sys.path.insert(0, str(TASK_ROOT / 'work'))
+    from runtime_inputs import load_accounts, load_runtime
+    from s2_fixture_api import FixtureAPI
+    load_runtime()
+    load_accounts()
+    assert callable(FixtureAPI), 'S2_TASK_FIXTURE_IMPORT_REQUIRED'
 
 
 @pytest_asyncio.fixture
 async def live(request):
-    if not (TASK_ROOT / 'work' / 's2_fixture_api.py').is_file():
-        pytest.skip('S2_TASK_RUNTIME_CAPSULE_NOT_CONFIGURED: task-owned TCP/PG inputs are required')
     sys.path.insert(0, str(TASK_ROOT / 'work'))
     from s2_fixture_api import FixtureAPI
     country = getattr(request, 'param', 'KE')

@@ -4,6 +4,8 @@ Sample mapping: RO01/RO03/RO08 use the vertical source projection; later
 cases exercise RO02-RO11 and NR06. UI RO12 belongs to the browser envelope.
 """
 import asyncio
+import hashlib
+import json
 from decimal import Decimal
 import uuid
 
@@ -11,7 +13,8 @@ import httpx
 import pytest
 
 from tests.s2_reorder.support import (
-    assert_zero_draft_effects, count_intent, decisions, submit_body, submit_reorder, vector_for,
+    assert_two_requests_overlap, assert_zero_draft_effects, commit_overlap_gate,
+    count_intent, decisions, submit_body, submit_reorder, vector_for,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -184,22 +187,44 @@ async def test_ro10_independent_tcp_clients_same_key_one_draft_replay_and_confli
     preview = await live.reorder_preview(source['id'])
     body = {**submit_body(preview), 'source_order_id': source['id']}
     key = 's2-concurrent-' + uuid.uuid4().hex
-    before = await vector_for(live, [source['id']], [product])
-    ready = asyncio.Event()
+    before = await vector_for(live, [source['id']], [product], label=live.country + '-concurrency-source-before')
+    request_bytes = json.dumps(body, separators=(',', ':'), sort_keys=True).encode()
     async def one_independent_request():
         async with httpx.AsyncClient(base_url=live.env['BACKEND_BASE_URL'], trust_env=False, timeout=35) as client:
-            await ready.wait()
-            return await client.post('/api/v1/client/orders', json=body,
-                headers={**live.client_headers, 'X-Idempotency-Key': key})
-    tasks = [asyncio.create_task(one_independent_request()) for _ in range(2)]
-    ready.set()
-    responses = await asyncio.gather(*tasks)
+            return await client.post('/api/v1/client/orders', content=request_bytes,
+                headers={**live.client_headers, 'X-Idempotency-Key': key, 'Content-Type': 'application/json'})
+    tasks = []
+    async with commit_overlap_gate(live, key) as gate:
+        gate.evidence['request_body_sha256'] = hashlib.sha256(request_bytes).hexdigest()
+        gate.evidence['independent_http_clients'] = 2
+        try:
+            tasks.append(asyncio.create_task(one_independent_request()))
+            first = await gate.wait_first()
+            assert not tasks[0].done(), 'S2_FIRST_REQUEST_HELD_UNCOMMITTED'
+            tasks.append(asyncio.create_task(one_independent_request()))
+            second_pid = await assert_two_requests_overlap(gate)
+            assert second_pid != first['backend_pid'], 'S2_DISTINCT_DATABASE_TRANSACTIONS'
+            assert not any(task.done() for task in tasks), 'S2_TWO_REQUESTS_OVERLAP_BEFORE_FIRST_COMMIT'
+            assert await count_intent(live, key) == 0, 'S2_FIRST_DRAFT_NOT_COMMITTED_BEFORE_RELEASE'
+            assert await vector_for(live, [source['id']], [product]) == before, 'S2_HELD_TRANSACTION_ZERO_SOURCE_CHANGE'
+            await gate.release()
+            responses = await asyncio.wait_for(asyncio.gather(*tasks), timeout=15)
+            gate.evidence['responses'] = [{'status': response.status_code,
+                'order_id': response.json().get('data', {}).get('id')} for response in responses]
+            assert all(response.json().get('data', {}).get('id') == first['order_id']
+                       for response in responses), 'S2_RESPONSE_IS_OBSERVED_FIRST_TRANSACTION_ORDER'
+        finally:
+            await gate.release()
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
     assert [response.status_code for response in responses] == [201, 201]
     ids = [response.json()['data']['id'] for response in responses]
     assert ids[0] == ids[1], 'S2_CONCURRENT_ONE_PERSISTENT_RESULT'
     assert await count_intent(live, key) == 1
-    assert await vector_for(live, [source['id']], [product]) == before
-    assert_zero_draft_effects(await vector_for(live, [ids[0]], [product]))
+    assert await vector_for(live, [source['id']], [product], label=live.country + '-concurrency-source-after') == before
+    assert_zero_draft_effects(await vector_for(live, [ids[0]], [product], label=live.country + '-concurrency-new'))
     await live.set_base(product, '110')
     # This models a lost response: resend original accepted body/key, fresh TCP.
     replay = await submit_reorder(live, source, preview, key=key)

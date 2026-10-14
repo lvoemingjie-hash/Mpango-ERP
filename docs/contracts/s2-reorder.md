@@ -78,6 +78,17 @@ or binding balance effects. Ordinary S1 creation retains its stock gate.
 Confirmation continues through the existing order command and inventory/credit
 authorities; insufficient availability is rejected atomically.
 
+## Draft detail actions
+
+Ordinary S1 `CREATED` drafts retain their quote-review and replacement action.
+A `CREATED` S2 draft with `source_order_id` does not offer ordinary replacement
+or an immediate reorder action. The user must explicitly confirm cancellation
+of that new draft; the historical source is never cancelled. Only a successful
+response confirming that same draft as `CANCELLED` enables **Order again from
+historical order**. The user selects that link separately to review a new quote
+from the historical source. Cancellation failure or an unknown result does not
+navigate, create another draft or enable continuation.
+
 ## Refusals
 
 `REORDER_SELECTION_INVALID` covers missing/duplicate original decisions.

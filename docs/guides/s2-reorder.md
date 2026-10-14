@@ -29,3 +29,11 @@ browser tab so that retry retrieves the same draft.
 The new draft detail displays its historical source. Historical orders can be
 used for later independent purchases; each explicit new purchase has its own
 accepted quote and request key.
+
+To review another quote for this reorder draft, select **Cancel this draft to
+order again** and confirm. This cancels only the new draft and leaves the
+historical order unchanged. After cancellation is confirmed, select **Order
+again from historical order** to review a fresh quote. Nothing is created or
+opened automatically. If cancellation fails or its result is unknown, check the
+draft's status before continuing; the follow-up link remains unavailable.
+Ordinary S1 drafts still offer **Review new quote and replace this draft**.

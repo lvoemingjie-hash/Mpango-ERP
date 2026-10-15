@@ -6,16 +6,13 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { listDeclarations, confirmDeclaration, rejectDeclaration } from '@/services/declarationService';
 import type { PaymentDeclaration } from '@/types/declaration';
+import { formatMoney } from '@/utils/printFormat';
 
 const STATUS_BADGE: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
   confirmed: 'bg-green-100 text-green-800',
   rejected: 'bg-red-100 text-red-800',
 };
-
-function formatMoney(amount: string) {
-  return `KES ${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('en-KE', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -158,7 +155,7 @@ export default function DeclarationQueuePage() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-sm font-semibold text-gray-900">
-                    {formatMoney(d.declared_amount)} · {d.method}
+                    {formatMoney(d.declared_amount, d.currency_status === 'KNOWN' ? d.currency : undefined)} · {d.method}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">Order: {d.order_id?.slice(0, 8)}... · {formatDate(d.submitted_at)}</p>
                   <span className={`inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded ${STATUS_BADGE[d.status] ?? 'bg-gray-100'}`}>

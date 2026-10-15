@@ -6,16 +6,13 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { listClientDeclarations } from '@/services/declarationService';
 import type { PaymentDeclaration } from '@/types/declaration';
+import { formatMoney } from '@/utils/printFormat';
 
 const STATUS_LABEL: Record<string, string> = {
   pending: 'Pending — Not Received',
   confirmed: 'Payment Received',
   rejected: 'Rejected',
 };
-
-function formatMoney(amount: string) {
-  return `KES ${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString('en-KE', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -69,7 +66,7 @@ export default function DeclarationHistoryPage() {
             <div key={d.id} className="bg-white rounded-xl shadow p-4">
               <p className="text-sm font-semibold text-gray-900">{declarationLabel(d)}</p>
               <p className="mt-1 text-xs text-gray-500">
-                {formatDate(d.submitted_at)} · {STATUS_LABEL[d.status] ?? d.status} · {formatMoney(d.declared_amount)} ({d.method})
+                {formatDate(d.submitted_at)} · {STATUS_LABEL[d.status] ?? d.status} · {formatMoney(d.declared_amount, d.currency_status === 'KNOWN' ? d.currency : undefined)} ({d.method})
               </p>
               {d.reason && d.status === 'rejected' && (
                 <p className="mt-1 text-xs text-red-600">Reason: {d.reason}</p>

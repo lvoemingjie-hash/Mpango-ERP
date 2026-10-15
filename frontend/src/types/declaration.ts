@@ -7,6 +7,8 @@ export interface PaymentDeclaration {
   id: string;
   order_id: string;
   declared_amount: string;
+  currency?: string | null;
+  currency_status?: string | null;
   method: DeclarationMethod;
   transfer_reference?: string | null;
   status: DeclarationStatus;

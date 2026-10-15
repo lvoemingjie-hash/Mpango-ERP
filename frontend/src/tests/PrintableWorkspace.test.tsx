@@ -579,6 +579,8 @@ function pendingDeclaration(declId: string): PaymentDeclaration {
     id: declId,
     order_id: 'ord-1',
     declared_amount: '1091.00',
+    currency: 'KES',
+    currency_status: 'KNOWN',
     method: 'cash',
     transfer_reference: null,
     status: 'pending',

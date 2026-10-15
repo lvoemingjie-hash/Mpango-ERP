@@ -35,6 +35,10 @@ const navItems: NavItem[] = [
   { label: 'Stock', path: '/inventory', icon: CubeIcon },
   { label: 'Finance', path: '/finance', icon: BanknotesIcon },
   { label: 'Payments', path: '/payments', icon: CreditCardIcon },
+  // F-04 navigation closure: discoverability only for the existing
+  // /declarations queue; reading it still requires the backend's
+  // payments:read and confirming still requires payments:confirm_declaration.
+  { label: 'Declarations', path: '/declarations', icon: ClipboardDocumentCheckIcon },
   { label: 'Customers', path: '/retailers', icon: BuildingOfficeIcon },
   { label: 'Pricing', path: '/pricing', icon: CurrencyDollarIcon },
   // Temporarily hidden to avoid 404s until implemented

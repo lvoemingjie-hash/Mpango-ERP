@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { BanknotesIcon, ReceiptRefundIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { clientFinanceService } from '@/services/clientFinanceService';
 import { formatMoney } from '@/utils/printFormat';
+import { useAuthStore } from '@/stores/authStore';
+import { can, CLIENT_PERMISSIONS } from '@/utils/permissions';
 import type { ClientPayment } from '@/types/client';
 
 const METHOD_LABEL: Record<string, string> = {
@@ -34,6 +37,10 @@ function paymentMethodLabel(payment: ClientPayment) {
 }
 
 export function ClientPaymentHistoryPage() {
+  const user = useAuthStore((s) => s.user);
+  // Same read permission the declarations history GET requires; navigation
+  // only makes the existing page discoverable.
+  const canReadDeclarations = can(user, CLIENT_PERMISSIONS.PAYMENTS_READ);
   const [payments, setPayments] = useState<ClientPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +70,20 @@ export function ClientPaymentHistoryPage() {
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-primary-600">Read only</p>
         <h1 className="text-lg font-bold text-gray-900">Payment History</h1>
+        {canReadDeclarations && (
+          <div className="mt-2">
+            <Link
+              to="/client/declarations"
+              className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
+            >
+              My declarations
+            </Link>
+            <p className="mt-1 text-xs text-gray-500">
+              Declarations are payment notices you submitted. The supplier
+              confirms them before any amount is booked.
+            </p>
+          </div>
+        )}
       </div>
 
       {loading && <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">Loading payments...</div>}

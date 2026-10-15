@@ -4,6 +4,8 @@ import { ArrowLeftIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import { clientOrderService } from '@/services/clientOrderService';
 import { normalizeApiError } from '@/utils/errorHandling';
 import { formatMoney } from '@/utils/printFormat';
+import { useAuthStore } from '@/stores/authStore';
+import { can, CLIENT_PERMISSIONS } from '@/utils/permissions';
 import type { ClientOrder } from '@/types/client';
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -17,6 +19,7 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
 export function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
   const [order, setOrder] = useState<ClientOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +78,10 @@ export function OrderDetailPage() {
   };
 
   const canCancel = order && (order.status === 'CREATED' || order.status === 'CONFIRMED');
+  // Navigation discoverability only: the declare route and its
+  // client:payments:declare admission stay the permission boundary; the
+  // backend remains the final arbiter of whether a declaration is accepted.
+  const canDeclare = can(user, CLIENT_PERMISSIONS.PAYMENTS_DECLARE);
 
   if (loading) {
     return (
@@ -143,6 +150,10 @@ export function OrderDetailPage() {
             className="inline-flex items-center rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700">
             Order again
           </Link>}
+          {canDeclare && <Link to={`/client/orders/${order.id}/declare`}
+            className="inline-flex items-center rounded-lg border border-primary-300 bg-white px-3 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50">
+            Declare Payment
+          </Link>}
           <Link
             to={`/client/orders/${order.id}/print`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
@@ -151,6 +162,10 @@ export function OrderDetailPage() {
             Print order
           </Link>
         </div>
+        {canDeclare && <p className="no-print mt-2 text-xs text-gray-500">
+          Declare Payment only submits a declaration. The supplier books it only
+          after confirming receipt offline — never record the same payment twice.
+        </p>}
 
         <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500">
           <span>{order.item_count} item{order.item_count !== 1 ? 's' : ''}</span>

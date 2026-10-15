@@ -13,6 +13,90 @@ Long chat histories are useful, but they are not a reliable operating substrate 
 - Product and platform work can proceed in parallel, but product continuity wins when tradeoffs appear
 - Multi-tenant safety is a hard constraint
 
+## Confirmed Business and Governance Decisions
+
+### Pricing and currency (BD-1, Jeff, 2026-10-08 — implemented and accepted as S1)
+
+- Customer-specific price takes precedence; otherwise base price. A missing
+  price is never silently sold as zero; a base price is the foundation of
+  normal selling.
+- Business countries are Uganda and Kenya. The registration country decides
+  the currency: UGX for Uganda, KES for Kenya. No single hard-coded currency
+  stands in for both markets.
+
+### Price-change consent (BD-2, Jeff, 2026-10-08 — implemented and accepted as S1)
+
+- If the effective price differs from the quote the customer accepted,
+  submission must prompt and require explicit re-consent; never submit
+  silently at the new amount. Comparing only totals is not acceptance.
+- Already-settled order snapshots are never rewritten by later price changes.
+
+### Negotiation (BD-3 — UNDECIDED)
+
+- One-time order negotiation and its deadline are NOT decided by the owner.
+  S3 stays deferred until the business decides; it is not a prerequisite of
+  the S2 reorder line and must not be silently cancelled or implemented.
+
+### S1 acceptance scope (CTO, 2026-10-13 — durable fact)
+
+- The independent S1 user-journey gate is closed for candidate `41fd3adb`
+  (head `040`): 14 journeys / 104 assertions across Uganda and Kenya on one
+  frozen runtime instance. It proves the named journeys only; it does not
+  prove multi-worker shared caching, real-mailbox registration, any CI or
+  full-suite category, promotion, or deployment.
+
+### S2 acceptance scope (CTO, 2026-10-15 — durable fact)
+
+- The CTO finally accepted S2 "reorder from own history" on candidate
+  `88c7d8157ac5c46795d411ea6799112e017c9532` (tree `bb7795aa…`, sole parent
+  `23685f60…`, head `040`), which is the current product acceptance baseline
+  carrying both accepted S1 and accepted S2. Accepted scope: a server-built
+  draft from a historical order at current effective prices, mandatory
+  re-consent on any line/price change (including same-total different
+  lines), explicit removal of unavailable lines, zero economic effect of the
+  draft until submission, and same-key/body recovery of one persistent
+  result. Evidence layers: independent V3 S2 backend 53/53, S1
+  pricing_quote regression 77/77, concurrency/M2 6 RED / 6 GREEN pristine,
+  and the CTO-reviewed browser supplement 6 scenarios / 138 literal-true
+  (UG+KE, 390px). These layers keep their own scopes and are never summed
+  into a new all-suite pass. Out of scope: all-order features, full-suite or
+  hosted CI on the candidate, production mail, deployment, commercial
+  credit.
+
+### RC1 freeze and CI admission (CTO, 2026-10-15 — durable fact)
+
+- The RC1 candidate (target 2026-10-31) is a docs-only successor of the
+  acceptance baseline `88c7d815`; only five documentation paths may change
+  (`docs/ai/PROJECT.md`, `docs/ai/PROJECT_MEMORY.md`,
+  `docs/ai/CTO_CURRENT_OPS.md`,
+  `docs/ai/DUAL_MACHINE_DEVELOPMENT_PROTOCOL.md`,
+  `docs/releases/mvp-20261031/RC1-PLAN.zh-CN.md`); all product, test,
+  migration, dependency, tooling, and CI bytes stay identical to BASE.
+- The historical five-leg hosted CI success belongs to `28b65b71` and must
+  not be recorded as current-candidate CI. The current workflow legs bind
+  236 test files while the current recursive selection is 249 (+13, -0);
+  the current nodeid total has not been collected and must not be guessed
+  from AST counts or the historical 4288. Any CI correction waits for one
+  complete finite scope decision by the CTO; a CI admission design is not a
+  green gate.
+- Push, protected merge, deployment, and the formal G1 are not authorized by
+  any product acceptance. A VPS exists (Jeff, 2026-10-15); its region/OS,
+  domain, and SMTP availability are unconfirmed; SMS is not a prerequisite
+  of this round.
+
+### Execution model (CTO, 2026-10-15)
+
+- Work is assigned to named executors by written CTO directive, not by
+  machine. Historical labels such as "Windows owns product" or "Lubuntu owns
+  platform" are not authority. Closed lines: Codex-L implemented S2
+  (accepted 2026-10-15); Kilo-L's proposed S2 independent acceptance was
+  closed by the CTO's own native-result review. Active 2026-10-15 lines:
+  ZCode-L freezes the RC1 docs and designs current-CI admission; ZCode-W
+  prepares the minimal pilot manual and ops rehearsal. The CTO makes final
+  technical rulings.
+- Governance documents state current truth at the top of the page; older
+  body text that contradicts the page top is history, not guidance.
+
 ## Strategic Intent
 
 - Mpango's current product core is a wholesaler-led B2B ERP that extends downstream to retailers

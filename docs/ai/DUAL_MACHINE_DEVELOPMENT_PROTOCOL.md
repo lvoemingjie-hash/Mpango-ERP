@@ -4,19 +4,43 @@ This protocol governs parallel development across two machines for Mpango ERP.
 
 ## Scope
 
-- Machine A: product line development on Windows
-- Machine B: platform line exploration and implementation on Lubuntu
-- Codex may operate on both machines, but both must follow the same repository memory and governance rules
+- Two machines (a Windows machine and a Lubuntu machine) are available; the
+  protocol's governance rules bind all of them equally
+- Work is assigned to named executors by written CTO directive, not by
+  machine: the historical static mapping of "Windows = product line,
+  Lubuntu = platform line" is SUPERSEDED (2026-10-13) and must not be used to
+  infer authority in a new task
+- Every executor, on either machine, follows the same repository memory and
+  governance rules
 
-## Current CTO Decision
+## Current CTO Decision (2026-10-15)
 
-At this moment, the product line is active and the platform line is not yet implementation-active.
+Two parallel preparation lines are active under paired directives, and
+neither line owns a machine:
 
-Therefore:
+- ZCode-L (executing on Lubuntu): RC1 docs-only freeze of the five
+  governance/release docs from the product acceptance baseline `88c7d815`
+  (`CTO-AUTH-MVP-RC1-DOCS-FREEZE-AND-CI-ADMISSION-L-R1-20261015`), plus the
+  one-pass current-CI admission design; writes only the five named docs
+  paths; no product, test, or CI bytes, no services, no push
+- ZCode-W (executing on Windows): minimal pilot manual and go-live rehearsal
+  preparation; writes only its own output directory; candidate source
+  read-only; no repo, runtime, or VPS actions
+- CTO: final technical ruling on scope, candidates, the one finite CI
+  correction scope and budget, integration, promotion, and release
 
-- Machine A remains the delivery-critical track
-- Machine B starts in architecture-and-foundation mode, not feature expansion mode
-- Platform work must not create architectural drift from the current ERP core
+Closed lines (2026-10-15): Codex-L's S2 "reorder from own history"
+implementation is closed by the CTO's final acceptance at `88c7d815`
+(`PASS__88c7d815__FROZEN_FUNCTIONAL_SCOPE`); the proposed Kilo-L independent
+S2 acceptance was closed by the CTO's own native-result review. The earlier
+2026-10-13 dual-track assignment block (Codex-L S2 implementation, ZCode-W
+governance-doc candidates, Kilo-L independent acceptance) is HISTORY.
+
+Standing constraints for both lines: product work must not create
+architectural drift from the current ERP core; push, remote CI, protected
+merge, and deployment are NOT AUTHORIZED unless a specific directive grants
+them. A CI admission design is a plan for one CTO decision, not a green gate
+and not a dispatch authorization.
 
 ## Strategic Rule
 
@@ -50,56 +74,72 @@ The following are the approved shared memory surfaces:
 - `ai-ledger/`
 - `docs/contracts/`
 
-## Machine Roles
+## Executor Roles
 
-### Machine A - Product Track
+Current roles (2026-10-15). A role travels with the named executor and its
+directive, not with a machine.
 
-Primary responsibility:
+### Product implementation (no active line; last: Codex-L, S2 reorder)
 
-- retailer workflows
-- wholesaler workflows
-- order, inventory, payment, reporting usability
-- frontend integration
-- product-side bug fixing and hardening
+- CLOSED 2026-10-15: the S2 reorder slice was implemented by Codex-L within
+  its directive scope with real PG/HTTP/browser evidence and accepted at
+  `88c7d815`. Any new product implementation line requires a fresh CTO
+  directive, and under it the executor must not edit the four `docs/ai/`
+  governance documents, migrations 001-040, DB provisioner,
+  bootstrap/readiness, auth/cache core, CI, dependency locks, or baseline,
+  and must not implement S3 negotiation, refunds, partial fulfillment,
+  credit limits, or a shared stock pool without a new authorization.
 
-May change:
+### Documentation, release preparation, and CI admission (currently ZCode-L)
 
-- product frontend
-- product backend
-- product-side scenarios and tests
-- product documentation
+Primary responsibility (2026-10-15 line, executing on Lubuntu):
 
-Should avoid:
+- RC1 docs-only freeze: bring the accepted S1/S2 state into PROJECT.md,
+  PROJECT_MEMORY.md, CTO_CURRENT_OPS.md,
+  DUAL_MACHINE_DEVELOPMENT_PROTOCOL.md, and
+  `docs/releases/mvp-20261031/RC1-PLAN.zh-CN.md` as one normal docs-only
+  successor of BASE `88c7d815`
+- the one-pass current-CI admission design (read-only; a plan for one CTO
+  decision, not a green gate)
 
-- speculative platform abstractions
-- platform-first schema changes
+Must not:
 
-### Machine B - Platform Track
+- write product code, CI workflows, or test tooling
+- start services, run test suites/collect, or merge anything
+- push, or touch any path outside the five named docs paths
 
-Current responsibility:
+### Pilot manual and ops rehearsal preparation (currently ZCode-W)
 
-- validate platform architecture against existing product contracts
-- prepare platform documentation, module boundaries, and migration governance
-- prototype only low-risk platform slices after explicit approval
+Primary responsibility (2026-10-15 line, executing on Windows):
 
-Allowed initial focus:
+- minimal trial manual and go-live rehearsal material in its own output
+  directory; candidate source read-only; no repo edits, no runtime, no VPS
+  actions
 
-- tenant registry design
-- admin console information model
-- audit log design
-- billing model design
-- branch and migration governance
+### Independent acceptance (no active line; last proposed: Kilo-L, S2)
 
-Must avoid before explicit approval:
+- CLOSED 2026-10-15: the CTO closed the S2 acceptance question by directly
+  reviewing the native results (V3 + browser supplement), so the proposed
+  Kilo-L acceptance was not dispatched. Future independent acceptance lines
+  are dispatched only by a new directive and must not inherit an author's
+  PASS.
 
-- rewriting the product tenancy model
-- changing core auth assumptions
-- changing frozen product modules
-- introducing infra complexity that current scale does not need
+### Final ruling (CTO)
+
+- scope, risk, contracts, integration/merge decisions, acceptance verdicts
+
+### Historical machine-role text (superseded 2026-10-13)
+
+The earlier "Machine A - Product Track (Windows)" and "Machine B - Platform
+Track (Lubuntu)" sections described the founding phase when the product line
+ran on Windows and the platform line explored on Lubuntu. They are retained
+in earlier versions of this file and no longer describe current authority.
+The platform-track start conditions below remain useful governance for any
+future platform slice, applied to whichever executor receives it.
 
 ## Start Condition For Platform Coding
 
-Machine B should not begin broad platform implementation until these are true:
+A platform-line executor should not begin broad platform implementation until these are true:
 
 1. The tenancy model is explicitly aligned with repository decisions
 2. Shared docs are pulled and readable locally
@@ -107,7 +147,7 @@ Machine B should not begin broad platform implementation until these are true:
 4. Write ownership is clear
 5. Migration impact is reviewed
 
-Until then, Machine B should stay in design-review and scaffolding mode.
+Until then, a platform-line executor should stay in design-review and scaffolding mode.
 
 ## Tenancy Alignment Rule
 
@@ -129,21 +169,26 @@ The following areas are frozen unless explicitly approved by CTO:
 - `backend/api/middleware/`
 - `backend/database/session.py`
 
-Machine B should assume these are read-only unless a written approval exists in repo memory.
+Every executor should assume these are read-only unless a written approval exists in repo memory.
 
 ## Branch Protocol
 
 - `main` is release-candidate only
-- Machine A uses a product branch
-- Machine B uses a platform branch
+- Active work uses the local branch named by its directive from the
+  directive-named BASE (current freeze line: `codex/mvp-rc1-freeze-20261015`
+  off acceptance baseline `88c7d815` in a `--no-hardlinks` clone without
+  alternates; the S2 line's branch was `codex/s2-reorder-r1-20261013` off
+  S1 BASE `41fd3adb`); long-lived branch names and remotes must not be
+  silently equated with work in progress
 - Cross-cutting work requires explicit coordination before merge
-- A local-only branch state is not sufficient shared truth when another machine or CTO must review it
+- A local-only branch state is not sufficient shared truth when another
+  machine or CTO must review it — use an authorized visibility mechanism
+  (push when authorized, otherwise a handoff package)
 
 Recommended:
 
-- `product-dev` for active ERP work
-- `platform-dev` for platform line work
-- short-lived feature branches off the relevant long-lived branch
+- short-lived, directive-named feature branches off the relevant baseline
+- record branch name, BASE, and tip identity in the task handoff
 
 ## Start-Of-Task Sync Gate
 
@@ -159,7 +204,13 @@ Before a machine starts a new non-trivial task, it must:
 
 ## Visibility Push Rule
 
-There are two distinct push states:
+Current constraint (2026-10-15): push and remote CI are NOT AUTHORIZED unless
+a specific CTO directive grants them. When push is not authorized, review
+visibility is provided through CTO-addressed handoff packages and delivery
+directories (for example `AI_REPORT_INBOX/.../delivery/`), which carry the
+candidate content and diffs instead of a remote ref.
+
+When a directive does authorize pushes, there are two distinct push states:
 
 1. Visibility push
    - allowed when another machine / CTO cannot inspect a local-only commit
@@ -245,7 +296,7 @@ Skipping step 3 or 4 creates split-brain memory and stale-agent risk.
 
 ## Current Recommended Platform Sequence
 
-For Machine B, the safest order is:
+For a platform-line executor, the safest order is:
 
 1. Sync shared memory docs locally
 2. Review tenancy alignment against current repo decisions

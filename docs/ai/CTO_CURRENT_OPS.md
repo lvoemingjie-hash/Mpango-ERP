@@ -1,28 +1,49 @@
 # CTO Current Ops
 
-**Last updated:** 2026-09-23
+**Last updated:** 2026-10-15
 **Owner:** Codex acting as CTO
-**Canonical product branch:** `origin/product-dev-recovered`
-**Protected product branch tip:** `57df5334f35130b6dc58e4bf5f3893a91bfc8a07` (tree `829fd8e0`; a docs-only successor of common base `bd2373cbfeafde07f1771aba2089f0d1b5f0cd3f`; fetched and verified 2026-09-23)
-**Current reviewed integration candidate:** `a78f544098bba55bbb0cba6f2ee9c5b84cddf86a` (tree `e458ce4e`) on `origin/codex/order-state-r2-e1-source-revision-f1-f3-20260919` — NOT yet promoted; `57df5334` is not an ancestor of `a78f5440`, so fast-forward from the current protected tip is not possible
-**Current candidate migration head:** `039_order_credit_holds` (parent `038_catalog_identity_vertical_slice`); the protected line remains at `037_payment_declarations_schema`
-**Resource incident:** audit complete, anonymous-volume attribution partly unknown; deployment hold remains. Deployment is NOT AUTHORIZED and nothing is deployed.
-**Delivery state:** Pre-pilot MVP hardening; not approved for customer delivery
+**产品验收基线 (product acceptance baseline):** `88c7d8157ac5c46795d411ea6799112e017c9532` (tree `bb7795aa4b88f621839069c0d3afc0db477380d8`, sole parent `23685f60f325084535eb0213a539eedb29ebe234`) — carries accepted S1 and accepted S2
+**S1 accepted candidate:** `41fd3adb1c355db8bab01ec77634413e27697f60` (tree `26635a89a4021e39d4eaee214dcac3cf0afcdbb9`, sole parent `e990a66e9720fc7cb4cfb6f0bc03022db1f04c14`) — an ancestor of the acceptance baseline
+**Current migration head:** `040_s1_pricing_quote_contract`
+**S1 gate:** `CTO_FINAL_S1_ACCEPTANCE=PASS_IN_FROZEN_SINGLE_RUNTIME_UG_KE_SCOPE` (2026-10-13) — CLOSED; 14 journeys / 104 assertions, UG + KE, one frozen runtime invocation; that frozen scope is not re-run
+**S2 gate:** `CTO_FINAL_S2_ACCEPTANCE=PASS__88c7d815__FROZEN_FUNCTIONAL_SCOPE` (2026-10-15) — CLOSED; independent V3 S2 backend 53/53, S1 pricing_quote regression 77/77, concurrency/M2 6 RED / 6 GREEN, CTO-reviewed browser supplement 6 scenarios / 138 literal-true (UG+KE, 390px). Separate bounded layers, not one combined pass
+**Current candidate hosted CI:** NOT ESTABLISHED. The historical five-leg success belongs to `28b65b71`; workflow legs bind 236 test files vs current selection 249 (+13, -0); nodeid total NOT collected; one-pass admission design in preparation for a single CTO decision
+**S3 line:** DEFERRED pending business decision BD-3; not authorized, not a dependency of the accepted line. PC-03 formal credit is likewise a separate scope; cash/partial-payment paths do not claim credit approval
+**Remote observations (CTO `git ls-remote`, 2026-10-15, read-only):** `main@0ebee80e8afe9826ca82ac06b54d83faf03ef272`; `product-dev-recovered@edbc2b322a0af681dc6412fd200d9ae339e7c050`; `refs/pull/9/head@3653619ec2f0e10ee76ad02b9e547771dcfa70a1` — all three are ancestors of `88c7d815`, so no S1/S2 merge is needed. These are timestamped remote-state observations — not deployment proof
+**Deployment:** NOT AUTHORIZED; nothing is deployed. A VPS exists (Jeff, 2026-10-15); region/OS, domain, and SMTP availability remain unconfirmed; SMS is not a prerequisite of this round. Resource incident: audit complete, anonymous-volume attribution partly unknown; hold remains.
+**Delivery state:** RC1 (target 2026-10-31) docs-only freeze and finite release preparation; not approved for customer delivery
 
-**2026-09-23 supersede note:** the previously recorded "current reviewed product-code
+**2026-10-15 supersede note:** every "S2 candidate SHA PENDING", "S2 in
+implementation", or "Kilo-L will run the S2 independent acceptance" statement
+below is HISTORICAL. S2 was implemented, independently verified (V3),
+browser-supplemented, and finally accepted by the CTO on 2026-10-15 at the
+acceptance baseline `88c7d815`. The active lines are now the ZCode-L RC1
+docs-only freeze plus one-pass current-CI admission design, and the ZCode-W
+pilot-manual/ops-rehearsal preparation. Push, remote CI, protected merge,
+deployment, and formal G1 remain NOT AUTHORIZED.
+
+**2026-10-13 supersede note:** every anchor below the S1 acceptance —
+including the 2026-09-23 protected tip `57df5334`, integration candidate
+`a78f5440`, head `039`, and the `d9dc2e41`-era narratives — is HISTORICAL and
+kept only as evidence context. Page-top conclusions take precedence over any
+older sentence in this file. The S1 pricing/quote/consent line has since been
+implemented and finally accepted; older blanket statements that pricing
+implementation was forbidden are superseded. The SDK summary mapping error of
+the S1 round was corrected by the CTO (`CTO-MATERIAL-CLARIFICATION`, LOW,
+non-blocking) and is CLOSED — it is not a gate waiting on any author.
+
+**2026-09-23 supersede note (HISTORICAL):** the previously recorded "current reviewed product-code
 baseline `d9dc2e41`" and "current migration head `037`" narratives below are
-HISTORICAL. `d9dc2e41` remains a verified ancestor of the protected tip (51
-commits behind `57df5334`), but current-state anchors are the protected tip
-`57df5334` and the reviewed integration candidate `a78f5440` recorded above.
+HISTORICAL. `d9dc2e41` remains a verified ancestor of the then-protected tip
+(51 commits behind `57df5334`), and that era's current-state anchors were the
+protected tip `57df5334` and the reviewed integration candidate `a78f5440`.
 Since that era, the contract line integrated H2-C (via common base `bd2373cb`
 on the protected line), catalog/SKU identity with migration `038`, Order R2 +
 DB-authority with migration `039` and the five-stage deploy authority (accepted
 composite V3 at `5c93763d`), the six bounded revocation/stock fixes, tenant-
 scoped SKU list caching, the deterministic PW1R3 boundary, and the S4-D
 topology closure (accepted through `a78f5440`; Fresh Kilo R0+R1+R2 composite,
-receipt `1e238893`). `FULL_SUITE_RESULT=NOT_RUN_THIS_ROUND` and
-`BROWSER_RUNTIME=NOT_RUN_THIS_ROUND` on `a78f5440`; see
-`docs/ai/PROJECT.md` (2026-09-23) section 6 for the accepted-evidence snapshot.
+receipt `1e238893`).
 
 **HE2 R3+A1 status (HISTORICAL, era of `d9dc2e41`): MERGED_AND_INDEPENDENTLY_RUNTIME_VERIFIED** - controlled merge `d9dc2e41` has parents `cdb39e96` and `483b8ab0`; its tree is identical to source `483b8ab0`. Accepted evidence: Kilo cumulative governance review `db87f0d3`, Lubuntu fresh-runtime authority-profile final `6fb1e31e`, and merge report `1017be0c`. The authority runner now binds backend CWD/temp-DB inputs and profile-authorized Alembic head/parent lineage; it does not merge migration `038` or any SKU product code.
 **H2-B status: MERGED_AND_BROWSER_VERIFIED** - controlled merge `436d61e2` has parents `6e9470a1` and `25626f4d`; its tree is identical to the reviewed source `25626f4d`. Accepted evidence: source `25626f4d`, Kilo review `d6289a6b`, backend authority `90f96e3f` (3773 collected / 3710 passed / 48 skipped / 15 xfailed / zero red), browser E1 `04134016` (24/24 browser PASS, 29-node inventory gap=0), and merge report `c400b7c5`.
@@ -40,30 +61,52 @@ in `ai-ledger/`.
 
 ## Current Truth
 
-- (2026-09-23) The protected product branch tip is `57df5334` (docs-only
-  successor of common base `bd2373cb`). The reviewed integration candidate is
-  `a78f5440` on `codex/order-state-r2-e1-source-revision-f1-f3-20260919`
-  (Order R2 + DB-authority V3 composite accepted at `5c93763d`; six
-  revocation/stock fixes, tenant-scoped SKU caching, PW1R3 boundary, and S4-D
-  closure accepted through `a78f5440` via the Fresh Kilo R0+R1+R2 composite,
-  receipt `1e238893`). Promotion into `product-dev-recovered` has NOT happened
-  and requires the protected-promotion-readiness review plus a fresh
-  independent runtime/browser plan. Full suite and browser runtime have not
-  been run on `a78f5440`. The resource-incident deployment hold remains.
-- HISTORICAL (era of `d9dc2e41`, superseded as current-state 2026-09-23):
-  `d9dc2e41` is the current reviewed baseline. It carries accepted
-  Contracts A-D, H7 setup/dependency reconciliation, PW1 auth/rate-limit/cache/
-  permission closures, the R4-C1-R1 responsive MainLayout closure, the J1
-  friction-audit merge lineage, the J1-H2-A-R2 credential closure, and the
-  H2-B password-recovery/test-hygiene closure, plus the merged HE2 authority
-  controls through R3+A1. New controlled work must fetch and verify the live
-  protected tip exactly; do not silently branch from an older ancestor.
-- The earlier merges `6e9470a1`, `c5b66d26`, `a29f8db0`, `9067e38f`,
-  `ea990826`, `a6ef3aac`, `d796dcb0`, and `adcc7f28` are ANCESTORS of the
-  current tip, not the tip itself. Do not branch from or reference them as the
-  current baseline.
-- `origin/main@134ea59e` and `origin/platform-dev@12c5ee55` remain unchanged.
-- All controlled work begins from a fetched, clean, isolated worktree.
+- (2026-10-13, unchanged) The S1 candidate `41fd3adb` passed final bounded
+  acceptance (`PASS_IN_FROZEN_SINGLE_RUNTIME_UG_KE_SCOPE`): a customer in
+  Uganda or Kenya can register, see server-authoritative UGX/KES prices,
+  quote, order with re-consent on price change, confirm, and pay with
+  idempotent replay; inventory reservation, over-receive refusal,
+  cross-tenant refusal, override revocation fallback, and zero-effect draft
+  replacement all held. The independent S1 user-journey gate is CLOSED.
+  Scope: one frozen runtime instance and the fourteen named journeys only.
+- (2026-10-15) The S2 candidate `88c7d815` passed final bounded acceptance
+  (`PASS__88c7d815__FROZEN_FUNCTIONAL_SCOPE`): from a historical order the
+  server builds a draft at current effective prices; changed lines/prices
+  force explicit re-consent (including same-total different lines);
+  unavailable lines are never silently dropped; the draft has zero
+  inventory/payment/ledger/credit effect until submission; a lost response is
+  recovered by the same key/body. The S2 gate is CLOSED. Scope: the declared
+  S2 functional scope only.
+- (2026-10-15) Product acceptance baseline is `88c7d815` carrying both gates.
+  `main`, `product-dev-recovered`, PR9, the S1 candidate, and historical CI
+  baseline `28b65b71` are all its ancestors — no merge, cherry-pick, or
+  rebase of S1/S2 is needed or authorized.
+- Two parallel preparation lines are active under the 2026-10-15 CTO
+  directives. ZCode-L (Lubuntu) freezes the accepted state into the five
+  governance/release docs as a docs-only successor of `88c7d815` and writes
+  the one-pass current-CI admission design; it changes no product, test, or
+  CI bytes and starts no services. ZCode-W (Windows) prepares the minimal
+  pilot manual and ops rehearsal material in its own output directory. The
+  CTO holds final technical rulings and will set the one finite CI correction
+  scope and budget afterwards.
+- Product integration, protected promotion, and deployment are three
+  different actions with three different authorizations. Assembling or
+  reviewing an integration candidate is not a promotion into any protected
+  branch, and neither is a deployment. Push, remote CI, protected merge, and
+  deployment all remain NOT AUTHORIZED as of 2026-10-15. A CI admission
+  design is a plan for one CTO decision, not a green gate and not a
+  dispatch authorization.
+- Historical (superseded 2026-10-13): the 2026-09-23 state — protected tip
+  `57df5334`, reviewed integration candidate `a78f5440` on
+  `codex/order-state-r2-e1-source-revision-f1-f3-20260919`, head `039`, and
+  the `d9dc2e41`-era baseline narratives — is retained below as history.
+  Earlier merges `6e9470a1`, `c5b66d26`, `a29f8db0`, `9067e38f`,
+  `ea990826`, `a6ef3aac`, `d796dcb0`, and `adcc7f28` are ancestors of that
+  era's line, not current baselines. The 2026-10-08 five-leg CI run
+  (`28b65b71`, run `37759579633`) belongs to that other candidate and is not
+  CI evidence for the S1 candidate or any S2 candidate.
+- All controlled work begins from the exact BASE named by the active CTO
+  directive, in a fetched, clean, isolated worktree.
 - The wholesaler is the primary customer and value owner.
 - Retailers operate inside one selected supplier relationship at a time.
 - Mpango is not a cross-supplier price-comparison marketplace.
@@ -74,6 +117,32 @@ in `ai-ledger/`.
 
 ## What Is Closed
 
+- (2026-10-15, S2 final acceptance on `88c7d815`, frozen functional scope)
+  reorder-from-history: server-built draft from a historical order at current
+  effective prices; mandatory re-consent on any line/price change including
+  same-total different lines; explicit-only removal of unavailable lines;
+  zero economic effect of the draft until submission; same-key/body recovery
+  of one persistent result after a lost response. Evidence: independent V3
+  backend 53/53, S1 pricing_quote regression 77/77, UG/KE two-transaction
+  overlap with one result, M2 6 RED / 6 GREEN pristine, and the CTO-accepted
+  browser supplement 6 scenarios / 138 literal-true assertions. The CTO
+  dispositioned four LOW items in place, including UX-01 (same-total line
+  change prompt wording) as non-blocking experience debt. No S2 environment,
+  browser, or acceptance rework is planned.
+- (2026-10-13, S1 final acceptance on `41fd3adb`, frozen single-runtime
+  UG/KE scope) base price + per-customer override with revocation fallback to
+  base; currency from registration country (UGX zero-decimal, KES two) with
+  exact API money strings; signed 900-second purpose-bound quotes; explicit
+  re-consent when economic lines change (same-value ABA/version changes do
+  not add a redundant prompt); persistent submission/payment idempotency with
+  one committed intent per key; zero-effect draft replacement; inventory
+  reservation on payment and over-receive refusal; cross-tenant access
+  refused with neutral 404; migration `040` additive-only. Outside this
+  closure: multi-worker shared cache, marker expiry across restart,
+  first-transaction failure interleaving, full registration mail journey,
+  any CI/full-suite category, promotion, deployment. The S1 round's
+  `SDK-SUPPLY.json` mapping error is closed by CTO correction M-01 (LOW,
+  non-blocking) and is not an open gate.
 - Tenant isolation and contextual JWT-derived supplier scope.
 - Wholesaler credential setup/reset and terminal-token boundaries.
 - Retailer identity, invitation, verified email, credentials, mapping, and
@@ -274,13 +343,41 @@ Post-merge validation:
 
 ## What Is Not Closed
 
+- (2026-10-15) The acceptance baseline has no hosted regression/CI evidence
+  of its own. The 2026-10-08 five-leg CI belongs to `28b65b71`; the current
+  workflow legs bind 236 test files while the current recursive selection is
+  249 (+13: three `release_critical_journeys`, six `s1_pricing_quote`, four
+  `s2_reorder` files; removed 0); the current nodeid total has NOT been
+  collected. S2 collection imports `tests.s2_reorder.support` and reads
+  task-root/config/runtime-account/work-attachment prerequisites that the
+  generic supply does not provision, so updating the expected counts alone
+  cannot make the gate valid. A one-pass admission design is being prepared
+  for a single CTO decision; remote CI budget is unallocated.
+- (2026-10-15) Production deployment configuration must match evidence scope:
+  S1/S2 acceptances cover one runtime instance; multi-worker shared cache,
+  marker expiry, and restart interleaving are unproven. Real-mailbox e-mail,
+  non-mainland HTTPS hosting, and a backup/restore drill on the current line
+  remain unevidenced; existing local/staging evidence does not transfer. A
+  VPS exists (Jeff, 2026-10-15); its region/OS, a customer domain, and SMTP
+  availability are unconfirmed; SMS is not a prerequisite of this round.
+- (2026-10-15, unchanged in substance) Formal credit sales stay limited:
+  PC-03 credit-limit/pause/prepayment rules are confirmed business intent but
+  not implemented or accepted; the accepted S2 read-only preview and
+  zero-effect draft do not change this, and cash/partial-payment paths do not
+  claim credit approval.
+- (2026-10-15) Jeff's real business trial and matching wholesaler/retailer
+  manuals are outstanding (planned 2026-10-21..31; manual drafted by ZCode-W
+  from the frozen candidate). S3 stays DEFERRED pending BD-3; PC-03 formal
+  credit and BD-3/S3 stay separate scopes.
 - Full-suite post-state test-hygiene debt stands at 4 wholesalers /
   0 registrations / 29 uuid-named schemas (4/0/29): attributed to other test
   files that run after the closed module; the module's net contribution is
   zero and replaying it on a dirty database restores 0/0/0. Unfixed, tracked,
   non-blocking.
 - `RT0` remains `BLOCKED_BY_H2_C` (retailer discovery layer missing); no API
-  bypass of the missing retailer UI is permitted.
+  bypass of the missing retailer UI is permitted. (Historical-era line: H2-C
+  was subsequently integrated per the 2026-09-23 supersede marks below;
+  retain as history.)
 - ~~H2-C integration candidate `42c5d328` is not merged. Its Lubuntu run was
   corrected by `31adf492` to `VOID_ENVIRONMENT_PRECHECK`; browser execution
   was NOT_RUN. It requires a new baseline integration and valid authority run.~~
@@ -599,27 +696,45 @@ review path, not the current gate state.
 
 ## Active Phase
 
-**Active gate (2026-09-23):** protected-branch promotion readiness for the
-reviewed integration candidate `a78f5440` — read-only cumulative inventory
-R0, then Fresh Kilo review, then a fresh independent runtime plan on one
-exact frozen merged candidate. The historical dual-line queue below is
-SUPERSEDED: H2-C and SKU-R0-M1/catalog identity are both closed on the
-contract line. Ordered queue per `docs/ai/PROJECT.md` section 8:
+**Active phase (2026-10-15):** RC1 docs-only freeze plus one-pass CI
+admission design, then a finite release window under separate CTO decisions.
 
-1. `PROTECTED-PROMOTION-READINESS-R0` — cumulative source/evidence inventory
-   from common base `bd2373cb` to both tips (119 reachable commits, 96
-   first-parent, one merge, 212 changed paths; verified 2026-09-23).
-2. `FRESH-INDEPENDENT-RUNTIME-PLAN` — freeze one exact merged candidate and
-   the minimum V3/V4 suite on an isolated host (full backend suite, finance/
-   tenant/inventory coverage, browser gate). No runtime acceptance is
-   inherited from report branches; nothing has run on `a78f5440` at full-suite
-   or browser scope.
-3. `BASELINE-PROMOTION-DECISION` — CTO decides whether and how `a78f5440`
-   enters `product-dev-recovered` (fast-forward from the current protected
-   tip is not possible: its docs-only successor is not an ancestor).
-4. `PRICING-AND-ORDERING-CONTRACT-R0` — only after separate authorization.
+1. ZCode-L (2026-10-15..16): write the accepted S1/S2 state into the five
+   governance/release docs as a docs-only successor of BASE `88c7d815`, and
+   deliver the one-pass current-CI admission design (249 vs 236 file drift,
+   three new test families, collection prerequisites, evidence ownership)
+   for one CTO decision. No product/CI/test bytes, no services, no push.
+2. ZCode-W (2026-10-15..16): minimal pilot manual and go-live rehearsal
+   preparation in its own output directory; candidate source read-only.
+3. 10-17..20: CTO freezes RC1 and the one finite CI correction scope with an
+   explicit budget; final candidate verification and approved release
+   rehearsal follow under that grant.
+4. 10-21..24: Jeff's real trial; findings triaged by user impact.
+5. 10-25..31: fix/review buffer; CTO small-scope release decision with
+   operational authorization. Dates are targets, never a substitute for
+   safety failures.
 
 Standing boundaries (unchanged):
+
+- S3 one-time negotiation stays DEFERRED pending BD-3; not an S2 dependency.
+- `FINANCE_LOCALIZATION_R0 = AUDIT_ONLY_NON_BLOCKING`: Uganda/UGX and
+  multi-currency questions were resolved for S1 scope by the accepted
+  contract; new currency questions still do not block the queue.
+- Custom SKU fields remain `POST_MVP_DISCOVERY`.
+- This phase is planning truth, not blanket implementation authorization;
+  each entry still requires its own CTO-authorized gate for product code.
+- Nothing is deployed. Push, remote CI, protected merge, and deployment
+  remain NOT AUTHORIZED. The resource-incident deployment hold remains;
+  anonymous-volume attribution is partly unknown.
+
+**HISTORICAL gate (superseded 2026-10-13):** protected-branch promotion
+readiness for the then-reviewed integration candidate `a78f5440` — R0
+inventory, Fresh Kilo review, fresh independent runtime plan, and the
+`PRICING-AND-ORDERING-CONTRACT-R0` gate. That pricing gate has since been
+satisfied: the S1 contract was frozen, implemented, and finally accepted on
+2026-10-13. The queue and boundaries below are history.
+
+Standing boundaries (2026-09-23 era, historical):
 
 - `FINANCE_LOCALIZATION_R0 = AUDIT_ONLY_NON_BLOCKING`: Uganda/UGX and
   multi-currency questions do not block the MVP queue.
@@ -685,23 +800,53 @@ Standing boundaries:
    `c5b66d26` and the J1-H2-A-R2 credential closure merged as `6e9470a1`.
 9. **MVP-L1-J1-H2-B (completed):** wholesaler password recovery and
    test-hygiene closure merged and browser-verified as `436d61e2`.
-10. **Pre-delivery queue (SUPERSEDED 2026-09-23; was active dual line):** `H2-C` and `SKU-R0-M1-R1` run
-    as separately gated parallel lines; after both merge, continue with
-    `PRICING-R0` → `PRICING-R1` → `ORDER-PRICE-R1` → `REORDER-R1` → first-use
-    onboarding → full business journey / VPS / real-device final acceptance.
-    Details and frozen pricing inputs live in
-    `docs/planning/2026-08-26_mvp_pre_delivery_execution_queue.md`.
-    `FINANCE_LOCALIZATION_R0 = AUDIT_ONLY_NON_BLOCKING`; custom SKU fields
-    remain `POST_MVP_DISCOVERY`.
-11. **S3-S2B-I2C-I3 (deferred post-MVP):** transactional outbox, event emission,
+10. **S1 pricing/quote/consent/draft (completed 2026-10-13):** contract frozen,
+    implemented, and finally accepted as
+    `PASS_IN_FROZEN_SINGLE_RUNTIME_UG_KE_SCOPE` on candidate `41fd3adb`
+    (head `040`). Independent S1 user-journey gate CLOSED.
+11. **S2 reorder from own history (completed 2026-10-15):** implemented by
+    Codex-L from the S1 BASE, independently verified (V3), browser-
+    supplemented, and finally accepted at baseline `88c7d815`
+    (`PASS__88c7d815__FROZEN_FUNCTIONAL_SCOPE`).
+12. **RC1 docs-only freeze and finite release window (active 2026-10-15):**
+    ZCode-L freezes the five governance/release docs as a docs-only successor
+    of `88c7d815` and delivers the current-CI admission design; ZCode-W
+    prepares the pilot manual and rehearsal material. Then CTO one-scope CI
+    correction (10-17..20), close named release-critical gaps (10-20..24),
+    and user acceptance, runbook, and controlled trial (10-25..31).
+    Deployment remains NOT AUTHORIZED until separately granted.
+13. **S3-S2B-I2C-I3 (deferred post-MVP):** transactional outbox, event emission,
     and provider delivery require separate CTO authorization.
-12. **DB-OPS:** access, backups, restore, monitoring, retention, and incident
+14. **S3 one-time negotiation (DEFERRED):** awaits BD-3; not an S2 dependency;
+    CTO presents Jeff a bounded include-or-defer choice after S2 delivery.
+15. **DB-OPS:** access, backups, restore, monitoring, retention, and incident
     package before pilot operation.
-13. **Tenant branding and manuals:** legal profile, logo, dual branding, and
+16. **Tenant branding and manuals:** legal profile, logo, dual branding, and
     current user/operator documentation.
+
+    Historical queue note (superseded): the 2026-09-23 pre-delivery queue
+    (`H2-C`, `SKU-R0-M1-R1`, then `PRICING-R0` → `PRICING-R1` →
+    `ORDER-PRICE-R1` → `REORDER-R1` → onboarding → final acceptance) was
+    closed out by the integrated contract line and the accepted S1 line;
+    details live in `docs/planning/2026-08-26_mvp_pre_delivery_execution_queue.md`.
 
 ## Agent Assignment
 
+- CURRENT (2026-10-15, release-preparation directives):
+  - **ZCode-L (Lubuntu):** RC1 docs-only freeze of the five governance/release
+    docs from BASE `88c7d815` plus the one-pass current-CI admission design
+    per `CTO-AUTH-MVP-RC1-DOCS-FREEZE-AND-CI-ADMISSION-L-R1-20261015`;
+    writes only the five named paths; no product, test, or CI bytes, no
+    services, no push.
+  - **ZCode-W (Windows):** minimal pilot manual and go-live rehearsal
+    preparation per the paired 2026-10-15 directive; writes only its own
+    output directory; candidate source read-only; no repo, runtime, or VPS
+    actions.
+  - **Codex-L / Kilo-L:** no active assignment. The S2 implementation line is
+    closed by the 2026-10-15 acceptance, and the proposed independent S2
+    acceptance was closed by the CTO's own native-result review.
+  - **CTO:** final technical ruling on candidates, integration, promotion,
+    the one finite CI correction scope and budget, and release.
 - HISTORICAL/SUPERSEDED (2026-09-23) — **Zcode/Windows product line:** close
   H2-C baseline integration and bounded corrections under explicit CTO gates.
   Superseded: H2-C is an integrated, closed line (common base `bd2373cb` on
@@ -715,7 +860,8 @@ Standing boundaries:
   source, migration, tests, fresh runtime and browser evidence; it must not
   inherit Codex-L's PASS claims. Superseded as stated; the independent-review
   role for the current work is Fresh Kilo's below.
-- CURRENT (2026-09-23, controlled promotion review):
+- HISTORICAL/SUPERSEDED (2026-10-13; was CURRENT 2026-09-23, controlled
+  promotion review):
   - **ZCode-W:** executed the read-only protected-promotion-readiness R0
     inventory (CTO-AUTH-MPANGO-PROTECTED-PROMOTION-READINESS-R0-20260923) and
     its authorized material corrections; its output carries no merge,
@@ -727,10 +873,10 @@ Standing boundaries:
   - After a Fresh Kilo pass, only the CTO defines the exact merged candidate
     and the independent V3/V4 runtime plan; full suite, browser runtime, and
     deployment remain unrun/hold.
-- **All product agents:** start from a fetched, clean, isolated worktree at
-  the live tip named by the current CTO directive (protected tip `57df5334`
-  or the frozen candidate it names — as of 2026-09-23 the reviewed
-  integration candidate `a78f5440`); no self-reported PASS is merge authority.
+- **All product agents:** start from the exact BASE named by the active CTO
+  directive in a fetched, clean, isolated worktree (current freeze line:
+  BASE `88c7d815`, branch `codex/mvp-rc1-freeze-20261015`, `--no-hardlinks`
+  clone, no alternates); no self-reported PASS is merge authority.
 - **Journey observer:** for the onboarding and final-acceptance queue entries,
   record workflow time, clicks, assistance, API-only steps, dead ends, and
   abandonment risk without coaching away product friction.
@@ -751,9 +897,14 @@ Standing boundaries:
 
 Stop and report to the CTO if:
 
-- fetched `origin/product-dev-recovered` is not exactly the authorized task
-  base or does not descend from reviewed baseline
-  `d9dc2e4130ea87a57d433dfadeb2f2736576fac6` (historical anchor, verified
+- the fetched baseline is not exactly the BASE named by the active CTO
+  directive (current freeze line BASE: acceptance baseline
+  `88c7d8157ac5c46795d411ea6799112e017c9532`; the S2 line's BASE was S1
+  candidate `41fd3adb1c355db8bab01ec77634413e27697f60`), or a product task
+  starts from a historical anchor instead of the directive-named BASE;
+  historical
+  descent checks below are retained for that era:
+  `d9dc2e4130ea87a57d433dfadeb2f2736576fac6` (verified
   ancestor of the 2026-09-23 protected tip `57df5334f35130b6dc58e4bf5f3893a91bfc8a07`), or that
   baseline does not descend from the J1-H2-A-R2 merge
   `6e9470a1daa5d6eece29724316fdd8aef6b737c1`, the R4-C1-R1 merge

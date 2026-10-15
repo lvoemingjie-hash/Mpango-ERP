@@ -1,18 +1,36 @@
 # Mpango ERP Project Status
 
-**Last updated:** 2026-09-23
+**Last updated:** 2026-10-15
 **Status owner:** CTO
-**Canonical product branch:** `origin/product-dev-recovered`
-**Protected product branch tip:** `57df5334f35130b6dc58e4bf5f3893a91bfc8a07` (2026-09-22 docs-only successor of common base `bd2373cb`; fetched 2026-09-23)
-**Current reviewed integration candidate:** `a78f544098bba55bbb0cba6f2ee9c5b84cddf86a` (tree `e458ce4e88cd97778f8bf01dc9efe0579771cd4f`)
-**Published integration branch:** `origin/codex/order-state-r2-e1-source-revision-f1-f3-20260919@a78f5440`
-**Latest integration result:** strict fast-forward from `c24bbab6b` to `a78f5440`; report-only receipt `1e23889312a05d1e9ed208ec6a589f28d353d104`. This moved the contract branch, not the protected product branch.
-**Composite verification:** Order R2 + DB-authority V3 accepted on ancestor `5c93763d`; revocation/stock, SKU cache isolation, PW1R3 deterministic boundary, and S4-D topology closure independently accepted on the successor line through `a78f5440`.
-**Historical revocation/stock source:** `a516d2b3257f782ce068e71e8730c05541f08931` is not an ancestor of the integration branch; its bounded fixes were ported and reviewed on the successor line.
-**Current reviewed candidate database head:** `039_order_credit_holds` (migration `038_catalog_identity_vertical_slice` is its parent)
-**Resource incident:** audit complete, anonymous-volume attribution partly unknown; deployment hold remains
-**Deployment status:** NOT AUTHORIZED; no production or customer environment is claimed
-**Delivery state:** Pre-pilot MVP hardening; not yet approved for customer delivery
+**产品验收基线 (product acceptance baseline):** `88c7d8157ac5c46795d411ea6799112e017c9532` (tree `bb7795aa4b88f621839069c0d3afc0db477380d8`, sole parent `23685f60f325084535eb0213a539eedb29ebe234`) — the CTO-accepted product state carrying BOTH the accepted S1 line and the accepted S2 line
+**S1 accepted candidate:** `41fd3adb1c355db8bab01ec77634413e27697f60` (tree `26635a89a4021e39d4eaee214dcac3cf0afcdbb9`, sole parent `e990a66e9720fc7cb4cfb6f0bc03022db1f04c14`) — an ancestor of the acceptance baseline
+**Current migration head:** `040_s1_pricing_quote_contract`
+**S1 acceptance:** `CTO_FINAL_S1_ACCEPTANCE=PASS_IN_FROZEN_SINGLE_RUNTIME_UG_KE_SCOPE` (2026-10-13) — 14 real journeys / 104 assertions, Uganda and Kenya, one frozen runtime invocation; the independent S1 user-journey gate is CLOSED. S1's accepted scope stays the fourteen journeys / 104 assertions; it is not re-run and not summed with S2 evidence into a new all-suite pass.
+**S2 acceptance:** `CTO_FINAL_S2_ACCEPTANCE=PASS__88c7d815__FROZEN_FUNCTIONAL_SCOPE` (2026-10-15) — accepted on the baseline above: independent V3 S2 backend 53/53, S1 pricing_quote regression 77/77, concurrency/M2 controls 6 RED / 6 GREEN pristine, and the CTO-reviewed browser supplement of 6 scenarios / 138 literal-true assertions (UG + KE). These are separate executed layers with their own scopes; they are not one combined full-suite pass.
+**Current candidate hosted CI:** NOT ESTABLISHED. The historical five-leg CI run belongs to `28b65b71`; the current workflow legs bind 236 test files while the current recursive candidate selection is 249 files (+13, -0); the current nodeid count has NOT been collected. A one-pass CI admission design is being prepared for a single CTO decision; this is not yet a green gate.
+**S3 status:** DEFERRED — one-time negotiation and deadline await business decision BD-3; S3 is not a prerequisite of the accepted line and is not authorized for implementation. PC-03 formal credit approval is likewise a separate scope; cash and partial-payment paths do not claim credit approval.
+**Deployment status:** NOT AUTHORIZED; nothing is deployed and no production or customer environment is claimed. A VPS exists (Jeff, 2026-10-15); its region/OS, a customer domain, and SMTP availability are still unconfirmed; SMS is NOT a prerequisite of this round and is not being procured or implemented.
+**Delivery state:** RC1 (target 2026-10-31) docs-only freeze and finite release preparation; not approved for customer delivery
+
+**2026-10-15 supersede note:** every "S2 candidate SHA PENDING" or "S2 in
+implementation" statement anywhere below is HISTORICAL. S2 "reorder from own
+history" was implemented, independently verified (V3), browser-supplemented,
+and finally accepted by the CTO on 2026-10-15 at the acceptance baseline
+`88c7d815`. Because `main`, `product-dev-recovered`, PR9, the S1 candidate,
+and the historical CI baseline `28b65b71` are all ancestors of `88c7d815`,
+no S1/S2 merge, cherry-pick, or rebase is needed. The active work is now the
+docs-only RC1 freeze and a one-pass current-CI admission design; push,
+protected merge, deployment, and formal G1 remain NOT AUTHORIZED.
+
+**2026-10-13 supersede note:** the 2026-09-23 anchors recorded below — protected
+tip `57df5334`, reviewed integration candidate `a78f5440` (tree `e458ce4e`),
+contract branch `codex/order-state-r2-e1-source-revision-f1-f3-20260919`, and
+migration head `039_order_credit_holds` — are HISTORICAL. They describe the era
+before the S1 pricing/quote/consent line was implemented and accepted. The
+page-top conclusions above take precedence over any older sentence in this
+file, including earlier blanket statements that pricing implementation was
+forbidden: that gate has since been satisfied by the accepted S1 contract and
+candidate. Dated milestone sections are retained as history.
 
 This file is the continuously maintained source of truth for product status,
 accepted capabilities, delivery blockers, and ordered work. Detailed execution
@@ -27,19 +45,27 @@ retailer login, stable catalog/SKU identity, order-state authority, per-order
 credit holds, read-only retailer finance visibility, and the payment-declaration
 maker-checker loop are materially implemented.
 
-The reviewed integration candidate combines Order R2, tenant-bootstrap and
-database authority, the six bounded revocation/stock fixes, tenant-scoped SKU
-list caching, and deterministic PW1R3 and S4-D test contracts. Its runtime
-application uses a zero-write entrypoint, a read-only readiness gate, explicit
-runtime/reporting database URLs, and a five-stage setup path owned by separate
-authority roles. The contract branch now points to `a78f5440`; promotion to
-the protected product branch requires a separate cumulative review.
+The accepted S1 candidate `41fd3adb` adds the pricing, quote, consent, and
+draft contract on top of that lineage: server-authoritative pricing with base
+price and per-customer override, UGX/KES currency by registration country,
+signed expiring quotes, re-consent when the economic lines change, persistent
+idempotency for submission and payment, zero-effect draft replacement, and
+inventory reservation with over-receive refusal. CTO independently re-derived
+the economic vectors from saved SQL projections: in both countries the
+demonstrated order totals 3000 (UGX / KES), a 500 payment leaves 2500
+occupied, and confirm/payment replay and over-receive refusal hold.
 
-The current product is still pre-pilot. The reviewed integration candidate has
-not been promoted to `product-dev-recovered`, deployed, or accepted by a
-customer. Final workspace polish, the real-mailbox browser journey, customer
-HTTPS deployment, the formal DB-OPS package, tenant branding, current manuals,
-and named human support coverage are not all closed.
+The current product is still pre-pilot and nothing is deployed. The S1
+acceptance is bounded to one frozen runtime instance and the fourteen named
+journeys; it does not establish multi-worker shared caching, full-suite
+results on the candidate, real-mailbox registration, customer HTTPS
+deployment, the formal DB-OPS package, tenant branding, or current manuals.
+S2 "reorder from own history" was finally accepted on 2026-10-15 at the
+acceptance baseline `88c7d815` (S2 backend 53/53, S1 pricing_quote regression
+77/77, M2 6 RED / 6 GREEN, browser supplement 6 scenarios / 138 true). The
+next project steps are the docs-only RC1 freeze and a candidate's own
+regression/CI admission design, then closure of the named release-critical
+gaps; none of this re-runs or re-sums the closed S1/S2 acceptances.
 
 Current engineering truth:
 
@@ -54,9 +80,12 @@ Current engineering truth:
   confirmation may enter the canonical payment transaction.
 - A merged SHA is not a deployed SHA. Runtime delivery requires exact-SHA
   deployment evidence.
-- Pricing and downstream ordering semantics remain contract-gated. The next
-  authorized step is a business-contract and acceptance-test mapping, not
-  product implementation.
+- Pricing and ordering follow the accepted S1 contract (`docs/contracts/s1-pricing-quote.md`),
+  and reorder-from-history follows the accepted S2 scope
+  (`docs/contracts/s2-reorder.md`). S3 one-time negotiation stays deferred
+  until the business decides BD-3, and formal credit sales (PC-03 credit
+  limits/approval) remain outside accepted scope; cash and partial-payment
+  paths do not claim credit approval.
 
 ## 2. Product Position
 
@@ -96,34 +125,48 @@ subscription billing is outside the current MVP.
 
 | Item | Current truth |
 |---|---|
-| Protected product baseline | `origin/product-dev-recovered@57df5334`; its only successor after common base `bd2373cb` updates this document |
-| Reviewed integration candidate | `a78f5440`, tree `e458ce4e`; accepted bounded V3 evidence is composite across its successor line |
-| Integrated contract branch | `origin/codex/order-state-r2-e1-source-revision-f1-f3-20260919@a78f5440`; latest strict fast-forward receipt `1e238893` |
-| Historical revocation/stock source | `a516d2b3` remains a separate source commit; its bounded fixes were ported to the integration line at `95c044ec` and reviewed there |
-| Cross-branch promotion | Protected tip is not an ancestor of `a78f5440`; the lines share `bd2373cb`. The contract side has 119 reachable commits (96 first-parent, one merge) and 212 changed paths; cumulative scope/evidence review precedes any protected promotion |
-| Protected-tip rule | Every new task fetches live remote refs, states which baseline it uses, and starts in a clean isolated worktree. A task must not silently equate the reviewed integration branch with `product-dev-recovered` or a deployed environment |
-| Main | `origin/main@134ea59e`, not promoted |
-| Platform historical branch | `origin/platform-dev@12c5ee55`, not the active product baseline |
-| Alembic head | Reviewed integration candidate head `039_order_credit_holds`; parent chain includes `038_catalog_identity_vertical_slice` -> `037_payment_declarations_schema` |
+| Product acceptance baseline | `88c7d815` (tree `bb7795aa`, parent `23685f60`, head `040_s1_pricing_quote_contract`); the CTO-accepted state carrying accepted S1 and accepted S2 |
+| S1 accepted candidate | `41fd3adb` (tree `26635a89`, parent `e990a66e`, head `040`); an ancestor of the acceptance baseline, closed by its own bounded acceptance |
+| S2 accepted candidate | `88c7d815` on branch `codex/s2-reorder-r1-20261013`; accepted 2026-10-15 (`CTO_FINAL_S2_ACCEPTANCE=PASS__88c7d815__FROZEN_FUNCTIONAL_SCOPE`) |
+| RC1 freeze line (2026-10-15) | ZCode-L docs-only successor from BASE `88c7d815` on local branch `codex/mvp-rc1-freeze-20261015`; five docs paths only; no product bytes change |
+| Remote observations (CTO `git ls-remote`, 2026-10-15, read-only) | `main@0ebee80e`; `product-dev-recovered@edbc2b32`; `refs/pull/9/head@3653619e` — all three are ancestors of `88c7d815`, so no S1/S2 merge is needed. These are remote-state observations with a timestamp, not deployment proof |
+| Current candidate CI | NOT ESTABLISHED. Historical five-leg run belongs to `28b65b71`; workflow legs bind 236 files vs current selection 249 (+13/-0); nodeid count NOT collected; admission design pending one CTO decision |
+| Protected promotion | NOT AUTHORIZED; entering any candidate into a protected branch is a separate CTO decision from product integration |
+| Alembic head | `040_s1_pricing_quote_contract` on the S1 candidate; migrations 001-039 unchanged by S1 |
 | Windows default workspace | Dirty; read-only for controlled work |
 | Controlled work | Clean isolated worktrees only |
 | Tencent mainland VPS | Development, validation, or disaster-recovery role |
 | Customer MVP hosting | Non-mainland HTTPS environment remains to be selected and closed |
+
+Historical anchors (2026-09-23 era, superseded as current state): protected tip
+`57df5334` (docs-only successor of `bd2373cb`), reviewed integration candidate
+`a78f5440` (tree `e458ce4e`) on `codex/order-state-r2-e1-source-revision-f1-f3-20260919`
+with head `039_order_credit_holds`, historical revocation/stock source
+`a516d2b3` (not an ancestor; fixes ported at `95c044ec`), `origin/main@134ea59e`
+and `origin/platform-dev@12c5ee55`. A CI run on a different candidate
+(`28b65b71`, run `37759579633`, 2026-10-08) also belongs to history and is not
+CI evidence for the S1 candidate or any S2 candidate.
 
 Every runtime task must verify the deployed SHA independently. Do not infer
 deployment state from a merged branch.
 
 ## 4. Capability Status
 
+Rows below are cumulative; rows that cite the 2026-09-23 contract line are
+historical scope statements and remain valid only within that line.
+
 | Area | Status | Current truth |
 |---|---|---|
-| Tenant isolation | Bounded revocation closure on integration line | Active-user, active-tenant, and contextual-refresh refusal checks were ported at `95c044ec` and independently verified; identity-only refresh, logout, and password-reset session invalidation remain open |
+| S1 pricing, quote, consent, and draft (2026-10-13) | Accepted in frozen scope | Uganda and Kenya customers can register through the product path, see server-authoritative base/customer prices in UGX/KES, obtain a signed quote, and submit an order; a price change before submission forces explicit re-consent; confirm and payment are idempotent; a paid order keeps its snapshots; inventory is reserved on payment and over-receiving is refused; a customer cannot read another tenant's orders. Evidence: 14 journeys / 104 assertions on one frozen runtime instance. NOT covered: multi-worker shared cache, quote-marker expiry under restart, first-transaction failure interleaving, real-mailbox registration, production configuration |
+| S2 reorder from own history (2026-10-15) | Accepted in frozen scope | From a historical order a customer gets a server-generated draft at current effective prices; changed prices force re-consent; unavailable lines are handled explicitly and never silently dropped; the new draft has zero inventory/payment/ledger/credit effect until submitted; an unknown result is recovered by the same key/body. Evidence: independent V3 backend 53/53, S1 pricing_quote regression 77/77, concurrency/M2 6 RED / 6 GREEN, and the CTO-accepted browser supplement 6 scenarios / 138 true (UG+KE, 390px mobile). NOT covered: all-order features, full-suite/CI on the candidate, production mail, deployment |
+| S3 one-time negotiation | Deferred | Awaits business decision BD-3 (negotiation and deadline). Not authorized; not a prerequisite of S2 |
+| Tenant isolation | Bounded revocation closure on the 2026-09-23 integration line | Active-user, active-tenant, and contextual-refresh refusal checks were ported at `95c044ec` and independently verified; identity-only refresh, logout, and password-reset session invalidation remain open |
 | Tenant bootstrap and DB authority | Integrated candidate independently verified | Migration authority owns shared database objects; runtime bootstrap is fail-closed, public-DDL-free, and runs only after the five-stage setup and read-only verification contract |
 | Wholesaler authentication | Implemented | Login, tenant selection, setup/reset, and terminal-token handling |
 | Wholesaler credential recovery H2-B | Merged and browser-verified | Forgot/reset password chain, anonymous reset 401 no-redirect, multi-replica reset atomicity, and role-assignment `MissingGreenlet` closure merged at `436d61e2` |
 | Credential email links | Source complete; runtime pending | Absolute fragment links and query rejection are merged |
 | Users and RBAC | Implemented | Tenant roles exist; retailer permissions are isolated as `client:*` |
-| Orders | R2 authority integrated and V3 reconciled | Locked-fresh state transitions, per-order credit holds, cancel/collection checks, and canonical payment/declaration interaction are represented through migration `039`; pricing extensions remain closed |
+| Orders | R2 authority integrated and V3 reconciled; S1 pricing extended and accepted | Locked-fresh state transitions, per-order credit holds, cancel/collection checks, and canonical payment/declaration interaction are represented through migration `039`; S1 added the accepted pricing/quote/consent contract with migration `040` |
 | Payments | Financially hardened | Canonical methods, idempotency, replay, partial payment, and ledger invariants |
 | Receivables | Financially hardened | Non-negative exposure and collection semantics protected by migration `035` |
 | Inventory and catalog | SKU identity, bounded stock fix, and cache isolation on integration line | Migration `038` and catalog-product/SKU separation are integrated. Locked-row freshness for concurrent adjustments was ported at `95c044ec`; SKU list cache keys are tenant-scoped at `46ba2b1c` and independently verified. Duplicate-return single-effect closure remains separately tracked |
@@ -140,7 +183,7 @@ deployment state from a merged branch.
 | HE2 authority governance | R3+A1 merged and independently verified | Backend CWD/temp-DB inputs and profile-bound Alembic head/parent are checked by runner and child; invalid environments VOID before product execution |
 | Combined runtime topology | Composite V3 accepted on ancestor `5c93763d` | Zero-write entrypoint, read-only readiness, explicit public-frontend/reporting URL wiring, reporting-role read-only checks, five-stage setup, S `243/21`, O `27/27`, and D `22/22` evidence reconciled; the new successor line has separate targeted evidence, not one uninterrupted full-suite run |
 | Local deployment and browser rehearsal | Automated browser gate closed | Fresh-runtime Playwright evidence passed `162/162` for source `f51c109`, merged as `a29f8db0`; human acceptance remains and no VPS delivery is claimed |
-| Retailer workspace closure | Responsive shell and credential closure merged; next contract gate active | Mobile navigation, overflow, and the H2-A/H2-B credential lineage are closed; pricing/ordering semantics now require a refreshed contract and acceptance-test map before implementation |
+| Retailer workspace closure | Responsive shell and credential closure merged; pricing contract satisfied by S1 | Mobile navigation, overflow, and the H2-A/H2-B credential lineage are closed; the refreshed pricing/ordering contract was implemented and accepted as S1, and S2 reorder was accepted on 2026-10-15 |
 | Retailer end-to-end S4 | Partially closed | Local real-JWT browser matrix is green; real mailbox and deployed HTTPS journey on the latest SHA remain |
 | Platform operator schema | Foundation merged | Migration `034` tables exist |
 | Platform operator runtime | Incomplete | Dedicated login/JWT/guard/frontend lifecycle remains |
@@ -151,7 +194,71 @@ deployment state from a merged branch.
 
 ## 5. Accepted Engineering Milestones
 
-### 2026-09-23 Revocation/stock and S4-D closure on the contract branch
+### 2026-10-13 S1 final bounded acceptance — pricing, quote, consent, and draft
+
+The CTO accepted candidate `41fd3adb` (tree `26635a89`, sole parent `e990a66e`,
+head `040_s1_pricing_quote_contract`) under
+`CTO_FINAL_S1_ACCEPTANCE=PASS_IN_FROZEN_SINGLE_RUNTIME_UG_KE_SCOPE`. What a
+user can now do, per the accepted evidence: in Uganda and Kenya, a wholesaler
+sets a base price and a per-customer price; a customer registers through the
+product, logs in, sees prices in UGX or KES by registration country, requests
+a quote, and submits an order; if the effective price changed after the quote
+was shown, submission is refused with old/new lines and requires explicit
+re-consent; if the network answer is lost, retrying with the same intent
+returns the same committed order instead of a second one; a draft can be
+replaced with zero effect on the original; confirmation and payment are
+idempotent; paying 500 of a 3000 order marks it partially paid with 2500
+still occupied; stock on hand is not moved by confirmation and stays
+consistent with reservations; requesting more than stock is refused; a
+customer cannot read another tenant's orders (neutral 404); revoking a
+customer override falls back to the base price.
+
+Scope boundaries of this acceptance: one frozen runtime instance, staging
+`JwtAuthStrategy` (no Mock), UG + KE, one formal suite invocation (14
+journeys, 104 literal-true assertions: per country J1-J6b = 7/8/7/6/6/6/12
+plus 52 per country total), 202 browser / 162 HTTP / 472 SQL actions, 60
+saved SQL projections identical to embedded ones. It does NOT establish:
+multi-worker or cross-process shared caching, quote-marker expiry across
+restart, first-transaction failure interleaving, the full registration
+e-mail journey, any full-suite or CI result on this candidate, protected
+promotion, or deployment. One LOW non-blocking material correction was
+recorded by the CTO (`CTO-MATERIAL-CLARIFICATION.zh-CN.md`): `SDK-SUPPLY.json`
+carried a stale "new install" mapping; the native
+`sdk-reuse-verification.json` proves the authorized SDK reuse. That item is
+CLOSED and is not an open gate on any author.
+
+### 2026-10-15 S2 final bounded acceptance — reorder from own history
+
+The CTO accepted `88c7d8157ac5c46795d411ea6799112e017c9532` (tree `bb7795aa`,
+sole parent `23685f60`) under
+`CTO_FINAL_S2_ACCEPTANCE=PASS__88c7d815__FROZEN_FUNCTIONAL_SCOPE`. What a user
+can now do, per the accepted evidence: from one of their own historical orders
+a customer opens "reorder", the server builds a new draft from the current
+effective prices (the old order is only a line-source, never a price source);
+if a price or line changed, submission is refused until the customer
+explicitly re-accepts — including the same-total different-lines case; unusable
+lines are removed only by an explicit customer action and can never be
+silently dropped; the draft alone creates no stock movement, payment, ledger,
+or credit-hold effect; and after a lost response the same key/body recovers
+the same single persistent draft. Accepted evidence layers, each within its
+own scope: independent V3 S2 backend `53/53`, S1 `pricing_quote` regression
+`77/77`, two-transaction UG/KE overlap with one result, M2 error-acceptance
+controls `6 RED` on product / `6 GREEN` pristine, and the browser supplement
+`6` scenarios (S2-B1/B2/B3 × UG/KE at 390px) with `138` literal-true
+assertions, `rc=0`.
+
+Scope boundaries: this acceptance closes the S2 functional scope only. It does
+not establish all-order functionality, a full-suite or CI result on the
+candidate (the 2026-10-08 five-leg run belongs to `28b65b71`), multi-worker
+shared caching, production mail, real deployment, or commercial credit
+(PC-03). Four LOW non-blocking items were dispositioned by the CTO in place,
+including UX-01 (same-total line change still shows a
+"Price changed: 220.00 → 220.00" style prompt) which stays recorded as
+experience debt. Historical anchors: the old protected tip `57df5334`,
+candidate `a78f5440`, and head `039` remain HISTORICAL and are not page-top
+facts; see the 2026-10-13 supersede note for that era.
+
+### 2026-09-23 Revocation/stock and S4-D closure on the contract branch (HISTORICAL)
 
 Seven successors moved the reviewed contract line from `5c93763d` to
 `a78f5440`. The bounded revocation/stock fixes entered at `95c044ec`, SKU
@@ -383,12 +490,27 @@ negative controls VOID with zero authority-command launches. Merge report:
 
 ## 6. Latest Validation Snapshot
 
-The current reviewed integration tree is `e458ce4e` at candidate `a78f5440`.
-The Order R2 + DB-authority runtime composite was accepted on its ancestor
-`5c93763d` (tree `e6444326`); the original contract fast-forward receipt is
-`66b396e0`. Later revocation/stock, cache, PW1R3, and S4-D closures have
-their own independent evidence. Receipt `1e238893` records the final contract
-branch fast-forward to `a78f5440`.
+The current accepted evidence snapshots are the 2026-10-13 S1 final bounded
+acceptance and the 2026-10-15 S2 final bounded acceptance, both described in
+Section 5. S1: candidate `41fd3adb`, 14 scenarios, 104 literal-true
+assertions, UG + KE, one frozen runtime invocation, CTO independent
+reconciliation. S2: candidate `88c7d815` (the acceptance baseline), S2
+backend 53/53, S1 pricing_quote regression 77/77, M2 6 RED / 6 GREEN, browser
+supplement 6 scenarios / 138 true, CTO byte-level reconciliation of both
+delivery packages. These are separate bounded layers; they are not summed
+into a new all-suite pass. `FULL_SUITE_RESULT` and `BROWSER_RUNTIME` as
+whole-candidate categories remain NOT established; no hosted CI run exists
+for `88c7d815` (the 2026-10-08 five-leg run belongs to `28b65b71`, and the
+current selection has drifted to 249 files vs the workflow's bound 236 with
+the nodeid total not collected). This evidence does not prove protected
+promotion, deployment, real-mailbox HTTPS delivery, or customer readiness.
+
+> HISTORICAL snapshot (2026-09-23 era): the reviewed integration tree was
+> `e458ce4e` at candidate `a78f5440`; the Order R2 + DB-authority runtime
+> composite was accepted on its ancestor `5c93763d` (tree `e6444326`); the
+> original contract fast-forward receipt is `66b396e0`; later revocation/stock,
+> cache, PW1R3, and S4-D closures had their own independent evidence; receipt
+> `1e238893` recorded the final contract-branch fast-forward to `a78f5440`.
 
 Accepted current evidence:
 
@@ -480,54 +602,76 @@ real browser/mailbox journey.
 
 ## 7. Current Delivery Blockers
 
-### P1 product journey blockers
+Class labels: [PROD] blocks production go-live; [PROMISE] blocks one named
+product promise; [DEBT] non-critical tracked debt. The detailed Chinese table
+with owners, minimal completion conditions, and target dates is
+`CURRENT-RELEASE-BLOCKERS.zh-CN.md` in the 2026-10-13 ZCode-W delivery.
 
-1. A non-developer has not yet completed the full wholesaler-to-retailer
-   business journey without technical assistance; invitation creation,
-   customer pricing initialization, and other first-order friction must be
-   measured before feature scope is chosen.
-2. The latest SHA has not passed the full invitation/setup/reset/login/order/
-   payment/finance journey through a real mailbox and deployed HTTPS runtime.
-3. Pricing and downstream ordering rules have not yet been re-frozen against
-   the accepted Order R2/SKU/DB-authority candidate. Implementation must wait
-   for one business-rule -> task -> acceptance-test contract.
+### Release-critical gaps (refreshed 2026-10-15)
 
-### P1 operational blockers
+1. ~~[PROMISE] S2 "reorder from own history" is not yet implemented.~~ CLOSED
+   2026-10-15: S2 was implemented and finally accepted at baseline `88c7d815`
+   (see the 2026-10-15 milestone). Customers can reorder from a historical
+   order within the accepted frozen scope.
+2. [PROD] The acceptance baseline has no hosted regression/CI evidence of its
+   own. The S1 and S2 acceptances are scenario-bounded; the 2026-10-08
+   five-leg CI belongs to `28b65b71`. The current workflow binds 236 test
+   files while the current recursive selection is 249 (+13, -0: three
+   release_critical_journeys, six s1_pricing_quote, four s2_reorder files),
+   and the current nodeid total has not been collected — updating expected
+   counts alone cannot make the gate valid. A one-pass admission design
+   covering collection prerequisites, runtime identity/database/service
+   attachments, evidence SHA ownership, and minimal repair paths is being
+   prepared for a single CTO decision; remote CI budget remains unallocated.
+   Owner: ZCode-L (admission design), CTO (scope and budget), implementer to
+   be named after the CTO ruling.
+3. [PROD] Deployment configuration must match evidence scope. S1 acceptance
+   covers ONE runtime instance; multi-worker/multi-replica shared cache,
+   marker expiry, and restart interleaving are unproven. Production config
+   must either stay single-instance-consistent or get targeted verification
+   for the exact difference. Owner: CTO with OPS, at deployment authorization
+   time.
+4. [PROD] Real-mailbox e-mail, non-mainland HTTPS hosting, and backup/restore
+   drill remain unevidenced for the current line. Existing credential-link and
+   H7/DB evidence is local/staging-scoped and does not transfer to production.
+   Owner: Jeff (domain/mailbox decisions) + CTO/OPS.
+5. [PROMISE] Formal credit sales remain limited by PC-03. Credit limits,
+   active pause, and prepayment rules are confirmed business intent but not
+   implemented/accepted; S2's read-only preview and zero-effect draft do not
+   change this. Any "approved credit sales" claim stays out of scope until a
+   separate finite credit authorization is accepted. Owner: CTO (scope) with
+   Jeff (business rule).
+6. [PROMISE] Jeff's real business trial and minimal manuals are not done.
+   A non-developer has not completed the journey on the current line, and no
+   wholesaler/retailer manual matches the S1+ S2 behavior. Planned in the
+   2026-10-25..31 window. Owner: Jeff with ZCode-W (manual draft after S2
+   candidate freezes).
 
-1. The intended non-mainland customer HTTPS environment is not yet canonical.
-2. DB access, backup, restore, monitoring, retention, incident response, and
-   safe AI-agent actions are not one approved DB-OPS package.
-3. Dedicated platform operator runtime authentication is incomplete.
-4. User manuals and operator runbooks do not yet match final deployed behavior.
-5. `deploy_vps.sh` and `reset-staging.sh` still carry legacy migration/runtime
-   authority assumptions and are outside the accepted five-stage setup contract.
-6. Production Compose replacement and PostgreSQL image digest pinning remain
-   separately authorized deployment work.
-7. The reviewed integration candidate is not yet promoted to
-   `product-dev-recovered`; any such promotion requires an explicit identity and
-   history gate.
-8. The anonymous-volume resource incident audit is complete, but attribution
-   of some deleted volumes remains unknown. Deployment stays on hold pending a
-   separate resource-owner disposition and operating controls.
+### Deferred / pending business decision
+
+- S3 one-time negotiation and deadline: BD-3 undecided. Listed as deferred;
+  not an S2 dependency and not silently cancelled.
 
 ### Tracked known debt (preserved, non-blocking)
 
-1. The accepted runtime result on `5c93763d` was composite. Later targeted
-   closures through `a78f5440` did not rerun a full suite or browser runtime
-   on that final SHA.
-2. Historical source `a516d2b3` is not an ancestor of the current contract
-   branch; its bounded revocation/stock fixes were ported at `95c044ec`.
+1. Earlier targeted closures (revocation/stock, cache, PW1R3, S4-D) were
+   composite; no uninterrupted full-suite run exists on any single current
+   candidate.
+2. Historical source `a516d2b3` is not an ancestor of the old contract branch;
+   its bounded revocation/stock fixes were ported at `95c044ec`.
    Cross-tenant SKU cache isolation is closed at `46ba2b1c`. Concurrent
    duplicate-return single economic effect, identity-only refresh, logout
    revocation, and password-reset session invalidation remain separately open.
 3. `REMOTE_ENFORCEMENT_NOT_VERIFIED`: remote/server-side enforcement is not
    verified.
-4. No production/VPS deployment or real-device acceptance exists for the
-   reviewed integration candidate; no customer-ready or release-approved status
-   is claimed.
+4. No production/VPS deployment or real-device acceptance exists for any
+   candidate; no customer-ready or release-approved status is claimed.
 5. External product-number cross-reference/bulk establishment and the explicit
    single-person refund exception are deliberately excluded from the first
    release, not silently missing requirements.
+6. Resource incident: audit complete, anonymous-volume attribution partly
+   unknown; deployment hold remains pending a separate resource-owner
+   disposition.
 
 ### Important but later
 
@@ -552,6 +696,9 @@ real browser/mailbox journey.
 | P03 single-person refund exception | Not in the first release. Refund maker and approver remain separate people; no generic single-person-mode switch is authorized |
 | P04 tenant data retention | Configurable default of one year from tenant termination plus completed handoff. Deletion requires traceable notices, named ownership, escalation for no response, and manual final reconciliation; contract or legal obligations may override the default |
 | P05 pilot support ownership | Jeff is the current primary human owner. No real human backup is yet available. AI may monitor and alert but must not be presented as the backup decision-maker or substitute for human account reconciliation |
+| BD-1 pricing precedence and currency (Jeff, 2026-10-08) | Customer-specific price takes precedence, otherwise base price; a missing price is never sold as zero. Business countries are Uganda and Kenya; currency comes from the registration country (UGX / KES). Implemented and accepted as S1 |
+| BD-2 price-change consent (Jeff, 2026-10-08) | If the effective price differs from the shown quote at submission, prompt and require explicit re-consent; never submit silently at the new amount; settled snapshots are never rewritten. Implemented and accepted as S1 |
+| BD-3 one-time negotiation and deadline | NOT DECIDED. S3 stays DEFERRED; it is not an S2 dependency and is not silently cancelled. CTO will present Jeff a bounded include-or-defer choice after S2 delivery, against the MVP date |
 
 The proposed screenshot/screen-recording feedback mechanism is a separate
 internal-first feature. It is not part of P05 or incident recovery and has no
@@ -559,6 +706,39 @@ implementation authorization until access, privacy, retention, and audit rules
 are frozen.
 
 ### Stage 1: Complete the retailer MVP loop
+
+#### Current stage (2026-10-15): RC1 docs-only freeze and finite release preparation
+
+Ordered per the CTO plan of 2026-10-15 (dates are delivery targets, not
+pre-approved passes; the 2026-10-13 plan above is retained as history of that
+round):
+
+1. 2026-10-13..15: S2 was implemented, independently verified (V3),
+   browser-supplemented, and finally accepted at baseline `88c7d815`; the
+   2026-10-13-era "S2 candidate PENDING" plan is CLOSED as historical.
+2. 2026-10-15: CTO observed `main`, `product-dev-recovered`, and PR9 are all
+   ancestors of `88c7d815` — no S1/S2 merge is needed; the RC1 candidate is a
+   docs-only successor of `88c7d815`.
+3. 2026-10-15..16: two preparation lines run in parallel — ZCode-L writes the
+   accepted state into the five governance/release docs and produces a
+   one-pass current-CI admission design; ZCode-W prepares the minimal pilot
+   manual and ops rehearsal material. Neither line changes product or CI
+   bytes, starts services, or pushes.
+4. 2026-10-17..20: CTO freezes RC1 and the one finite CI correction scope;
+   then the final candidate verification and approved release rehearsal
+   proceed under a separately granted budget.
+5. 2026-10-21..24: Jeff's real trial, with findings triaged by user impact.
+6. 2026-10-25..31: fix/review buffer; the CTO makes a small-scope release
+   decision with operational authorization. If deployment configuration,
+   mail, recovery, or candidate evidence do not hold, the CTO adjusts
+   scope/dates explicitly; dates never override safety.
+
+S3 stays DEFERRED pending BD-3; PC-03 formal credit stays a separate scope.
+Deployment remains NOT AUTHORIZED. The current five docs paths
+(`PROJECT.md`, `PROJECT_MEMORY.md`, `CTO_CURRENT_OPS.md`,
+`DUAL_MACHINE_DEVELOPMENT_PROTOCOL.md`,
+`docs/releases/mvp-20261031/RC1-PLAN.zh-CN.md`) are the only writable paths
+of the freeze line; everything else at BASE stays byte-identical.
 
 #### DC-12R1-S3-S1 - catalog and order hardening (completed)
 
@@ -694,7 +874,7 @@ onboarding and full business journey / VPS / real-device final acceptance).
 
 Merged and browser-verified as `436d61e2`; see Section 5 for the full record.
 
-#### Pre-delivery execution queue (refreshed 2026-09-23)
+#### Pre-delivery execution queue (HISTORICAL, refreshed 2026-09-23; superseded 2026-10-13 by the current stage above)
 
 The contract branch is reviewed through `a78f5440`; the protected product
 branch remains at `57df5334`. The ordered next work is:
@@ -780,16 +960,20 @@ expand the current product scope or weaken isolation boundaries.
 
 ## 9. Role and Ownership Model
 
+Current division (2026-10-13, per the CTO dual-track directive). Work is
+assigned to named executors by directive, not by machine: the old static
+mapping of "Windows = product line, Lubuntu = platform line" is SUPERSEDED
+and must not be used to infer who may do what in a new task.
+
 | Role | Responsibility |
 |---|---|
-| CTO/Codex | Architecture, scope, risk, contracts, merge, release verdict, project truth |
-| Zcode product line | Bounded product/test corrections and author-side evidence on explicitly authorized paths |
-| Codex-L supervisor | Order, SKU, authority, and contract source review; candidate truth and STOP enforcement within allocated capacity |
-| Fresh Kilo reviewer | Non-overlapping source, falsification, PG16/runtime, and evidence review; author PASS is never inherited |
-| Product coding agent | Other bounded implementation/design slices on isolated branches |
-| Independent Lubuntu validator | Fresh DB, full-suite, cross-environment, and browser evidence |
-| OPS agent | Deployment, DNS/TLS, backup/restore, monitoring, and runtime evidence |
-| Jeff / human owner | Current primary pilot owner; credentials, mailbox, domain, legal data, business decisions, and production authorization |
+| CTO | Final technical ruling: scope, risk, contracts, integration/merge decisions, acceptance verdicts, project truth; wrote the S1 final acceptance, the S2 final acceptance (2026-10-15, incl. the browser-supplement verdict), and the 2026-10-15 release-preparation directives |
+| Codex-L (Lubuntu) | Implemented the S2 "reorder from own history" slice with real PG/HTTP/browser evidence; CLOSED with the 2026-10-15 acceptance. Any new product implementation needs a fresh directive |
+| ZCode-L (Lubuntu, 2026-10-15 line) | RC1 docs-only freeze: write the accepted S1/S2 state into the five governance/release docs as a normal docs-only successor of BASE `88c7d815`, plus the one-pass current-CI admission design; no product/CI/test bytes, no services, no push |
+| ZCode-W (Windows, 2026-10-15 line) | Minimal pilot manual and go-live rehearsal preparation in its own output directory; candidate source read-only; no repo edits, no runtime, no VPS actions |
+| Kilo-L | No active assignment; the S2 independent acceptance question was closed by the CTO's own native-result review on 2026-10-15. Any future independent acceptance is dispatched by a new directive |
+| OPS agent | Deployment, DNS/TLS, backup/restore, monitoring, and runtime evidence — only when separately authorized |
+| Jeff / human owner | Business decisions (BD-1/BD-2 confirmed; BD-3 pending), credentials, mailbox, domain, legal data, production authorization, and the real business trial |
 | Human backup | Not yet staffed; must be named and trained before backup coverage is claimed |
 | AI monitoring | Monitoring and alerting only; not a human backup, financial approver, or account-reconciliation authority |
 | Wholesaler pilot owner | Business workflow acceptance and operational feedback |
@@ -809,17 +993,19 @@ No agent's self-reported PASS is sufficient by itself.
 - No hidden skip, xfail, deselection, or assertion weakening.
 - No secrets, credentials, raw exceptions, or private row contents in reports.
 - No protected push without explicit human approval.
-- No pricing or new ordering product change before
-  `PRICING-AND-ORDERING-CONTRACT-R0` is accepted against an exact frozen base.
+- No pricing or ordering product change outside an accepted contract and a
+  CTO-authorized scope. The S1 contract is accepted; S2 reorder is authorized
+  only within its directive; S3 negotiation stays unauthorized until BD-3 is
+  decided. No second pricing or finance engine beside the accepted one.
 - No fractional UGX. Currency precision and discount rounding are authoritative
   configuration, not UI formatting.
 - No first-release single-person refund exception; maker and approver remain
   separate human identities.
 - No claim that the integration target, protected product branch, and deployed
   runtime are the same object unless each ref/SHA is independently proven.
-- No migration `038` or `039` acceptance without exact ancestry, single-head
-  proof, preflight, rollback/no-partial-mutation evidence, and independent
-  authority execution.
+- No migration acceptance (including `038`, `039`, `040`) without exact
+  ancestry, single-head proof, preflight, rollback/no-partial-mutation
+  evidence, and independent authority execution.
 - No authority execution after failed CWD/temp-DB/profile/Alembic/PG/Redis or
   runner-child binding preflight.
 - No claim that merged code is deployed without exact runtime SHA proof.

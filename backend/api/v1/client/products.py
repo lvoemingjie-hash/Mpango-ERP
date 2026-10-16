@@ -48,6 +48,8 @@ from schemas.client import (
 from schemas.common import DataResponse, Pagination
 from repositories.pricing_repository import effective_price
 from services.pricing_quote_service import amount_string, money, resolve_currency
+from schemas.product_image import image_state
+from types import SimpleNamespace
 
 
 router = APIRouter()
@@ -107,6 +109,11 @@ def _product_summary(rows, *, with_description: bool, currency=None) -> ClientPr
         unit_count=len(units),
         units=units,
     )
+    media_revision = getattr(first, 'image_revision', None)
+    media = None if media_revision is None else SimpleNamespace(
+        image_revision=media_revision, current_version=first.image_version,
+        variants=first.image_variants)
+    kwargs.update(image_state(media, first.product_id, client=True))
     if with_description:
         return ClientProductDetail(description=first.description, **kwargs)
     return ClientProductSummary(**kwargs)
@@ -118,6 +125,7 @@ _UNIT_SELECT = """
         p.name,
         p.description,
         p.category,
+        pi.image_revision, pi.current_version AS image_version, pi.variants AS image_variants,
         s.id AS unit_id,
         s.sku_code,
         s.unit,
@@ -126,6 +134,7 @@ _UNIT_SELECT = """
         COALESCE(i.quantity_on_hand, 0) AS quantity_on_hand,
         rp.price AS sell_price
     FROM catalog_products p
+    LEFT JOIN catalog_product_images pi ON pi.product_id = p.id
     JOIN skus s
         ON s.catalog_product_id = p.id
         AND s.is_active = true

@@ -9,6 +9,7 @@ from typing import Optional
 from pydantic import BaseModel, Field, model_validator
 
 from schemas.base import CamelModel
+from schemas.product_image import ProductImageView
 
 
 class SellableUnitCreate(BaseModel):
@@ -62,6 +63,8 @@ class SellableUnitRead(CamelModel):
 
 
 class CatalogProductRead(CamelModel):
+    image_revision: int = 0
+    image: ProductImageView | None = None
     id: str
     name: str
     description: Optional[str] = None

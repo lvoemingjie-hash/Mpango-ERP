@@ -2493,6 +2493,64 @@ async def _reconcile_s1_pricing(db, ts: str) -> None:
     await _assert_s1_pricing_contract(db, ts)
 
 
+async def _reconcile_product_images(db, ts: str) -> None:
+    """Independently frozen 041 DDL; never repair a populated missing table."""
+    from sqlalchemy import text
+
+    q = '"' + ts + '"'
+    exists = (await db.execute(text('SELECT to_regclass(:name)'),
+                              {'name': ts + '.catalog_product_images'})).scalar()
+    if exists is None:
+        history = (await db.execute(text(
+            f'SELECT (SELECT count(*) FROM {q}.orders) + (SELECT count(*) FROM {q}.payments)'))).scalar_one()
+        if history:
+            raise RuntimeError('IMAGE_POPULATED_SCHEMA_MISSING_TABLE')
+        await db.execute(text(f'''CREATE TABLE {q}.catalog_product_images (
+            product_id UUID CONSTRAINT catalog_product_images_pkey PRIMARY KEY,
+            image_revision BIGINT NOT NULL CONSTRAINT ck_product_image_revision CHECK (image_revision >= 1),
+            current_version UUID,
+            variants JSONB,
+            created_by UUID,
+            updated_by UUID,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT fk_product_image_product FOREIGN KEY (product_id) REFERENCES {q}.catalog_products(id) ON DELETE RESTRICT,
+            CONSTRAINT ck_product_image_shape CHECK ((current_version IS NULL) = (variants IS NULL))
+        )'''))
+    columns = (await db.execute(text(
+        'SELECT a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,pg_get_expr(d.adbin,d.adrelid) '
+        'FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace '
+        'LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum '
+        "WHERE n.nspname=:s AND c.relname='catalog_product_images' AND a.attnum>0 AND NOT a.attisdropped"), {'s': ts})).all()
+    expected = {
+        ('product_id', 'uuid', True, None), ('image_revision', 'bigint', True, None),
+        ('current_version', 'uuid', False, None), ('variants', 'jsonb', False, None),
+        ('created_by', 'uuid', False, None), ('updated_by', 'uuid', False, None),
+        ('created_at', 'timestamp with time zone', True, 'now()'),
+        ('updated_at', 'timestamp with time zone', True, 'now()'),
+    }
+    if set(map(tuple, columns)) != expected:
+        raise RuntimeError('IMAGE_CATALOG_COLUMNS_MISMATCH')
+    constraints = (await db.execute(text(
+        'SELECT c.conname,pg_get_constraintdef(c.oid) FROM pg_constraint c '
+        'JOIN pg_class t ON t.oid=c.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace '
+        "WHERE n.nspname=:s AND t.relname='catalog_product_images'"), {'s': ts})).all()
+    def normalize(value):
+        return ''.join(value.replace('"', '').replace(ts + '.', '').split())
+    actual = {(name, normalize(value)) for name, value in constraints}
+    wanted = {
+        ('catalog_product_images_pkey', normalize('PRIMARY KEY (product_id)')),
+        ('fk_product_image_product', normalize('FOREIGN KEY (product_id) REFERENCES catalog_products(id) ON DELETE RESTRICT')),
+        ('ck_product_image_revision', normalize('CHECK ((image_revision >= 1))')),
+        ('ck_product_image_shape', normalize('CHECK (((current_version IS NULL) = (variants IS NULL)))')),
+    }
+    indexes = (await db.execute(text(
+        "SELECT indexname,indexdef FROM pg_indexes WHERE schemaname=:s AND tablename='catalog_product_images'"), {'s': ts})).all()
+    expected_index = 'CREATE UNIQUE INDEX catalog_product_images_pkey ON catalog_product_images USING btree (product_id)'
+    if actual != wanted or {(name, normalize(value)) for name, value in indexes} != {('catalog_product_images_pkey', normalize(expected_index))}:
+        raise RuntimeError('IMAGE_CATALOG_CONSTRAINTS_MISMATCH')
+
+
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
     """Create tenant schema and all required tables."""
     from sqlalchemy import text
@@ -2534,7 +2592,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # C5 deployment-order gate (Order stream): refuse BEFORE creating ANY
         # tenant object.
-        await _require_alembic_revision(db, "040_s1_pricing_quote_contract")
+        await _require_alembic_revision(db, "041_catalog_product_main_image")
 
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))
@@ -2922,6 +2980,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
         await _reconcile_catalog_identity(db, ts)
 
         await _reconcile_s1_pricing(db, ts)
+        await _reconcile_product_images(db, ts)
 
         await db.commit()
 

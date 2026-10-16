@@ -22,6 +22,7 @@ from schemas.catalog import (
 )
 from schemas.common import DataResponse, Pagination
 from services.catalog_product_service import CatalogProductService
+from schemas.product_image import image_state
 
 
 router = APIRouter()
@@ -46,6 +47,7 @@ def _to_read(product) -> CatalogProductRead:
         if not unit.is_deleted
     ]
     return CatalogProductRead(
+        **image_state(getattr(product, 'image_record', None), product.id),
         id=str(product.id),
         name=product.name,
         description=product.description,

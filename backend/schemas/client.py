@@ -92,6 +92,8 @@ def product_stock_level(unit_levels: List[StockLevel]) -> StockLevel:
 
 
 class ClientProductSummary(BaseModel):
+    image_revision: int = 0
+    image: Optional[dict] = None
     """Product container — one per CatalogProduct in list view."""
     id: str = Field(..., description="CatalogProduct.id — the customer product identity")
     name: str

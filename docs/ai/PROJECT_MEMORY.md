@@ -233,6 +233,16 @@ Recommended sections:
 
 ## Compression Rule
 
+### Owner Priority Supplement (2026-10-16)
+
+Photos precede S3 for the first trial scope. S3 is deferred from this month's
+first package, not cancelled: negotiation roles/deadlines/price exceptions are
+still UNDECIDED. CTO-AUTH-PRODUCT-IMAGES-CORE-IMPLEMENTATION-R1-20261016 permits
+only an isolated core photo implementation candidate. Image acceptance, remote
+CI, production mutation, push/merge/deploy remain unauthorized. Merchant/retailer
+pickers and separate zoom are outside that core; security, persistence and paired
+DB/file recovery are not optional cuts. Existing accepted S1/S2 scope is unchanged.
+
 Do not paste entire old conversations here. Rewrite them into concise decisions, constraints, and priorities. If a fact is too vague to guide implementation, omit it.
 
 ## Promotion Rule

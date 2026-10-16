@@ -27,6 +27,8 @@ export interface ClientSellableUnit {
 }
 
 export interface ClientProduct {
+  image_revision?: number;
+  image?: import('@/services/productImageService').ProductImageMetadata | null;
   id: string; // CatalogProduct.id — the customer product identity
   name: string;
   category: string | null;

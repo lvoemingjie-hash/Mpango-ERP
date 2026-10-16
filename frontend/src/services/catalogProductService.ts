@@ -1,5 +1,6 @@
 import { api } from '@/services/api';
 import type { ApiResponse, PaginatedData } from '@/types/api';
+import type { ProductImageMetadata } from '@/services/productImageService';
 
 export interface SellableUnit {
   display_label?: string | null;
@@ -16,6 +17,8 @@ export interface SellableUnit {
 }
 
 export interface CatalogProduct {
+  image_revision?: number;
+  image?: ProductImageMetadata | null;
   id: string;
   name: string;
   description: string | null;

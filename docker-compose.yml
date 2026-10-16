@@ -101,6 +101,9 @@ services:
       - APP_NAME=${APP_NAME:-Mpango ERP}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Empty by default: images are optional. OPS must prepare this private
+      # volume for the actual non-root mpango UID/mode 0700 before enabling.
+      - PRODUCT_IMAGE_ROOT=${PRODUCT_IMAGE_ROOT:-}
       # CORS — handled by pydantic-settings default; gateway makes CORS unnecessary
       # Multi-tenancy
       - DEFAULT_TENANT_SCHEMA=${DEFAULT_TENANT_SCHEMA:-t_dev}
@@ -133,6 +136,8 @@ services:
       - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
       - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-10}
       - DB_CONNECT_TIMEOUT=${DB_CONNECT_TIMEOUT:-10}
+    volumes:
+      - product_images_data:/var/lib/mpango/media
     depends_on:
       postgres:
         condition: service_healthy
@@ -211,6 +216,7 @@ services:
       - mpango_network
 
 volumes:
+  product_images_data:
   postgres_data:
   redis_data:
   prometheus_data:

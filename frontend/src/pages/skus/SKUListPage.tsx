@@ -20,6 +20,7 @@ import { can, canAny, INTAKE_PERMISSIONS, SKU_PERMISSIONS } from '@/utils/permis
 
 import { AddSellableUnitModal } from './AddSellableUnitModal';
 import { SKUFormModal } from './SKUFormModal';
+import { ProductImage } from '@/components/catalog/ProductImage';
 import { SKUImportModal } from './SKUImportModal';
 
 export function SKUListPage() {
@@ -141,6 +142,7 @@ export function SKUListPage() {
             <article key={product.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
               <div className="flex flex-col gap-4 border-b border-gray-100 bg-gray-50/70 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
                 <div className="min-w-0">
+                  <ProductImage image={product.image} name={product.name} className="mb-2 h-16 w-16" />
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="break-words text-base font-semibold text-gray-900">{product.name}</h2>
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${product.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-700'}`}>

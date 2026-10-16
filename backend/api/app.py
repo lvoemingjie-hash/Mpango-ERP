@@ -135,6 +135,8 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
     app.include_router(skus.router, prefix="/api/v1/skus", tags=["skus"])
     app.include_router(catalog_products.router, prefix="/api/v1/catalog-products", tags=["catalog-products"])
+    from api.v1.product_images import router as product_images_router
+    app.include_router(product_images_router, prefix='/api/v1', tags=['product-images'])
     # U3-B2: SKU import preview + validate (write to import_runs only)
     app.include_router(sku_imports.router, prefix="/api/v1/skus/import", tags=["sku-imports"])
     # U4-C: internal-login-only intake workspace skeleton

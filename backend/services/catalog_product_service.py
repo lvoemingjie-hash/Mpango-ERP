@@ -51,6 +51,7 @@ class CatalogProductService:
         result = await db.execute(
             select(CatalogProduct)
             .options(selectinload(CatalogProduct.sellable_units))
+            .options(selectinload(CatalogProduct.image_record))
             .where(CatalogProduct.id == product_id, CatalogProduct.is_deleted.is_(False))
             .execution_options(populate_existing=True)
         )
@@ -121,6 +122,7 @@ class CatalogProductService:
             select(CatalogProduct)
             .where(*filters)
             .options(selectinload(CatalogProduct.sellable_units))
+            .options(selectinload(CatalogProduct.image_record))
             .order_by(CatalogProduct.name.asc(), CatalogProduct.id.asc())
             .offset((page - 1) * size)
             .limit(size)
@@ -136,6 +138,7 @@ class CatalogProductService:
             select(CatalogProduct)
             .where(CatalogProduct.id == product_uuid, CatalogProduct.is_deleted.is_(False))
             .options(selectinload(CatalogProduct.sellable_units))
+            .options(selectinload(CatalogProduct.image_record))
             .execution_options(populate_existing=True)
         )
         product = result.scalar_one_or_none()

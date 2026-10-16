@@ -1019,3 +1019,13 @@ changes.
 
 Do not append raw transcripts. Replace stale status with current facts.
 Historical command output belongs in `ai-ledger/`.
+
+### 2026-10-16 Owner Priority Supplement
+
+CTO-AUTH-PRODUCT-IMAGES-CORE-IMPLEMENTATION-R1-20261016 authorizes an isolated
+local core photo candidate: merchant maintenance/catalog and retailer list/detail,
+with safe processing, authorization, persistence and paired DB/file recovery.
+Pickers, independent zoom and broader media features are deferred. Product images
+are NOT accepted or deployed. Photos take priority; S3 is deferred from the month's
+first release and BD-3 rules remain undecided. No previous S1/S2/CI evidence proves
+the photo candidate, and this supplement authorizes no remote/release operation.

@@ -1,7 +1,8 @@
 import { formatMoney } from '@/utils/printFormat';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeftIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { ProductImage } from '@/components/catalog/ProductImage';
 import { clientProductService } from '@/services/clientProductService';
 import type { ClientProductDetail, ClientSellableUnit } from '@/types/client';
 
@@ -111,7 +112,7 @@ export function ProductDetailPage() {
 
       {/* Product Image Placeholder */}
       <div className="flex h-48 items-center justify-center rounded-xl bg-gray-100 text-gray-300">
-        <ShoppingBagIcon className="h-16 w-16" />
+        <ProductImage image={product.image} name={product.name} detail className="h-full w-full" />
       </div>
 
       {/* Product Info — the selected unit drives price/stock display */}

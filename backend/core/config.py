@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     )
 
     # Application
+    PRODUCT_IMAGE_ROOT: str = Field(default="", description="Private persistent media root; empty disables image writes")
+
     APP_NAME: str = Field(
         default="Mpango ERP",
         description="Application name"

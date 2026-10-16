@@ -11,6 +11,7 @@ from models.retailer import Retailer
 from models.invitation import Invitation
 from models.binding import WholesalerRetailerBinding
 from models.catalog_product import CatalogProduct
+from models.catalog_product_image import CatalogProductImage
 from models.sku import SKU
 from models.inventory_stock import InventoryStock
 from models.inventory_reservation import InventoryReservation
@@ -81,6 +82,7 @@ __all__ = [
     "Order",
     "OrderItem",
     "CatalogProduct",
+    "CatalogProductImage",
     "SKU",
     "InventoryStock",
     "InventoryReservation",

@@ -5,6 +5,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import { catalogProductService } from '@/services/catalogProductService';
 import type { CatalogProduct } from '@/services/catalogProductService';
 import { useToastStore } from '@/stores/toastStore';
+import { ProductImageMaintenance } from '@/components/catalog/ProductImage';
 
 interface SKUFormModalProps {
   isOpen: boolean;
@@ -105,6 +106,8 @@ export function SKUFormModal({ isOpen, onClose, onSuccess, product }: SKUFormMod
             </button>
           </div>
 
+          {product && isOpen && <ProductImageMaintenance key={product.id} productId={product.id}
+            initial={product} onChanged={onSuccess} />}
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
               <label htmlFor="catalog-product-name" className="block text-sm font-medium text-gray-700">Product Name</label>

@@ -2,6 +2,7 @@ import { formatMoney } from '@/utils/printFormat';
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { MagnifyingGlassIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
+import { ProductImage } from '@/components/catalog/ProductImage';
 import { clientProductService } from '@/services/clientProductService';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
@@ -116,7 +117,7 @@ export function ProductListPage() {
                 >
                   {/* Product Icon Placeholder */}
                   <div className="mb-3 flex h-20 items-center justify-center rounded-lg bg-gray-50 text-gray-300">
-                    <ShoppingBagIcon className="h-8 w-8" />
+                    <ProductImage image={product.image} name={product.name} className="h-full w-full" />
                   </div>
 
                   {/* Name & Price */}

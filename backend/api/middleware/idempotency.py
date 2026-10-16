@@ -84,6 +84,14 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         # Replacement retains S1's durable-only replay contract. Creation
         # cache hits now recheck the live S1 authority without rerunning it.
         path = request.url.path.rstrip('/')
+        # Media uses authenticated streaming plus revision conflicts, not body
+        # buffering or the generic response cache. No other route opts out.
+        if request.method in {'PUT', 'DELETE'} and re.fullmatch(
+            r'/api/v1/catalog-products/[^/]+/image/?',
+            request.url.path,
+        ):
+            return await call_next(request)
+
         if request.method == 'POST' and re.fullmatch(
             r'/api/v1/(?:client/)?orders/[0-9a-f-]{36}/replace-draft', path
         ):

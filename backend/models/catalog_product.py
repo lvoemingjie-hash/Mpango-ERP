@@ -25,3 +25,4 @@ class CatalogProduct(BaseModel):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     sellable_units = relationship("SKU", back_populates="catalog_product", lazy="selectin")
+    image_record = relationship('CatalogProductImage', back_populates='product', uselist=False, lazy='raise')

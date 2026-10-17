@@ -65,6 +65,20 @@ DEPLOY_WF = REPO_ROOT / ".github" / "workflows" / "deploy-staging.yml"
 S27_WF = REPO_ROOT / ".github" / "workflows" / "s2-7-ci-gates.yml"
 BASH = shutil.which("bash") or "bash"
 
+
+@pytest.fixture(autouse=True)
+def qualified_python_path(tmp_path, monkeypatch):
+    """Shell fragments use the same real interpreter as this contract run."""
+    bindir = tmp_path / "qualified-python"
+    bindir.mkdir()
+    for name in ("python", "python3"):
+        (bindir / name).symlink_to(sys.executable)
+    monkeypatch.setenv("PATH", str(bindir) + os.pathsep + os.environ["PATH"])
+
+
+def _ordered_argv(records, pattern="*.argv"):
+    return sorted(records.glob(pattern), key=lambda p: int(p.stem.rsplit("-", 1)[1]))
+
 # R6R3 (control A): the platform context-availability table —
 # jobs.<job_id>.env allows github/needs/strategy/matrix/vars/secrets/inputs
 # and NOT runner/job/steps/env. The gate below runs BEFORE any local
@@ -354,7 +368,7 @@ class TestDeployWorkflowContract:
         assert "chmod 700" in gate["run"]
 
         body = next(s for s in self.steps if "Run shard test body" in s.get("name", ""))
-        assert body["if"] == "steps.provision.outcome == 'success'"
+        assert body["if"] == "steps.provision.outcome == 'success' && steps.reuse-admission.outcome == 'success'"
         assert "continue-on-error" not in body
         # exactly ONE pytest test-body invocation per leg
         pytest_lines = [
@@ -579,7 +593,7 @@ class TestBootstrapPreflight:
         plan = json.loads((self.tmp / "plan.json").read_text(encoding="utf-8"))
         assert [p["name"] for p in plan["phases"]][:3] == ["provision", "task operator supply", "pgcrypto pre-install"]
         migrate = next(p for p in plan["phases"] if p["name"] == "migrate")
-        assert migrate["head"] == "039_order_credit_holds"
+        assert migrate["head"] == "041_catalog_product_main_image"
         identities = plan["identities"]
         assert identities["migration"]["user"] == "mpango_migrate"
         assert identities["app"]["user"] == "mpango_app"
@@ -592,8 +606,21 @@ class TestBootstrapPreflight:
             assert key in plan["env_keys_emitted"]
         assert "MPANGO_TEST_OPERATOR_URL" not in plan["env_keys_emitted"]
         counts = plan["selection_counts"]
-        assert counts["partition_total"] == counts["selected"] > 0
+        # CTO-AUTH-RC1-CI-ADMISSION-CLOSURE-L-R1-20261015: the ordinary
+        # profile partition covers only the ordinary zone; the registered
+        # dedicated-evidence zone completes the selection exactly.
+        assert counts["partition_total"] == counts["ordinary"] > 0
+        assert counts["ordinary"] + counts["dedicated"] == counts["selected"]
+        assert counts["unknown"] == 0
+        assert counts["dedicated"] == 16
         assert set(plan["profiles"]) == set(PROFILE_ORDER)
+        dedicated = plan["dedicated_evidence"]
+        assert dedicated["count"] == len(dedicated["files"]) == 16
+        assert sorted(dedicated["files"]) == sorted(
+            f for family in dedicated["families"].values() for f in family
+        )
+        for profile in plan["profiles"].values():
+            assert not (set(profile["files"]) & set(dedicated["files"]))
 
     def test_partition_union_equals_frozen_selection(self):
         proc = self._run({}, plan=self.tmp / "profiles-plan.json")
@@ -608,7 +635,11 @@ class TestBootstrapPreflight:
             files = set(plan["profiles"][profile]["files"])
             assert union & files == set()
             union |= files
-        assert union == expected
+        # ordinary zone only: profiles never contain registered dedicated files
+        dedicated = set(plan["dedicated_evidence"]["files"])
+        assert union & dedicated == set()
+        assert union | dedicated == expected
+        assert len(dedicated) == 16
 
     def test_missing_or_malformed_redis_url_refused(self):
         missing = self._run({"CI_REDIS_URL": ""}, plan=Path(self.tmp) / "x-redis.json")
@@ -652,14 +683,14 @@ class TestBootstrapPreflight:
 FAKE_PSQL = r'''#!/usr/bin/env bash
 # fake psql: records argv (only), stdin, and the credential env channels
 DIR="${C91_FAKE_DIR:-/tmp}"
-N=$(ls "$DIR" | grep -c '^psql-' || true)
+N=$(find "$DIR" -maxdepth 1 -name '*.argv' | wc -l)
 printf '%s\n' "$*" > "$DIR/psql-$N.argv"
 env | grep -E '^(PGPASSWORD|MPANGO_DB_ADMIN_URL)=' | sed 's/^/ENV /' > "$DIR/psql-$N.env" || true
 cat > "$DIR/psql-$N.stdin"
 case "$*" in
   *"rolcreatedb, rolcreaterole"*) echo "t|t|f|f" ;;
   *"pg_auth_members"*) echo "mpango_migrate:1:0" ;;
-  *"alembic_version"*) echo 039_order_credit_holds ;;
+  *"alembic_version"*) echo 041_catalog_product_main_image ;;
   *"CREATE EXTENSION"*) : > "$DIR/pgcrypto-installed" ;;
   *"pg_extension WHERE extname"*)
     if [ -f "$DIR/pgcrypto-installed" ]; then echo 1; else echo 0; fi ;;
@@ -670,7 +701,7 @@ exit 0
 
 FAKE_POETRY_PASS = r'''#!/usr/bin/env bash
 DIR="${C91_FAKE_DIR:-/tmp}"
-N=$(ls "$DIR" | grep -c '^poetry-' || true)
+N=$(find "$DIR" -maxdepth 1 -name '*.argv' | wc -l)
 printf '%s\n' "$*" > "$DIR/poetry-$N.argv"
 if [ -f "$DIR/poetry-fail-provision" ] && [[ "$*" == *"--provision"* ]]; then
   echo "fake provision failure" >&2
@@ -735,7 +766,7 @@ class TestWrapperFakeToolExecution:
         proc, canary, env_file, github_env = self._run_wrapper(tmp_path, bin_dir, rec)
         assert proc.returncode == 0, proc.stderr
 
-        argv_texts = [p.read_text(encoding="utf-8") for p in rec.glob("*.argv")]
+        argv_texts = [p.read_text(encoding="utf-8") for p in _ordered_argv(rec)]
         stdin_texts = [p.read_text(encoding="utf-8") for p in rec.glob("*.stdin")]
         env_texts = [p.read_text(encoding="utf-8") for p in rec.glob("*.env")]
 
@@ -3701,9 +3732,582 @@ class TestR6R5HostedPreconditions:
     def test_e03_helper_and_backend_frozen(self):
         diff = self._git(
             "diff", "--name-only",
-            "4429975b" "6ab37652" "ddbe215e" "96a9b17a" "1cce7650", "HEAD",
+            "97eb3d89daf3daca45d7289c6669f1cca18d5ef2", "HEAD",
             "--", "backend",
             cwd=REPO_ROOT,
         )
         assert diff.returncode == 0
         assert diff.stdout.strip() == "", "backend tree must stay byte-frozen"
+
+
+class TestDedicatedEvidencePartition:
+    """CTO-AUTH-RC1-CI-ADMISSION-CLOSURE-L-R1-20261015: the ordinary hosted
+    regression zone and the dedicated acceptance-evidence zone form an exact,
+    disjoint, unknown-free partition of the 252-file selection. Each control
+    below is discriminating: the happy shape passes and every tampered shape
+    is refused with its own category."""
+
+    def _preflight_plan(self, tmp_path):
+        env = dict(os.environ)
+        env.update(
+            {
+                "CI_PG_HOST": "127.0.0.1",
+                "CI_PG_PORT": "55432",
+                "CI_PG_ADMIN_USER": "postgres",
+                "CI_PG_ADMIN_PASSWORD": CLASSIFICATION_CREDENTIAL,
+                "CI_TEST_DB": "test_ci_mpango",
+                "CI_REDIS_URL": "redis://127.0.0.1:55433/0",
+                "PYTHON_BIN": sys.executable,
+            }
+        )
+        plan = tmp_path / "plan.json"
+        proc = subprocess.run(
+            [BASH, str(BOOTSTRAP), "--repo-root", str(REPO_ROOT), "--preflight-only",
+             "--plan-file", str(plan), "--profile-dir", str(tmp_path / "profiles")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=env, stdin=subprocess.DEVNULL,
+        )
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(plan.read_text(encoding="utf-8")), plan
+
+    def _dedicated_verify(self, plan_path, *extra):
+        return subprocess.run(
+            [sys.executable, str(EVIDENCE_TOOL), "dedicated-verify", "--plan", str(plan_path), *extra],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+
+    def test_honest_plan_registry_exact_and_partition_exact(self, tmp_path):
+        plan, plan_path = self._preflight_plan(tmp_path)
+        proc = self._dedicated_verify(plan_path, "--include-families")
+        assert proc.returncode == 0, proc.stderr
+        assert "registry exact (16 files)" in proc.stdout
+        assert "unknown=0" in proc.stdout
+        assert plan["selection_counts"]["selected"] == 252
+        assert plan["selection_counts"]["ordinary"] == 236
+        families = plan["dedicated_evidence"]["families"]
+        assert {k: len(v) for k, v in families.items()} == {
+            "s1_pricing_quote": 6, "s2_reorder": 4,
+            "release_critical_journeys": 3, "product_images": 3,
+        }
+        coverage = json.loads((REPO_ROOT / "docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json").read_text())
+        registered = set(plan["dedicated_evidence"]["files"])
+        assert registered == {
+            f.removeprefix("backend/") for b in coverage["bindings"]
+            for f in b["files"] if f.startswith("backend/tests/")
+        }
+
+    @pytest.mark.parametrize("drift", ["unknown_family", "swapped_member"])
+    @pytest.mark.parametrize("extra", [(), ("--include-families",)])
+    def test_family_drift_refused(self, tmp_path, drift, extra):
+        plan, path = self._preflight_plan(tmp_path)
+        families = plan["dedicated_evidence"]["families"]
+        if drift == "unknown_family":
+            families["future_exemption"] = []
+        else:
+            families["product_images"][0] = families["s1_pricing_quote"][0]
+        path.write_text(json.dumps(plan))
+        proc = self._dedicated_verify(path, *extra)
+        assert proc.returncode != 0
+        assert "DEDICATED_FAMILY_DRIFT" in proc.stderr
+
+    def test_missing_dedicated_member_refused(self, tmp_path):
+        plan, plan_path = self._preflight_plan(tmp_path)
+        victim = plan["dedicated_evidence"]["files"][0]
+        plan["dedicated_evidence"]["files"] = [
+            f for f in plan["dedicated_evidence"]["files"] if f != victim
+        ]
+        for family, files in plan["dedicated_evidence"]["families"].items():
+            plan["dedicated_evidence"]["families"][family] = [f for f in files if f != victim]
+        plan_path.write_text(json.dumps(plan), encoding="utf-8")
+        proc = self._dedicated_verify(plan_path)
+        assert proc.returncode != 0
+        assert "MISSING_DEDICATED_MEMBER" in proc.stderr
+
+    def test_duplicate_dedicated_member_refused(self, tmp_path):
+        plan, plan_path = self._preflight_plan(tmp_path)
+        plan["dedicated_evidence"]["files"] = (
+            plan["dedicated_evidence"]["files"] + [plan["dedicated_evidence"]["files"][0]]
+        )
+        plan_path.write_text(json.dumps(plan), encoding="utf-8")
+        proc = self._dedicated_verify(plan_path)
+        assert proc.returncode != 0
+        assert "DUPLICATE_DEDICATED_MEMBER" in proc.stderr
+
+    def test_extra_dedicated_member_refused(self, tmp_path):
+        plan, plan_path = self._preflight_plan(tmp_path)
+        plan["dedicated_evidence"]["files"] = plan["dedicated_evidence"]["files"] + [
+            "tests/test_s3c_cache.py"
+        ]
+        plan_path.write_text(json.dumps(plan), encoding="utf-8")
+        proc = self._dedicated_verify(plan_path)
+        assert proc.returncode != 0
+        assert "EXTRA_DEDICATED_MEMBER" in proc.stderr
+
+    def test_dedicated_file_mixed_into_ordinary_profile_refused(self, tmp_path):
+        plan, plan_path = self._preflight_plan(tmp_path)
+        intruder = plan["dedicated_evidence"]["files"][0]
+        plan["profiles"]["runtime"]["files"].append(intruder)
+        plan["profiles"]["runtime"]["count"] += 1
+        plan_path.write_text(json.dumps(plan), encoding="utf-8")
+        proc = self._dedicated_verify(plan_path)
+        assert proc.returncode != 0
+        assert "DEDICATED_FILE_IN_ORDINARY_PROFILE" in proc.stderr
+
+    def test_unknown_selection_member_refused(self, tmp_path):
+        plan, plan_path = self._preflight_plan(tmp_path)
+        plan["selection_counts"]["selected"] += 1  # a member in neither zone
+        plan_path.write_text(json.dumps(plan), encoding="utf-8")
+        proc = self._dedicated_verify(plan_path)
+        assert proc.returncode != 0
+        assert "SELECTION_PARTITION_INEXACT" in proc.stderr
+
+
+class TestWrapperWrongHeadRefusal:
+    """The migrate-phase head contract is exact equality with
+    041_catalog_product_main_image; a stale or divergent head answer must
+    refuse the whole supply before pytest can start."""
+
+    def _run_with_head_answer(self, tmp_path, head_answer):
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        (tmp_path / "records").mkdir()
+        fake_psql = FAKE_PSQL.replace(
+            "echo 041_catalog_product_main_image", f"echo {head_answer}"
+        )
+        (bin_dir / "psql").write_text(fake_psql, encoding="utf-8", newline="\n")
+        (bin_dir / "poetry").write_text(FAKE_POETRY_PASS, encoding="utf-8", newline="\n")
+        for name in ("psql", "poetry"):
+            os.chmod(bin_dir / name, 0o755)
+        env = dict(os.environ)
+        env.update(
+            {
+                "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+                "C91_FAKE_DIR": str(tmp_path / "records"),
+                "PYTHON_BIN": sys.executable,
+                "CI_PG_HOST": "127.0.0.1",
+                "CI_PG_PORT": "55432",
+                "CI_PG_ADMIN_USER": "postgres",
+                "CI_PG_ADMIN_PASSWORD": "canary-admin-credential-0123456789abcdef",
+                "CI_TEST_DB": "test_ci_mpango",
+                "CI_REDIS_URL": "redis://127.0.0.1:6390/0",
+                "CI_SUPPLY_SKIP_SERVICE_WAIT": "1",
+            }
+        )
+        return subprocess.run(
+            [BASH, str(BOOTSTRAP), "--repo-root", str(REPO_ROOT),
+             "--plan-file", str(tmp_path / "plan.json"),
+             "--profile-dir", str(tmp_path / "profiles")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+
+    @pytest.mark.parametrize("head", ["039_order_credit_holds", "040_s1_pricing_quote_contract"])
+    def test_stale_head_answer_refuses_before_bootstrap(self, tmp_path, head):
+        proc = self._run_with_head_answer(tmp_path, head)
+        assert proc.returncode != 0
+        assert "expected exactly 041_catalog_product_main_image" in proc.stderr
+        argv_texts = [p.read_text(encoding="utf-8") for p in (tmp_path / "records").glob("*.argv")]
+        assert any("alembic" in t for t in argv_texts)
+        # the head refusal happens inside phase 2: no later phase may start
+        assert not any("--apply-grants" in t or "--verify" in t for t in argv_texts)
+        assert not any("bootstrap_tenant_schema.py" in t for t in argv_texts)
+
+
+class TestReuseValidityMachineCheck:
+    """Approved Git objects, complete metadata and real admission controls."""
+
+    APPROVED = "97eb3d89daf3daca45d7289c6669f1cca18d5ef2"
+
+    def _coverage(self, tmp_path):
+        path = tmp_path / "coverage.json"
+        path.write_bytes((REPO_ROOT / "docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json").read_bytes())
+        return path
+
+    def _check(self, repo, path, *, tool=EVIDENCE_TOOL):
+        result = path.with_suffix(".result.json")
+        proc = subprocess.run(
+            [sys.executable, str(tool), "verify-reuse", "--coverage", str(path),
+             "--repo-root", str(repo), "--approved-ref", self.APPROVED,
+             "--result-file", str(result)],
+            capture_output=True, text=True,
+        )
+        data = json.loads(result.read_text()) if result.exists() else {}
+        return proc, data
+
+    def _clone(self, tmp_path):
+        repo = tmp_path / "repo"
+        proc = subprocess.run(
+            ["git", "clone", "--no-hardlinks", "--quiet", str(REPO_ROOT), str(repo)],
+            capture_output=True, text=True,
+        )
+        assert proc.returncode == 0, proc.stderr
+        return repo
+
+    def test_matching_bytes_validate_reuse(self, tmp_path):
+        proc, data = self._check(REPO_ROOT, self._coverage(tmp_path))
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert data["all_valid"] and data["source_objects_checked"] > 100
+        assert data["external_source_objects_checked"] == 3
+        assert data["full_dedicated_node_coverage"] == "GAP_RCJ_NODE_MAP_NOT_ESTABLISHED"
+        assert "candidate" not in proc.stdout
+        assert "backend/" not in proc.stdout
+
+    @pytest.mark.parametrize("rel", [
+        "docker-compose.yml", "nginx/gateway.conf",
+        "docs/runbooks/product-image-backup-restore.md",
+    ])
+    def test_external_content_drift_refused(self, tmp_path, rel):
+        repo = self._clone(tmp_path)
+        target = repo / rel
+        target.write_bytes(target.read_bytes() + b"\n# disposable external drift\n")
+        proc, result = self._check(repo, self._coverage(tmp_path))
+        assert proc.returncode == 5
+        assert "REUSE_EXTERNAL_CONTENT_DRIFT:" + rel in result["problems"]
+        assert not result["all_valid"]
+
+    @pytest.mark.parametrize("kind", ["missing", "mode", "symlink", "directory", "fifo", "parent_symlink", "hardlink"])
+    def test_external_type_mode_missing_and_escape_refused(self, tmp_path, kind):
+        repo = self._clone(tmp_path)
+        target = repo / "nginx/gateway.conf"
+        if kind == "missing":
+            target.unlink()
+        elif kind == "mode":
+            target.chmod(0o755)
+        elif kind == "parent_symlink":
+            parent = repo / "nginx"
+            saved = tmp_path / "outside-nginx"
+            parent.rename(saved)
+            parent.symlink_to(saved, target_is_directory=True)
+        else:
+            original = target.read_bytes()
+            target.unlink()
+            if kind == "symlink":
+                outside = tmp_path / "outside.conf"
+                outside.write_bytes(original)
+                target.symlink_to(outside)
+            elif kind == "hardlink":
+                outside = tmp_path / "outside.conf"
+                outside.write_bytes(original)
+                os.link(outside, target)
+            elif kind == "fifo":
+                os.mkfifo(target)
+            else:
+                target.mkdir()
+        proc, result = self._check(repo, self._coverage(tmp_path))
+        assert proc.returncode == 5 and not result["all_valid"]
+        category = {
+            "missing": "REUSE_EXTERNAL_MISSING_PATH",
+            "mode": "REUSE_EXTERNAL_MODE_DRIFT",
+            "parent_symlink": "REUSE_EXTERNAL_PATH_REFUSED",
+        }.get(kind, "REUSE_EXTERNAL_PATH_TYPE")
+        assert result["problems"] == [category + ":nginx/gateway.conf"]
+
+    def test_historical_governance_updates_are_not_product_drift(self, tmp_path):
+        repo = self._clone(tmp_path)
+        coverage = self._coverage(tmp_path)
+        photo = next(b for b in json.loads(coverage.read_text())["bindings"] if b["family"] == "product_images")
+        assert len(photo["load_bearing_blobs"]) == 40
+        assert sum(p.startswith(("backend/", "frontend/")) for p in photo["load_bearing_blobs"]) == 37
+        history = photo["historical_source_documents"]
+        assert set(history) == {"docs/ai/PROJECT.md", "docs/ai/PROJECT_MEMORY.md"}
+        for rel, item in history.items():
+            assert rel not in photo["load_bearing_blobs"]
+            original = subprocess.check_output(["git", "rev-parse", self.APPROVED + ":" + rel], cwd=repo, text=True).strip()
+            assert item["git_blob"] == original
+            assert item["classification"] == "HISTORICAL_SOURCE_ONLY_NOT_CURRENT_FROZEN_FILE"
+            target = repo / rel
+            target.write_bytes(target.read_bytes() + b"\nLocal governance update.\n")
+        proc, result = self._check(repo, coverage)
+        assert proc.returncode == 0 and result["all_valid"]
+        assert not result["release_ready"] and not result["evidence_ready"]
+
+    def test_external_comparison_call_mutation_is_detected(self, tmp_path):
+        import ast
+        import hashlib
+        import stat
+
+        repo = self._clone(tmp_path)
+        target = repo / "nginx/gateway.conf"
+        original, mode = target.read_bytes(), stat.S_IMODE(target.stat().st_mode)
+        source = EVIDENCE_TOOL.read_bytes()
+        anchor = "external_problems, external_count = _reuse_external_object_problems(repo, args.approved_ref)"
+        assert source.decode().count(anchor) == 1
+        coverage = self._coverage(tmp_path)
+        mutant = tmp_path / "external-mutant.py"
+        steps = []
+
+        def observe(label, tool):
+            result_file = coverage.with_suffix(".result.json")
+            result_file.unlink(missing_ok=True)
+            proc, result = self._check(repo, coverage, tool=tool)
+            steps.append({"label": label, "argv": proc.args, "rc": proc.returncode, "result": result})
+            return proc, result
+
+        try:
+            target.write_bytes(original + b"\n# drift must reject\n")
+            pristine, data = observe("pristine_guard_on_drift", EVIDENCE_TOOL)
+            assert pristine.returncode == 5
+            assert "REUSE_EXTERNAL_CONTENT_DRIFT:nginx/gateway.conf" in data["problems"]
+            mutated = source.decode().replace(anchor, "external_problems, external_count = [], 0")
+            compile(ast.parse(mutated), "external-mutant.py", "exec")
+            mutant.write_text(mutated)
+            mutant.chmod(0o644)
+            false_green, data = observe("removed_external_call_false_green", mutant)
+            assert false_green.returncode == 0 and data["all_valid"]
+            with pytest.raises(AssertionError, match="EXTERNAL_NGINX_DRIFT_MUST_REFUSE"):
+                assert false_green.returncode != 0, "EXTERNAL_NGINX_DRIFT_MUST_REFUSE"
+            mutant.write_bytes(source)
+            mutant.chmod(0o644)
+            assert mutant.read_bytes() == source and stat.S_IMODE(mutant.stat().st_mode) == 0o644
+            restored, data = observe("restored_guard_on_same_drift", mutant)
+            assert restored.returncode == 5 and not data["all_valid"]
+        finally:
+            target.write_bytes(original)
+            target.chmod(mode)
+            if mutant.exists():
+                mutant.write_bytes(source)
+                mutant.chmod(0o644)
+        honest, data = observe("restored_bytes_honest_green", mutant)
+        assert honest.returncode == 0 and data["all_valid"]
+        assert target.read_bytes() == original and stat.S_IMODE(target.stat().st_mode) == mode
+        assert EVIDENCE_TOOL.read_bytes() == source
+        (tmp_path / "rc2-external-mutant-proof.json").write_text(json.dumps({
+            "anchor_count": 1, "parse_compile": True, "steps": steps,
+            "driver_restored_sha256": hashlib.sha256(mutant.read_bytes()).hexdigest(),
+            "original_driver_sha256": hashlib.sha256(source).hexdigest(),
+            "nginx_restored_sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+            "nginx_original_sha256": hashlib.sha256(original).hexdigest(),
+            "mode_restored": True, "authoritative_source_unchanged": True,
+        }, indent=2) + "\n")
+
+    def test_versioned_intake_without_side_commit(self, tmp_path):
+        repo = self._clone(tmp_path)
+        old = subprocess.run(["git", "cat-file", "-e",
+                              "1829bc65a97f2033875bfc466880c2e0e911134e^{commit}"],
+                             cwd=repo, capture_output=True)
+        assert old.returncode != 0, "control must lack the unavailable side intake"
+        proc, data = self._check(repo, self._coverage(tmp_path))
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert data["all_valid"] and not data["release_ready"]
+
+    def test_unapproved_product_ref_refused(self, tmp_path):
+        coverage = self._coverage(tmp_path)
+        proc = subprocess.run([
+            sys.executable, str(EVIDENCE_TOOL), "verify-reuse", "--coverage", str(coverage),
+            "--repo-root", str(REPO_ROOT), "--approved-ref",
+            "fd37acbbd3af8c9d0ed64ecb4ad0849d4ab8c366"], capture_output=True, text=True)
+        assert proc.returncode == 5
+        assert "REUSE_APPROVED_REF_NOT_AUTHORIZED" in proc.stderr
+
+    @pytest.mark.parametrize("drift", ["mode", "symlink", "extra"])
+    def test_product_type_mode_and_extra_path_refused(self, tmp_path, drift):
+        repo = self._clone(tmp_path)
+        target = repo / "backend/services/canonical_payment_service.py"
+        if drift == "mode":
+            target.chmod(0o755)
+        elif drift == "symlink":
+            saved = tmp_path / "original.py"
+            saved.write_bytes(target.read_bytes())
+            target.unlink()
+            target.symlink_to(saved)
+        else:
+            (repo / "backend/unapproved-extra.py").write_text("# extra\n")
+        proc, data = self._check(repo, self._coverage(tmp_path))
+        assert proc.returncode == 5 and not data["all_valid"]
+
+    def test_tampered_load_bearing_blob_is_gap(self, tmp_path):
+        path = self._coverage(tmp_path)
+        data = json.loads(path.read_text())
+        data["bindings"][0]["load_bearing_blobs"]["backend/tests/s1_pricing_quote/conftest.py"] = "0" * 40
+        path.write_text(json.dumps(data))
+        proc, result = self._check(REPO_ROOT, path)
+        assert proc.returncode == 5
+        assert "REUSE_METADATA_PROVENANCE" in result["problems"]
+
+    def test_missing_load_bearing_path_is_gap(self, tmp_path):
+        repo = self._clone(tmp_path)
+        (repo / "backend/tests/s1_pricing_quote/conftest.py").unlink()
+        proc, result = self._check(repo, self._coverage(tmp_path))
+        assert proc.returncode == 5
+        assert "REUSE_MISSING_PATH" in result["problems"]
+
+    @pytest.mark.parametrize("rel", [
+        "backend/services/canonical_payment_service.py",
+        "frontend/src/App.tsx",
+    ])
+    def test_product_drift_tests_unchanged(self, tmp_path, rel):
+        repo = self._clone(tmp_path)
+        target = repo / rel
+        assert target.is_file()
+        target.write_bytes(target.read_bytes() + b"\n# offline drift\n")
+        proc, result = self._check(repo, self._coverage(tmp_path))
+        assert proc.returncode == 5
+        assert "REUSE_OBJECT_DRIFT" in result["problems"]
+
+    def test_test_and_json_repin_cannot_self_approve(self, tmp_path):
+        repo = self._clone(tmp_path)
+        rel = "backend/tests/s1_pricing_quote/conftest.py"
+        target = repo / rel
+        target.write_bytes(target.read_bytes() + b"\n# offline drift\n")
+        path = self._coverage(tmp_path)
+        data = json.loads(path.read_text())
+        digest = subprocess.check_output(["git", "hash-object", rel], cwd=repo, text=True).strip()
+        data["bindings"][0]["load_bearing_blobs"][rel] = digest
+        path.write_text(json.dumps(data))
+        proc, result = self._check(repo, path)
+        assert proc.returncode == 5
+        assert "REUSE_OBJECT_DRIFT" in result["problems"]
+        assert "REUSE_METADATA_PROVENANCE" in result["problems"]
+
+    @pytest.mark.parametrize("kind", ["binding", "support", "candidate", "ruling", "nodes"])
+    def test_missing_or_forged_provenance_refused(self, tmp_path, kind):
+        path = self._coverage(tmp_path)
+        data = json.loads(path.read_text())
+        if kind == "binding":
+            data["bindings"].pop()
+        elif kind == "support":
+            data["bindings"][0]["support_files"].pop()
+        elif kind == "candidate":
+            data["bindings"][0]["candidate"] = "a" * 40
+        elif kind == "ruling":
+            data["bindings"][0]["cto_ruling"]["sha256"] = "b" * 64
+        else:
+            data["recovered_native_node_maps"]["maps"][0]["nodeids"].pop()
+        path.write_text(json.dumps(data))
+        proc, result = self._check(REPO_ROOT, path)
+        assert proc.returncode != 0
+        assert not result.get("all_valid", False)
+
+    def test_backend_object_comparison_mutation_is_detected(self, tmp_path):
+        repo = self._clone(tmp_path)
+        target = repo / "backend/services/canonical_payment_service.py"
+        target.write_bytes(target.read_bytes() + b"\n# offline drift\n")
+        path = self._coverage(tmp_path)
+        pristine, _ = self._check(repo, path)
+        assert pristine.returncode == 5
+        source = EVIDENCE_TOOL.read_text()
+        anchor = "object_problems, object_count = _reuse_object_problems(repo, args.approved_ref)"
+        assert source.count(anchor) == 1
+        mutant = tmp_path / "mutant.py"
+        mutant.write_text(source.replace(anchor, "object_problems, object_count = [], 0"))
+        mutant_result = path.with_suffix(".result.json")
+        mutant_result.unlink()
+        mutated, result = self._check(repo, path, tool=mutant)
+        # This is the false GREEN the permanent rejection oracle must detect.
+        assert mutated.returncode == 0 and result["all_valid"]
+        with pytest.raises(AssertionError, match="BACKEND_OBJECT_DRIFT_MUST_REFUSE"):
+            assert mutated.returncode != 0, "BACKEND_OBJECT_DRIFT_MUST_REFUSE"
+
+    @staticmethod
+    def _admission(doc):
+        steps = doc["jobs"]["test"]["steps"]
+        gate = next((s for s in steps if s.get("id") == "reuse-admission"), None)
+        body = next(s for s in steps if "Run shard test body" in s.get("name", ""))
+        assert gate is not None, "REUSE_WIRING_MISSING"
+        assert steps.index(gate) < steps.index(body), "REUSE_WIRING_ORDER"
+        assert "steps.provision.outcome == 'success'" in body["if"], "PROVISION_WIRING_BYPASS"
+        assert "steps.reuse-admission.outcome == 'success'" in body["if"], "REUSE_WIRING_BYPASS"
+        for command in (" dedicated-verify ", " verify-reuse "):
+            assert command in gate["run"], "REUSE_COMMAND_MISSING"
+        return gate
+
+    def test_real_workflow_admission_before_body(self, tmp_path):
+        doc = yaml.safe_load(DEPLOY_WF.read_text())
+        gate = self._admission(doc)
+        assert self.APPROVED in gate["run"]
+        assert doc["jobs"]["test"]["strategy"]["max-parallel"] == 2
+
+    @pytest.mark.parametrize("failure", ["partition", "product", "repin", "missing_binding", "wiring", "dedicated_wiring", "reuse_wiring", "condition"])
+    def test_admission_refusal_never_starts_body(self, tmp_path, failure):
+        repo = self._clone(tmp_path)
+        coverage = self._coverage(tmp_path)
+        doc = yaml.safe_load(DEPLOY_WF.read_text())
+        _, plan = TestDedicatedEvidencePartition()._preflight_plan(tmp_path)
+        # _plan returns the frozen wrapper dry-run's actual partition.
+        if failure == "partition":
+            data = json.loads(plan.read_text())
+            data["dedicated_evidence"]["files"].pop()
+            plan.write_text(json.dumps(data))
+        elif failure == "product":
+            target = repo / "backend/services/canonical_payment_service.py"
+            target.write_bytes(target.read_bytes() + b"\n# drift\n")
+        elif failure == "repin":
+            target = repo / "backend/tests/s1_pricing_quote/conftest.py"
+            target.write_bytes(target.read_bytes() + b"\n# drift\n")
+            data = json.loads(coverage.read_text())
+            data["bindings"][0]["load_bearing_blobs"]["backend/tests/s1_pricing_quote/conftest.py"] = subprocess.check_output(
+                ["git", "hash-object", str(target)], text=True).strip()
+            coverage.write_text(json.dumps(data))
+        elif failure == "missing_binding":
+            data = json.loads(coverage.read_text())
+            data["bindings"].pop()
+            coverage.write_text(json.dumps(data))
+        elif failure == "wiring":
+            doc["jobs"]["test"]["steps"] = [
+                s for s in doc["jobs"]["test"]["steps"] if s.get("id") != "reuse-admission"]
+        elif failure in ("dedicated_wiring", "reuse_wiring"):
+            command = " dedicated-verify " if failure == "dedicated_wiring" else " verify-reuse "
+            gate = next(s for s in doc["jobs"]["test"]["steps"] if s.get("id") == "reuse-admission")
+            gate["run"] = gate["run"].replace(command, " removed-command ")
+        else:
+            body = next(s for s in doc["jobs"]["test"]["steps"] if "Run shard test body" in s.get("name", ""))
+            body["if"] = "steps.provision.outcome == 'success'"
+        sentinel = tmp_path / "BODY_STARTED"
+        try:
+            gate = self._admission(doc)
+        except AssertionError:
+            assert failure in ("wiring", "dedicated_wiring", "reuse_wiring", "condition")
+            assert not sentinel.exists()
+            return
+        shutil.copyfile(plan, tmp_path / "supply-plan.json")
+        script = gate["run"].replace(
+            "tools/ci/prepare_test_evidence.py", str(EVIDENCE_TOOL)).replace(
+            "docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json", str(coverage))
+        script += "\ntouch " + str(sentinel) + "\n"
+        env = dict(os.environ, RUNNER_TEMP=str(tmp_path))
+        proc = subprocess.run([BASH, "-c", script], cwd=repo, env=env,
+                              capture_output=True, text=True)
+        assert proc.returncode != 0
+        assert not sentinel.exists(), "REFUSAL_MUST_PRECEDE_BODY"
+        assert "backend/" not in proc.stdout
+        assert "candidate" not in proc.stdout
+
+    def test_actual_admission_positive_control(self, tmp_path):
+        doc = yaml.safe_load(DEPLOY_WF.read_text())
+        gate = self._admission(doc)
+        _, plan = TestDedicatedEvidencePartition()._preflight_plan(tmp_path)
+        shutil.copyfile(plan, tmp_path / "supply-plan.json")
+        script = gate["run"].replace("tools/ci/prepare_test_evidence.py", str(EVIDENCE_TOOL))
+        sentinel = tmp_path / "BODY_STANDIN_STARTED"
+        script += "\ntouch " + str(sentinel) + "\n"
+        proc = subprocess.run([BASH, "-c", script], cwd=REPO_ROOT,
+                              env=dict(os.environ, RUNNER_TEMP=str(tmp_path)),
+                              capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert sentinel.exists()
+        result = json.loads((tmp_path / "reuse-result.json").read_text())
+        assert not result["release_ready"] and not result["evidence_ready"]
+        assert "candidate" not in proc.stdout
+        assert all(p.stat().st_mode & 0o077 == 0 for p in (
+            tmp_path / "reuse-result.json", tmp_path / "reuse.log", tmp_path / "dedicated.log"))
+
+
+class TestBackendFreezeStepCounterexample:
+    """Only the retained baseline-resolution probe, not product equivalence."""
+
+    @staticmethod
+    def _freeze_step_present(workflow_text: str) -> bool:
+        return (
+            "Verify frozen git baseline is resolvable (read-only, fail-closed)" in workflow_text
+            and "git cat-file -e" in workflow_text
+            and "GIT_BASELINE_UNRESOLVABLE" in workflow_text
+            and "exit 1" in workflow_text
+        )
+
+    def test_workflow_keeps_fail_closed_baseline_probe(self):
+        assert self._freeze_step_present(DEPLOY_WF.read_text())
+
+    def test_removing_the_probe_is_caught(self):
+        text = DEPLOY_WF.read_text()
+        mutated = "\n".join(line for line in text.splitlines() if "git cat-file -e" not in line)
+        assert self._freeze_step_present(text)
+        assert not self._freeze_step_present(mutated)

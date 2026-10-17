@@ -1,5 +1,50 @@
 # Mpango ERP Project Status
 
+## RC2 Preparation Update — 2026-10-17
+
+**Local RC2 integration candidate:** this update is based on frozen product
+`97eb3d89daf3daca45d7289c6669f1cca18d5ef2`, tree
+`9cb2fcb4b81cbfc2f13df3c5609bbe221e3fd5a6`, sole parent
+`fd37acbbd3af8c9d0ed64ecb4ad0849d4ab8c366`. The final staged/commit identity
+and local execution results belong to the separate delivery receipts; no
+new identity or result is prefilled here. CTO retains CI and release authority.
+
+- S1 and S2 remain accepted in their original frozen scopes at `41fd3adb`
+  and `88c7d815`, both actual ancestors. Their old runs are not current CI.
+- Product main images are now CTO-accepted at `97eb3d89`:
+  `CTO_PRODUCT_IMAGES_CORE_ACCEPTANCE=PASS_IN_FROZEN_BOUNDED_MVP_SCOPE`
+  (2026-10-17). One optional CatalogProduct main image is shared by its
+  packagings; no image does not prevent ordering. The accepted API/mobile,
+  paired task recovery, UG/KE reorder and named-negative layers retain their
+  individual scopes. R1 93 plus R2 GC 1 is a coverage union, not one 94/94 run.
+- Current product migration head is **`041_catalog_product_main_image`**.
+- Navigation and declaration-currency changes are actual ancestors
+  `1e245c2f` / `fd37acbb`; source integration is established. The separate
+  four-scenario/77-assertion declaration browser acceptance is still NOT
+  ESTABLISHED in the available reports; photos do not close that journey.
+- Current-candidate full regression, production frontend build and hosted CI
+  are **NOT ESTABLISHED**. Historical `28b65b71`/4288 stays dated history.
+- Static discovery at this source: 258 test files, six existing excludes,
+  252 selected; the local wrapper candidate enforces ordinary 236 + exact
+  dedicated 16 (S1 6, S2 4, critical journeys 3, images 3), and head041.
+  Reviewed side-tree `5428ffa9` seams are locally integrated without merging
+  its product or history. Versioned intake and collected canonical candidates
+  await CTO source adjudication; local collection receipts do not prove CI.
+- S3 negotiation/expiry and PC-03 formal credit remain deferred/separate.
+  No production deployment, real SMTP/HTTPS, target recovery or Jeff pilot
+  acceptance is established. Single-instance/one-worker cache scope remains.
+
+Next: CTO reviews the local tool/collection candidate and decides current-validation scope;
+use the existing RC1 plan's RC2 continuation and the RC2 preparation delivery.
+Private persistent media + explicit DB/root pairing and DB-plus-media backup
+must be in the target plan; no public static media URL or runtime privilege
+increase. No push/PR/CI/merge/deploy is authorized by this document.
+
+**Historical status below (2026-10-15 and earlier):** old head040, acceptance
+baseline `88c7d815`, the 236/249 comparison and historical hosted counts are
+preserved with their dates. Where they describe "current", this dated RC2
+update supersedes them; do not carry them forward as present RC2 evidence.
+
 **Last updated:** 2026-10-15
 **Status owner:** CTO
 **产品验收基线 (product acceptance baseline):** `88c7d8157ac5c46795d411ea6799112e017c9532` (tree `bb7795aa4b88f621839069c0d3afc0db477380d8`, sole parent `23685f60f325084535eb0213a539eedb29ebe234`) — the CTO-accepted product state carrying BOTH the accepted S1 line and the accepted S2 line

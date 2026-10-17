@@ -15,7 +15,7 @@
 #   phase 1c pgcrypto pre-install (admin, task DB, before/after catalog
 #            facts) — tests need it; app never gains public CREATE
 #   phase 2  migrate    (migration authority)    alembic through exactly
-#            040_s1_pricing_quote_contract + REPORTING_USER_PASSWORD (migration 011)
+#            041_catalog_product_main_image + REPORTING_USER_PASSWORD (migration 011)
 #   phase 3  grants     (migration authority)    provisioner --apply-grants
 #   phase 4  verify     (read-only)              provisioner --verify
 #   phase 4b read-only capability probe          operator attributes and
@@ -193,6 +193,41 @@ frozen_ignores = [
     "tests/test_reliability.py",
     "tests/test_s3_profiling.py",
 ]
+# CTO-AUTH-RC1-CI-ADMISSION-CLOSURE-L-R1-20261015: the thirteen
+# dedicated-evidence files (CTO-STATIC-SELECTION.json, 2026-10-15) are
+# registered OUT of the ordinary hosted regression zone. Matching is the
+# exact full backend-relative path only — no keyword or directory rule, and
+# future files get NO automatic exemption (a new file lands in the ordinary
+# selection and the frozen counts/collect gates refuse until the CTO
+# re-freezes them). These files are registered as dedicated acceptance
+# evidence; the ordinary legs never run them.
+dedicated_evidence_families = {
+    "product_images": [
+        "tests/product_images/test_contract.py",
+        "tests/product_images/test_migration.py",
+        "tests/product_images/test_transactions.py",
+    ],
+    "release_critical_journeys": [
+        "tests/release_critical_journeys/test_cached_replay_authority.py",
+        "tests/release_critical_journeys/test_overpayment_real_path.py",
+        "tests/release_critical_journeys/test_public_commit_boundary.py",
+    ],
+    "s1_pricing_quote": [
+        "tests/s1_pricing_quote/test_cache_integration.py",
+        "tests/s1_pricing_quote/test_contract.py",
+        "tests/s1_pricing_quote/test_http.py",
+        "tests/s1_pricing_quote/test_migration.py",
+        "tests/s1_pricing_quote/test_process_and_faults.py",
+        "tests/s1_pricing_quote/test_review_r2.py",
+    ],
+    "s2_reorder": [
+        "tests/s2_reorder/test_authority_tcp.py",
+        "tests/s2_reorder/test_history_tcp.py",
+        "tests/s2_reorder/test_source_economics_tcp.py",
+        "tests/s2_reorder/test_tcp_reorder.py",
+    ],
+}
+dedicated_registry = sorted(f for files in dedicated_evidence_families.values() for f in files)
 TOPOLOGY_KEYS = {
     "TEST_MIGRATION_DATABASE_URL",
     "TEST_OPERATOR_DATABASE_URL",
@@ -269,9 +304,26 @@ if not selected:
     print("REFUSED: empty selection (no test_*.py remain after the frozen ignores); refusing to emit a zero-test plan", file=sys.stderr)
     sys.exit(3)
 
+if len(dedicated_registry) != len(set(dedicated_registry)):
+    print("REFUSED: DEDICATED_REGISTRY_DUPLICATE: the dedicated-evidence registry contains a duplicated path", file=sys.stderr)
+    sys.exit(3)
+missing_registered = sorted(set(dedicated_registry) - set(selected))
+if missing_registered:
+    print(
+        "REFUSED: DEDICATED_REGISTRY_DRIFT: registered dedicated-evidence file(s) absent from the current selection: "
+        + ", ".join(missing_registered),
+        file=sys.stderr,
+    )
+    sys.exit(3)
+dedicated_files = [f for f in selected if f in set(dedicated_registry)]
+ordinary_files = [f for f in selected if f not in set(dedicated_registry)]
+if sorted(dedicated_files + ordinary_files) != sorted(selected) or set(dedicated_files) & set(ordinary_files):
+    print("REFUSED: SELECTION_PARTITION_INEXACT: ordinary + dedicated is not an exact disjoint partition of the selection", file=sys.stderr)
+    sys.exit(3)
+
 partition = {p: [] for p in PROFILE_ORDER}
 mixed = {}
-for rel in selected:
+for rel in ordinary_files:
     source = (repo / "backend" / rel).read_text(encoding="utf-8", errors="replace")
     try:
         profile, markers = classify(source)
@@ -282,8 +334,8 @@ for rel in selected:
     if markers:
         mixed[rel] = markers
 
-if sum(len(v) for v in partition.values()) != len(selected):
-    print("REFUSED: profile partition is not an exact partition of the frozen selection", file=sys.stderr)
+if sum(len(v) for v in partition.values()) != len(ordinary_files):
+    print("REFUSED: profile partition is not an exact partition of the ordinary selection", file=sys.stderr)
     sys.exit(3)
 
 plan = {
@@ -300,7 +352,7 @@ plan = {
         {"phase": 1, "name": "provision", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--provision", "identity": "admin (maintenance DB)", "roles": [migrate_user, app_user]},
         {"phase": "1b", "name": "task operator supply", "tool": "psql via private stdin", "identity": "admin (maintenance DB)", "grants": ["LOGIN", "CREATEDB (task authorization)", "CREATEROLE (task authorization)", "SET-only membership of " + migrate_user + " (non-inheriting)"]},
         {"phase": "1c", "name": "pgcrypto pre-install", "tool": "psql admin on task DB", "identity": "admin", "evidence": "before/after pg_extension catalog facts"},
-        {"phase": 2, "name": "migrate", "tool": "alembic upgrade head", "head": "040_s1_pricing_quote_contract", "identity": "migration authority (database owner)"},
+        {"phase": 2, "name": "migrate", "tool": "alembic upgrade head", "head": "041_catalog_product_main_image", "identity": "migration authority (database owner)"},
         {"phase": 3, "name": "apply-grants", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--apply-grants", "identity": "migration authority"},
         {"phase": 4, "name": "verify", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--verify", "identity": "read-only"},
         {"phase": "4b", "name": "capability probe", "tool": "read-only catalog SELECTs", "checks": ["operator rolcreatedb/rolcreaterole true, rolsuper/rolinherit false", "SET-only membership (set_option true, inherit_option false)"]},
@@ -328,10 +380,21 @@ plan = {
     "profiles": {p: {"files": partition[p], "count": len(partition[p])} for p in PROFILE_ORDER},
     "mixed_premise_files": mixed,
     "frozen_ignores": frozen_ignores,
+    "dedicated_evidence": {
+        "record": "DEDICATED_ACCEPTANCE_EVIDENCE_ZONE",
+        "authorization": "CTO-AUTH-RC1-CI-ADMISSION-CLOSURE-L-R1-20261015",
+        "note": "exact-path registry; these files are NOT executed by the ordinary hosted legs; coverage is registered in docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json",
+        "families": dedicated_evidence_families,
+        "files": dedicated_files,
+        "count": len(dedicated_files),
+    },
     "selection_counts": {
         "collected_test_files": len(all_files),
         "selected": len(selected),
+        "dedicated": len(dedicated_files),
+        "ordinary": len(ordinary_files),
         "partition_total": sum(len(v) for v in partition.values()),
+        "unknown": len(selected) - (len(dedicated_files) + sum(len(v) for v in partition.values())),
     },
 }
 plan_path.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8", newline="\n")
@@ -339,7 +402,8 @@ for profile in PROFILE_ORDER:
     body = "\n".join(partition[profile]) + ("\n" if partition[profile] else "")
     (profile_dir / f"profile-{profile}.tests").write_text(body, encoding="utf-8", newline="\n")
 print("[supply] plan: " + ", ".join(f"{p}={len(partition[p])}" for p in PROFILE_ORDER)
-      + f"; mixed-premise files disclosed: {len(mixed)}; selection={len(selected)}")
+      + f"; mixed-premise files disclosed: {len(mixed)}; selection={len(selected)}"
+      + f" (ordinary={len(ordinary_files)}, dedicated={len(dedicated_files)}, unknown={len(selected) - (len(dedicated_files) + sum(len(v) for v in partition.values()))})")
 PY
 
 echo "[supply] plan written: $PLAN_FILE; profiles in: $PROFILE_DIR"
@@ -506,7 +570,7 @@ PGCRYPTO_AFTER="$(run_psql "$ADMIN_USER" "$ADMIN_PASSWORD" "$TEST_DB" "SELECT co
 [ "$PGCRYPTO_AFTER" = "1" ] || refuse "pgcrypto not present after install (before=${PGCRYPTO_BEFORE}, after=${PGCRYPTO_AFTER})"
 echo "[supply] pgcrypto catalog facts: before=${PGCRYPTO_BEFORE} after=${PGCRYPTO_AFTER}"
 
-# ---- phase 2: migrations through exactly 039 as the migration authority ----
+# ---- phase 2: migrations through exactly 041 as the migration authority ----
 echo "[supply] phase 2/5 migrate (migration authority; alembic upgrade head)"
 (
     cd "$REPO_ROOT/backend"
@@ -514,8 +578,8 @@ echo "[supply] phase 2/5 migrate (migration authority; alembic upgrade head)"
     poetry run alembic upgrade head 2>&1 | REDACTED_TOOL_PIPE
 )
 HEAD_ROW="$(run_psql "$MIGRATE_USER" "$MIGRATE_PASSWORD" "$TEST_DB" "SELECT version_num FROM public.alembic_version")"
-[ "$HEAD_ROW" = "040_s1_pricing_quote_contract" ] || refuse "alembic head is '$HEAD_ROW', expected exactly 040_s1_pricing_quote_contract"
-echo "[supply] alembic head verified: 040_s1_pricing_quote_contract"
+[ "$HEAD_ROW" = "041_catalog_product_main_image" ] || refuse "alembic head is '$HEAD_ROW', expected exactly 041_catalog_product_main_image"
+echo "[supply] alembic head verified: 041_catalog_product_main_image"
 
 # ---- phase 3: minimum runtime grants ----------------------------------------
 echo "[supply] phase 3/5 apply-grants (migration authority)"

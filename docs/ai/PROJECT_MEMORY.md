@@ -1,5 +1,43 @@
 # Project Memory
 
+## Current Durable Acceptance Boundary — 2026-10-17
+
+S1 and S2 keep their original accepted scopes (`41fd3adb`, `88c7d815`), not a
+new current-candidate all-suite or CI pass. Both commits are actual ancestors
+of the photo product `97eb3d89daf3daca45d7289c6669f1cca18d5ef2` (tree
+`9cb2fcb4b81cbfc2f13df3c5609bbe221e3fd5a6`, sole parent
+`fd37acbbd3af8c9d0ed64ecb4ad0849d4ab8c366`). This is the current RC2
+preparation source, **head041 `041_catalog_product_main_image`**, not an
+approved deploy SHA or a new docs/tool integration commit.
+
+CTO accepted product images on 2026-10-17 as
+`PASS_IN_FROZEN_BOUNDED_MVP_SCOPE`: optional product main image, shared by all
+packagings, private authenticated GET, durable revision/tombstone, no-image
+ordering, paired task DB/media recovery and the named API/mobile/negative
+controls. Keep each call's provenance; do not sum 93 + GC 1 into a fresh
+94/94 call or add unrelated browser assertions into pytest totals.
+
+Private persistent media, explicit new-target DB/root pairing and coordinated
+DB-plus-referenced-media backups are release requirements. The task recovery
+acceptance is not a VPS/global-role/production disaster-recovery acceptance.
+Do not add galleries, unit-specific images, CDN/public URLs or S3 negotiation.
+
+The reviewed RC1 CI-admission seams are now applied in a local successor
+candidate, without merging side history or changing the `97eb3d89` product.
+The wrapper requires head041 and the exact 252 = 236 ordinary + 16 dedicated
+file partition. Fixed versioned intake and proposed collected node sets await
+CTO source/canonical adjudication; see the separate execution receipts, not
+a prefilled result here. Historical
+`28b65b71` hosted success and 4288 do not prove the photo candidate's CI.
+Normal secret hooks are not waived; the side-tree's classified findings are
+not a current full security gate. Preserve the single-instance/cache boundary.
+
+S3/BD-3 stays deferred; release/deployment/SMTP/TLS/target restore and Jeff's
+390px hands-on trial still require their existing approvals and inputs.
+This document is only a candidate update, not an authorization to run them.
+Older dated sections below retain historical facts; their "current head040"
+and pre-acceptance photo wording are superseded only to the extent above.
+
 This file captures durable context that may originally have lived in chat history but should now become repository memory.
 
 ## Why This Exists

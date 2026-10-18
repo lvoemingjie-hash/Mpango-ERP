@@ -53,7 +53,7 @@ from sqlalchemy import text
 from database.session import AsyncSessionLocal, async_engine
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
-BASELINE_MIGRATION_HEAD = "039_order_credit_holds"
+BASELINE_MIGRATION_HEAD = "041_catalog_product_main_image"
 SUPERVISE_TIMEOUT_S = 30.0
 
 CONTAINER_ENV_VAR = "MPANGO_INVARIANTS_R0_PG_CONTAINER"
@@ -1567,7 +1567,7 @@ async def seed_public_tenant_rows(
     status: str = "active",
     outstanding: Decimal = Decimal("0.00"),
 ) -> None:
-    """Insert public.wholesalers / retailers / binding rows for one tenant."""
+    """Insert this fixture's identity, completed KES authority and binding."""
     suffix = uuid.uuid4().hex[:10]
     async with AsyncSessionLocal() as db:
         await db.execute(
@@ -1601,6 +1601,14 @@ async def seed_public_tenant_rows(
             ),
             {"wid": wholesaler_id, "rid": retailer_id, "outstanding": outstanding},
         )
+        await db.execute(text(
+            "INSERT INTO public.tenant_registrations "
+            "(id,company_name,tenant_code,country,owner_email,status,expires_at,"
+            "email_verified_at,provisioning_completed_at,wholesaler_id,tenant_schema) "
+            "VALUES (:id,'R0 synthetic tenant',:code,'KE',:email,'active',now()+interval '1 day',"
+            "now(),now(),:wid,:schema)"
+        ), {"id": uuid.uuid4(), "code": "R0"+suffix, "email": suffix+'@example.invalid',
+            "wid": wholesaler_id, "schema": 't_'+wholesaler_id.hex})
         await db.commit()
 
 
@@ -1618,6 +1626,8 @@ async def drop_tenant(schema: str, *, wholesaler_id: uuid.UUID, retailer_id: uui
             {"w": wholesaler_id},
         )
         await db.execute(text("DELETE FROM public.retailers WHERE id = :r"), {"r": retailer_id})
+        await db.execute(text("DELETE FROM public.tenant_registrations WHERE wholesaler_id = :w"),
+                         {"w": wholesaler_id})
         await db.execute(text("DELETE FROM public.wholesalers WHERE id = :w"), {"w": wholesaler_id})
         await db.commit()
 
@@ -1692,6 +1702,7 @@ async def seed_sku_with_stock(
         catalog_product_id=catalog_product.id,
         name=name,
         unit="box",
+        base_price=price,
         is_active=True,
     )
     db.add(sku)

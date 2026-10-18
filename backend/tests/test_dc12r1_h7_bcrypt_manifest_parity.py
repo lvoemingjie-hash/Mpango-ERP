@@ -67,9 +67,17 @@ def parse_requirements_text(text: str) -> dict[str, str]:
         are rejected — last-wins overwrite is impossible.
     """
     out: dict[str, str] = {}
+    index_seen = False
     for lineno, raw in enumerate(text.splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#"):
+            continue
+        if line.startswith("--"):
+            # This is the sole configuration directive in the frozen manifest,
+            # not a package or an exemption for arbitrary pip options/URLs.
+            if line != "--index-url https://mirrors.aliyun.com/pypi/simple" or index_seen:
+                raise ValueError(f"line {lineno}: unsupported requirements configuration")
+            index_seen = True
             continue
         try:
             req = Requirement(line)
@@ -753,6 +761,18 @@ class TestH7R4InventoryParity:
             'et-xmlfile==2.0.0 ; python_version >= "3.12"',
         )
         assert parse_requirements_text(marker_mutated) == ref
+        index = "--index-url https://mirrors.aliyun.com/pypi/simple\n"
+        without_index = text.replace(index, "")
+        assert parse_requirements_text(without_index) == ref
+        for option in ("--trusted-host mirrors.aliyun.com", "--index-url http://invalid.invalid/simple",
+                       "--extra-index-url https://invalid.invalid/simple", index.strip() + "\n" + index.strip()):
+            with pytest.raises(ValueError, match="unsupported requirements configuration"):
+                parse_requirements_text(option + "\n" + without_index)
+        # Real package additions, removals, or version drift remain visible.
+        assert parse_requirements_text(without_index + "\nrc2-control==1.0\n") != ref
+        assert parse_requirements_text(without_index.replace("bcrypt==4.0.1", "bcrypt==4.0.2")) != ref
+        assert parse_requirements_text("\n".join(ln for ln in without_index.splitlines()
+                                               if not ln.startswith("bcrypt=="))) != ref
 
 
 # ──────────────────────────────────────────────────────────────────────────── #

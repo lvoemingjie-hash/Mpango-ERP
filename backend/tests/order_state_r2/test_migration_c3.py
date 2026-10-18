@@ -64,7 +64,7 @@ def _run_migration_039(connection) -> None:
         module.op = original_op
 
 
-def _upgrade_to_head(db_url: str) -> None:
+def _upgrade_to_head(db_url: str, revision: str = "head") -> None:
     """Real `alembic upgrade head` against a disposable database (env.py
     redirects at $DATABASE_URL; isolated thread keeps the session loop)."""
     from unittest import mock
@@ -76,7 +76,7 @@ def _upgrade_to_head(db_url: str) -> None:
         with mock.patch.dict(os.environ, {"DATABASE_URL": db_url}):
             cfg = Config(str(BACKEND / "alembic.ini"))
             cfg.set_main_option("script_location", str(BACKEND / "alembic"))
-            command.upgrade(cfg, "head")
+            command.upgrade(cfg, revision)
 
     _run_in_fresh_loop(job)
 
@@ -269,7 +269,7 @@ def test_c3_empty_database_upgrade_then_downgrade_refused():
     with temporary_database_url(source, "r2c3empty") as db_url:
         engine = _engine(db_url)
         _upgrade_to_038(db_url)
-        _upgrade_to_head(db_url)
+        _upgrade_to_head(db_url, "039_order_credit_holds")
         version = engine.connect().execute(
             text("SELECT version_num FROM public.alembic_version")).scalar()
         assert version == "039_order_credit_holds"
@@ -508,19 +508,10 @@ def test_c5_catalog_parity_migration_vs_bootstrap():
         _upgrade_to_038(db_url)
         ws_mig = uuid.uuid4()
         schema_mig = _register_tenant(engine, ws_mig)
-        _upgrade_to_head(db_url)
-        _grant_product_minimum(engine)
+        _upgrade_to_head(db_url, "039_order_credit_holds")
 
-        spec = importlib.util.spec_from_file_location(
-            "r2_bootstrap_module_parity", BOOTSTRAP_SCRIPT)
-        bootstrap_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(bootstrap_module)
-        ws_boot = uuid.uuid4()
-        _run_in_fresh_loop(asyncio_run, bootstrap_module.bootstrap(
-            f"t_{ws_boot.hex}", db_url.app_url))
-
-        def _catalog(schema: str) -> tuple:
-            with engine.connect() as conn:
+        def _catalog(schema: str, observing_engine=engine) -> tuple:
+            with observing_engine.connect() as conn:
                 # pg_catalog, not information_schema: the observing engine
                 # carries the migration identity, and information_schema
                 # columns are privilege-filtered — the bootstrap-side tenant
@@ -553,7 +544,24 @@ def test_c5_catalog_parity_migration_vs_bootstrap():
             return (norm(cols), norm(cons), norm(idx))
 
         mig_catalog = _catalog(schema_mig)
-        boot_catalog = _catalog(f"t_{ws_boot.hex}")
+        # Current bootstrap gets a separate genuinely migrated 041 database.
+        # Never change ownership of the historical tenant or spoof its head
+        # merely to pass the current 040/041 owner gates.
+        with temporary_database_url(source, "r2c5boot") as boot_url:
+            _upgrade_to_head(boot_url)
+            boot_engine = _engine(boot_url)
+            _grant_product_minimum(boot_engine)
+            spec = importlib.util.spec_from_file_location(
+                "r2_bootstrap_module_parity", BOOTSTRAP_SCRIPT)
+            bootstrap_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(bootstrap_module)
+            ws_boot = uuid.uuid4()
+            try:
+                _run_in_fresh_loop(asyncio_run, bootstrap_module.bootstrap(
+                    f"t_{ws_boot.hex}", boot_url.app_url))
+                boot_catalog = _catalog(f"t_{ws_boot.hex}", boot_engine)
+            finally:
+                boot_engine.dispose()
         assert mig_catalog == boot_catalog, (
             f"catalog drift:\nMIGRATION:\n{mig_catalog}\nBOOTSTRAP:\n{boot_catalog}")
 

@@ -1035,11 +1035,11 @@ def test_two_role_lifecycle_and_public_contract_refusals():
                             "'038_catalog_identity_vertical_slice'")
             with pytest.raises(RuntimeError) as excinfo:
                 run_coroutine(_boot_refuses())
-            assert "039_order_credit_holds" in str(excinfo.value)
+            assert "041_catalog_product_main_image" in str(excinfo.value)
             assert _tenant_schema_count(admin) == 0
             with admin.cursor() as cur:
                 cur.execute("UPDATE alembic_version SET version_num = "
-                            "'039_order_credit_holds'")
+                            "'041_catalog_product_main_image'")
 
             guard0 = _guard_snapshot(admin)
 

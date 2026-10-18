@@ -50,7 +50,8 @@ ALEMBIC_DIR = BACKEND_DIR / "alembic"
 REV_036 = "036_retailer_mvp_identity"
 REV_037 = "037_payment_declarations_schema"
 REV_038 = "038_catalog_identity_vertical_slice"
-REV_HEAD = "039_order_credit_holds"  # R2: current sole head
+REV_HEAD = "039_order_credit_holds"  # Frozen historical target, not current metadata head
+CURRENT_HEAD = "041_catalog_product_main_image"
 
 DECL = "payment_declarations"
 RECEIPT = "receipt_sequences"
@@ -249,28 +250,13 @@ async def _bootstrap_and_revert_to_036(schema: str, db_url: str) -> None:
     - Remove client:payments:declare and payments:confirm_declaration permissions.
     - Restore client:payments:create permission.
     """
-    from scripts.bootstrap_tenant_schema import bootstrap as bootstrap_schema
+    from tests.rc2_current_contract_support import historical_catalog_bootstrap
+    bootstrap_schema = historical_catalog_bootstrap()
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
     from sqlalchemy.orm import sessionmaker
 
-    # R2 C5: bootstrap refuses to run below alembic 039. This harness needs a
-    # GENUINE 036-baseline tenant schema, so the version gate is temporarily
-    # satisfied, and the 039 additions (order_credit_holds) are dropped again
-    # together with the 037/038 reverts below — the alembic_version row is
-    # restored to 036 so the migration chain under test is unchanged.
-    async_db_url = _async_url(db_url)
-    gate_engine = create_async_engine(async_db_url, echo=False)
-    gate_session = sessionmaker(gate_engine, class_=AsyncSession, expire_on_commit=False)
-    try:
-        async with gate_session() as db:
-            await db.execute(text(
-                "CREATE TABLE IF NOT EXISTS public.alembic_version "
-                "(version_num VARCHAR(128) NOT NULL PRIMARY KEY)"))
-            await db.execute(text(
-                "UPDATE public.alembic_version SET version_num = '039_order_credit_holds'"))
-            await db.commit()
-    finally:
-        await gate_engine.dispose()
+    # Historical layout preparation uses immutable pre-039 code. The real
+    # alembic revision remains 036 throughout; current bootstrap is not bypassed.
 
     # R2 C5 / R2C three-identity: bootstrap runs as the RUNTIME app role on
     # the migration-owned disposable database.  The migration authority
@@ -325,8 +311,7 @@ async def _bootstrap_and_revert_to_036(schema: str, db_url: str) -> None:
                 'DROP COLUMN IF EXISTS catalog_product_id CASCADE, '
                 'DROP COLUMN IF EXISTS package_quantity CASCADE'))
             await db.execute(text(f'DROP TABLE IF EXISTS "{schema}".catalog_products CASCADE'))
-            await db.execute(text(
-                "UPDATE public.alembic_version SET version_num = '036_retailer_mvp_identity'"))
+            assert (await db.execute(text("SELECT version_num FROM public.alembic_version"))).scalar_one() == "036_retailer_mvp_identity"
             await db.commit()
     finally:
         await engine.dispose()
@@ -401,7 +386,7 @@ class TestRealAlembicUpgradeFailClosed:
 
                     # Upgrade must fail
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "payments")
 
                     # Version must remain 036
@@ -433,7 +418,7 @@ class TestRealAlembicUpgradeFailClosed:
                         fp_before = _catalog_fingerprint(conn, schema)
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "transaction_id")
 
                     with eng.connect() as conn:
@@ -447,10 +432,10 @@ class TestRealAlembicUpgradeFailClosed:
                         conn.execute(text(
                             f'ALTER TABLE "{schema}".payments '
                             'ALTER COLUMN transaction_id TYPE VARCHAR(64)'))
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
-                        assert _script_heads(config) == [REV_HEAD]
+                        assert _script_heads(config) == [CURRENT_HEAD]
             finally:
                 app_eng.dispose()
                 eng.dispose()
@@ -478,7 +463,7 @@ class TestRealAlembicUpgradeFailClosed:
                         fp_before = _catalog_fingerprint(conn, schema)
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "collision")
 
                     with eng.connect() as conn:
@@ -492,7 +477,7 @@ class TestRealAlembicUpgradeFailClosed:
                         conn.execute(text(
                             f"DELETE FROM \"{schema}\".permissions "
                             "WHERE code = 'client:payments:declare'"))
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
             finally:
@@ -514,7 +499,7 @@ class TestRealAlembicUpgradeFailClosed:
                     schema = self._setup_tenant(eng, db_url)
 
                     # First do a successful upgrade to 037 so the tables exist
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
 
@@ -530,7 +515,7 @@ class TestRealAlembicUpgradeFailClosed:
                         ), {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "unexpected columns")
 
                     with eng.connect() as conn:
@@ -554,7 +539,7 @@ class TestRealAlembicUpgradeFailClosed:
                     schema = self._setup_tenant(eng, db_url)
 
                     # First successful upgrade to create the tables
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
 
@@ -574,7 +559,7 @@ class TestRealAlembicUpgradeFailClosed:
                         ), {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "status")
 
                     with eng.connect() as conn:
@@ -598,7 +583,7 @@ class TestRealAlembicUpgradeFailClosed:
                     schema = self._setup_tenant(eng, db_url)
 
                     # First successful upgrade
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
 
@@ -626,7 +611,7 @@ class TestRealAlembicUpgradeFailClosed:
                         ), {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "restrict")
 
                     with eng.connect() as conn:
@@ -650,7 +635,7 @@ class TestRealAlembicUpgradeFailClosed:
                     schema = self._setup_tenant(eng, db_url)
 
                     # First successful upgrade
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
 
@@ -667,7 +652,7 @@ class TestRealAlembicUpgradeFailClosed:
                         ), {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, UX_DECL_IDEM)
 
                     with eng.connect() as conn:
@@ -690,7 +675,7 @@ class TestRealAlembicUpgradeFailClosed:
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
 
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
 
@@ -709,7 +694,7 @@ class TestRealAlembicUpgradeFailClosed:
                         ), {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "declared_amount")
 
                     with eng.connect() as conn:
@@ -732,7 +717,7 @@ class TestRealAlembicUpgradeFailClosed:
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
 
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
 
@@ -747,7 +732,7 @@ class TestRealAlembicUpgradeFailClosed:
                         ), {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "status")
 
                     with eng.connect() as conn:
@@ -770,7 +755,7 @@ class TestRealAlembicUpgradeFailClosed:
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
 
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
 
@@ -785,7 +770,7 @@ class TestRealAlembicUpgradeFailClosed:
                         ), {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "next_seq")
 
                     with eng.connect() as conn:
@@ -808,7 +793,7 @@ class TestRealAlembicUpgradeFailClosed:
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
 
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
 
@@ -827,7 +812,7 @@ class TestRealAlembicUpgradeFailClosed:
                         ), {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "method")
 
                     with eng.connect() as conn:
@@ -849,7 +834,7 @@ class TestRealAlembicUpgradeFailClosed:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
 
                     with app_eng.begin() as conn:
                         conn.execute(text(
@@ -864,7 +849,7 @@ class TestRealAlembicUpgradeFailClosed:
                                      {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "status")
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
@@ -885,7 +870,7 @@ class TestRealAlembicUpgradeFailClosed:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
 
                     with app_eng.begin() as conn:
                         conn.execute(text(
@@ -900,7 +885,7 @@ class TestRealAlembicUpgradeFailClosed:
                                      {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "status")
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
@@ -921,7 +906,7 @@ class TestRealAlembicUpgradeFailClosed:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
 
                     with app_eng.begin() as conn:
                         conn.execute(text(
@@ -936,7 +921,7 @@ class TestRealAlembicUpgradeFailClosed:
                                      {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "declared_amount")
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
@@ -957,7 +942,7 @@ class TestRealAlembicUpgradeFailClosed:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
 
                     with app_eng.begin() as conn:
                         conn.execute(text(
@@ -968,7 +953,7 @@ class TestRealAlembicUpgradeFailClosed:
                                      {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "status")
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
@@ -989,7 +974,7 @@ class TestRealAlembicUpgradeFailClosed:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
 
                     with app_eng.begin() as conn:
                         conn.execute(text(f'DROP INDEX "{schema}".{UX_RECEIPT}'))
@@ -1003,7 +988,7 @@ class TestRealAlembicUpgradeFailClosed:
                                      {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, UX_RECEIPT)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
@@ -1024,7 +1009,7 @@ class TestRealAlembicUpgradeFailClosed:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
 
                     with app_eng.begin() as conn:
                         conn.execute(text(f'DROP INDEX "{schema}".{UX_RECEIPT}'))
@@ -1037,7 +1022,7 @@ class TestRealAlembicUpgradeFailClosed:
                                      {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, UX_RECEIPT)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
@@ -1058,7 +1043,7 @@ class TestRealAlembicUpgradeFailClosed:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
 
                     with app_eng.begin() as conn:
                         conn.execute(text(
@@ -1073,7 +1058,7 @@ class TestRealAlembicUpgradeFailClosed:
                                      {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, IX_DECL_RS)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
@@ -1094,7 +1079,7 @@ class TestRealAlembicUpgradeFailClosed:
                 with _database_url_env(db_url):
                     run_alembic_upgrade(config, REV_036)
                     schema = self._setup_tenant(eng, db_url)
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
 
                     with app_eng.begin() as conn:
                         conn.execute(text(
@@ -1108,7 +1093,7 @@ class TestRealAlembicUpgradeFailClosed:
                                      {"v": REV_036})
 
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, IX_DECL_RS)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_036
@@ -1134,18 +1119,18 @@ class TestRealAlembicUpgradeFailClosed:
                         fp_before = _catalog_fingerprint(conn, schema)
 
                     # First upgrade to 037
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
-                        assert _script_heads(config) == [REV_HEAD]
+                        assert _script_heads(config) == [CURRENT_HEAD]
                     with app_eng.connect() as conn:
                         fp_after_first = _catalog_fingerprint(conn, schema)
 
                     # Second upgrade — no-op
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
-                        assert _script_heads(config) == [REV_HEAD]
+                        assert _script_heads(config) == [CURRENT_HEAD]
                     with app_eng.connect() as conn:
                         fp_after_second = _catalog_fingerprint(conn, schema)
                         assert fp_after_first == fp_after_second, "second upgrade mutated catalog"
@@ -1202,7 +1187,7 @@ class TestExactCatalogShapeBypass:
 
                 # 5. Run upgrade — must fail with PreflightFailure in chain
                 with pytest.raises(RuntimeError) as exc_info:
-                    run_alembic_upgrade(config, "head")
+                    run_alembic_upgrade(config, REV_HEAD)
                 _assert_preflight_failure(exc_info, root_cause_substr)
 
                 # 6. Version must remain 036 + fingerprint unchanged
@@ -1217,15 +1202,15 @@ class TestExactCatalogShapeBypass:
                     repair_fn(conn, schema)
 
                 # 8. Upgrade to sole head 037
-                run_alembic_upgrade(config, "head")
+                run_alembic_upgrade(config, REV_HEAD)
                 with eng.connect() as conn:
                     assert _current_revision(conn) == REV_HEAD
-                    assert _script_heads(config) == [REV_HEAD]
+                    assert _script_heads(config) == [CURRENT_HEAD]
                 with app_eng.connect() as conn:
                     fp_green = _catalog_fingerprint(conn, schema)
 
                 # 9. Second upgrade — no-op
-                run_alembic_upgrade(config, "head")
+                run_alembic_upgrade(config, REV_HEAD)
                 with eng.connect() as conn:
                     assert _current_revision(conn) == REV_HEAD
                 with app_eng.connect() as conn:
@@ -1512,7 +1497,7 @@ class TestTwoRegisteredTenantsUpgrade:
 
                     # Upgrade must fail (B is malformed)
                     with pytest.raises(RuntimeError) as exc_info:
-                        run_alembic_upgrade(config, "head")
+                        run_alembic_upgrade(config, REV_HEAD)
                     _assert_preflight_failure(exc_info, "transaction_id")
 
                     with eng.connect() as conn:

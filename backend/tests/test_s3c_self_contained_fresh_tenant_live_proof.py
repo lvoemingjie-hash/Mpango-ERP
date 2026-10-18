@@ -79,8 +79,8 @@ ADMIN_PASSWORD = "S3cFreshP@ss1!"  # pragma: allowlist secret  # test-only, not 
 
 
 def _fresh_schema_name() -> str:
-    """Generate a unique tenant schema name: t_s3c_<8-char hex>."""
-    return f"t_s3c_{uuid.uuid4().hex[:8]}"
+    """Generate a canonical unique wholesaler-derived tenant schema."""
+    return f"t_{uuid.uuid4().hex}"
 
 
 # =========================================================================
@@ -194,6 +194,22 @@ async def fresh_tenant(live_engine) -> Dict:
         sys.path.insert(0, _backend)
 
     schema = _fresh_schema_name()
+    tenant_id = uuid.UUID(schema[2:])
+    retailer_id, registration_id = uuid.uuid4(), uuid.uuid4()
+    async with live_engine.begin() as conn:
+        await conn.execute(text("INSERT INTO public.wholesalers(id,code,name,status) "
+            "VALUES(:id,:code,'S3C fixture','active')"),
+            {"id": tenant_id, "code": "S3C"+tenant_id.hex[:14].upper()})
+        await conn.execute(text("INSERT INTO public.tenant_registrations "
+            "(id,company_name,country,owner_email,status,wholesaler_id,tenant_schema,expires_at,"
+            "provisioning_completed_at,password_hash_cleared_at) "
+            "VALUES(:id,'S3C fixture','KE',:email,'active',:wid,:schema,now()+interval '1 day',now(),now())"),
+            {"id": registration_id, "email": registration_id.hex+'@example.invalid', "wid": tenant_id, "schema": schema})
+        await conn.execute(text("INSERT INTO public.retailers(id,phone,name) VALUES(:id,:phone,'S3C fixture')"),
+            {"id": retailer_id, "phone": "+199"+retailer_id.hex[:16]})
+        await conn.execute(text("INSERT INTO public.wholesaler_retailer_bindings "
+            "(wholesaler_id,retailer_id,status,outstanding_balance) VALUES(:wid,:rid,'active',0)"),
+            {"wid": tenant_id, "rid": retailer_id})
     print(f"\n[S3-C] Creating fresh tenant schema: {schema}")
 
     # --- Step 1: Bootstrap schema + all tables -------------------------------
@@ -301,6 +317,8 @@ async def fresh_tenant(live_engine) -> Dict:
 
     yield {
         "schema": schema,
+        "tenant_id": str(tenant_id),
+        "retailer_id": str(retailer_id),
         "user_id": user_id,
         "email": ADMIN_EMAIL,
         "role_names": ["admin"],
@@ -313,6 +331,10 @@ async def fresh_tenant(live_engine) -> Dict:
         async with live_engine.connect() as conn:
             await conn.execute(text("COMMIT"))  # clear any implicit tx
             await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+            await conn.execute(text("DELETE FROM public.wholesaler_retailer_bindings WHERE wholesaler_id=:id"), {"id": tenant_id})
+            await conn.execute(text("DELETE FROM public.tenant_registrations WHERE id=:id"), {"id": registration_id})
+            await conn.execute(text("DELETE FROM public.retailers WHERE id=:id"), {"id": retailer_id})
+            await conn.execute(text("DELETE FROM public.wholesalers WHERE id=:id"), {"id": tenant_id})
             await conn.commit()
         print(f"  [S3-C] Schema {schema} dropped.")
     except Exception as exc:
@@ -363,7 +385,7 @@ class TestFreshContextualJwtFlow:
         token_str = create_contextual_token(
             user_id=fresh_tenant["user_id"],
             roles=fresh_tenant["role_names"],
-            tenant_id="00000000-0000-0000-0000-00000000dead",
+            tenant_id=fresh_tenant["tenant_id"],
             tenant_schema=fresh_tenant["schema"],
             token_type="access",
         )
@@ -384,7 +406,7 @@ class TestFreshContextualJwtFlow:
         token_str = create_contextual_token(
             user_id=fresh_tenant["user_id"],
             roles=fresh_tenant["role_names"],
-            tenant_id="00000000-0000-0000-0000-00000000dead",
+            tenant_id=fresh_tenant["tenant_id"],
             tenant_schema=fresh_tenant["schema"],
             token_type="access",
         )
@@ -434,7 +456,7 @@ def _build_live_app(live_engine, tenant: Dict) -> FastAPI:
         tok = create_contextual_token(
             user_id=tenant["user_id"],
             roles=tenant["role_names"],
-            tenant_id="00000000-0000-0000-0000-00000000dead",
+            tenant_id=tenant["tenant_id"],
             tenant_schema=_ts,
             token_type="access",
         )
@@ -447,14 +469,14 @@ def _build_live_app(live_engine, tenant: Dict) -> FastAPI:
     async def _new_live_session() -> AsyncSession:
         s = AsyncSession(live_engine, expire_on_commit=False)
         s.info["tenant_schema"] = _ts
-        s.info["tenant_id"] = "00000000-0000-0000-0000-00000000dead"
+        s.info["tenant_id"] = tenant["tenant_id"]
         await s.execute(text(f'SET search_path TO "{_ts}", public'))
         return s
 
     async def _override_public_db():
         s = AsyncSession(live_engine, expire_on_commit=False)
         s.info["tenant_schema"] = _ts
-        s.info["tenant_id"] = "00000000-0000-0000-0000-00000000dead"
+        s.info["tenant_id"] = tenant["tenant_id"]
         try:
             yield s
         finally:
@@ -495,7 +517,7 @@ def _build_live_app(live_engine, tenant: Dict) -> FastAPI:
         )
         session = await _new_live_session()
         tctx = TenantContext(
-            tenant_id="00000000-0000-0000-0000-00000000dead",
+            tenant_id=tenant["tenant_id"],
             tenant_schema=_ts,
             session=session,
             user=admin_proxy,
@@ -579,9 +601,9 @@ class TestFreshEndpointSmoke:
         r = await live_client.get("/api/v1/inventory/stocks")
         assert r.status_code not in (401, 403, 500), _diag(r)
 
-    async def test_pricing_prices(self, live_client):
+    async def test_pricing_prices(self, live_client, fresh_tenant):
         r = await live_client.get(
-            "/api/v1/pricing/prices", params={"retailer_id": _RETAILER_UUID}
+            "/api/v1/pricing/prices", params={"retailer_id": fresh_tenant["retailer_id"]}
         )
         assert r.status_code not in (401, 403, 500), _diag(r)
 
@@ -615,9 +637,9 @@ _AUTH_ERROR_CODES = {
 class TestBusinessEmptyStateProof:
     """Any 400/404/422 must come from business logic, not auth/system errors."""
 
-    async def test_pricing_non_200_is_business_not_auth(self, live_client):
+    async def test_pricing_non_200_is_business_not_auth(self, live_client, fresh_tenant):
         r = await live_client.get(
-            "/api/v1/pricing/prices", params={"retailer_id": _RETAILER_UUID}
+            "/api/v1/pricing/prices", params={"retailer_id": fresh_tenant["retailer_id"]}
         )
         if r.status_code in (400, 404, 422):
             body = _safe_json(r)

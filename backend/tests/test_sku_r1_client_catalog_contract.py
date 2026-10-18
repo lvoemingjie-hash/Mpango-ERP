@@ -46,6 +46,7 @@ from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (  # noqa: F401
 from tests.test_dc12r1_s3_s1_catalog_order_hardening import (
     _resolve_binding,
 )
+from tests.rc2_current_contract_support import registered_pool_ke
 
 pytestmark = pytest.mark.asyncio
 
@@ -109,8 +110,8 @@ async def _seed_product(
             await db.execute(
                 text(
                     f'INSERT INTO "{schema}".skus '
-                    "(sku_code, name, unit, package_quantity, is_active, is_deleted, catalog_product_id) "
-                    "VALUES (:code, :name, :unit, :qty, :active, false, :pid) RETURNING id"
+                    "(sku_code, name, unit, package_quantity, is_active, is_deleted, catalog_product_id, base_price) "
+                    "VALUES (:code, :name, :unit, :qty, :active, false, :pid, :base) RETURNING id"
                 ),
                 {
                     "code": spec["sku_code"],
@@ -119,6 +120,7 @@ async def _seed_product(
                     "qty": spec.get("package_quantity", "1.000"),
                     "active": spec.get("is_active", True),
                     "pid": product_id,
+                    "base": spec.get("base_price", spec.get("price", price)),
                 },
             )
         ).fetchone()

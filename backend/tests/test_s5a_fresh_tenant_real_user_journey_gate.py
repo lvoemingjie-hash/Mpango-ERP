@@ -176,6 +176,14 @@ async def _seed_public_tenant_and_retailer(
             ),
             {"wholesaler_id": tenant_id, "retailer_id": retailer_id},
         )
+        await session.execute(text(
+            "INSERT INTO public.tenant_registrations "
+            "(id,company_name,tenant_code,country,owner_email,status,wholesaler_id,tenant_schema,"
+            "expires_at,provisioning_completed_at,password_hash_cleared_at) "
+            "VALUES (:id,'S5A fixture',:code,'KE',:email,'active',:wid,:schema,"
+            "now()+interval '1 day',now(),now())"
+        ), {"id": uuid.uuid4(), "code": code, "email": tenant_id.hex+'@example.invalid',
+            "wid": tenant_id, "schema": _tenant_schema(tenant_id)})
         await session.commit()
 
 
@@ -448,8 +456,11 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
                     text("SELECT id FROM skus WHERE sku_code = 'S5A-SKU-001'")
                 )
             ).scalar_one()
+            from api.v1.pricing import update_base_price, SetBaseRequest
+            await update_base_price(sku_id, SetBaseRequest(price="25.00", expected_revision=0),
+                                    token=admin_token, db=session)
             await set_retailer_price(
-                SetPriceRequest(retailer_id=str(retailer_id), sku_id=str(sku_id), price=Decimal("25.00")),
+                SetPriceRequest(retailer_id=str(retailer_id), sku_id=str(sku_id), price="25.00", expected_revision=1),
                 token=admin_token,
                 db=session,
             )
@@ -470,15 +481,23 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
             )
 
             stock_before_failed_confirm = await _stock_snapshot(session, "S5A-SKU-001")
+            from services.pricing_quote_service import build_quote, sign_quote
+            async def accepted_quote(quantity):
+                return sign_quote(await build_quote(session, wholesaler_id=tenant_id,
+                    retailer_id=retailer_id, actor_id=admin_id, operation="merchant-create",
+                    items=[{"sku_code": "S5A-SKU-001", "quantity": quantity}]))
+            short_quote = await accepted_quote(11)
             with pytest.raises(HTTPException) as failed_create:
                 await create_order(
                     WholesalerOrderCreateRequest(
                         retailer_id=str(retailer_id),
                         items=[{"sku_code": "S5A-SKU-001", "quantity": 11}],
                         notes="S5-A rollback probe",
+                        quote_token=short_quote,
                     ),
                     token=admin_token,
                     db=session,
+                    idempotency_key="s5a-short-" + uuid.uuid4().hex,
                 )
             assert failed_create.value.status_code == 400
             leaked_orders = (
@@ -493,14 +512,17 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
             assert leaked_reservations == 0
             assert await _stock_snapshot(session, "S5A-SKU-001") == stock_before_failed_confirm
 
+            consent = await accepted_quote(3)
             order = await create_order(
                 WholesalerOrderCreateRequest(
                     retailer_id=str(retailer_id),
                     items=[{"sku_code": "S5A-SKU-001", "quantity": 3}],
                     notes="S5-A real user journey",
+                    quote_token=consent,
                 ),
                 token=admin_token,
                 db=session,
+                idempotency_key="s5a-create-" + uuid.uuid4().hex,
             )
             await session.commit()
             order_id = order.data.id
@@ -558,6 +580,9 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
             }
 
         await bootstrap(isolation_schema, get_settings().DATABASE_URL)
+        isolation_retailer_id = uuid.uuid4()
+        await _seed_public_tenant_and_retailer(tenant_id=isolation_tenant_id,
+            code="S5AI" + isolation_tenant_id.hex[:12].upper(), retailer_id=isolation_retailer_id)
         async with _tenant_session(isolation_schema, isolation_tenant_id) as other_session:
             # Stable catalog identity: skus.catalog_product_id is NOT NULL
             # since migration 038, so the raw seed owns a CatalogProduct row.
@@ -588,31 +613,15 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
             # R2 contract: the isolation tenant is a legitimately provisioned
             # neighbour — it needs wholesaler/retailer/binding public rows for
             # its confirmed order's credit hold.
-            isolation_retailer_id = uuid.uuid4()
             from tests.order_state_r2.contract_helpers import ensure_binding as _r2_binding
             async with AsyncSessionLocal() as public_session:
                 await _r2_binding(public_session, isolation_tenant_id,
                                   isolation_retailer_id)
                 await public_session.commit()
-            other_order_id = (
-                await other_session.execute(
-                    text(
-                        "INSERT INTO orders (wholesaler_id, retailer_id, total_amount, notes) "
-                        "VALUES (:wholesaler_id, :retailer_id, 100.00, 'S5-A isolation') RETURNING id"
-                    ),
-                    {"wholesaler_id": isolation_tenant_id,
-                     "retailer_id": isolation_retailer_id},
-                )
-            ).scalar_one()
-            await other_session.execute(
-                text(
-                    "INSERT INTO order_items (order_id, product_name, sku_code, quantity, unit_price, subtotal, "
-                    "sellable_unit_id, identity_status, unit_snapshot) "
-                    "VALUES (:order_id, 'Other Tenant SKU', 'S5A-SKU-001', 4, 25.00, 100.00, "
-                    ":sku_id, 'stable', 'piece')"
-                ),
-                {"order_id": other_order_id, "sku_id": other_sku_id},
-            )
+            from tests.rc2_current_contract_support import create_verified_draft
+            other_order = await create_verified_draft(other_session, retailer_id=isolation_retailer_id,
+                items=[("S5A-SKU-001", 4, Decimal("25.00"))], notes="S5-A isolation")
+            other_order_id = other_order.id
             await other_session.commit()
             other_token = TokenPayload(
                 user_id=str(uuid.uuid4()),
@@ -650,5 +659,11 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
                 {"tenant_id": tenant_id},
             )
             await cleanup.execute(text("DELETE FROM public.retailers WHERE id = :retailer_id"), {"retailer_id": retailer_id})
+            await cleanup.execute(text("DELETE FROM public.tenant_registrations WHERE wholesaler_id=:id"), {"id": tenant_id})
             await cleanup.execute(text("DELETE FROM public.wholesalers WHERE id = :tenant_id"), {"tenant_id": tenant_id})
+            await cleanup.execute(text("DELETE FROM public.wholesaler_retailer_bindings WHERE wholesaler_id=:id"), {"id": isolation_tenant_id})
+            await cleanup.execute(text("DELETE FROM public.tenant_registrations WHERE wholesaler_id=:id"), {"id": isolation_tenant_id})
+            await cleanup.execute(text("DELETE FROM public.wholesalers WHERE id=:id"), {"id": isolation_tenant_id})
+            if 'isolation_retailer_id' in locals():
+                await cleanup.execute(text("DELETE FROM public.retailers WHERE id=:id"), {"id": isolation_retailer_id})
             await cleanup.commit()

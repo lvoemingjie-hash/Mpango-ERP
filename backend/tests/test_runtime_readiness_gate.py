@@ -219,13 +219,27 @@ def test_gate_refuses_database_without_completed_setup():
             with probe.cursor() as cur:
                 cur.execute("CREATE TABLE public.alembic_version "
                             "(version_num VARCHAR(128) NOT NULL)")
-                cur.execute("INSERT INTO public.alembic_version VALUES "
-                            "('038_catalog_identity_vertical_slice')")
         finally:
             probe.close()
-        reasons = helper.evaluate_contract(server.admin_db_url(db))
-        assert any("requires exactly '039_order_credit_holds'" in r
-                   for r in reasons), reasons
+        for versions in ([], ["039_order_credit_holds"], ["040_s1_pricing_quote_contract"],
+                         ["040_s1_pricing_quote_contract", "041_catalog_product_main_image"],
+                         ["999_unapproved_future"]):
+            probe = _admin_connect(server.admin_db_url(db))
+            try:
+                with probe.cursor() as cur:
+                    cur.execute("DELETE FROM public.alembic_version")
+                    for version in versions:
+                        cur.execute("INSERT INTO public.alembic_version VALUES (%s)", (version,))
+                    cur.execute("SELECT version_num FROM public.alembic_version ORDER BY version_num")
+                    before = cur.fetchall()
+                reasons = helper.evaluate_contract(server.admin_db_url(db))
+                assert any("requires exactly '041_catalog_product_main_image'" in r for r in reasons), (
+                    "RC2_READINESS_HEAD_MUST_REFUSE", versions, reasons)
+                with probe.cursor() as cur:
+                    cur.execute("SELECT version_num FROM public.alembic_version ORDER BY version_num")
+                    assert cur.fetchall() == before, "RC2_READINESS_NEGATIVE_WROTE_VERSION_DATA"
+            finally:
+                probe.close()
     finally:
         server.drop_db(db)
 
@@ -233,7 +247,7 @@ def test_gate_refuses_database_without_completed_setup():
 @pytest.fixture(scope="module")
 def five_stage_database():
     """A disposable database that has completed the product five-stage
-    sequence: provision -> alembic 001..039 -> grants -> verify -> runtime
+    sequence: provision -> alembic 001..041 -> grants -> verify -> runtime
     bootstrap of the default tenant.
 
     R1-R7-R2-R1-R1-R2B fixture trust (CTO-AUTH-ORDER-R2-DBAUTH-R1R7R2R1R1-
@@ -375,7 +389,7 @@ def five_stage_database():
         finally:
             accommodation_conn.rollback()
             accommodation_conn.close()
-        # phase 2: migrations 001..039 as the migration authority
+        # phase 2: migrations 001..041 as the migration authority
         result = subprocess.run(
             [sys.executable, "-m", "alembic", "upgrade", "head"],
             cwd=BACKEND_DIR, capture_output=True, text=True, timeout=600,

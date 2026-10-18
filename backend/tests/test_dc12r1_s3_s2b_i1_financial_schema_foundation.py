@@ -485,8 +485,7 @@ class TestConcurrency:
 
 
 class TestMigrationHead:
-    """Sole head 039 after upgrade (039_order_credit_holds follows 038_catalog_identity_vertical_slice as the
-    exact single successor of 037_payment_declarations_schema)."""
+    """The current profile has exactly the frozen 041 head; node names remain historical."""
 
     async def test_head_is_038(self):
         async with AsyncSessionLocal() as db:
@@ -494,7 +493,7 @@ class TestMigrationHead:
                 "SELECT version_num FROM public.alembic_version"
             ))).first()
             assert row is not None
-            assert row[0] == "039_order_credit_holds"
+            assert row[0] == "041_catalog_product_main_image"
 
     async def test_sole_head(self):
         async with AsyncSessionLocal() as db:

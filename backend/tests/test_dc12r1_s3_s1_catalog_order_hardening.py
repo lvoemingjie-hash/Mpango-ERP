@@ -50,6 +50,7 @@ from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (  # noqa: E402
     s2_clean_db,
     two_tenants,
 )
+from tests.rc2_current_contract_support import registered_pool_ke
 
 pytestmark = pytest.mark.asyncio
 
@@ -134,8 +135,8 @@ async def _seed_sku(db, schema: str, retailer_id: str) -> str:
     )).fetchone()
     row = (await db.execute(
         text(f'INSERT INTO "{schema}".skus '
-             "(sku_code, name, is_active, is_deleted, catalog_product_id, package_quantity) "
-             "VALUES (:c, 'S3', true, false, :p, 1.000) RETURNING id"),
+             "(sku_code, name, is_active, is_deleted, catalog_product_id, package_quantity, unit, base_price) "
+             "VALUES (:c, 'S3', true, false, :p, 1.000, 'piece', 50) RETURNING id"),
         {"c": code, "p": product.id},
     )).fetchone()
     sid = str(row.id)
@@ -150,9 +151,13 @@ async def _seed_sku(db, schema: str, retailer_id: str) -> str:
 
 
 async def _create_order(client: AsyncClient, token: str, sku_code: str) -> str:
+    selection = {"items": [{"sku_code": sku_code, "quantity": 2}]}
+    quote = await client.post("/api/v1/client/orders/quote", json=selection,
+                              headers={"Authorization": f"Bearer {token}"})
+    assert quote.status_code == HTTPStatus.OK, quote.text
     resp = await client.post("/api/v1/client/orders",
-        json={"items": [{"sku_code": sku_code, "quantity": 2}], "notes": "s3"},
-        headers={"Authorization": f"Bearer {token}"})
+        json={**selection, "notes": "s3", "quote_token": quote.json()["data"]["quote_token"]},
+        headers={"Authorization": f"Bearer {token}", "X-Idempotency-Key": "rc2-" + uuid.uuid4().hex})
     assert resp.status_code == HTTPStatus.CREATED, resp.text
     return resp.json()["data"]["id"]
 
@@ -252,6 +257,7 @@ class TestDualKeyDbScoping:
         assert resp.status_code == HTTPStatus.NOT_FOUND
 
     async def test_cross_supplier_order_404(self, s3_client, two_tenants, s2_clean_db):
+        from sqlalchemy import text
         from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
         db, reg = s2_clean_db
         code_a, code_b, _sb, email, password, _ua, uid_b = two_tenants
@@ -266,6 +272,27 @@ class TestDualKeyDbScoping:
             headers={"Authorization": f"Bearer {tok_a}"})
         _assert_controlled_envelope(resp)
         assert resp.status_code == HTTPStatus.NOT_FOUND
+
+        # The new preview surfaces must preserve the same supplier boundary.
+        own_preview = await s3_client.post(f"/api/v1/client/orders/{order_b}/reorder/quote",
+            json={}, headers={"Authorization": f"Bearer {tok_b}"})
+        assert own_preview.status_code == HTTPStatus.OK, own_preview.text
+        cross_preview = await s3_client.post(f"/api/v1/client/orders/{order_b}/reorder/quote",
+            json={}, headers={"Authorization": f"Bearer {tok_a}"})
+        assert cross_preview.status_code == HTTPStatus.NOT_FOUND, cross_preview.text
+        foreign_unit = (await db.execute(text(
+            f'SELECT id,catalog_product_id FROM "{sch_b}".skus WHERE sku_code=:code'),
+            {"code": sku_b})).one()
+        foreign_quote = await s3_client.post("/api/v1/client/orders/quote",
+            json={"items": [{"sellable_unit_id": str(foreign_unit.id), "quantity": 1}]},
+            headers={"Authorization": f"Bearer {tok_a}"})
+        assert foreign_quote.status_code == HTTPStatus.CONFLICT, foreign_quote.text
+        assert foreign_quote.json()["code"] == "SELLABLE_UNIT_UNAVAILABLE"
+        cross_image = await s3_client.get(
+            f"/api/v1/client/products/{foreign_unit.catalog_product_id}/image/{uuid.uuid4()}/thumb",
+            headers={"Authorization": f"Bearer {tok_a}"})
+        assert cross_image.status_code == HTTPStatus.NOT_FOUND, cross_image.text
+        assert cross_image.headers.get("content-type", "").startswith("application/json")
 
     async def test_cancel_cross_supplier_404(self, s3_client, two_tenants, s2_clean_db):
         from tests.test_dc12r1_s2_supplier_scoped_retailer_login import _pool_instance
@@ -361,16 +388,22 @@ class TestBindingFailClosed:
         sch_a = _pool_instance.tenants["a"]["schema"]
         ret_a = await _resolve_binding(db, ws_a, uid_a)
         sku_code = await _seed_sku(db, sch_a, ret_a)
+        token = await _login_retailer(s3_client, two_tenants)
+        quote = await s3_client.post("/api/v1/client/orders/quote",
+            json={"items": [{"sku_code": sku_code, "quantity": 1}]},
+            headers={"Authorization": f"Bearer {token}"})
+        assert quote.status_code == HTTPStatus.OK, quote.text
         await db.execute(text(
             f'UPDATE "{sch_a}".skus SET is_deleted = true WHERE sku_code = :c'),
             {"c": sku_code})
         await db.commit()
         token = await _login_retailer(s3_client, two_tenants)
         resp = await s3_client.post("/api/v1/client/orders",
-            json={"items": [{"sku_code": sku_code, "quantity": 1}]},
-            headers={"Authorization": f"Bearer {token}"})
+            json={"items": [{"sku_code": sku_code, "quantity": 1}],
+                  "quote_token": quote.json()["data"]["quote_token"]},
+            headers={"Authorization": f"Bearer {token}", "X-Idempotency-Key": "rc2-" + uuid.uuid4().hex})
         assert resp.status_code == HTTPStatus.BAD_REQUEST
-        assert resp.json()["code"] == "ORDER_VALIDATION_FAILED"
+        assert resp.json()["code"] == "SELLABLE_UNIT_NOT_FOUND"
 
 
 # ===========================================================================
@@ -440,6 +473,11 @@ class TestPermissionDenial:
             _assert_controlled_envelope(resp)
             assert resp.status_code == HTTPStatus.FORBIDDEN
             assert resp.json()["code"] == "PERMISSION_DENIED"
+            image = await s3_client.get(
+                f"/api/v1/client/products/{uuid.uuid4()}/image/{uuid.uuid4()}/thumb",
+                headers={"Authorization": f"Bearer {token}"})
+            assert image.status_code == HTTPStatus.FORBIDDEN, image.text
+            assert image.json()["code"] == "PERMISSION_DENIED"
         finally:
             await self._restore_perm(db, sch_a, "client:catalog:read")
 
@@ -561,22 +599,27 @@ class TestGap07GovernanceFreeze:
             for dep in route.dependant.dependencies:
                 call = getattr(dep, "call", None)
                 if isinstance(call, RequirePermission):
-                    results.add((frozenset(route.methods or set()), call.permission))
+                    results.add((frozenset(route.methods or set()), call.permission, route.path))
         return results
 
     def test_no_client_route_requires_client_payments_create(self):
         perms = self._collect_client_route_perms()
-        payment_routes = {(m, p) for m, p in perms if p == "client:payments:create"}
+        payment_routes = {(m, p, path) for m, p, path in perms if p == "client:payments:create"}
         assert not payment_routes, f"GAP-07 violation: {payment_routes}"
 
     def test_no_unexpected_client_mutation_route(self):
         perms = self._collect_client_route_perms()
         mutation_methods = {"POST", "PUT", "PATCH", "DELETE"}
         unexpected = {
-            (m, p) for m, p in perms
+            (m, p, path) for m, p, path in perms
             if m & mutation_methods and p not in ("client:orders:create", "client:payments:declare")
+            and not (m == frozenset({"POST"}) and p == "client:orders:read"
+                     and path == "/api/v1/client/orders/{source_order_id}/reorder/quote")
         }
         assert not unexpected, f"unexpected client mutation: {unexpected}"
+        for permission in ("client:orders:read", "client:orders:create"):
+            assert (frozenset({"POST"}), permission,
+                    "/api/v1/client/orders/{source_order_id}/reorder/quote") in perms
 
 
 # ===========================================================================
@@ -655,6 +698,10 @@ class TestClientRouteAllowlist:
             ("GET", "/api/v1/client/finance/balance"): "client:finance:read",
             ("GET", "/api/v1/client/products"): "client:catalog:read",
             ("GET", "/api/v1/client/products/{product_id}"): "client:catalog:read",
+            ("GET", "/api/v1/client/products/{product_id}/image/{version}/{variant}"): "client:catalog:read",
+            ("POST", "/api/v1/client/orders/quote"): "client:orders:create",
+            ("POST", "/api/v1/client/orders/{order_id}/replace-draft"): "client:orders:create",
+            ("POST", "/api/v1/client/orders/{source_order_id}/reorder/quote"): frozenset({"client:orders:read", "client:orders:create"}),
             # DC-12R1-S3-S2B-I2B: declaration submission + retailer views + statement.
             ("POST", "/api/v1/client/orders/{order_id}/declare"): "client:payments:declare",
             ("GET", "/api/v1/client/declarations"): "client:payments:read",
@@ -675,21 +722,22 @@ class TestClientRouteAllowlist:
             if not route.path.startswith("/api/v1/client"):
                 continue
             methods = sorted(route.methods - {"HEAD", "OPTIONS"}) if route.methods else []
-            perm = None
+            permissions = set()
             if hasattr(route, "dependant") and route.dependant:
                 for dep in route.dependant.dependencies:
                     call = getattr(dep, "call", None)
                     if isinstance(call, RequirePermission):
-                        perm = call.permission
+                        permissions.add(call.permission)
             for method in methods:
-                actual[(method, route.path)] = perm
+                actual[(method, route.path)] = frozenset(permissions)
 
         assert set(actual.keys()) == set(expected.keys()), (
             f"route drift:\n  extra: {set(actual) - set(expected)}\n"
             f"  missing: {set(expected) - set(actual)}"
         )
         for key, exp_perm in expected.items():
-            assert actual[key] == exp_perm, (
+            expected_permissions = exp_perm if isinstance(exp_perm, frozenset) else frozenset({exp_perm} if exp_perm else set())
+            assert actual[key] == expected_permissions, (
                 f"permission drift for {key}: expected {exp_perm}, got {actual[key]}"
             )
 

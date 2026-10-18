@@ -447,6 +447,7 @@ async def test_product_listing_groups_units_and_orders_deterministically(engine,
 
     class _FakeClient:
         retailer_id = uuid.uuid5(uuid.NAMESPACE_URL, f"r1-retailer:{tenant_db}")
+        tenant_id = session.info["tenant_id"]
 
     response = await list_products(
         page=1,

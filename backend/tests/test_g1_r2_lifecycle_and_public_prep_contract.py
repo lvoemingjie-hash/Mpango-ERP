@@ -147,7 +147,7 @@ def test_s1r5_catalog_dispatch_uses_owned_database_and_removes_it(monkeypatch):
                 cursor.execute("SELECT current_database(), current_user")
                 assert cursor.fetchone() == (target, source.user)
                 cursor.execute("SELECT version_num FROM public.alembic_version")
-                assert cursor.fetchone()[0] == "039_order_credit_holds"
+                assert cursor.fetchone()[0] == "041_catalog_product_main_image"
         finally:
             connection.close()
         seen.append(target)
@@ -246,7 +246,7 @@ def test_p21_real_runtime_identity_and_closed_connections():
     before = json.loads((root / "authority-before.json").read_text())
     after = json.loads((root / "authority-after.json").read_text())
     assert before == after, "FR3_P21_AUTHORITY_CHANGED"
-    assert before["head"] == [["039_order_credit_holds"]], "FR3_P21_WRONG_HEAD"
+    assert before["head"] == [["041_catalog_product_main_image"]], "FR3_P21_WRONG_HEAD"
     assert json.loads((root / "connection-close-proof.json").read_text())["remaining"] == [], "FR3_P21_CONNECTIONS_REMAIN"
 
 

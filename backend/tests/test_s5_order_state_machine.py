@@ -13,6 +13,7 @@ Test Cases:
 import pytest
 import uuid
 from decimal import Decimal
+from tests.rc2_current_contract_support import current_trading_session as async_session, verified_from_template
 from sqlalchemy import select
 
 from models.order import Order, OrderItem, OrderStatus
@@ -159,7 +160,7 @@ async def sample_order(async_session):
     from tests.order_state_r2.contract_helpers import ensure_binding
     await ensure_binding(async_session, wholesaler_id, retailer_id)
 
-    async_session.add(order)
+    order = await verified_from_template(async_session, order)
     await async_session.flush()  # Flush to get ID, but don't commit
     await async_session.refresh(order)
 

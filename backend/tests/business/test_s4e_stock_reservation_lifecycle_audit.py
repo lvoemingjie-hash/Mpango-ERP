@@ -29,6 +29,7 @@ from models.sku import SKU
 from tests.catalog_identity_helpers import create_sku_with_catalog, stable_order_items
 from schemas.order import PayOrderRequest
 from tests.order_state_r2.contract_helpers import ensure_binding as _r2_ensure_binding
+from tests.rc2_current_contract_support import current_trading_session as async_session, create_verified_draft
 
 
 def _tenant_id(async_session: AsyncSession) -> uuid.UUID:
@@ -94,6 +95,11 @@ async def _create_order(
     items: list[tuple[str, int, Decimal]],
     updated_by: uuid.UUID | None = None,
 ) -> Order:
+    if status == OrderStatus.DRAFT:
+        order = await create_verified_draft(async_session, retailer_id=uuid.uuid4(), items=items,
+                                             actor_id=updated_by, notes="S4-E3 reservation ownership invariant")
+        await async_session.commit()
+        return order
     total = sum(Decimal(quantity) * unit_price for _, quantity, unit_price in items)
     retailer_id = uuid.uuid4()
     await async_session.execute(
@@ -271,6 +277,27 @@ async def test_confirm_creates_owned_reservation_rows_and_updates_aggregate(asyn
     sku = await _create_sku_with_stock(
         async_session, sku_code="S4E3-CONFIRM", on_hand=Decimal("10.00")
     )
+    # An otherwise eligible legacy draft still cannot acquire economic effects
+    # without an actually accepted quote. Roll back this owned negative fixture.
+    negative = await async_session.begin_nested()
+    try:
+        legacy = Order(wholesaler_id=_tenant_id(async_session), retailer_id=uuid.uuid4(),
+                       status=OrderStatus.DRAFT, total_amount=Decimal("75.00"))
+        legacy.items = await stable_order_items(async_session, [("S4E3-CONFIRM", 3, Decimal("25.00"))])
+        async_session.add(legacy)
+        await async_session.flush()
+        from services.order_command_service import OrderCommandService
+        with pytest.raises(HTTPException) as caught:
+            await OrderCommandService(async_session).confirm_order(legacy.id, updated_by=str(uuid.uuid4()))
+        assert caught.value.status_code == 409 and caught.value.detail["code"] == "DRAFT_REQUOTE_REQUIRED"
+        assert await _stock_snapshot(async_session, sku.id) == (Decimal("10"), Decimal("0"), Decimal("10"))
+        assert await _reservation_count(async_session, order_id=legacy.id) == 0
+        for table in ("order_credit_holds", "ledger_entries"):
+            column = "order_id" if table == "order_credit_holds" else "reference_id"
+            assert (await async_session.execute(text(f'SELECT count(*) FROM "{async_session.info["tenant_schema"]}".{table} WHERE {column}=:id'),
+                                                 {"id": legacy.id})).scalar_one() == 0
+    finally:
+        await negative.rollback()
     order = await _create_order(
         async_session,
         status=OrderStatus.DRAFT,

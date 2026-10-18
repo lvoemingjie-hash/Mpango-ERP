@@ -191,7 +191,7 @@ async def test_multiple_heads_both_checkers_refuse_without_pk_change(world):
 def test_revision_contract_finite_consistency():
     source = (BACKEND / 'scripts/bootstrap_tenant_schema.py').read_text()
     from scripts.runtime_readiness_gate import REQUIRED_REVISION
-    module = ast.parse((BACKEND / 'alembic/versions/040_s1_pricing_quote_contract.py').read_text())
+    module = ast.parse((BACKEND / 'alembic/versions/041_catalog_product_main_image.py').read_text())
     revisions = [n.value.value for n in module.body if isinstance(n, ast.Assign)
                  and any(isinstance(t, ast.Name) and t.id == 'revision' for t in n.targets)]
     parsed = ast.parse(source)

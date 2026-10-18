@@ -117,8 +117,8 @@ def _strip_sku_m1_schema(connection, schema: str) -> None:
 
 
 def _restore_pre039_version(connection, revision: str) -> None:
-    connection.execute(text(
-        f"UPDATE public.alembic_version SET version_num = '{revision}'"))
+    assert list(connection.execute(text(
+        "SELECT version_num FROM public.alembic_version ORDER BY version_num")).scalars()) == [revision]
     connection.commit()
 
 
@@ -140,22 +140,10 @@ def _ensure_runtime_grants(db_url) -> None:
 
 
 def _satisfy_bootstrap_gate(connection) -> None:
-    """R2 C5: bootstrap refuses to run below alembic 039. This harness builds
-    GENUINE pre-039 tenant baselines, so the version row is temporarily moved
-    to 039 for the bootstrap call and restored afterwards; the 039 holds
-    table is dropped so the baseline stays genuine.
-
-    Three-identity: public.alembic_version is migration-owned, so this
-    helper opens its own migration-authority connection when the caller
-    hands it a runtime connection."""
-    if connection is None:
-        raise RuntimeError("_satisfy_bootstrap_gate requires a connection")
-    connection.execute(text(
-        "CREATE TABLE IF NOT EXISTS public.alembic_version "
-        "(version_num VARCHAR(128) NOT NULL PRIMARY KEY)"))
-    connection.execute(text(
-        "UPDATE public.alembic_version SET version_num = '039_order_credit_holds'"))
-    connection.commit()
+    """Verify the real historical migration target; never spoof a current head."""
+    versions = list(connection.execute(text(
+        "SELECT version_num FROM public.alembic_version ORDER BY version_num")).scalars())
+    assert versions in ([REV_037], [REV_038]), versions
 
 
 def _migration_connection(db_url):
@@ -171,7 +159,8 @@ def _bootstrap_as_runtime(schema: str, db_url) -> None:
     product-minimum runtime grants first — mirroring the product
     provisioner — then bootstrap connects with the app identity."""
     _ensure_runtime_grants(db_url)
-    run_coroutine(bootstrap(schema, db_url.app_url))
+    from tests.rc2_current_contract_support import historical_catalog_bootstrap
+    run_coroutine(historical_catalog_bootstrap()(schema, db_url.app_url))
 
 
 def _prepare_old_tenant(connection, db_url: str, *, prefix: str) -> tuple[uuid.UUID, str]:

@@ -59,7 +59,7 @@ from core.security import TokenPayload
 # ===========================================================================
 
 FRESH_TENANT_ID = "00000000-0000-0000-0000-000000000099"
-FRESH_TENANT_SCHEMA = "t_fresh_smoke"
+FRESH_TENANT_SCHEMA = "t_" + FRESH_TENANT_ID.replace("-", "")
 FRESH_ADMIN_USER_ID = "00000000-0000-0000-0000-0000000000aa"
 
 
@@ -118,9 +118,23 @@ def _empty_db_result():
 
 
 def _make_mock_session(*, tenant_id=None, tenant_schema=None):
-    """Mock AsyncSession that answers any execute() with an empty result."""
+    """Empty business data with one explicit valid binding/currency context."""
     session = MagicMock()
-    session.execute = AsyncMock(return_value=_empty_db_result())
+    async def execute(statement, params=None, **kwargs):
+        result = _empty_db_result()
+        result.mappings.return_value.all.return_value = []
+        sql = str(statement)
+        if sql == "SELECT current_schema()":
+            result.scalar_one.return_value = tenant_schema
+        elif "SELECT id FROM public.wholesaler_retailer_bindings" in sql and params and (
+                str(params.get("wid")) == str(tenant_id) and str(params.get("rid")) == _RETAILER_UUID):
+            result.first.return_value = ("explicit-smoke-binding",)
+        elif "SELECT tr.id, tr.country" in sql and tenant_id == FRESH_TENANT_ID:
+            result.mappings.return_value.all.return_value = [{
+                "id": "00000000-0000-0000-0000-000000000098", "country": "KE",
+                "wholesaler_id": tenant_id, "tenant_schema": tenant_schema}]
+        return result
+    session.execute = AsyncMock(side_effect=execute)
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
     session.close = AsyncMock()
@@ -334,6 +348,10 @@ class TestFreshTenantAdminSmoke:
             "/api/v1/pricing/prices", params={"retailer_id": _RETAILER_UUID}
         )
         assert resp.status_code not in (401, 403, 500), _diag(resp)
+        unbound = smoke_client.get("/api/v1/pricing/prices",
+                                  params={"retailer_id": "00000000-0000-0000-0000-000000000051"})
+        assert unbound.status_code == 403
+        assert unbound.json().get("detail", unbound.json())["code"] == "RETAILER_NOT_BOUND"
 
     # --- payments ----------------------------------------------------------
     def test_payments_list(self, smoke_client):

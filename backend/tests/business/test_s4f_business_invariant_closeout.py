@@ -31,6 +31,7 @@ from tests.catalog_identity_helpers import create_sku_with_catalog, stable_order
 from schemas.order import PayOrderRequest
 from scripts.bootstrap_tenant_schema import bootstrap
 from tests.order_state_r2.contract_helpers import ensure_binding as _r2_ensure_binding
+from tests.rc2_current_contract_support import current_trading_session as async_session, create_verified_draft, trading_session
 
 
 def _tenant_id(async_session: AsyncSession) -> uuid.UUID:
@@ -98,6 +99,11 @@ async def _create_order(
     status: OrderStatus,
     items: list[tuple[str, int, Decimal]],
 ) -> Order:
+    if status == OrderStatus.DRAFT:
+        order = await create_verified_draft(async_session, retailer_id=uuid.uuid4(), items=items,
+                                             notes="S4-F business invariant closeout")
+        await async_session.commit()
+        return order
     total = sum(Decimal(quantity) * unit_price for _, quantity, unit_price in items)
     retailer_id = uuid.uuid4()
     await async_session.execute(
@@ -259,37 +265,9 @@ async def _insert_sku_order_in_schema(
         retailer_id = uuid.uuid4()
         from tests.order_state_r2.contract_helpers import ensure_binding
         await ensure_binding(session, uuid.UUID(tenant_id), retailer_id)
-        order_result = await session.execute(
-            text(
-                f'INSERT INTO "{tenant_schema}".orders '
-                "(wholesaler_id, retailer_id, status, total_amount, notes) "
-                f"VALUES (:wholesaler_id, :retailer_id, 'draft'::\"{tenant_schema}\".order_status, "
-                ":total_amount, 'S4-F tenant isolation invariant') RETURNING id"
-            ),
-            {
-                "wholesaler_id": uuid.UUID(tenant_id),
-                "retailer_id": retailer_id,
-                "total_amount": Decimal(quantity) * Decimal("25.00"),
-            },
-        )
-        order_id = order_result.scalar_one()
-        await session.execute(
-            text(
-                f'INSERT INTO "{tenant_schema}".order_items '
-                "(order_id, sellable_unit_id, identity_status, product_name, sku_code, "
-                "unit_snapshot, quantity, unit_price, subtotal) "
-                "VALUES (:order_id, :sku_id, 'stable', :product_name, :sku_code, "
-                "'piece', :quantity, 25.00, :subtotal)"
-            ),
-            {
-                "order_id": order_id,
-                "sku_id": sku_id,
-                "product_name": f"Product {sku_code}",
-                "sku_code": sku_code,
-                "quantity": quantity,
-                "subtotal": Decimal(quantity) * Decimal("25.00"),
-            },
-        )
+        order = await create_verified_draft(session, retailer_id=retailer_id,
+            items=[(sku_code, quantity, Decimal("25.00"))], notes="S4-F tenant isolation invariant")
+        order_id = order.id
         await session.commit()
         return sku_id, order_id
 
@@ -700,19 +678,12 @@ async def test_same_sku_code_isolated_across_two_tenant_schemas(async_session):
     await _prepare_closeout_schema(async_session)
     tenant_a_schema = async_session.info["tenant_schema"]
     tenant_a_id = str(async_session.info["tenant_id"])
-    tenant_b_schema = f"t_s4f_iso_{uuid.uuid4().hex[:12]}"
-    tenant_b_id = str(uuid.uuid4())
-    settings = get_settings()
+    second_context = trading_session()
+    second = await second_context.__aenter__()
+    tenant_b_schema = second.info["tenant_schema"]
+    tenant_b_id = second.info["tenant_id"]
 
     try:
-        await bootstrap(tenant_b_schema, settings.DATABASE_URL)
-        async with AsyncSessionLocal() as public_session:
-            await public_session.execute(text(
-                "INSERT INTO public.wholesalers (id, code, name, status, is_deleted) "
-                "VALUES (:id, :code, 'S4F Isolation WS', 'active', FALSE) "
-                "ON CONFLICT (id) DO NOTHING"
-            ), {"id": tenant_b_id, "code": f"S4FISO{tenant_b_id.replace('-', '')[:8].upper()}"})
-            await public_session.commit()
         sku_a_id, order_a_id = await _insert_sku_order_in_schema(
             tenant_schema=tenant_a_schema,
             tenant_id=tenant_a_id,
@@ -751,6 +722,13 @@ async def test_same_sku_code_isolated_across_two_tenant_schemas(async_session):
         assert count_a == 1
         assert count_b == 1
     finally:
+        await second_context.__aexit__(None, None, None)
         async with AsyncSessionLocal() as cleanup:
             await cleanup.execute(text(f'DROP SCHEMA IF EXISTS "{tenant_b_schema}" CASCADE'))
+            # The new completed registration belongs to this same fixture;
+            # do not leave a live registry pointing at the dropped schema.
+            owned = {"wid": uuid.UUID(str(tenant_b_id))}
+            await cleanup.execute(text('DELETE FROM public.wholesaler_retailer_bindings WHERE wholesaler_id=:wid'), owned)
+            await cleanup.execute(text('DELETE FROM public.tenant_registrations WHERE wholesaler_id=:wid'), owned)
+            await cleanup.execute(text('DELETE FROM public.wholesalers WHERE id=:wid'), owned)
             await cleanup.commit()

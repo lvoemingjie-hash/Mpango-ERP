@@ -126,7 +126,7 @@ async def _set_balance(db, *, wholesaler_id: str, retailer_id: str, balance: str
 
 
 def _visible_payment_fields(item: dict) -> set[str]:
-    return {"id", "order_id", "amount", "method", "status", "created_at"} & set(item)
+    return {"id", "order_id", "amount", "method", "status", "created_at", "currency", "currency_status"}
 
 
 class TestReadOnlyClientFinanceHappyPath:
@@ -332,7 +332,11 @@ class TestReadOnlyClientFinanceRoutePolicy:
             for method in sorted(route.methods - {"HEAD", "OPTIONS"}):
                 actual[(method, route.path)] = perm
 
-        assert len(actual) == 19
+        # Exact full inventory and every permission, including both S2 preview
+        # permissions, are checked by the shared current contract node body.
+        from tests.test_dc12r1_s3_s1_catalog_order_hardening import TestClientRouteAllowlist
+        TestClientRouteAllowlist().test_exact_client_route_inventory()
+        assert len(actual) == 23
         assert actual[("GET", "/api/v1/client/payments")] == "client:payments:read"
         assert actual[("GET", "/api/v1/client/finance/balance")] == "client:finance:read"
         assert not [key for key in actual if key[1].startswith("/api/v1/client/payments") and key[0] != "GET"]

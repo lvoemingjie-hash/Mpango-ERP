@@ -18,7 +18,7 @@ async def test_select_tenant_uses_user_roles_table_and_returns_contextual_tokens
     db = AsyncMock()
 
     user_result = MagicMock()
-    user_result.fetchone.return_value = SimpleNamespace(id=UUID(user_id), is_active=True)
+    user_result.fetchone.return_value = SimpleNamespace(id=UUID(user_id), is_active=True, is_deleted=False)
 
     roles_result = MagicMock()
     roles_result.fetchall.return_value = [("admin",), ("manager",)]
@@ -55,6 +55,15 @@ async def test_select_tenant_uses_user_roles_table_and_returns_contextual_tokens
     assert len(mock_create_contextual_token.call_args_list) == 2
     assert mock_create_contextual_token.call_args_list[0].kwargs["token_type"] == "access"
     assert mock_create_contextual_token.call_args_list[1].kwargs["token_type"] == "refresh"
+
+    # A malformed double must still expose a missing model field, not cause
+    # production authentication to invent a permissive default.
+    user_result.fetchone.return_value = SimpleNamespace(id=UUID(user_id), is_active=True)
+    db.execute = AsyncMock(return_value=user_result)
+    with patch("api.v1.auth.get_wholesaler_by_id", new=AsyncMock(return_value=wholesaler)):
+        with pytest.raises(AttributeError, match="is_deleted"):
+            await select_tenant(request=SelectTenantRequest(tenant_id=tenant_id),
+                                token=TokenPayload(user_id=user_id, roles=["admin"]), db=db)
 
 
 @pytest.mark.asyncio

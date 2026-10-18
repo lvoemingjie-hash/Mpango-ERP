@@ -25,6 +25,7 @@ from services.ledger_service import LedgerService
 from services.order_command_service import OrderCommandService
 from services.order_service import OrderService
 from tests.order_state_r2.contract_helpers import ensure_binding as _r2_ensure_binding
+from tests.rc2_current_contract_support import current_trading_session as async_session, verified_from_template
 
 
 @pytest.mark.asyncio
@@ -91,7 +92,7 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
         subtotal=order.total_amount,
     )]
     await _r2_ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
-    async_session.add(order)
+    order = await verified_from_template(async_session, order)
     await async_session.commit()
 
     order_svc = OrderService(async_session)
@@ -183,7 +184,7 @@ async def test_ledger_entries_are_immutable(async_session):
         subtotal=order.total_amount,
     )]
     await _r2_ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
-    async_session.add(order)
+    order = await verified_from_template(async_session, order)
     await async_session.commit()
 
     order_svc = OrderService(async_session)
@@ -250,7 +251,7 @@ async def test_inventory_deduction_gap_documented(async_session):
         subtotal=order.total_amount,
     )]
     await _r2_ensure_binding(async_session, order.wholesaler_id, order.retailer_id)
-    async_session.add(order)
+    order = await verified_from_template(async_session, order)
     await async_session.commit()
 
     order_svc = OrderService(async_session)

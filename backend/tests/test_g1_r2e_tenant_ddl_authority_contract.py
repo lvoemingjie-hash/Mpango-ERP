@@ -1005,7 +1005,7 @@ def test_039_full_pass_two_app_owned_tenants_value_chain(product_capability):
         schemas = _prepare_036_tenants(
             db_url, {"alpha": "positive", "beta": "empty"})
         alpha, beta = schemas["alpha"], schemas["beta"]
-        run = _alembic(db_url, "head")
+        run = _alembic(db_url, REV_039)
         assert run["rc"] == 0, run["stderr"][-1500:]
         engine = _admin_engine(db_url)
         try:

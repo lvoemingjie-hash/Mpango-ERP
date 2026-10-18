@@ -82,9 +82,8 @@ async def _create_confirmed_order(
 ) -> str:
     """Create + confirm an order through the real route functions.
 
-    create_order route: binding check, server-side price resolution from
-    retailer_prices, crud create. confirm_order route: crud confirm +
-    InventoryService.reserve_on_confirm. Both commit at the end of the helper
+    Create through the current signed quote and explicit acceptance contract,
+    then confirm through the real command route. Both commit at the end of the helper
     (route functions only flush; the HTTP transaction owner is the auth
     middleware, which direct calls bypass — the helper commits instead).
     """
@@ -95,11 +94,20 @@ async def _create_confirmed_order(
     )
     async with tenant_session(schema, wholesaler_id) as db:
         token = R0Token(tenant_id=wholesaler_id, tenant_schema=schema, user_id=user_id)
+        from services.pricing_quote_service import build_quote, sign_quote
+        sku_id = (await db.execute(text('SELECT id FROM skus WHERE sku_code=:code'),
+                                   {"code": sku_code})).scalar_one()
+        selections = [{"sellable_unit_id": str(sku_id), "quantity": quantity}]
+        quote = await build_quote(db, wholesaler_id=wholesaler_id, retailer_id=retailer_id,
+            actor_id=user_id, operation='merchant-create', items=selections)
+        assert Decimal(quote['total']) == quantity * unit_price
         request = WholesalerOrderCreateRequest(
             retailer_id=str(retailer_id),
-            items=[{"sku_code": sku_code, "quantity": quantity}],
+            items=selections,
+            quote_token=sign_quote(quote),
         )
-        response = await order_routes.create_order(request=request, token=token, db=db)
+        response = await order_routes.create_order(request=request, token=token, db=db,
+                                                  idempotency_key='r0-create-'+uuid.uuid4().hex)
         order_id = response.data.id
     async with tenant_session(schema, wholesaler_id) as db:
         token = R0Token(tenant_id=wholesaler_id, tenant_schema=schema, user_id=user_id)

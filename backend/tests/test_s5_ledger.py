@@ -17,6 +17,7 @@ Test Cases:
 import pytest
 import uuid
 from decimal import Decimal
+from tests.rc2_current_contract_support import current_trading_session as async_session, verified_from_template, create_verified_draft
 from datetime import datetime, timezone, timedelta
 
 from models.ledger import LedgerEntry, AccountType
@@ -251,7 +252,7 @@ async def sample_order_for_ledger(async_session):
     from tests.order_state_r2.contract_helpers import ensure_binding
     await ensure_binding(async_session, wholesaler_id, retailer_id)
 
-    async_session.add(order)
+    order = await verified_from_template(async_session, order)
     await async_session.flush()
     await async_session.refresh(order)
 
@@ -492,9 +493,9 @@ async def test_multiple_orders_accounting(async_session):
             total_amount=Decimal("100.00"),
             notes=f"Test order {i+1}"
         )
-        async_session.add(order)
-        await async_session.flush()
-        await async_session.refresh(order)
+        _sku, code = await _ensure_sku_stock(async_session, async_session.info["tenant_schema"])
+        order = await create_verified_draft(async_session, retailer_id=order.retailer_id,
+                                           items=[(code, 1, Decimal("100.00"))], notes=order.notes)
 
         # R2 contract: confirm requires a live binding for this retailer.
         from tests.order_state_r2.contract_helpers import ensure_binding

@@ -170,9 +170,17 @@ def _create_orders_table(
     *,
     statuses: tuple[str, ...] = LEGACY_ORDER_STATUSES,
     row_status: str | None = None,
+    include_current_snapshots: bool = True,
 ) -> None:
     connection.execute(text(f'CREATE SCHEMA "{schema}"'))
     enum_members = ", ".join(f"'{value}'" for value in statuses)
+    snapshot_columns = (
+        "country_snapshot VARCHAR(2), currency_snapshot VARCHAR(3), "
+        "registration_snapshot_id UUID, creation_operation VARCHAR(32), "
+        "creation_key_digest VARCHAR(64), creation_fingerprint VARCHAR(64), "
+        "quote_seen JSONB, quote_resolved JSONB, replaces_order_id UUID,"
+        if include_current_snapshots else ""
+    )
     connection.execute(
         text(
             f"CREATE TYPE {_qualified(schema, 'order_status')} "
@@ -189,6 +197,7 @@ def _create_orders_table(
                 status {_qualified(schema, 'order_status')} NOT NULL DEFAULT 'draft',
                 total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
                 notes TEXT,
+                {snapshot_columns}
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 is_deleted BOOLEAN NOT NULL DEFAULT false,
@@ -414,7 +423,12 @@ def test_bootstrap_reconciles_existing_legacy_order_status_enum():
         with engine.begin() as connection:
             _ensure_public_prerequisites(connection)
             _cleanup(connection, [schema])
-            _create_orders_table(connection, schema)
+            _create_orders_table(connection, schema, include_current_snapshots=False)
+            assert connection.execute(text(
+                "SELECT count(*) FROM information_schema.columns "
+                "WHERE table_schema=:schema AND table_name='orders' "
+                "AND column_name='country_snapshot'"
+            ), {"schema": schema}).scalar_one() == 0
 
         run_coroutine(bootstrap(schema, os.environ["DATABASE_URL"]))
 

@@ -196,8 +196,27 @@ async def _seed_system_data(db) -> str:
     else:
         print("  . Binding exists")
 
+    # This explicit Nairobi demo recipe needs the same completed currency
+    # authority as real quote creation; never invent a runtime fallback.
+    schema = Wholesaler.derive_schema_from_id(str(DEMO_WHOLESALER_ID))
+    registration = (await db.execute(text(
+        "SELECT tenant_schema,country,status FROM public.tenant_registrations "
+        "WHERE wholesaler_id=:wid AND is_deleted IS FALSE"
+    ), {"wid": DEMO_WHOLESALER_ID})).one_or_none()
+    if registration is None:
+        await db.execute(text(
+            "INSERT INTO public.tenant_registrations "
+            "(id,company_name,tenant_code,country,owner_email,status,wholesaler_id,tenant_schema,"
+            "expires_at,email_verified_at,provisioning_completed_at,password_hash_cleared_at) "
+            "VALUES (:id,:name,:code,'KE',:email,'active',:wid,:schema,"
+            "now()+interval '1 day',now(),now(),now())"
+        ), {"id": uuid.uuid4(), "name": DEMO_WHOLESALER_NAME, "code": DEMO_WHOLESALER_CODE,
+            "email": ADMIN_EMAIL, "wid": DEMO_WHOLESALER_ID, "schema": schema})
+    elif tuple(registration) != (schema, "KE", "active"):
+        raise ValueError("DEMO_REGISTRATION_CONTRACT_MISMATCH: do not rewrite retained trading context")
+
     await db.commit()
-    return Wholesaler.derive_schema_from_id(str(DEMO_WHOLESALER_ID))
+    return schema
 
 
 async def _bootstrap_tenant_schema(db, ts: str) -> None:
@@ -349,7 +368,7 @@ async def _seed_inventory(db, ts: str) -> None:
 
 
 async def _seed_orders(db, ts: str) -> None:
-    """Seed orders using ORM + OrderService.transition (exercises guardrail)."""
+    """Explicitly preview and accept the demo prices through current product commands."""
     from sqlalchemy import text, select
     from models.order import Order, OrderItem, OrderStatus
     from models.sku import SKU
@@ -369,21 +388,17 @@ async def _seed_orders(db, ts: str) -> None:
 
     from services.order_command_service import OrderCommandService
     from services.canonical_payment_service import CanonicalPaymentService
+    from services.order_creation_service import submit_draft
+    from services.pricing_quote_service import build_quote, sign_quote
+    from repositories.pricing_repository import set_base_price
 
     commands = OrderCommandService(db)
     canonical = CanonicalPaymentService()
+    actor = (await db.execute(text("SELECT id FROM users WHERE email=:email"),
+                              {"email": ADMIN_EMAIL})).scalar_one()
 
     for i, spec in enumerate(DEMO_ORDERS, 1):
-        order = Order(
-            wholesaler_id=DEMO_WHOLESALER_ID,
-            retailer_id=DEMO_RETAILER_ID,
-            status=OrderStatus.DRAFT,
-            total_amount=spec["total_amount"],
-            notes=spec["notes"],
-        )
-        db.add(order)
-        await db.flush()
-
+        selections = []
         for sku_code, prod_name, qty, unit_price in spec["items"]:
             sellable_unit = (await db.execute(
                 select(SKU).where(
@@ -391,24 +406,25 @@ async def _seed_orders(db, ts: str) -> None:
                     SKU.is_deleted.is_(False),
                 )
             )).scalar_one()
-            item = OrderItem(
-                order_id=order.id,
-                sellable_unit_id=sellable_unit.id,
-                identity_status="stable",
-                product_name=prod_name,
-                sku_code=sku_code,
-                unit_snapshot=sellable_unit.unit,
-                quantity=qty,
-                unit_price=unit_price,
-                subtotal=qty * unit_price,
-            )
-            db.add(item)
+            if sellable_unit.base_price is None:
+                await set_base_price(db, sku_id=sellable_unit.id, price=str(unit_price),
+                    expected_revision=sellable_unit.pricing_revision, actor_id=actor)
+            elif sellable_unit.base_price != unit_price:
+                raise ValueError("DEMO_PRICE_CONFLICT: explicitly review the existing catalog")
+            selections.append({"sellable_unit_id": str(sellable_unit.id), "quantity": qty})
         await db.flush()
+        quote = await build_quote(db, wholesaler_id=DEMO_WHOLESALER_ID,
+            retailer_id=DEMO_RETAILER_ID, actor_id=actor, operation="merchant-create", items=selections)
+        if Decimal(quote["total"]) != spec["total_amount"]:
+            raise ValueError("DEMO_TOTAL_CONFLICT: the accepted quote must match the documented recipe")
+        order, _ = await submit_draft(db, wholesaler_id=DEMO_WHOLESALER_ID,
+            retailer_id=DEMO_RETAILER_ID, actor_id=actor, operation="merchant-create", items=selections,
+            notes=spec["notes"], quote_token=sign_quote(quote), idempotency_key=f"demo-order-{i}")
 
         for tname in spec["transitions"]:
             if tname == "confirmed":
                 result = await commands.confirm_order(
-                    order.id, updated_by=str(order.created_by or DEMO_WHOLESALER_ID))
+                    order.id, updated_by=str(actor))
                 order = result.order
             elif tname == "paid":
                 # payments go ONLY through the canonical service
@@ -419,7 +435,7 @@ async def _seed_orders(db, ts: str) -> None:
                     method="cash",
                     transaction_id=None,
                     idempotency_key=f"seed-{order.id}",
-                    created_by=None,
+                    created_by=str(actor),
                 )
                 order = pay.order
             elif tname == "fulfilled":

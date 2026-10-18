@@ -1604,9 +1604,10 @@ async def seed_public_tenant_rows(
         await db.execute(text(
             "INSERT INTO public.tenant_registrations "
             "(id,company_name,tenant_code,country,owner_email,status,expires_at,"
-            "email_verified_at,provisioning_completed_at,wholesaler_id,tenant_schema) "
+            "email_verified_at,provisioning_completed_at,password_hash,password_hash_cleared_at,"
+            "wholesaler_id,tenant_schema) "
             "VALUES (:id,'R0 synthetic tenant',:code,'KE',:email,'active',now()+interval '1 day',"
-            "now(),now(),:wid,:schema)"
+            "now(),now(),NULL,now(),:wid,:schema)"
         ), {"id": uuid.uuid4(), "code": "R0"+suffix, "email": suffix+'@example.invalid',
             "wid": wholesaler_id, "schema": 't_'+wholesaler_id.hex})
         await db.commit()

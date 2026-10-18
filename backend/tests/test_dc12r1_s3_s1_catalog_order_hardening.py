@@ -286,8 +286,8 @@ class TestDualKeyDbScoping:
         foreign_quote = await s3_client.post("/api/v1/client/orders/quote",
             json={"items": [{"sellable_unit_id": str(foreign_unit.id), "quantity": 1}]},
             headers={"Authorization": f"Bearer {tok_a}"})
-        assert foreign_quote.status_code == HTTPStatus.CONFLICT, foreign_quote.text
-        assert foreign_quote.json()["code"] == "SELLABLE_UNIT_UNAVAILABLE"
+        assert foreign_quote.status_code == HTTPStatus.BAD_REQUEST, foreign_quote.text
+        assert foreign_quote.json()["code"] == "SELLABLE_UNIT_NOT_FOUND"
         cross_image = await s3_client.get(
             f"/api/v1/client/products/{foreign_unit.catalog_product_id}/image/{uuid.uuid4()}/thumb",
             headers={"Authorization": f"Bearer {tok_a}"})

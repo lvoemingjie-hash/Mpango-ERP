@@ -63,6 +63,9 @@ async def test_accept_preserves_history_and_zero_economics_then_confirms_fixed_p
     assert result.status_code == 200, 'S3_ACCEPTED_ATOMICALLY'
     new_id = result.json()['data']['accepted_order_id']
     assert new_id and new_id != source['id']
+    replacement_agreement = await r1_client.get(f'/api/v1/client/orders/{new_id}/negotiations', headers=headers(world, client=True))
+    assert replacement_agreement.status_code == 200
+    assert replacement_agreement.json()['data']['items'][0]['id'] == proposal['id'], 'S3_REPLACEMENT_RETAINS_VISIBLE_AGREEMENT_DEADLINE'
     assert await economics(world) == before, 'S3_ACCEPTANCE_ZERO_ECONOMIC_EFFECTS'
     old = await r1_client.get(f"/api/v1/orders/{source['id']}", headers=headers(world))
     assert old.json()['data']['status'] == 'cancelled'
@@ -127,7 +130,7 @@ async def test_committed_replay_checks_intent_and_live_binding(r1_client, world)
     assert replay.status_code == 200 and replay.json()['data']['replayed'] is True
     assert replay.json()['data']['accepted_order_id'] == first.json()['data']['accepted_order_id']
     conflict = await decide(r1_client, world, source, proposal, key=key, digest='0' * 64)
-    assert conflict.status_code == 409 and conflict.json()['code'] == 'NEGOTIATION_INTENT_CONFLICT'
+    assert conflict.status_code == 409 and conflict.json()['code'] == 'NEGOTIATION_INTENT_CONFLICT', 'S3_DURABLE_ACCEPTED_INTENT_BOUND'
     assert (await decide(r1_client, world, source, proposal)).status_code == 409
     before = await economics(world)
     async with world['session']() as db:

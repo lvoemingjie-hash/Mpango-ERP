@@ -306,7 +306,8 @@ async def list_proposals(db, *, order_id, wholesaler_id, retailer_id=None):
     if source is None:
         refuse('ORDER_NOT_FOUND', 'Order not found', status=404)
     await assert_binding(db, source.wholesaler_id, source.retailer_id)
-    proposals = (await db.execute(select(Proposal).where(Proposal.source_order_id == source.id,
+    proposals = (await db.execute(select(Proposal).where(
+        (Proposal.source_order_id == source.id) | (Proposal.accepted_order_id == source.id),
         Proposal.wholesaler_id == source.wholesaler_id, Proposal.retailer_id == source.retailer_id)
         .order_by(Proposal.version.desc()).execution_options(populate_existing=True))).scalars().all()
     now = await authoritative_now(db)

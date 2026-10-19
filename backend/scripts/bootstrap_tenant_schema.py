@@ -2609,6 +2609,11 @@ async def _reconcile_order_negotiations(db, ts: str) -> None:
         )
         for statement in statements:
             await db.execute(text(statement.format(q=q)))
+    owner = (await db.execute(text(
+        'SELECT c.relkind::text,pg_get_userbyid(c.relowner) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace '
+        "WHERE n.nspname=:s AND c.relname='order_negotiation_proposals'"), {'s': ts})).one()
+    if tuple(owner) != ('r', 'mpango_app'):
+        raise RuntimeError('NEGOTIATION_CATALOG_OWNER_MISMATCH')
     columns = (await db.execute(text(
         'SELECT a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,pg_get_expr(d.adbin,d.adrelid) '
         'FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace '
@@ -2668,13 +2673,18 @@ async def _reconcile_order_negotiations(db, ts: str) -> None:
             for name, tail in index_definitions.items()}:
         raise RuntimeError('NEGOTIATION_CATALOG_INDEXES_MISMATCH')
     trigger = (await db.execute(text(
-        'SELECT t.tgname,t.tgenabled::text,t.tgtype,p.proname,p.prosecdef,p.proconfig,p.prosrc '
+        'SELECT t.tgname,t.tgenabled::text,t.tgtype,p.proname,p.prosecdef,p.proconfig,p.prosrc, '
+        'pg_get_triggerdef(t.oid),pg_get_userbyid(p.proowner),p.pronargs,p.prorettype::regtype::text,l.lanname '
         'FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace '
         'JOIN pg_proc p ON p.oid=t.tgfoid AND p.pronamespace=n.oid '
+        'JOIN pg_language l ON l.oid=p.prolang '
         "WHERE n.nspname=:s AND c.relname='order_negotiation_proposals' AND NOT t.tgisinternal"), {'s': ts})).all()
     if (len(trigger) != 1 or trigger[0][0:6] != (
             'negotiation_history_immutable', 'O', 27, 'prevent_negotiation_rewrite', False, ['search_path=pg_catalog'])):
         raise RuntimeError('NEGOTIATION_CATALOG_TRIGGER_MISMATCH')
+    if (normalize(trigger[0][7]) != normalize('CREATE TRIGGER negotiation_history_immutable BEFORE DELETE OR UPDATE ON order_negotiation_proposals FOR EACH ROW EXECUTE FUNCTION prevent_negotiation_rewrite()')
+            or tuple(trigger[0][8:12]) != ('mpango_app', 0, 'trigger', 'plpgsql')):
+        raise RuntimeError('NEGOTIATION_CATALOG_TRIGGER_DEFINITION_MISMATCH')
     body = '''BEGIN
         IF TG_OP='DELETE' THEN RAISE EXCEPTION 'NEGOTIATION_HISTORY_IMMUTABLE'; END IF;
         IF OLD.status <> 'pending' OR NEW.status='pending' OR

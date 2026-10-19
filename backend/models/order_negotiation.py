@@ -31,7 +31,7 @@ class OrderNegotiationProposal(Base):
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    source_order_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey('orders.id', ondelete='RESTRICT'), nullable=False)
+    source_order_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey('orders.id', name='fk_negotiation_source', ondelete='RESTRICT'), nullable=False)
     wholesaler_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     retailer_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     created_by: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
@@ -43,6 +43,6 @@ class OrderNegotiationProposal(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default='pending')
     decided_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    accepted_order_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey('orders.id', ondelete='RESTRICT'), nullable=True)
+    accepted_order_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey('orders.id', name='fk_negotiation_accepted', ondelete='RESTRICT'), nullable=True)
     accept_key_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     accepted_intent_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)

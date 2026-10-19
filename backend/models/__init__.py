@@ -7,6 +7,7 @@ from models.wholesaler import Wholesaler
 from models.user import User, Role, Permission
 from models.associations import user_roles, role_permissions
 from models.order import Order, OrderItem, OrderStatus
+from models.order_negotiation import OrderNegotiationProposal
 from models.retailer import Retailer
 from models.invitation import Invitation
 from models.binding import WholesalerRetailerBinding
@@ -81,6 +82,7 @@ __all__ = [
     "Permission",
     "Order",
     "OrderItem",
+    "OrderNegotiationProposal",
     "CatalogProduct",
     "CatalogProductImage",
     "SKU",

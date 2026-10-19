@@ -222,7 +222,8 @@ def test_gate_refuses_database_without_completed_setup():
         finally:
             probe.close()
         for versions in ([], ["039_order_credit_holds"], ["040_s1_pricing_quote_contract"],
-                         ["040_s1_pricing_quote_contract", "041_catalog_product_main_image"],
+                         ["041_catalog_product_main_image"],
+                         ["041_catalog_product_main_image", "042_order_negotiation_proposals"],
                          ["999_unapproved_future"]):
             probe = _admin_connect(server.admin_db_url(db))
             try:
@@ -233,7 +234,7 @@ def test_gate_refuses_database_without_completed_setup():
                     cur.execute("SELECT version_num FROM public.alembic_version ORDER BY version_num")
                     before = cur.fetchall()
                 reasons = helper.evaluate_contract(server.admin_db_url(db))
-                assert any("requires exactly '041_catalog_product_main_image'" in r for r in reasons), (
+                assert any("requires exactly '042_order_negotiation_proposals'" in r for r in reasons), (
                     "RC2_READINESS_HEAD_MUST_REFUSE", versions, reasons)
                 with probe.cursor() as cur:
                     cur.execute("SELECT version_num FROM public.alembic_version ORDER BY version_num")

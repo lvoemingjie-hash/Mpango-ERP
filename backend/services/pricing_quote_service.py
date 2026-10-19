@@ -226,3 +226,41 @@ def require_consent(seen: dict, current: dict) -> None:
                old_total=seen['total'], new_total=current['total'],
                delta=format(Decimal(current['total']) - Decimal(seen['total']), 'f'),
                currency=current['currency'], changes=changes, quote=quote_view(current))
+
+
+async def validate_negotiated_units(db, *, wholesaler_id, payload):
+    """Only the persistent S3 service may replace price resolution, not eligibility."""
+    from models.catalog_product import CatalogProduct
+
+    source = await resolve_currency(db, wholesaler_id)
+    if any(payload.get(key) != value for key, value in {
+            'tenant': source.tenant_schema, 'wholesaler': source.wholesaler_id,
+            'registration': source.registration_id, 'country': source.country,
+            'currency': source.currency}.items()):
+        refuse('NEGOTIATION_CONTEXT_CHANGED', 'The registered trading context changed')
+    seen = set()
+    for line in sorted(payload['lines'], key=lambda item: item['sku_id']):
+        sid = UUID(line['sku_id'])
+        quantity = line['quantity']
+        if sid in seen or type(quantity) is not int or not 1 <= quantity <= 10000:
+            refuse('NEGOTIATION_CONTEXT_CHANGED', 'The agreed item selection is invalid')
+        seen.add(sid)
+        sku = await lock_sku_row(db, sku_id=sid)
+        if (sku is None or not sku.is_active or not sku.unit or not sku.unit.strip()
+                or not sku.package_quantity.is_finite() or sku.package_quantity <= 0
+                or sku.package_quantity != sku.package_quantity.quantize(Decimal('0.001'))):
+            refuse('SELLABLE_UNIT_UNAVAILABLE', 'A verified active unit is required')
+        product = (await db.execute(select(CatalogProduct).where(
+            CatalogProduct.id == sku.catalog_product_id, CatalogProduct.is_deleted.is_(False),
+            CatalogProduct.is_active.is_(True)))).scalar_one_or_none()
+        if product is None:
+            refuse('SELLABLE_UNIT_UNAVAILABLE', 'The product is unavailable')
+        if (line['unit'] != sku.unit
+                or Decimal(line['package_quantity']) != sku.package_quantity):
+            refuse('NEGOTIATION_CONTEXT_CHANGED', 'The agreed unit or package changed')
+        price = money(line['unit_price'], source.currency)
+        if money(price * quantity, source.currency) != money(line['subtotal'], source.currency):
+            refuse('NEGOTIATION_INTEGRITY', 'The agreed line arithmetic is invalid')
+    if not seen or money(sum((Decimal(line['subtotal']) for line in payload['lines']), Decimal(0)),
+                         source.currency) != money(payload['total'], source.currency):
+        refuse('NEGOTIATION_INTEGRITY', 'The agreed total is invalid')

@@ -166,6 +166,9 @@ class OrderCommandService:
         self._validate_transition(order, OrderState.CONFIRMED)
         self._validate_item_identities(order)
 
+        from services.order_negotiation_service import lock_confirmation_proposal
+        await lock_confirmation_proposal(self.db, order)
+
         items = sorted(order.items, key=lambda i: str(i.sellable_unit_id))
         for item in items:
             if item.sellable_unit_id is None:

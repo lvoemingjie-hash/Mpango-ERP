@@ -1,5 +1,23 @@
 # Mpango ERP Project Status
 
+## S3 implementation branch update - 2026-10-19
+
+BD-3 minimum negotiation is now authorized by
+`CTO-AUTH-S3-MINIMUM-NEGOTIATION-IMPLEMENTATION-R1-20261019` on a separate
+branch from accepted RC2 `6d003db6202f3e00ab465687919fa7b0e73bb5ee`.
+The merchant enters an explicit per-proposal deadline; exact customer consent
+creates a replacement DRAFT atomically, and only a persistent accepted offer
+may supply fixed prices at confirmation. Contract:
+`docs/contracts/s3-negotiation.md`. New branch head is 042; historical migration
+and acceptance statements below remain dated RC2 facts, not current S3 results.
+
+Status: IMPLEMENTATION_IN_PROGRESS, author validation only; no independent V3
+or product acceptance is claimed. The earlier blanket S3 DEFERRED statements
+are superseded only for this new authorized branch/scope. RC2 trial preparation
+is not gated on S3, and its source/CI acceptance is not rewritten. PC-03 formal
+credit, refunds, remote CI, push/PR, protected integration and deployment remain
+outside this authorization. CTO retains the final acceptance decision.
+
 ## RC2 Preparation Update — 2026-10-17
 
 **Local RC2 integration candidate:** this update is based on frozen product

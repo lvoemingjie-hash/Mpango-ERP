@@ -7,6 +7,7 @@ import { formatMoney } from '@/utils/printFormat';
 import { useAuthStore } from '@/stores/authStore';
 import { can, CLIENT_PERMISSIONS } from '@/utils/permissions';
 import type { ClientOrder } from '@/types/client';
+import { OrderNegotiationPanel } from '@/components/orders/OrderNegotiationPanel';
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   CREATED: { label: 'Created', className: 'bg-blue-100 text-blue-700' },
@@ -185,6 +186,8 @@ export function OrderDetailPage() {
       </div>
 
       {/* Order Items */}
+      {can(user, CLIENT_PERMISSIONS.ORDERS_READ) && <OrderNegotiationPanel key={order.id} client orderId={order.id} items={order.items}
+        currency={order.currency} draft={order.status === 'CREATED'} onAccepted={(id) => navigate(`/client/orders/${id}`)} />}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         <div className="border-b border-gray-200 bg-gray-50 px-4 py-2.5">
           <h2 className="text-sm font-semibold text-gray-900">Items</h2>

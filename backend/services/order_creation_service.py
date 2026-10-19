@@ -209,6 +209,9 @@ async def validate_draft_for_confirmation(db, order):
             or order.country_snapshot != order.quote_resolved['country']
             or str(order.registration_snapshot_id) != order.quote_resolved['registration']):
         refuse('DRAFT_REQUOTE_REQUIRED', 'Stored item snapshots cannot be verified against the accepted quote')
+    from services.order_negotiation_service import validate_negotiated_confirmation
+    if await validate_negotiated_confirmation(db, order):
+        return
     items = [{'sellable_unit_id': str(item.sellable_unit_id), 'quantity': item.quantity}
              for item in order.items]
     current = await build_quote(db, wholesaler_id=order.wholesaler_id,

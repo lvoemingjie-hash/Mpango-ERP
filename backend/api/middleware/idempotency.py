@@ -97,6 +97,14 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
 
+        # S3 decisions always reach live identity/permission checks and the
+        # durable proposal transaction, including committed-result replays.
+        if request.method == 'POST' and re.fullmatch(
+            r'/api/v1/(?:client/)?orders/[0-9a-f-]{36}/negotiations'
+            r'(?:/[0-9a-f-]{36}/(?:accept|reject|withdraw))?', path
+        ):
+            return await call_next(request)
+
         # Skip non-mutating methods
         if request.method not in IDEMPOTENT_METHODS:
             return await call_next(request)

@@ -19,6 +19,8 @@ import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
 import { ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
 import { PrinterIcon } from '@heroicons/react/24/outline';
 import type { PaymentData } from '@/services/paymentService';
+import { OrderNegotiationPanel } from '@/components/orders/OrderNegotiationPanel';
+import { Modal } from '@/components/ui/Modal';
 
 function buildFinanceCollectionReturnPath(returnPath: string, orderId: string): string {
   const [path, query = ''] = returnPath.split('?');
@@ -68,6 +70,7 @@ export function OrderListPage() {
 
   // Phase 5: payment modal state
   const [payModalOrder, setPayModalOrder] = useState<Order | null>(null);
+  const [negotiating, setNegotiating] = useState<Order | null>(null);
 
   // H3: Payment actions require payments:create (matching backend POST /orders/{id}/pay).
   // Order-edit actions (confirm, fulfill, cancel, return) require orders:update.
@@ -76,6 +79,7 @@ export function OrderListPage() {
   const hasUpdatePermission = user?.permissions.includes('orders:update') ?? false;
   const hasCreatePermission = user?.permissions.includes('orders:create') ?? false;
   const hasPayPermission = user?.permissions.includes('payments:create') ?? false;
+  const hasNegotiationPermission = hasUpdatePermission && Boolean(user?.permissions.includes('pricing:write'));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -431,6 +435,10 @@ export function OrderListPage() {
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
                     <div className="flex justify-end gap-2">
+                      {hasNegotiationPermission && <button className="text-amber-700" onClick={async () => {
+                        try { setNegotiating((await orderService.getById(o.id)).data.data); }
+                        catch { /* Global interceptor reports read failures. */ }
+                      }}>Negotiated prices</button>}
                       {o.status === 'draft' && hasCreatePermission && hasUpdatePermission && <Link
                         className="text-amber-700" to={`/orders/create?replace=${o.id}&retailer=${o.retailer_id}`}>
                         Review quote / replace draft
@@ -513,6 +521,9 @@ export function OrderListPage() {
       )}
 
       {/* Phase 5: Payment recording modal */}
+      {negotiating && <Modal open onClose={() => setNegotiating(null)} title={`Negotiated prices - ${negotiating.id.slice(0, 8)}`}>
+        <OrderNegotiationPanel key={negotiating.id} orderId={negotiating.id} items={negotiating.items} currency={negotiating.currency} draft={negotiating.status === 'draft'} />
+      </Modal>}
       {payModalOrder && (
         <PaymentRecordModal
           open={!!payModalOrder}

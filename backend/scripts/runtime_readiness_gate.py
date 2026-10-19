@@ -5,7 +5,7 @@ heredoc; CTO-AUTH-ORDER-R2-DB-AUTHORITY-INTEGRATION-R1-R4-BOUNDED-RUNTIME-CONTRA
 The backend container receives ONLY the runtime-role DATABASE_URL.  This gate
 verifies, strictly read-only, that the five-stage setup completed:
 
-  * public migration head is exactly ``041_catalog_product_main_image``;
+  * public migration head is exactly ``042_order_negotiation_proposals``;
   * the migration-owned ledger guard matches its authority contract and the
     public binding-balance contract is intact (the product's own read-only
     catalog assertions);
@@ -35,7 +35,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
-REQUIRED_REVISION = "041_catalog_product_main_image"
+REQUIRED_REVISION = "042_order_negotiation_proposals"
 DEFAULT_REQUIRED_TENANT_TABLE = "order_credit_holds"
 
 

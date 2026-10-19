@@ -2551,6 +2551,143 @@ async def _reconcile_product_images(db, ts: str) -> None:
         raise RuntimeError('IMAGE_CATALOG_CONSTRAINTS_MISMATCH')
 
 
+async def _reconcile_order_negotiations(db, ts: str) -> None:
+    """Independent 042 contract; populated missing tables require migration."""
+    from sqlalchemy import text
+
+    q = '"' + ts + '"'
+    exists = (await db.execute(text('SELECT to_regclass(:name)'),
+                              {'name': ts + '.order_negotiation_proposals'})).scalar()
+    if exists is None:
+        history = (await db.execute(text(
+            f'SELECT (SELECT count(*) FROM {q}.orders) + (SELECT count(*) FROM {q}.payments)'))).scalar_one()
+        if history:
+            raise RuntimeError('NEGOTIATION_POPULATED_SCHEMA_REQUIRES_MIGRATION')
+        # Deliberately independent from migration/runtime modules.
+        statements = (
+            '''CREATE TABLE {q}.order_negotiation_proposals (
+                id UUID CONSTRAINT order_negotiation_proposals_pkey PRIMARY KEY,
+                source_order_id UUID NOT NULL CONSTRAINT fk_negotiation_source REFERENCES {q}.orders(id) ON DELETE RESTRICT,
+                wholesaler_id UUID NOT NULL, retailer_id UUID NOT NULL, created_by UUID NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(), version INTEGER NOT NULL,
+                expires_at TIMESTAMPTZ NOT NULL, payload JSONB NOT NULL, digest VARCHAR(64) NOT NULL,
+                status VARCHAR(16) NOT NULL, decided_by UUID, decided_at TIMESTAMPTZ,
+                accepted_order_id UUID CONSTRAINT fk_negotiation_accepted REFERENCES {q}.orders(id) ON DELETE RESTRICT,
+                accept_key_digest VARCHAR(64), accepted_intent_digest VARCHAR(64),
+                CONSTRAINT uq_negotiation_source_version UNIQUE (source_order_id,version),
+                CONSTRAINT uq_negotiation_accepted_order UNIQUE (accepted_order_id),
+                CONSTRAINT ck_negotiation_version CHECK (version > 0),
+                CONSTRAINT ck_negotiation_status CHECK (status IN ('pending','accepted','rejected','withdrawn')),
+                CONSTRAINT ck_negotiation_decision_shape CHECK (
+                    (status='pending' AND decided_by IS NULL AND decided_at IS NULL AND accepted_order_id IS NULL
+                        AND accept_key_digest IS NULL AND accepted_intent_digest IS NULL) OR
+                    (status IN ('rejected','withdrawn') AND decided_by IS NOT NULL AND decided_at IS NOT NULL
+                        AND accepted_order_id IS NULL AND accept_key_digest IS NULL AND accepted_intent_digest IS NULL) OR
+                    (status='accepted' AND decided_by IS NOT NULL AND decided_at IS NOT NULL AND accepted_order_id IS NOT NULL
+                        AND accept_key_digest IS NOT NULL AND accepted_intent_digest IS NOT NULL))
+            )''',
+            "CREATE UNIQUE INDEX ux_negotiation_pending_source ON {q}.order_negotiation_proposals (source_order_id) WHERE status='pending'",
+            'CREATE UNIQUE INDEX ux_negotiation_accept_key ON {q}.order_negotiation_proposals (wholesaler_id,retailer_id,decided_by,accept_key_digest) WHERE accept_key_digest IS NOT NULL',
+            '''CREATE FUNCTION {q}.prevent_negotiation_rewrite() RETURNS trigger
+            LANGUAGE plpgsql SET search_path=pg_catalog AS $s3$
+            BEGIN
+                IF TG_OP='DELETE' THEN
+                    RAISE EXCEPTION 'NEGOTIATION_HISTORY_IMMUTABLE';
+                END IF;
+                IF OLD.status <> 'pending' OR NEW.status='pending' OR
+                    ROW(NEW.id,NEW.source_order_id,NEW.wholesaler_id,NEW.retailer_id,NEW.created_by,
+                        NEW.created_at,NEW.version,NEW.expires_at,NEW.payload,NEW.digest) IS DISTINCT FROM
+                    ROW(OLD.id,OLD.source_order_id,OLD.wholesaler_id,OLD.retailer_id,OLD.created_by,
+                        OLD.created_at,OLD.version,OLD.expires_at,OLD.payload,OLD.digest) THEN
+                    RAISE EXCEPTION 'NEGOTIATION_HISTORY_IMMUTABLE';
+                END IF;
+                RETURN NEW;
+            END;
+            $s3$''',
+            '''CREATE TRIGGER negotiation_history_immutable BEFORE UPDATE OR DELETE
+               ON {q}.order_negotiation_proposals FOR EACH ROW EXECUTE FUNCTION {q}.prevent_negotiation_rewrite()''',
+        )
+        for statement in statements:
+            await db.execute(text(statement.format(q=q)))
+    columns = (await db.execute(text(
+        'SELECT a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,pg_get_expr(d.adbin,d.adrelid) '
+        'FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace '
+        'LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum '
+        "WHERE n.nspname=:s AND c.relname='order_negotiation_proposals' AND a.attnum>0 AND NOT a.attisdropped"), {'s': ts})).all()
+    expected = {
+        ('id', 'uuid', True, None), ('source_order_id', 'uuid', True, None),
+        ('wholesaler_id', 'uuid', True, None), ('retailer_id', 'uuid', True, None),
+        ('created_by', 'uuid', True, None), ('created_at', 'timestamp with time zone', True, 'now()'),
+        ('version', 'integer', True, None), ('expires_at', 'timestamp with time zone', True, None),
+        ('payload', 'jsonb', True, None), ('digest', 'character varying(64)', True, None),
+        ('status', 'character varying(16)', True, None), ('decided_by', 'uuid', False, None),
+        ('decided_at', 'timestamp with time zone', False, None), ('accepted_order_id', 'uuid', False, None),
+        ('accept_key_digest', 'character varying(64)', False, None),
+        ('accepted_intent_digest', 'character varying(64)', False, None),
+    }
+    if set(map(tuple, columns)) != expected:
+        raise RuntimeError('NEGOTIATION_CATALOG_COLUMNS_MISMATCH')
+    constraints = (await db.execute(text(
+        'SELECT c.conname,c.contype::text,pg_get_constraintdef(c.oid) FROM pg_constraint c '
+        'JOIN pg_class t ON t.oid=c.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace '
+        "WHERE n.nspname=:s AND t.relname='order_negotiation_proposals'"), {'s': ts})).all()
+    expected_names = {
+        ('order_negotiation_proposals_pkey', 'p'), ('fk_negotiation_source', 'f'),
+        ('fk_negotiation_accepted', 'f'), ('uq_negotiation_source_version', 'u'),
+        ('uq_negotiation_accepted_order', 'u'), ('ck_negotiation_version', 'c'),
+        ('ck_negotiation_status', 'c'), ('ck_negotiation_decision_shape', 'c'),
+    }
+    if {(name, kind) for name, kind, definition in constraints} != expected_names:
+        raise RuntimeError('NEGOTIATION_CATALOG_CONSTRAINTS_MISMATCH')
+    def normalize(definition):
+        return ''.join(definition.replace('"', '').replace(ts + '.', '').split())
+    definitions = {
+        'order_negotiation_proposals_pkey': 'PRIMARY KEY (id)',
+        'fk_negotiation_source': 'FOREIGN KEY (source_order_id) REFERENCES orders(id) ON DELETE RESTRICT',
+        'fk_negotiation_accepted': 'FOREIGN KEY (accepted_order_id) REFERENCES orders(id) ON DELETE RESTRICT',
+        'uq_negotiation_source_version': 'UNIQUE (source_order_id, version)',
+        'uq_negotiation_accepted_order': 'UNIQUE (accepted_order_id)',
+        'ck_negotiation_version': 'CHECK ((version > 0))',
+        'ck_negotiation_status': "CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'accepted'::character varying, 'rejected'::character varying, 'withdrawn'::character varying])::text[])))",
+        'ck_negotiation_decision_shape': "CHECK (((((status)::text = 'pending'::text) AND (decided_by IS NULL) AND (decided_at IS NULL) AND (accepted_order_id IS NULL) AND (accept_key_digest IS NULL) AND (accepted_intent_digest IS NULL)) OR (((status)::text = ANY ((ARRAY['rejected'::character varying, 'withdrawn'::character varying])::text[])) AND (decided_by IS NOT NULL) AND (decided_at IS NOT NULL) AND (accepted_order_id IS NULL) AND (accept_key_digest IS NULL) AND (accepted_intent_digest IS NULL)) OR (((status)::text = 'accepted'::text) AND (decided_by IS NOT NULL) AND (decided_at IS NOT NULL) AND (accepted_order_id IS NOT NULL) AND (accept_key_digest IS NOT NULL) AND (accepted_intent_digest IS NOT NULL))))",
+    }
+    if {(name, normalize(definition)) for name, kind, definition in constraints} != {
+            (name, normalize(definition)) for name, definition in definitions.items()}:
+        raise RuntimeError('NEGOTIATION_CATALOG_DEFINITIONS_MISMATCH')
+    indexes = (await db.execute(text(
+        "SELECT indexname,indexdef FROM pg_indexes WHERE schemaname=:s AND tablename='order_negotiation_proposals'"), {'s': ts})).all()
+    index_definitions = {
+        'order_negotiation_proposals_pkey': '(id)',
+        'uq_negotiation_accepted_order': '(accepted_order_id)',
+        'uq_negotiation_source_version': '(source_order_id, version)',
+        'ux_negotiation_accept_key': '(wholesaler_id, retailer_id, decided_by, accept_key_digest) WHERE (accept_key_digest IS NOT NULL)',
+        'ux_negotiation_pending_source': "(source_order_id) WHERE ((status)::text = 'pending'::text)",
+    }
+    if {(name, normalize(definition)) for name, definition in indexes} != {
+            (name, normalize(f'CREATE UNIQUE INDEX {name} ON order_negotiation_proposals USING btree {tail}'))
+            for name, tail in index_definitions.items()}:
+        raise RuntimeError('NEGOTIATION_CATALOG_INDEXES_MISMATCH')
+    trigger = (await db.execute(text(
+        'SELECT t.tgname,t.tgenabled::text,t.tgtype,p.proname,p.prosecdef,p.proconfig,p.prosrc '
+        'FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace '
+        'JOIN pg_proc p ON p.oid=t.tgfoid AND p.pronamespace=n.oid '
+        "WHERE n.nspname=:s AND c.relname='order_negotiation_proposals' AND NOT t.tgisinternal"), {'s': ts})).all()
+    if (len(trigger) != 1 or trigger[0][0:6] != (
+            'negotiation_history_immutable', 'O', 27, 'prevent_negotiation_rewrite', False, ['search_path=pg_catalog'])):
+        raise RuntimeError('NEGOTIATION_CATALOG_TRIGGER_MISMATCH')
+    body = '''BEGIN
+        IF TG_OP='DELETE' THEN RAISE EXCEPTION 'NEGOTIATION_HISTORY_IMMUTABLE'; END IF;
+        IF OLD.status <> 'pending' OR NEW.status='pending' OR
+            ROW(NEW.id,NEW.source_order_id,NEW.wholesaler_id,NEW.retailer_id,NEW.created_by,
+                NEW.created_at,NEW.version,NEW.expires_at,NEW.payload,NEW.digest) IS DISTINCT FROM
+            ROW(OLD.id,OLD.source_order_id,OLD.wholesaler_id,OLD.retailer_id,OLD.created_by,
+                OLD.created_at,OLD.version,OLD.expires_at,OLD.payload,OLD.digest) THEN
+            RAISE EXCEPTION 'NEGOTIATION_HISTORY_IMMUTABLE'; END IF;
+        RETURN NEW; END;'''
+    if ''.join(trigger[0][6].split()) != ''.join(body.split()):
+        raise RuntimeError('NEGOTIATION_CATALOG_HISTORY_GUARD_MISMATCH')
+
+
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
     """Create tenant schema and all required tables."""
     from sqlalchemy import text
@@ -2592,7 +2729,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # C5 deployment-order gate (Order stream): refuse BEFORE creating ANY
         # tenant object.
-        await _require_alembic_revision(db, "041_catalog_product_main_image")
+        await _require_alembic_revision(db, "042_order_negotiation_proposals")
 
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))
@@ -2981,6 +3118,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         await _reconcile_s1_pricing(db, ts)
         await _reconcile_product_images(db, ts)
+        await _reconcile_order_negotiations(db, ts)
 
         await db.commit()
 

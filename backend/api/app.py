@@ -133,6 +133,8 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
     app.include_router(roles.router, prefix="/api/v1/roles", tags=["roles"])
     app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
+    from api.v1.order_negotiations import router as order_negotiations_router
+    app.include_router(order_negotiations_router, prefix='/api/v1', tags=['order-negotiations'])
     app.include_router(skus.router, prefix="/api/v1/skus", tags=["skus"])
     app.include_router(catalog_products.router, prefix="/api/v1/catalog-products", tags=["catalog-products"])
     from api.v1.product_images import router as product_images_router

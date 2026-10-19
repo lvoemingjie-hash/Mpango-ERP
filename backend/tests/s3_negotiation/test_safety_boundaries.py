@@ -87,3 +87,29 @@ async def test_confirmed_agreement_is_not_undone_by_later_expiry(r1_client, worl
     assert await economics(world) == before, 'S3_SUCCESSFUL_CONFIRMATION_NOT_REVERSED_AT_EXPIRY'
     order = await r1_client.get(f'/api/v1/orders/{new_id}', headers=headers(world))
     assert order.json()['data']['status'] == 'confirmed'
+
+
+@pytest.mark.parametrize('method,hold_state,balance', [('cash', 'settled', '0'), ('credit', 'converted', '140')])
+async def test_negotiated_price_reaches_only_canonical_payment_once(r1_client, world, method, hold_state, balance):
+    """Existing payment semantics, not a new commercial-credit approval claim."""
+    from decimal import Decimal
+    source = await original(r1_client, world)
+    proposal = (await offer(r1_client, world, source)).json()['data']
+    accepted = await decide(r1_client, world, source, proposal)
+    assert accepted.status_code == 200
+    new_id = accepted.json()['data']['accepted_order_id']
+    assert (await r1_client.post(f'/api/v1/orders/{new_id}/confirm', headers=headers(world))).status_code == 200
+    key = str(uuid4())
+    body = {'amount': '140', 'method': method}
+    result = await r1_client.post(f'/api/v1/orders/{new_id}/pay', json=body, headers=headers(world, key=key))
+    assert result.status_code == 200, 'S3_NEGOTIATED_TOTAL_CANONICAL_PAYMENT'
+    before = await economics(world)
+    replay = await r1_client.post(f'/api/v1/orders/{new_id}/pay', json=body, headers=headers(world, key=key))
+    assert replay.status_code == 200 and replay.json()['data']['payment_id'] == result.json()['data']['payment_id']
+    assert await economics(world) == before, 'S3_CANONICAL_PAYMENT_REPLAY_ONCE'
+    assert before['payments'] == 1 and before['binding'] == Decimal(balance)
+    async with world['session']() as db:
+        hold = (await db.execute(text('SELECT status,remaining_amount FROM order_credit_holds WHERE order_id=:id'), {'id': UUID(new_id)})).one()
+        payment = (await db.execute(text('SELECT method,amount FROM payments WHERE order_id=:id'), {'id': UUID(new_id)})).one()
+        assert tuple(hold) == (hold_state, Decimal('0'))
+        assert tuple(payment) == (method, Decimal('140'))

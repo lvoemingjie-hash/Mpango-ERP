@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeftIcon, TrashIcon, PlusIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
-import { clientProductService } from '@/services/clientProductService';
+import { ProductImage } from '@/components/catalog/ProductImage';
+import { OrderProductPicker } from '@/components/catalog/OrderProductPicker';
 import { clientOrderService } from '@/services/clientOrderService';
 import { QuoteConsent } from '@/components/pricing/QuoteConsent';
 import { formatMoney } from '@/utils/printFormat';
@@ -14,6 +15,9 @@ interface OrderLineItem {
   quantity: number;
   price?: string | null;
   currency?: string | null;
+  image?: ClientProduct['image'];
+  package_quantity?: number;
+  unit?: string;
 }
 
 export function CreateOrderPage() {
@@ -23,259 +27,142 @@ export function CreateOrderPage() {
   const replacing = params.get('replace');
   const [items, setItems] = useState<OrderLineItem[]>([]);
   const [notes, setNotes] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  // Product picker state
   const [showPicker, setShowPicker] = useState(false);
-  const [products, setProducts] = useState<ClientProduct[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
+  const [editorLocked, setEditorLocked] = useState(false);
 
-  // Initialize from navigation state (from ProductDetailPage)
   useEffect(() => {
     const state = location.state as { items?: OrderLineItem[] } | null;
     if (state?.items) {
       setItems(state.items);
+      setQuantityDrafts({});
     }
   }, [location.state]);
 
-  const loadProducts = useCallback(async () => {
-    setLoadingProducts(true);
-    try {
-      const res = await clientProductService.getAll(1, 50, {
-        search: searchQuery || undefined,
-      });
-      // Product-level contract: keep products that have at least one orderable unit.
-      setProducts(res.data.data.items.filter((p) => p.units.some((u) => u.can_order)));
-    } catch {
-      setError('Failed to load products. Please retry the product selection.');
-    } finally {
-      setLoadingProducts(false);
-    }
-  }, [searchQuery]);
+  const validQuantity = (value: string) => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0;
+  const hasInvalidQuantity = items.some(item => !validQuantity(quantityDrafts[item.sellable_unit_id] ?? String(item.quantity)));
 
-  useEffect(() => {
-    if (showPicker) {
-      loadProducts();
+  const updateQuantity = (id: string, value: string) => {
+    if (editorLocked) return;
+    setQuantityDrafts(current => ({ ...current, [id]: value }));
+    if (validQuantity(value)) {
+      setItems(current => current.map(item => item.sellable_unit_id === id ? { ...item, quantity: Number(value) } : item));
     }
-  }, [showPicker, loadProducts]);
+  };
 
   const addUnit = (product: ClientProduct, unit: ClientSellableUnit) => {
-    const existing = items.find((i) => i.sellable_unit_id === unit.sellable_unit_id);
-    if (existing) {
-      setItems(items.map((i) =>
-        i.sellable_unit_id === unit.sellable_unit_id
-          ? { ...i, quantity: i.quantity + 1 }
-          : i
-      ));
-    } else {
-      setItems([...items, {
-        sellable_unit_id: unit.sellable_unit_id,
-        sku_code: unit.sku_code,
-        name: product.name,
-        quantity: 1,
-        price: unit.price,
-        currency: unit.currency
-      }]);
-    }
-    setShowPicker(false);
+    if (editorLocked) return;
+    setItems(current => {
+      const existing = current.find(item => item.sellable_unit_id === unit.sellable_unit_id);
+      if (existing) return current.map(item => item === existing
+        ? { ...item, quantity: Math.min(Number.MAX_SAFE_INTEGER, item.quantity + 1) } : item);
+      return [...current, { sellable_unit_id: unit.sellable_unit_id, sku_code: unit.sku_code,
+        name: product.name, quantity: 1, price: unit.price, currency: unit.currency,
+        image: product.image, package_quantity: unit.package_quantity, unit: unit.unit }];
+    });
+    setQuantityDrafts(current => {
+      const next = { ...current };
+      delete next[unit.sellable_unit_id];
+      return next;
+    });
   };
 
-  const updateQuantity = (sellableUnitId: string, quantity: number) => {
-    if (quantity <= 0) {
-      setItems(items.filter((i) => i.sellable_unit_id !== sellableUnitId));
-    } else {
-      setItems(items.map((i) =>
-        i.sellable_unit_id === sellableUnitId ? { ...i, quantity } : i
-      ));
-    }
+  const removeItem = (id: string) => {
+    if (editorLocked) return;
+    setItems(current => current.filter(item => item.sellable_unit_id !== id));
+    setQuantityDrafts(current => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
   };
 
-  const removeItem = (sellableUnitId: string) => {
-    setItems(items.filter((i) => i.sellable_unit_id !== sellableUnitId));
-  };
-
-  const formatCurrency = (amount: string, currency?: string | null) => formatMoney(amount, currency);
-  const orderItems: CreateOrderItem[] = items.map(i => ({
-    sellable_unit_id: i.sellable_unit_id, sku_code: i.sku_code, quantity: i.quantity,
+  const orderItems: CreateOrderItem[] = items.map(item => ({
+    sellable_unit_id: item.sellable_unit_id, sku_code: item.sku_code, quantity: item.quantity,
   }));
 
-  return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate('/client')}
-          className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition"
-        >
-          <ArrowLeftIcon className="h-5 w-5" />
-        </button>
-        <h1 className="text-lg font-bold text-gray-900">New Order</h1>
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>
-      )}
-
-      {/* Line Items */}
-      {items.length === 0 ? (
-        <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-8 text-center">
-          <ShoppingBagIcon className="mx-auto h-10 w-10 text-gray-300" />
-          <p className="mt-2 text-sm font-medium text-gray-500">No items yet</p>
-          <p className="text-xs text-gray-400">Add products to your order</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {items.map((item) => (
-            <div
-              key={item.sellable_unit_id}
-              className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <p className="text-xs text-gray-400 font-mono">{item.sku_code}</p>
-                  {item.price !== undefined && item.price !== null && (
-                    <span className="text-xs font-medium text-gray-600">
-                      {formatCurrency(item.price, item.currency)}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => updateQuantity(item.sellable_unit_id, item.quantity - 1)}
-                  className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 text-xs text-gray-600 hover:bg-gray-50"
-                >
-                  -
-                </button>
-                <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
-                <button
-                  onClick={() => updateQuantity(item.sellable_unit_id, item.quantity + 1)}
-                  className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 text-xs text-gray-600 hover:bg-gray-50"
-                >
-                  +
-                </button>
-              </div>
-
-              <button
-                onClick={() => removeItem(item.sellable_unit_id)}
-                className="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-500 transition"
-              >
-                <TrashIcon className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Add Product Button */}
-      <button
-        onClick={() => setShowPicker(true)}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-500 hover:border-primary-300 hover:text-primary-600 transition"
-      >
-        <PlusIcon className="h-5 w-5" />
-        Add Product
+  return <div className="space-y-4">
+    <div className="flex items-center gap-3">
+      <button type="button" aria-label="Back to products" disabled={editorLocked} onClick={() => navigate('/client')}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-40">
+        <ArrowLeftIcon className="h-5 w-5" aria-hidden="true" />
       </button>
+      <div>
+        <h1 className="text-lg font-bold text-gray-900">New Order</h1>
+        <p className="text-sm text-gray-500">Choose packs, then review current prices.</p>
+      </div>
+    </div>
 
-      {/* Product Picker Modal */}
-      {showPicker && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
-          <div className="w-full max-w-lg rounded-t-2xl bg-white p-4 shadow-xl sm:rounded-2xl sm:m-4 max-h-[70vh] flex flex-col">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-900">Add Product</h2>
-              <button
-                onClick={() => setShowPicker(false)}
-                className="rounded-md p-1 text-gray-400 hover:text-gray-600"
-              >
-                &times;
-              </button>
+    {items.length === 0 ? <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-8 text-center">
+      <ShoppingBagIcon className="mx-auto h-10 w-10 text-gray-300" aria-hidden="true" />
+      <p className="mt-2 text-sm font-medium text-gray-600">Start your order</p>
+      <p className="mt-1 text-sm text-gray-500">Choose products and the pack sizes you need.</p>
+    </div> : <section aria-label="Selected products" className="space-y-3">
+      <h2 className="text-sm font-semibold text-gray-700">Your selection <span className="text-gray-500">({items.length} pack choices)</span></h2>
+      {items.map(item => {
+        const value = quantityDrafts[item.sellable_unit_id] ?? String(item.quantity);
+        const invalid = !validQuantity(value);
+        const labelId = `quantity-${item.sellable_unit_id}`;
+        return <article key={item.sellable_unit_id} aria-label={`Selected ${item.sku_code}`} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-gray-50">
+              <ProductImage image={item.image} name={item.name} className="h-full w-full" />
             </div>
-
-            <input
-              type="text"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
-            />
-
-            <div className="flex-1 overflow-y-auto space-y-1">
-              {loadingProducts && (
-                <p className="py-4 text-center text-sm text-gray-400">Loading...</p>
-              )}
-              {!loadingProducts && products.length === 0 && (
-                <p className="py-4 text-center text-sm text-gray-400">No products available</p>
-              )}
-              {/* One row per product; each orderable packaging choice is its own button */}
-              {products.map((p) => (
-                <div key={p.id} className="rounded-lg border border-gray-100 p-2">
-                  <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
-                  {p.units.filter((u) => u.can_order).map((u) => (
-                    <button
-                      key={u.sellable_unit_id}
-                      data-testid={`picker-unit-${u.sku_code}`}
-                      onClick={() => addUnit(p, u)}
-                      className="mt-1 flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-gray-50 transition"
-                    >
-                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100">
-                        <ShoppingBagIcon className="h-5 w-5 text-gray-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-gray-500 font-mono truncate">{u.sku_code}</p>
-                        <p className="text-xs text-gray-400">{u.package_quantity} × {u.unit}</p>
-                      </div>
-                      <span className={`text-xs font-medium ${
-                        u.stock_level === 'HIGH' ? 'text-green-600' :
-                        u.stock_level === 'MEDIUM' ? 'text-yellow-600' :
-                        'text-orange-600'
-                      }`}>
-                        {u.stock_level === 'HIGH' ? 'In Stock' :
-                         u.stock_level === 'MEDIUM' ? 'Limited' : 'Low'}
-                      </span>
-                      {u.price !== null && (
-                        <span className="text-sm font-medium text-gray-900">
-                          {formatCurrency(u.price, u.currency)}
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              ))}
+            <div className="min-w-0 flex-1">
+              <h3 className="break-words text-sm font-semibold text-gray-900">{item.name}</h3>
+              {item.unit && <p className="mt-0.5 text-sm text-gray-700">{item.package_quantity} &times; {item.unit}</p>}
+              <p className="mt-0.5 break-all text-xs text-gray-500">{item.sku_code}</p>
+              {item.price != null && <p className="mt-1 text-sm font-medium text-gray-700">{formatMoney(item.price, item.currency)} <span className="text-xs font-normal text-gray-500">per pack, indicative</span></p>}
+            </div>
+            <button type="button" aria-label={`Remove ${item.sku_code}`} disabled={editorLocked} onClick={() => removeItem(item.sellable_unit_id)}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40">
+              <TrashIcon className="h-5 w-5" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3">
+            <label htmlFor={labelId} className="text-sm text-gray-600">Number of packs</label>
+            <div className="flex items-center rounded-lg border border-gray-300">
+              <button type="button" aria-label={`Decrease ${item.sku_code}`} disabled={editorLocked || item.quantity <= 1} onClick={() => updateQuantity(item.sellable_unit_id, String(item.quantity - 1))}
+                className="h-11 w-11 rounded-l-lg text-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40">-</button>
+              <input id={labelId} aria-label={`Quantity for ${item.sku_code}`} aria-invalid={invalid} aria-describedby={invalid ? `${labelId}-error` : undefined}
+                inputMode="numeric" pattern="[0-9]*" autoComplete="off" value={value} disabled={editorLocked}
+                onChange={event => updateQuantity(item.sellable_unit_id, event.target.value)}
+                className="h-11 w-16 min-w-0 border-x border-gray-200 text-center text-base font-semibold outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500 disabled:bg-gray-50" />
+              <button type="button" aria-label={`Increase ${item.sku_code}`} disabled={editorLocked || item.quantity === Number.MAX_SAFE_INTEGER} onClick={() => updateQuantity(item.sellable_unit_id, String(item.quantity + 1))}
+                className="h-11 w-11 rounded-r-lg text-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40">+</button>
             </div>
           </div>
-        </div>
-      )}
+          {invalid && <p id={`${labelId}-error`} role="alert" className="mt-2 text-sm text-red-700">Enter a whole number of packs, at least 1.</p>}
+        </article>;
+      })}
+    </section>}
 
-      {/* Notes */}
-      <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">
-          Notes (optional)
-        </label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Any special instructions..."
-          rows={2}
-          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition resize-none"
-        />
-      </div>
+    <button type="button" disabled={editorLocked} onClick={() => setShowPicker(true)}
+      className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-dashed border-primary-300 bg-primary-50 px-4 py-3 text-sm font-semibold text-primary-700 hover:bg-primary-100 disabled:opacity-40">
+      <PlusIcon className="h-5 w-5" aria-hidden="true" /> Add Product
+    </button>
+    {showPicker && <OrderProductPicker selected={items} onAdd={addUnit} onClose={() => setShowPicker(false)} />}
 
-      <QuoteConsent
-        intent={JSON.stringify({ orderItems, notes })}
-        disabled={!items.length}
-        replacing={Boolean(replacing)}
-        preview={async () => (await clientOrderService.preview({ items: orderItems })).data.data}
-        submit={async (quote, key) => {
-          const data = { items: orderItems, notes: notes || undefined, quote_token: quote.quote_token };
-          const result = replacing
-            ? await clientOrderService.replaceDraft(replacing, data, key)
-            : await clientOrderService.create(data, key);
-          navigate(`/client/orders/${result.data.data.id}`, { replace: true });
-        }}
-      />
+    <div>
+      <label htmlFor="order-notes" className="mb-1 block text-sm font-medium text-gray-700">Notes (optional)</label>
+      <textarea id="order-notes" value={notes} disabled={editorLocked} onChange={event => setNotes(event.target.value)}
+        placeholder="Any special instructions..." rows={2}
+        className="w-full resize-none rounded-xl border border-gray-300 px-3 py-2 text-base shadow-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 disabled:bg-gray-50" />
     </div>
-  );
+    <p className="text-sm text-gray-500">Catalog prices are indicative. Review the server quote before accepting this draft.</p>
+    <QuoteConsent
+      intent={JSON.stringify({ orderItems, notes, quantityDrafts })}
+      disabled={!items.length || hasInvalidQuantity}
+      onLockChange={setEditorLocked}
+      replacing={Boolean(replacing)}
+      preview={async () => (await clientOrderService.preview({ items: orderItems })).data.data}
+      submit={async (quote, key) => {
+        const data = { items: orderItems, notes: notes || undefined, quote_token: quote.quote_token };
+        const result = replacing
+          ? await clientOrderService.replaceDraft(replacing, data, key)
+          : await clientOrderService.create(data, key);
+        navigate(`/client/orders/${result.data.data.id}`, { replace: true });
+      }}
+    />
+  </div>;
 }

@@ -62,7 +62,10 @@ export function ProductDetailPage() {
           name: product.name,
           quantity,
           price: selectedUnit.price,
-          currency: selectedUnit.currency
+          currency: selectedUnit.currency,
+          image: product.image,
+          package_quantity: selectedUnit.package_quantity,
+          unit: selectedUnit.unit,
         }],
       },
     });

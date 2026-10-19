@@ -664,10 +664,10 @@ def _git_bytes(repo, *argv):
     return result.stdout
 
 
-REUSE_APPROVED_REF = "97eb3d89daf3daca45d7289c6669f1cca18d5ef2"
+REUSE_APPROVED_REF = "7d86e513fe8d37558bf4595330a62c9b082c7776"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
 # Rebuild inputs/recipe are declared in intake_sources and the delivery receipt.
-REUSE_INTAKE_VERSION = 2
+REUSE_INTAKE_VERSION = 3
 REUSE_EXPECTED_METADATA = json.loads(r'''
 {
   "record": "RC2_VERSIONED_DEDICATED_ACCEPTANCE_INTAKE_V1",
@@ -689,7 +689,7 @@ REUSE_EXPECTED_METADATA = json.loads(r'''
   "rules": {
     "status_semantics": "REUSED_ACCEPTED_EVIDENCE means: the named accepted scope, on the named candidate bytes, as ruled by the named CTO record. It is NOT a hosted-CI PASS and NOT a claim that every node of the file ran. Ordinary-zone CI results are reported separately and are never merged into these scopes.",
     "gap_semantics": "GAP entries mark what the accepted receipts cannot prove (per-node mapping, hosted re-execution). GAPs stay open until the CTO defines a finite repair scope; author PASS claims are not copied as independent acceptance.",
-    "invalidation": "load_bearing_blobs are machine-checked by `prepare_test_evidence.py verify-reuse --coverage <this file> --repo-root <repo>`. Any byte drift in a load-bearing file, any new file outside the ordinary+dedicated partition, or any dedicated file changed without a new CTO ruling flips the affected binding to GAP_EVIDENCE_INVALID. Updating the recorded digest alone never re-validates. A parallel-line frontend diff is NOT covered here and goes to the CTO.",
+    "invalidation": "Historical candidates, XML/node maps and load_bearing_blobs retain their original provenance; they are not current-byte or fresh-run claims. Current source authority is the tool-fixed CTO intake ref, compared independently against every backend/frontend path, byte and Git mode plus the three external paths. Any unapproved drift or coverage-only provenance change refuses. Current attachment deltas remain explicitly unrerun GAPs; all_valid is bounded admission, never release_ready/evidence_ready.",
     "historical_documents": "historical_source_documents retain original source blobs only; normal governance-document updates are not live product-freeze failures"
   },
   "bindings": [
@@ -904,11 +904,12 @@ REUSE_EXPECTED_METADATA = json.loads(r'''
     "Ordinary-zone CI is a finite regression selection (236 ordinary files), not the full suite: the six frozen ignores remain uncovered and are listed separately in every supply plan.",
     "None of the 16 dedicated files has been re-executed on hosted CI in this round; their status is REUSED_ACCEPTED_EVIDENCE with explicit GAPs, never a current CI PASS.",
     "Evidence scopes stay separate: S1 14 journeys / 104 assertions; S1 pricing_quote pytest 77; S2 backend pytest 53; S2 browser 6 scenarios / 138 assertions; cache/commit-boundary rounds. No summation across scopes.",
-    "Photos A: original 93 passed plus the same GC node 1 passed in a separate repair call; B mobile, C paired task restore, D two HTTP reorders, E three mutations and aged-GC remain distinct bounded CTO-accepted scopes, not one combined runtime or hosted PASS."
+    "Photos A: original 93 passed plus the same GC node 1 passed in a separate repair call; B mobile, C paired task restore, D two HTTP reorders, E three mutations and aged-GC remain distinct bounded CTO-accepted scopes, not one combined runtime or hosted PASS.",
+    "Current 7d86e513 product freeze is CTO-approved source intake only. The author 511/build and four mobile scenarios do not reexecute the historical 77/53/138 or all S2 journeys; no hosted CI or current full collection is claimed."
   ],
-  "intake_version": 2,
-  "intake_status": "CANDIDATE_FIXED_EXPECTATION_PENDING_CTO_SOURCE_REVIEW",
-  "product_anchor": "97eb3d89daf3daca45d7289c6669f1cca18d5ef2",
+  "intake_version": 3,
+  "intake_status": "CTO_APPROVED_CURRENT_SOURCE_FREEZE__LOCAL_ADMISSION_ONLY",
+  "product_anchor": "7d86e513fe8d37558bf4595330a62c9b082c7776",
   "intake_sources": [
     {
       "relative_record": "mvp-rc2-post-images-cto-review-20261017/CTO-REVIEW.zh-CN.md",
@@ -937,11 +938,474 @@ REUSE_EXPECTED_METADATA = json.loads(r'''
       "sha256": "8dbcc00908bade6ffebbd5d5f5beeb04f9ea76476b891c1e54a82cb0287dac58"
     }
   ],
-  "ordinary_canonical_status": "CTO_APPROVED_CURRENT_ORDINARY_CANONICAL_FROM_NATIVE_COLLECTIONS",
+  "ordinary_canonical_status": "FROZEN_ORDINARY_SELECTION_DEFINITION__CURRENT_FRESH_COLLECTION_NOT_ESTABLISHED",
   "frozen_external_paths": [
     "docker-compose.yml",
     "nginx/gateway.conf",
     "docs/runbooks/product-image-backup-restore.md"
+  ],
+  "previous_source_freezes": [
+    {
+      "intake_version": 2,
+      "source_ref": "97eb3d89daf3daca45d7289c6669f1cca18d5ef2",
+      "classification": "HISTORICAL_SOURCE_FREEZE_NOT_CURRENT_EXECUTION",
+      "ordinary_canonical_status": "CTO_APPROVED_CURRENT_ORDINARY_CANONICAL_FROM_NATIVE_COLLECTIONS"
+    }
+  ],
+  "current_source_intake": {
+    "authority_record": {
+      "path": "AI_REPORT_INBOX/retailer-mobile-ux-browser-cto-review-20261019/CURRENT-SOURCE-INTAKE.json",
+      "sha256": "b15632375e76c36fad7fd01ebe989c74153fa2ae79c8e8b7a924a73c7dc0bed7"
+    },
+    "authorization": "CTO-AUTH-RC2-CURRENT-CI-SOURCE-INTAKE-L-R1-20261019",
+    "source_ref": "7d86e513fe8d37558bf4595330a62c9b082c7776",
+    "source_tree": "4282f72c260beee30c06cd3b3689fb077919df17",
+    "source_parent": "38638de2bf15563267e3f3962a3cdd419d99914c",
+    "backend_tree": "2acd4efaa63d2b1d7b0f13515e121d3eb5ee4513",
+    "frontend_tree": "36a3075922779493f93b707ee3096e5a4b55d7ad",
+    "cto_ruling": {
+      "path": "/home/ivy/AI_REPORT_INBOX/retailer-mobile-ux-browser-cto-review-20261019/CTO-REVIEW.zh-CN.md",
+      "sha256": "85511da10ecd25599126d63c7c2233ea10d869c636d599d99ec6de112fe28c57"
+    },
+    "accepted_author_local_frontend_scope": {
+      "candidate": "7d86e513fe8d37558bf4595330a62c9b082c7776",
+      "frontend_tree": "36a3075922779493f93b707ee3096e5a4b55d7ad",
+      "vitest_files": 39,
+      "vitest_tests_passed": 511,
+      "build": "production build rc0, four dist hashes bound to this frontend tree",
+      "source_delivery": "/home/ivy/AI_REPORT_INBOX/retailer-mobile-order-ux-finite-closeout-codexl-r1-20261019/delivery/",
+      "source_manifest_sha256": "f13e0c831effe0496fd551e7e6391ee4519e57eeee4caabd0d37a572060cfaf4",
+      "native_junit_sha256": "060fa5452cbd80a6f5dffef72155d2dc1334ed5b34d7e8da691e953891413fa4",
+      "browser_scenarios": [
+        "C1-UG",
+        "C2-KE",
+        "C3-UG",
+        "C4-KE"
+      ],
+      "browser_delivery": "/home/ivy/AI_REPORT_INBOX/retailer-mobile-order-ux-browser-continue-codexl-r1r1-20261019/delivery/",
+      "browser_manifest_sha256": "86903e957be978e38b2d06c11df233698433f0e3194e696963c0144f39d03d73",
+      "tier": "author bounded live evidence reconciled by CTO, not independent V3",
+      "visual_limit": "C4 replay screenshot is loading skeleton, not final order-detail render proof",
+      "hmac_limit": "quote token and signer were unlinked; HMAC verification is author-recorded; CTO rederived retained payload fingerprints/key digests/items, not HMAC signatures"
+    },
+    "accepted_local_backend_boundary_scope": {
+      "execution_candidate": "38638de2bf15563267e3f3962a3cdd419d99914c",
+      "current_backend_tree_equals_execution_candidate": true,
+      "groups": [
+        43,
+        92
+      ],
+      "source_delivery": "/home/ivy/AI_REPORT_INBOX/rc2-two-test-formal-continue-codexl-r1r3-20261018/delivery/",
+      "source_manifest_sha256": "22f686a98ae747c4a13026e77726a44c6c8377c9b8d9b412d0ba78f347c5295d",
+      "new_backend_calls_this_browser_round": 0,
+      "claim": "bounded accepted groups only, not all 162 old CI REDs rerun on current source"
+    },
+    "historical_results_reexecuted": false,
+    "hosted_ci_this_intake": "NOT_RUN",
+    "independent_v3_this_intake": "NOT_ESTABLISHED",
+    "current_fresh_ordinary_collection": "CURRENT_FRESH_COLLECTION_NOT_ESTABLISHED",
+    "ordinary_definition": {
+      "nodes": 4288,
+      "files": 236,
+      "dedicated_files": 16,
+      "ignores": 6,
+      "canonical_definition_changed": false
+    },
+    "old_source_ref": "97eb3d89daf3daca45d7289c6669f1cca18d5ef2",
+    "source_deltas": [
+      {
+        "path": "backend/scripts/runtime_readiness_gate.py",
+        "old_tree_entry": "100755 blob bbe2a33e0e1ab26a3cebea79639b714e22e902e5\tbackend/scripts/runtime_readiness_gate.py",
+        "current_tree_entry": "100755 blob 37ca94dfbedd8e5c0dd1d87bfc4c2f6c7e0dd28e\tbackend/scripts/runtime_readiness_gate.py",
+        "old_content_sha256": "fe70397b98b2f54195dec9aa831e64121a4ed7ebc005ef31cf277bf470190bbb",
+        "current_content_sha256": "a078faf43943d8b87c21d5387c97a1619487858777dbe397e059608a0162290f",
+        "source_commits": [
+          "4fd581a6db4e6e10f28c374383a2191295fcd707"
+        ]
+      },
+      {
+        "path": "backend/scripts/seed_demo_data.py",
+        "old_tree_entry": "100644 blob d07bd2dd1408e64b114312536ed9ab28dbd18c21\tbackend/scripts/seed_demo_data.py",
+        "current_tree_entry": "100644 blob e52c42ca303572180672f5445e10b419a13276c1\tbackend/scripts/seed_demo_data.py",
+        "old_content_sha256": "a9e5703e9380dbc02d04f3d3a8c624468619d80e4ba6f795b9ce0a87d6312e11",
+        "current_content_sha256": "c697b3f14eed222700cbf263940dcef7f65ed07766e62bf566822ad04935f663",
+        "source_commits": [
+          "4fd581a6db4e6e10f28c374383a2191295fcd707"
+        ]
+      },
+      {
+        "path": "backend/tests/business/test_financial_loop.py",
+        "old_tree_entry": "100644 blob 408c6f5e6cf162ee4528ee3f9a51635d959ac0f6\tbackend/tests/business/test_financial_loop.py",
+        "current_tree_entry": "100644 blob 2c455387296abb162b6260e0f3cd0ba6e45109da\tbackend/tests/business/test_financial_loop.py",
+        "old_content_sha256": "4604d1b46caeae04fbc89def3e4c99cc367b71a46be1f7b4d8dc0cb4b15410c8",
+        "current_content_sha256": "bef695fb7a4ce2dcd4e2c658487b884142965d9ac64d84e90c7342bf0a272b99",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/business/test_s4e_stock_reservation_lifecycle_audit.py",
+        "old_tree_entry": "100644 blob 830ce5b9468b7a681c0dcd91739de06bbd25399b\tbackend/tests/business/test_s4e_stock_reservation_lifecycle_audit.py",
+        "current_tree_entry": "100644 blob bd0a8a7f63ef332f73c221d341197158bc791997\tbackend/tests/business/test_s4e_stock_reservation_lifecycle_audit.py",
+        "old_content_sha256": "996b2375d639163fabb098cc0adb3b0edc3cbe2d87687c9c37dbf1d573be90b5",
+        "current_content_sha256": "5b416659afefd30f4339a26086e1474129b0b8c80ee97d5fdfb4fe8b7c3a18bc",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/business/test_s4f_business_invariant_closeout.py",
+        "old_tree_entry": "100644 blob 571238f5dbfc7d04233e7a232f4ac3358ea135a2\tbackend/tests/business/test_s4f_business_invariant_closeout.py",
+        "current_tree_entry": "100644 blob 5214417b3e032ab657e30814c8d8fb6b67c5f9f7\tbackend/tests/business/test_s4f_business_invariant_closeout.py",
+        "old_content_sha256": "37329dff7a73f29759565201b92828655819179ee59f110af2f9782f65c8c4c9",
+        "current_content_sha256": "34706c1d6adc20c82fa53bb227d6bbf227b5e36d4f0e0f4cac20b1be14111780",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/mpango_invariants_r0_support.py",
+        "old_tree_entry": "100644 blob 684c436d9969cbd8cf26f709140bb09b3b2f46d5\tbackend/tests/mpango_invariants_r0_support.py",
+        "current_tree_entry": "100644 blob 98b82736cf3f821e1447787afba69d31143bdd6a\tbackend/tests/mpango_invariants_r0_support.py",
+        "old_content_sha256": "e8559ab8d02b846061e353aeb83018bcc6631b2349afbd11e3f084f0c3840a97",
+        "current_content_sha256": "9d1f6e0aa1eada63e95d22e746d5b5db9f37d18b61307c05e941346f8e81b59d",
+        "source_commits": [
+          "38638de2bf15563267e3f3962a3cdd419d99914c",
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/order_state_r2/test_migration_c3.py",
+        "old_tree_entry": "100644 blob 09e5518d457400582bb4d34aac1f5d379d4cf333\tbackend/tests/order_state_r2/test_migration_c3.py",
+        "current_tree_entry": "100644 blob aa8b1172829e37ce4af9fff04256d5159d1fa8ed\tbackend/tests/order_state_r2/test_migration_c3.py",
+        "old_content_sha256": "b3de2857bee052edf124252e9f88d6f6e4f1b4be5c9b984d48b6b20474acd22e",
+        "current_content_sha256": "9a16ba1e4302b9b6b986c3677a6a2aea2fe557f14ad8eb0fcffb57798d7bda0e",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/rc2_current_contract_support.py",
+        "old_tree_entry": "",
+        "current_tree_entry": "100644 blob 33b4dd5cf1d791a38fa0c5ea7fb974c3ed40647d\tbackend/tests/rc2_current_contract_support.py",
+        "old_content_sha256": null,
+        "current_content_sha256": "d67328e331d205a69c6280cc84d2579b0adfe6a1b3975ad21a90672363023857",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
+        "old_tree_entry": "100644 blob 67b97b41518f8851b2d9b4b54eb7095ee66eaa40\tbackend/tests/s1_pricing_quote/test_review_r2.py",
+        "current_tree_entry": "100644 blob d1dca2a4e91d2ea13da5627048d4ed44510e57fe\tbackend/tests/s1_pricing_quote/test_review_r2.py",
+        "old_content_sha256": "b7a3de97590d66e9226acadd77f6b7d0bd339f588468dc3c71c4132d8ad5f33a",
+        "current_content_sha256": "47d282d903a8e092f17a86a930b42e7fbe2b0c6546d86e4bedb45f3947941df6",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_auth_regressions.py",
+        "old_tree_entry": "100644 blob 87f00875d41fcb87d05f7841bb7de57a2731e5a2\tbackend/tests/test_auth_regressions.py",
+        "current_tree_entry": "100644 blob ccd9c3f4c05770bdd9b9a587e3bb7f08ff303168\tbackend/tests/test_auth_regressions.py",
+        "old_content_sha256": "c650f8a721990083c6a35e2852356ba4ae63918efedc1010d6ef36f6265c05ae",
+        "current_content_sha256": "0837df16831e95004399b8049c09d659df2e8449aaf74d51b8ceffa27cb89641",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_combined_setup_authority_contract.py",
+        "old_tree_entry": "100644 blob 8fa7aed327dc6a90ad37070509ddd82563391d5a\tbackend/tests/test_combined_setup_authority_contract.py",
+        "current_tree_entry": "100644 blob bf45082230d36cac6487db127f32fc6ac96a9931\tbackend/tests/test_combined_setup_authority_contract.py",
+        "old_content_sha256": "372921ba2016f76e725150e85fad7729811a261f0f1a44237fb2e79ce8701399",
+        "current_content_sha256": "0b21abf1d9e7b22e6ed3f578ec95f821f3e07eaa6967a520464c0c9fa9c28e3a",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_dc10l_order_status_enum_reconciliation.py",
+        "old_tree_entry": "100644 blob 56746d2f0f76d1fe2bd8b6ae3f74f0169f4ed863\tbackend/tests/test_dc10l_order_status_enum_reconciliation.py",
+        "current_tree_entry": "100644 blob 316e11ba64233bbc8cc6c94b5733051432511e02\tbackend/tests/test_dc10l_order_status_enum_reconciliation.py",
+        "old_content_sha256": "b549db560787884df3c63b597739b79fc2b7a317fb4887b62201cdbdfc485ce8",
+        "current_content_sha256": "19ca0f1ceeea1f4c0c61702cbf8f882fb8fa20781e519fc21b3d13ebbdcb2d7d",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_dc11d_payment_replay_concurrency_integrity.py",
+        "old_tree_entry": "100644 blob accf5b9bfea478a8bb97416a9455cd1cf444a9fe\tbackend/tests/test_dc11d_payment_replay_concurrency_integrity.py",
+        "current_tree_entry": "100644 blob c0f142726ed9ffb196faf318779c818cd8c72467\tbackend/tests/test_dc11d_payment_replay_concurrency_integrity.py",
+        "old_content_sha256": "f7726867ae3ab13bee3731279e551d4108a4a661864b52e5b14c735e34d81a59",
+        "current_content_sha256": "8ee8c2a6fd6477c8b93076bb3e021df015146fd43b45689837295fcb6052b03c",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_dc12r1_h7_bcrypt_manifest_parity.py",
+        "old_tree_entry": "100644 blob bc5ba7b5e768d39949bd2be82fb87b030a35031e\tbackend/tests/test_dc12r1_h7_bcrypt_manifest_parity.py",
+        "current_tree_entry": "100644 blob 9b33db5ff0d3a57fc664a0bf58f68d432fc9e02e\tbackend/tests/test_dc12r1_h7_bcrypt_manifest_parity.py",
+        "old_content_sha256": "6249f4f2434a2772b21a13a2af1bf14b43580bf48e20a998c93b9258f7fbe949",
+        "current_content_sha256": "165d3546c6edbdadf90fdaf700f1ae3ed10c4a9f95d8f042bd301acf494be05e",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_dc12r1_s3_s1_catalog_order_hardening.py",
+        "old_tree_entry": "100644 blob c7d3416f189accb4be02fe967ca4d9db6a754f77\tbackend/tests/test_dc12r1_s3_s1_catalog_order_hardening.py",
+        "current_tree_entry": "100644 blob ce429c78fffd1d3de729633a3b7e88e110935144\tbackend/tests/test_dc12r1_s3_s1_catalog_order_hardening.py",
+        "old_content_sha256": "da6c1697e321883190ab424ba05937c64cde80a10b28b323cc9155cb377ec5ae",
+        "current_content_sha256": "a4e194d9b143bd20b2449752e2330dfd111536b75c2c75649efff27f41c110c2",
+        "source_commits": [
+          "38638de2bf15563267e3f3962a3cdd419d99914c",
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_dc12r1_s3_s2_read_only_retailer_finance.py",
+        "old_tree_entry": "100644 blob ccd3f0832ea087deca983ba965190f934692a4f2\tbackend/tests/test_dc12r1_s3_s2_read_only_retailer_finance.py",
+        "current_tree_entry": "100644 blob 175f6d2c2bc14637c72cbff51ed7811c1a405977\tbackend/tests/test_dc12r1_s3_s2_read_only_retailer_finance.py",
+        "old_content_sha256": "44e206ed6bd1368a12dba275847b1e13ebd4a4cd1c435aa4146e89486fff167b",
+        "current_content_sha256": "b10914718b606cb5582fa44148faa097f50d557274447cba880af45e60f5ef33",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py",
+        "old_tree_entry": "100644 blob cff3d29b79203cdd44d3d8c64649e2311f0ac478\tbackend/tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py",
+        "current_tree_entry": "100644 blob e625719526959b831d395d384424586b94c204bc\tbackend/tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py",
+        "old_content_sha256": "ffe7447c8082844e858f0570548d629a24b6c83a4b2797c58a0597122774c661",
+        "current_content_sha256": "533cd16c129ba6024abcff5e38c49e72ef11d50e8ae915e5e6b7e20d6c34a164",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py",
+        "old_tree_entry": "100644 blob c8e5ac26f8455f3cbd9a416076034b1427918b7b\tbackend/tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py",
+        "current_tree_entry": "100644 blob 0c692ddc9ba05569f5cb257661ad248c2af191ea\tbackend/tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py",
+        "old_content_sha256": "ef7f77524182918b60032e67e024603158a75c5841087080a538cac4a269f9df",
+        "current_content_sha256": "5910f5f048104da4579933116cb18e7b9d02d7198dcca18f23c9a4630c7f8fe8",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_g1_r2_lifecycle_and_public_prep_contract.py",
+        "old_tree_entry": "100644 blob 5d90bc89f6c399eaebb4c9584b85f2280de19b54\tbackend/tests/test_g1_r2_lifecycle_and_public_prep_contract.py",
+        "current_tree_entry": "100644 blob f7ae0eebd54f27b9814b2a3181a1665db74a34f3\tbackend/tests/test_g1_r2_lifecycle_and_public_prep_contract.py",
+        "old_content_sha256": "2777ef7df7d81aba3b20a69ca343a229e8af048ebaa79218a4c9f58a50f06050",
+        "current_content_sha256": "5837bb93882d680fcbae1bcf5c09d1f6610c38ce4fbbd80f2b6e76e8c442fb83",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_g1_r2e_tenant_ddl_authority_contract.py",
+        "old_tree_entry": "100644 blob c7ec495cc0f6ea7395fca9988ef556748324eb0e\tbackend/tests/test_g1_r2e_tenant_ddl_authority_contract.py",
+        "current_tree_entry": "100644 blob 52fdd0db29604d3706d1bbc1632fb0b834d25b17\tbackend/tests/test_g1_r2e_tenant_ddl_authority_contract.py",
+        "old_content_sha256": "b3c88cb6dac01b3dbb07c7dbcc95a3b69c6d4db1596c7fa153a5d3e482064326",
+        "current_content_sha256": "dda2cd094a843e4d15e2754adf8768a47b47c762489e59fdb386bf8be8c6ba65",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_mpango_mvp_invariants_r0_concurrency.py",
+        "old_tree_entry": "100644 blob 032a3c057953a2bd6fc542f2a8c3e3918d669258\tbackend/tests/test_mpango_mvp_invariants_r0_concurrency.py",
+        "current_tree_entry": "100644 blob 51d87d0597875ae9bba37edc6d5279ef437ab6ce\tbackend/tests/test_mpango_mvp_invariants_r0_concurrency.py",
+        "old_content_sha256": "fdd47eec8e3cc5fbe29d89938c59572e7cc77f446f029d6ae4fc124bacf57871",
+        "current_content_sha256": "a0b4490ddf4658fd5288446e390a1000333ffef38ac8190e1096c6353c190050",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_runtime_readiness_gate.py",
+        "old_tree_entry": "100644 blob aa2be37d9425b7016c763c642a0dda28e98487d7\tbackend/tests/test_runtime_readiness_gate.py",
+        "current_tree_entry": "100644 blob 8dc312250fe3f61a7ff234e9c08ae74b9d5c0202\tbackend/tests/test_runtime_readiness_gate.py",
+        "old_content_sha256": "7fb1c361c43b1fe6306018405a8e35e2a4194d40f0c14927b1becaa8487a3e3b",
+        "current_content_sha256": "a139955025aabbb2ed9a0d30d3ca2cd6dd67048250d58cf484779d97ccb28025",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_s3a_fresh_tenant_runtime_smoke.py",
+        "old_tree_entry": "100644 blob 683cb751037b253f7590115f541728113f579826\tbackend/tests/test_s3a_fresh_tenant_runtime_smoke.py",
+        "current_tree_entry": "100644 blob 3f926a7684c58fa27f369b4528c9f6e5cc427c0d\tbackend/tests/test_s3a_fresh_tenant_runtime_smoke.py",
+        "old_content_sha256": "b3459532e76b2cb6a3d550210f771d6c3190d177ade95cc3572d71592f768bbb",
+        "current_content_sha256": "f143102f573b50ad843367635eee63a0be04966f8caaf3f6b1a8fd9e46728396",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_s3c_self_contained_fresh_tenant_live_proof.py",
+        "old_tree_entry": "100644 blob d4e762cd5e2237ad349533a3c29d91d7b65405ff\tbackend/tests/test_s3c_self_contained_fresh_tenant_live_proof.py",
+        "current_tree_entry": "100644 blob bdf1042c67da9883b474da29511a5eda515ba64d\tbackend/tests/test_s3c_self_contained_fresh_tenant_live_proof.py",
+        "old_content_sha256": "e989024e6a5b6a093ee0a43d98a7c32e6822e15be1fe97049a0bc873611c137c",
+        "current_content_sha256": "70384af0f60247b50f8fc1f012f7d3665febed4dd93a5a09fa7377a98b15900a",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_s5_ledger.py",
+        "old_tree_entry": "100644 blob b51f674128ecdfc62b5a260a8291cef8f7dd4879\tbackend/tests/test_s5_ledger.py",
+        "current_tree_entry": "100644 blob 98e24818a868aac255537e79d512f78aed6bef35\tbackend/tests/test_s5_ledger.py",
+        "old_content_sha256": "4b58ded99c9bf874eecbfffc631e2f877ad21dcc226c4f319ef12493c7ddd8fc",
+        "current_content_sha256": "e5bff3fb9512204c3defe55900a50614d9d8deef80ae33e497ddda9a42aa1ba3",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_s5_order_state_machine.py",
+        "old_tree_entry": "100644 blob b19013149e3e2370be721b63820de4e044d78571\tbackend/tests/test_s5_order_state_machine.py",
+        "current_tree_entry": "100644 blob ef14a4b0b994ea32a83c15b421679be8456ce40f\tbackend/tests/test_s5_order_state_machine.py",
+        "old_content_sha256": "432dfc1484014b0d947e6521ece962888113a775d0dd7a845b0b60de28eb0239",
+        "current_content_sha256": "929d6e5c18a1c2db5e7e68fd63bdbfe16cb5f466a651d8f64b2e2e33c130b688",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_s5a_fresh_tenant_real_user_journey_gate.py",
+        "old_tree_entry": "100644 blob e7798bf9c637273a99abd04087038731c0a20229\tbackend/tests/test_s5a_fresh_tenant_real_user_journey_gate.py",
+        "current_tree_entry": "100644 blob 6dae75e8da9e574263e2a6e3e80f9a4a58901363\tbackend/tests/test_s5a_fresh_tenant_real_user_journey_gate.py",
+        "old_content_sha256": "c657c63b6e373eb39750ac376a38e18555a77341501623fc562ff2301d58c9c7",
+        "current_content_sha256": "e38ddefb91a1f25fde2a751b2aa1cf68ea4c9834e91a33c4ff24ed7af6b26e5b",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_sku_m1_migration_pg16.py",
+        "old_tree_entry": "100644 blob 44b7ad678a6274155687262f659cecdaa0a06a61\tbackend/tests/test_sku_m1_migration_pg16.py",
+        "current_tree_entry": "100644 blob c996eaa9a27fee978efc3b8249c149196a19b3aa\tbackend/tests/test_sku_m1_migration_pg16.py",
+        "old_content_sha256": "52b132aa991e70929d240229c6adb395b4dae22e2c892038742e7ccf7e376d2c",
+        "current_content_sha256": "b5dd9bed0a808882a2ed6e6448a787f924178d5522987f2eaf13415e29301f15",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_sku_r1_client_catalog_contract.py",
+        "old_tree_entry": "100644 blob d36d31a7ce3e9707e95a4db2ad0400189209ea48\tbackend/tests/test_sku_r1_client_catalog_contract.py",
+        "current_tree_entry": "100644 blob dc81183f88b637a26e99ed3200f1bbb1bf25e28f\tbackend/tests/test_sku_r1_client_catalog_contract.py",
+        "old_content_sha256": "91fc115898d0480aa02101a94a2f3f26e2071a8b1e147b812c5ee63797ff6ef7",
+        "current_content_sha256": "51df335278e4bd9e432d4739964e0aa786f79abeb20479f51c9c411f042d8c3c",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_sku_r1_multipackaging_closure.py",
+        "old_tree_entry": "100644 blob bd11217b97ec49d468c508eae9d7c685b280ece9\tbackend/tests/test_sku_r1_multipackaging_closure.py",
+        "current_tree_entry": "100644 blob c00dd589371f8ae71f0e04ff95a626fa7cc50f58\tbackend/tests/test_sku_r1_multipackaging_closure.py",
+        "old_content_sha256": "539f6d99cf2a6ae692ec9b2e9ce22ecfd893e5fe4571f7223d8c26b8d1bcba45",
+        "current_content_sha256": "b6840cba2b88ea125b9adbfe422272d7457e74a1c4014f39ce1dfe6412463353",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_u6f_onboarding_auth_chain_closeout.py",
+        "old_tree_entry": "100644 blob 93e8d2527bc595c703fa3d99b6f540226b032915\tbackend/tests/test_u6f_onboarding_auth_chain_closeout.py",
+        "current_tree_entry": "100644 blob 0270d9d46e270fd86bbb9b7066246b3fc7cf7241\tbackend/tests/test_u6f_onboarding_auth_chain_closeout.py",
+        "old_content_sha256": "a864af4f39ef02c6bb7836a5c9b882ac77c21efb6fe9fa8f8c0991cc2e2c80e7",
+        "current_content_sha256": "3c3841b0f94d962623128f789e399c7f004f75a4e6564f143e0fe9f73f2882b8",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "backend/tests/test_u6i1_owner_credential_setup_schema.py",
+        "old_tree_entry": "100644 blob a36959afe33d046556a5ad43a6d8a85057113abb\tbackend/tests/test_u6i1_owner_credential_setup_schema.py",
+        "current_tree_entry": "100644 blob a6d90dec82a75b0e936818c0e23809e13d31a286\tbackend/tests/test_u6i1_owner_credential_setup_schema.py",
+        "old_content_sha256": "790a7dc1f790646e67c3f7c1b0e88ebda9883536c8a4ff4eeb38ae1da1ae59f2",
+        "current_content_sha256": "e1a40102259f074b0f553199f4b34731a55d64be757325ee4de2fb733dbe7a16",
+        "source_commits": [
+          "4af23f9899ab674537b653078dff72e1c465ce40"
+        ]
+      },
+      {
+        "path": "frontend/src/components/catalog/OrderProductPicker.tsx",
+        "old_tree_entry": "",
+        "current_tree_entry": "100644 blob ecd2597461a6a6b93346c4de9f6d6701300bd046\tfrontend/src/components/catalog/OrderProductPicker.tsx",
+        "old_content_sha256": null,
+        "current_content_sha256": "15f64e7baf1a833f85648d7c9bfb7468f5fcf5fbfe0c9f2bb5ac0b5eafe5e081",
+        "source_commits": [
+          "7d86e513fe8d37558bf4595330a62c9b082c7776"
+        ]
+      },
+      {
+        "path": "frontend/src/pages/client/CreateOrderPage.tsx",
+        "old_tree_entry": "100644 blob 054c79dac4067690dd65d27c0774533156b57271\tfrontend/src/pages/client/CreateOrderPage.tsx",
+        "current_tree_entry": "100644 blob be3f259f795107b7fd385049a7dfe8515031156e\tfrontend/src/pages/client/CreateOrderPage.tsx",
+        "old_content_sha256": "2ad010731f8ecd33262841061d30da57a24ae7719032c61e37f4e9649ee53f3c",
+        "current_content_sha256": "e69eb68c40efe2fdfd60fa5e7c781c19dc99e1857137977e4a552fd9161e6abe",
+        "source_commits": [
+          "7d86e513fe8d37558bf4595330a62c9b082c7776"
+        ]
+      },
+      {
+        "path": "frontend/src/pages/client/ProductDetailPage.tsx",
+        "old_tree_entry": "100644 blob 24d99bbd8f5fa004e08a73e78c807069c5f66678\tfrontend/src/pages/client/ProductDetailPage.tsx",
+        "current_tree_entry": "100644 blob 61788a64016c03af389e15bc9e287c2f65696af9\tfrontend/src/pages/client/ProductDetailPage.tsx",
+        "old_content_sha256": "943e36f5e694affe82320c6b89937e83917c8c2f9153b6cf3474e9bba96ee231",
+        "current_content_sha256": "7be62e8c610a09d92956c92fd57e7c7a00546cab4651413cc4200b456df0c411",
+        "source_commits": [
+          "7d86e513fe8d37558bf4595330a62c9b082c7776"
+        ]
+      },
+      {
+        "path": "frontend/src/tests/RetailerMobileOrder.test.tsx",
+        "old_tree_entry": "",
+        "current_tree_entry": "100644 blob d13f5f9ea801f2b56b41a5ca66ce9d0230b74527\tfrontend/src/tests/RetailerMobileOrder.test.tsx",
+        "old_content_sha256": null,
+        "current_content_sha256": "e0b144da25301c3d43feebf54cc612e81bf3fb703e8d90b41fc90fb7492be4f1",
+        "source_commits": [
+          "7d86e513fe8d37558bf4595330a62c9b082c7776"
+        ]
+      }
+    ]
+  },
+  "current_attachment_deltas": [
+    {
+      "binding_id": "s1_pricing_quote_independent_v3",
+      "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
+      "historical_candidate": "88c7d8157ac5c46795d411ea6799112e017c9532",
+      "historical_load_bearing_blob": "67b97b41518f8851b2d9b4b54eb7095ee66eaa40",
+      "current_source_ref": "7d86e513fe8d37558bf4595330a62c9b082c7776",
+      "current_blob": "d1dca2a4e91d2ea13da5627048d4ed44510e57fe",
+      "current_content_sha256": "47d282d903a8e092f17a86a930b42e7fbe2b0c6546d86e4bedb45f3947941df6",
+      "classification": "GAP_CURRENT_ATTACHMENT_NOT_REEXECUTED",
+      "current_file_same_as_historical": false,
+      "current_file_reexecuted_this_intake": false,
+      "change": "One static attachment line: read migration 041 instead of 040. Historical 77 XML and node map stay on their original blob.",
+      "historical_evidence_rebound": false
+    },
+    {
+      "binding_id": "product_images_core_cto_bounded_acceptance",
+      "path": "frontend/src/pages/client/ProductDetailPage.tsx",
+      "historical_candidate": "97eb3d89daf3daca45d7289c6669f1cca18d5ef2",
+      "historical_load_bearing_blob": "24d99bbd8f5fa004e08a73e78c807069c5f66678",
+      "current_source_ref": "7d86e513fe8d37558bf4595330a62c9b082c7776",
+      "current_blob": "61788a64016c03af389e15bc9e287c2f65696af9",
+      "current_content_sha256": "7be62e8c610a09d92956c92fd57e7c7a00546cab4651413cc4200b456df0c411",
+      "classification": "GAP_CURRENT_ATTACHMENT_NOT_REEXECUTED",
+      "current_file_same_as_historical": false,
+      "current_file_reexecuted_this_intake": false,
+      "change": "Mobile UX product-detail layout is changed; prior image/S2 browser scope is not a current frontend reexecution.",
+      "historical_evidence_rebound": false
+    }
   ]
 }
 ''')

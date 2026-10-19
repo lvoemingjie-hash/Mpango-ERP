@@ -3915,7 +3915,7 @@ class TestWrapperWrongHeadRefusal:
 class TestReuseValidityMachineCheck:
     """Approved Git objects, complete metadata and real admission controls."""
 
-    APPROVED = "97eb3d89daf3daca45d7289c6669f1cca18d5ef2"
+    APPROVED = "7d86e513fe8d37558bf4595330a62c9b082c7776"
 
     def _coverage(self, tmp_path):
         path = tmp_path / "coverage.json"
@@ -4011,7 +4011,7 @@ class TestReuseValidityMachineCheck:
         assert set(history) == {"docs/ai/PROJECT.md", "docs/ai/PROJECT_MEMORY.md"}
         for rel, item in history.items():
             assert rel not in photo["load_bearing_blobs"]
-            original = subprocess.check_output(["git", "rev-parse", self.APPROVED + ":" + rel], cwd=repo, text=True).strip()
+            original = subprocess.check_output(["git", "rev-parse", item["source_ref"] + ":" + rel], cwd=repo, text=True).strip()
             assert item["git_blob"] == original
             assert item["classification"] == "HISTORICAL_SOURCE_ONLY_NOT_CURRENT_FROZEN_FILE"
             target = repo / rel
@@ -4097,6 +4097,102 @@ class TestReuseValidityMachineCheck:
             "fd37acbbd3af8c9d0ed64ecb4ad0849d4ab8c366"], capture_output=True, text=True)
         assert proc.returncode == 5
         assert "REUSE_APPROVED_REF_NOT_AUTHORIZED" in proc.stderr
+
+    def test_current_intake_preserves_history_and_explicit_attachment_gaps(self, tmp_path):
+        coverage = json.loads(self._coverage(tmp_path).read_text())
+        historical = json.loads(subprocess.check_output([
+            "git", "show", self.APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+        ], cwd=REPO_ROOT, text=True))
+        assert coverage["bindings"] == historical["bindings"]
+        assert coverage["recovered_native_node_maps"] == historical["recovered_native_node_maps"]
+        current = coverage["current_source_intake"]
+        assert current["source_ref"] == self.APPROVED
+        for subtree, key in (("backend", "backend_tree"), ("frontend", "frontend_tree")):
+            assert current[key] == subprocess.check_output([
+                "git", "rev-parse", self.APPROVED + ":" + subtree
+            ], cwd=REPO_ROOT, text=True).strip()
+        assert current["authority_record"]["sha256"] == "b15632375e76c36fad7fd01ebe989c74153fa2ae79c8e8b7a924a73c7dc0bed7"
+        assert current["cto_ruling"]["sha256"] == "85511da10ecd25599126d63c7c2233ea10d869c636d599d99ec6de112fe28c57"
+        assert current["current_fresh_ordinary_collection"] == "CURRENT_FRESH_COLLECTION_NOT_ESTABLISHED"
+        assert current["ordinary_definition"] == {
+            "nodes": 4288, "files": 236, "dedicated_files": 16, "ignores": 6,
+            "canonical_definition_changed": False,
+        }
+        frontend = current["accepted_author_local_frontend_scope"]
+        assert frontend["vitest_files"] == 39 and frontend["vitest_tests_passed"] == 511
+        assert frontend["browser_scenarios"] == ["C1-UG", "C2-KE", "C3-UG", "C4-KE"]
+        assert current["historical_results_reexecuted"] is False
+        assert current["hosted_ci_this_intake"] == "NOT_RUN"
+        assert current["independent_v3_this_intake"] == "NOT_ESTABLISHED"
+        deltas = {item["path"]: item for item in coverage["current_attachment_deltas"]}
+        assert set(deltas) == {
+            "backend/tests/s1_pricing_quote/test_review_r2.py",
+            "frontend/src/pages/client/ProductDetailPage.tsx",
+        }
+        s1 = deltas["backend/tests/s1_pricing_quote/test_review_r2.py"]
+        assert s1["historical_load_bearing_blob"] == "67b97b41518f8851b2d9b4b54eb7095ee66eaa40"
+        assert s1["current_blob"] == "d1dca2a4e91d2ea13da5627048d4ed44510e57fe"
+        for item in deltas.values():
+            assert item["classification"] == "GAP_CURRENT_ATTACHMENT_NOT_REEXECUTED"
+            assert item["current_file_same_as_historical"] is False
+            assert item["current_file_reexecuted_this_intake"] is False
+            assert item["historical_evidence_rebound"] is False
+        proc, result = self._check(REPO_ROOT, self._coverage(tmp_path))
+        assert proc.returncode == 0 and result["all_valid"]
+        assert result["release_ready"] is False and result["evidence_ready"] is False
+
+    @pytest.mark.parametrize("forgery", ["source_ref", "frontend_tree", "frontend_independence", "historical_reexecution", "attachment_reexecution"])
+    def test_coverage_only_current_or_historical_claim_cannot_self_approve(self, tmp_path, forgery):
+        path = self._coverage(tmp_path)
+        data = json.loads(path.read_text())
+        if forgery in ("source_ref", "frontend_tree"):
+            data["current_source_intake"][forgery] = "0" * 40
+        elif forgery == "frontend_independence":
+            data["current_source_intake"]["accepted_author_local_frontend_scope"]["tier"] = "INDEPENDENT_V3_REEXECUTED"
+        elif forgery == "historical_reexecution":
+            data["current_source_intake"]["historical_results_reexecuted"] = True
+        else:
+            data["current_attachment_deltas"][0]["current_file_reexecuted_this_intake"] = True
+        path.write_text(json.dumps(data))
+        proc, result = self._check(REPO_ROOT, path)
+        assert proc.returncode == 5
+        assert "REUSE_METADATA_PROVENANCE" in result["problems"]
+        assert not result["all_valid"] and not result["release_ready"] and not result["evidence_ready"]
+
+    @pytest.mark.parametrize("drift", ["backend_byte", "frontend_byte", "extra_path"])
+    def test_private_product_drift_restore_returns_to_frozen_source(self, tmp_path, drift):
+        import hashlib
+        import stat
+
+        repo = self._clone(tmp_path)
+        rel = {"backend_byte": "backend/services/canonical_payment_service.py",
+               "frontend_byte": "frontend/src/App.tsx",
+               "extra_path": "frontend/unapproved-current-intake.txt"}[drift]
+        target = repo / rel
+        original = target.read_bytes() if target.exists() else None
+        mode = stat.S_IMODE(target.stat().st_mode) if original is not None else None
+        coverage = self._coverage(tmp_path)
+        try:
+            target.write_bytes((original or b"") + b"\n# disposable unapproved source change\n")
+            proc, result = self._check(repo, coverage)
+            assert proc.returncode == 5 and not result["all_valid"]
+            category = "REUSE_OBJECT_SET_DRIFT" if original is None else "REUSE_OBJECT_DRIFT"
+            assert category in result["problems"]
+        finally:
+            if original is None:
+                target.unlink()
+            else:
+                target.write_bytes(original)
+                target.chmod(mode)
+        if original is not None:
+            assert hashlib.sha256(target.read_bytes()).digest() == hashlib.sha256(original).digest()
+            assert stat.S_IMODE(target.stat().st_mode) == mode
+        else:
+            assert not target.exists()
+        proc, result = self._check(repo, coverage)
+        assert proc.returncode == 0 and result["all_valid"]
+        assert not result["release_ready"] and not result["evidence_ready"]
+        assert subprocess.check_output(["git", "status", "--porcelain"], cwd=repo) == b""
 
     @pytest.mark.parametrize("drift", ["mode", "symlink", "extra"])
     def test_product_type_mode_and_extra_path_refused(self, tmp_path, drift):

@@ -113,3 +113,28 @@ async def test_negotiated_price_reaches_only_canonical_payment_once(r1_client, w
         payment = (await db.execute(text('SELECT method,amount FROM payments WHERE order_id=:id'), {'id': UUID(new_id)})).one()
         assert tuple(hold) == (hold_state, Decimal('0'))
         assert tuple(payment) == (method, Decimal('140'))
+
+
+@pytest.mark.parametrize('spelling', ['uppercase', 'compact', 'urn', 'braces'])
+async def test_alternate_uuid_request_rechecks_live_authority(r1_client, world, spelling):
+    source = await original(r1_client, world)
+    proposal = (await offer(r1_client, world, source)).json()['data']
+
+    def render(value):
+        parsed = UUID(value)
+        return {'uppercase': str(parsed).upper(), 'compact': parsed.hex,
+                'urn': parsed.urn, 'braces': '{'+str(parsed)+'}'}[spelling]
+
+    path = f"/api/v1/client/orders/{render(source['id'])}/negotiations/{render(proposal['id'])}/accept"
+    body = {'version': proposal['version'], 'digest': proposal['digest']}
+    key = str(uuid4())
+    warm = await r1_client.post(path, json=body, headers=headers(world, client=True, key=key))
+    assert warm.status_code == 200, 'S3_ALTERNATE_UUID_IS_A_VALID_ROUTE'
+    async with world['session']() as db:
+        await db.execute(text("DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE name='retailer_operator') AND permission_id IN (SELECT id FROM permissions WHERE code='client:orders:create')"))
+        await db.commit()
+    before = await economics(world)
+    replay = await r1_client.post(path, json=body, headers=headers(world, client=True, key=key))
+    assert replay.status_code == 403, 'S3_ALTERNATE_UUID_NEVER_CACHES_LIVE_CONSENT_AUTHORITY'
+    assert replay.headers.get('X-Idempotency-Replayed') is None
+    assert await economics(world) == before

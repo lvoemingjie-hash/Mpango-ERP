@@ -99,9 +99,11 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
 
         # S3 decisions always reach live identity/permission checks and the
         # durable proposal transaction, including committed-result replays.
+        # Match route segments, not one UUID spelling; UUID parsing belongs
+        # to the route and also accepts uppercase, compact, URN and braces.
         if request.method == 'POST' and re.fullmatch(
-            r'/api/v1/(?:client/)?orders/[0-9a-f-]{36}/negotiations'
-            r'(?:/[0-9a-f-]{36}/(?:accept|reject|withdraw))?', path
+            r'/api/v1/(?:client/)?orders/[^/]+/negotiations'
+            r'(?:/[^/]+/(?:accept|reject|withdraw))?', path
         ):
             return await call_next(request)
 

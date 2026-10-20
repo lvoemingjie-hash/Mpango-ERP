@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatMoney } from '@/utils/printFormat';
 import { Modal } from '@/components/ui/Modal';
 import type { PayOrderData, PaymentMethod } from '@/services/orderService';
 
@@ -10,6 +11,8 @@ interface PaymentRecordModalProps {
   orderTotal: number;
   /** Remaining amount available for ordinary settlement or credit collection. */
   remainingAmount: number;
+  /** Server currency snapshot for this order; never inferred from locale. */
+  currency?: string | null;
   allowCreditSale?: boolean;
   loading?: boolean;
 }
@@ -34,6 +37,7 @@ export function PaymentRecordModal({
   orderId,
   orderTotal,
   remainingAmount,
+  currency = null,
   allowCreditSale = remainingAmount === orderTotal,
   loading = false,
 }: PaymentRecordModalProps) {
@@ -46,6 +50,7 @@ export function PaymentRecordModal({
   const resetIdempotencyKey = () => setIdempotencyKey(createPaymentIdempotencyKey());
 
   const creditUnavailable = !allowCreditSale;
+  const currencyLabel = currency === 'KES' || currency === 'UGX' ? currency : 'LEGACY_CURRENCY_UNVERIFIED';
   const isValid = method && amount && Number(amount) > 0
     && (method === 'credit' ? Number(amount) === orderTotal && allowCreditSale : Number(amount) <= remainingAmount);
 
@@ -68,11 +73,11 @@ export function PaymentRecordModal({
         return;
       }
       if (numAmount !== orderTotal) {
-        setError(`Credit amount must equal the full order total of KES ${orderTotal.toLocaleString()}. Partial credit is not supported.`);
+        setError(`Credit amount must equal the full order total of ${formatMoney(orderTotal, currency)}. Partial credit is not supported.`);
         return;
       }
     } else if (numAmount > remainingAmount) {
-      setError(`Amount cannot exceed remaining balance of KES ${remainingAmount.toLocaleString()}`);
+      setError(`Amount cannot exceed remaining balance of ${formatMoney(remainingAmount, currency)}`);
       return;
     }
 
@@ -113,12 +118,12 @@ export function PaymentRecordModal({
             Order: <span className="font-medium text-gray-900">#{orderId.slice(0, 8)}</span>
           </p>
           <p>
-            Order Total: <span className="font-medium">KES {orderTotal.toLocaleString()}</span>
+            Order Total: <span className="font-medium">{formatMoney(orderTotal, currency)}</span>
           </p>
           <p>
             Remaining:{' '}
             <span className="font-medium text-amber-600">
-              KES {remainingAmount.toLocaleString()}
+              {formatMoney(remainingAmount, currency)}
             </span>
           </p>
         </div>
@@ -167,7 +172,7 @@ export function PaymentRecordModal({
 
         <div>
           <label htmlFor="pay-amount" className="block text-sm font-medium text-gray-700">
-            Amount (KES) *
+            Amount ({currencyLabel}) *
           </label>
           <input
             id="pay-amount"
@@ -181,7 +186,7 @@ export function PaymentRecordModal({
               resetIdempotencyKey();
             }}
             readOnly={method === 'credit'}
-            placeholder={method === 'credit' ? 'Full order total (auto-filled)' : `Max: KES ${remainingAmount.toLocaleString()}`}
+            placeholder={method === 'credit' ? 'Full order total (auto-filled)' : `Max: ${formatMoney(remainingAmount, currency)}`}
             className={`mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500${method === 'credit' ? ' bg-gray-100 cursor-not-allowed' : ''}`}
           />
         </div>
@@ -207,7 +212,7 @@ export function PaymentRecordModal({
 
         {method === 'credit' && (
           <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-700">
-            <strong>Credit Sale:</strong> No cash is received now. The full order balance (KES {orderTotal.toLocaleString()}) will be recorded as an account receivable. Repayment is tracked separately under Accounts Receivable.
+            <strong>Credit Sale:</strong> No cash is received now. The full order balance ({formatMoney(orderTotal, currency)}) will be recorded as an account receivable. Repayment is tracked separately under Accounts Receivable.
           </div>
         )}
 

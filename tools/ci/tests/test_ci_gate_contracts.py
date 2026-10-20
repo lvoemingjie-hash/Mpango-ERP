@@ -3732,7 +3732,7 @@ class TestR6R5HostedPreconditions:
     def test_e03_helper_and_backend_frozen(self):
         diff = self._git(
             "diff", "--name-only",
-            "c2fff20365b16254db2163504751fa5f84746e80", "HEAD",
+            "032a77e81112e606e85e35f8f609ada5a81c3c1e", "HEAD",
             "--", "backend",
             cwd=REPO_ROOT,
         )
@@ -3915,7 +3915,8 @@ class TestWrapperWrongHeadRefusal:
 class TestReuseValidityMachineCheck:
     """Approved Git objects, complete metadata and real admission controls."""
 
-    APPROVED = "bac775df8257ea2fd626d6de425f3564748b37f2"
+    APPROVED = "032a77e81112e606e85e35f8f609ada5a81c3c1e"
+    HISTORICAL_COVERAGE_REF = "bac775df8257ea2fd626d6de425f3564748b37f2"
 
     def _coverage(self, tmp_path):
         path = tmp_path / "coverage.json"
@@ -4101,7 +4102,7 @@ class TestReuseValidityMachineCheck:
     def test_current_intake_preserves_history_and_explicit_attachment_gaps(self, tmp_path):
         coverage = json.loads(self._coverage(tmp_path).read_text())
         historical = json.loads(subprocess.check_output([
-            "git", "show", self.APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+            "git", "show", self.HISTORICAL_COVERAGE_REF + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
         ], cwd=REPO_ROOT, text=True))
         assert coverage["bindings"][:-2] == historical["bindings"]
         assert coverage["recovered_native_node_maps"] == historical["recovered_native_node_maps"]
@@ -4453,7 +4454,7 @@ class TestRC3LocalIntegrationIntake:
         assert ui['evidence']['browser']['candidate'] == ui['candidate']
         assert ui['evidence']['browser']['countries'] == ['UG', 'KE']
         assert len(ui['evidence']['browser']['screenshots']) == 8
-        assert ui['evidence']['build']['candidate'] == probe.APPROVED
+        assert ui['evidence']['build']['candidate'] == probe.HISTORICAL_COVERAGE_REF
         assert ui['evidence']['build']['rc'] == 0
         assert ui['evidence']['cto_normal_hook']['passed_hooks'] == 4
         assert not ui['files'], 'UI Vitest/browser observations are not backend pytest nodes'
@@ -4498,3 +4499,89 @@ class TestRC3LocalIntegrationIntake:
                                'c2fff20365b16254db2163504751fa5f84746e80'], capture_output=True, text=True)
         assert proc.returncode == 5
         assert 'REUSE_APPROVED_REF_NOT_AUTHORIZED' in proc.stderr
+
+
+class TestRC3FixtureSourceContinuity:
+    """An accepted fixture successor updates authority, never past execution."""
+
+    def test_current_fixture_source_preserves_complete_prior_intake(self, tmp_path):
+        probe = TestReuseValidityMachineCheck()
+        coverage = json.loads(probe._coverage(tmp_path).read_text())
+        prior = json.loads(subprocess.check_output([
+            'git', 'show', probe.APPROVED + ':docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json'
+        ], cwd=REPO_ROOT, text=True))
+        assert coverage['bindings'] == prior['bindings']
+        assert coverage['recovered_native_node_maps'] == prior['recovered_native_node_maps']
+        assert coverage['current_dependency_assessments'] == prior['current_dependency_assessments']
+        assert coverage['previous_local_integration_source_intake'] == prior['current_source_intake']
+        assert coverage['previous_local_integration_selection_binding'] == prior['selection_binding']
+        assert coverage['previous_local_integration_attachment_deltas'] == prior['current_attachment_deltas']
+        current = coverage['current_source_intake']
+        assert current['source_ref'] == probe.APPROVED
+        assert current['source_tree'] == subprocess.check_output([
+            'git', 'rev-parse', probe.APPROVED + '^{tree}'
+        ], cwd=REPO_ROOT, text=True).strip()
+        assert current['source_parent'] == subprocess.check_output([
+            'git', 'rev-parse', probe.APPROVED + '^'
+        ], cwd=REPO_ROOT, text=True).strip()
+        closure = coverage['local_fixture_contract_closeout']
+        assert closure['source_ref'] == probe.APPROVED
+        assert closure['execution_identity'] == 'AUTHOR_EXECUTED__CTO_READONLY_ACCEPTED__CROSS_ROUND_NOT_ONE_FIRST_PASS'
+        assert closure['fresh_collection'] == {'nodes': 4288, 'body_executed': False, 'definition_changed': False}
+        assert closure['new_independent_v3'] is False
+        assert closure['hosted_ci'] == 'NOT_RUN'
+        proc, result = probe._check(REPO_ROOT, probe._coverage(tmp_path))
+        assert proc.returncode == 0 and result['all_valid']
+        assert result['current_accepted_node_union'] == 166
+        assert not result['release_ready'] and not result['evidence_ready']
+
+    def test_previous_bac_is_not_the_current_approved_ref(self, tmp_path):
+        probe = TestReuseValidityMachineCheck()
+        path = probe._coverage(tmp_path)
+        proc = subprocess.run([
+            sys.executable, str(EVIDENCE_TOOL), 'verify-reuse', '--coverage', str(path),
+            '--repo-root', str(REPO_ROOT), '--approved-ref', probe.HISTORICAL_COVERAGE_REF
+        ], capture_output=True, text=True)
+        assert proc.returncode == 5
+        assert 'REUSE_APPROVED_REF_NOT_AUTHORIZED' in proc.stderr
+
+    @pytest.mark.parametrize('forgery', ['erase_gap', 'fake_independence', 'fake_4288_body'])
+    def test_fixture_acceptance_cannot_expand_business_or_runtime_claims(self, tmp_path, forgery):
+        probe = TestReuseValidityMachineCheck()
+        path = probe._coverage(tmp_path)
+        data = json.loads(path.read_text())
+        if forgery == 'erase_gap':
+            data['current_dependency_assessments'][0]['remaining_scope'] = 'CLOSED_BY_FIXTURE_ACCEPTANCE'
+        elif forgery == 'fake_independence':
+            data['local_fixture_contract_closeout']['new_independent_v3'] = True
+        else:
+            data['local_fixture_contract_closeout']['fresh_collection']['body_executed'] = True
+        path.write_text(json.dumps(data))
+        proc, result = probe._check(REPO_ROOT, path)
+        assert proc.returncode == 5 and not result['all_valid']
+        assert 'REUSE_METADATA_PROVENANCE' in result['problems']
+        assert not result['release_ready'] and not result['evidence_ready']
+
+    def test_accepted_fixture_bytes_are_still_load_bearing(self, tmp_path):
+        import hashlib
+        import stat
+
+        probe = TestReuseValidityMachineCheck()
+        repo = probe._clone(tmp_path)
+        target = repo / 'backend/tests/mpango_invariants_r0_support.py'
+        original, mode = target.read_bytes(), stat.S_IMODE(target.stat().st_mode)
+        coverage = probe._coverage(tmp_path)
+        try:
+            target.write_bytes(original + b'\n# unapproved fixture drift\n')
+            proc, result = probe._check(repo, coverage)
+            assert proc.returncode == 5 and not result['all_valid']
+            assert 'REUSE_OBJECT_DRIFT' in result['problems']
+        finally:
+            target.write_bytes(original)
+            target.chmod(mode)
+        assert hashlib.sha256(target.read_bytes()).digest() == hashlib.sha256(original).digest()
+        assert stat.S_IMODE(target.stat().st_mode) == mode
+        proc, restored = probe._check(repo, coverage)
+        assert proc.returncode == 0 and restored['all_valid']
+        assert not restored['release_ready'] and not restored['evidence_ready']
+        assert subprocess.check_output(['git', 'status', '--porcelain'], cwd=repo) == b''

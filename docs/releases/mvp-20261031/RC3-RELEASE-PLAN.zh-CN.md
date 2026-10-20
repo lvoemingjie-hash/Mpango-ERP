@@ -1,5 +1,21 @@
 # RC3 本地发布候选与 CI 准入计划
 
+## 当前来源接续 - 2026-10-20
+
+当前授权：CTO-AUTH-RC3-032A77E8-CI-SOURCE-CONTINUITY-R1-20261020。
+CTO已接受真实批准源032a77e81112e606e85e35f8f609ada5a81c3c1e，
+tree571568d910af512c7411b03654e4ac7dedf14acf，父4d606e04016fb2eef9d1a269a14f9b2705bc11d2。
+九个测试/支持路径的042规范夹具已有限收口；跨轮82选点不加进S3的166节点，
+五腿4288仅fresh collect，不是4288 body通过。产品/frontend/外部三路径保护继续完整。
+本轮仅机械接续工具固定源、coverage及workflow参数，最多两批定向开发、一次冻结
+整文件离线合同、累计pytest20分钟/墙钟120分钟；不新建服务、不运行产品或新收集。
+baseline起点1010项，仅允许可证明的公开Git对象/已核实摘要误报及机械行号维护。
+bac/b46的build/UI、c2的S3及旧S1/S2/images/rcj执行身份不变；当前S3浏览器、
+历史依赖和rcj全节点GAP仍开放，release_ready/evidence_ready均false，当前远端CI未运行。
+后文保留原两线集成时的历史正文；其现行批准源和任务额度由本节取代，不改历史证据。
+本地新候选身份在外部回执给出，不循环引用未来自身SHA。远端CI/push/PR/merge/deploy、
+业主试用升级和正式G1仍未授权；是否SOURCE_OK及下一次test-only预算由CTO裁定。
+
 日期：2026-10-20。当前授权：CTO-AUTH-RC3-LOCAL-TWO-LINE-INTEGRATION-AND-REUSE-INTAKE-R1-20261020。
 本计划不是上线、远端预算或 owner 数据库升级许可。
 

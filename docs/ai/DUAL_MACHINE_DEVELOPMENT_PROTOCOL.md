@@ -1,5 +1,15 @@
 # Dual Machine Development Protocol
 
+## Current RC3 Continuity Assignment - 2026-10-20
+
+Codex-L owns CTO-AUTH-RC3-032A77E8-CI-SOURCE-CONTINUITY-R1-20261020 in an
+independent local no-hardlinks/no-remote clone from accepted032a77e8. Source
+checkout and old evidence stay read-only. Only fixed CI/source metadata and
+offline contracts/hooks may change within the ten-path limit; no new stack,
+business/browser execution or4288 collection. Old machine assignments below
+are superseded only for this task. CTO separately owns SOURCE_OK, remote CI,
+push/PR, protected merge/deploy and owner-trial upgrade decisions; none granted.
+
 ## RC3 Local Integration Assignment - 2026-10-20
 
 Codex-L owns CTO-AUTH-RC3-LOCAL-TWO-LINE-INTEGRATION-AND-REUSE-INTAKE-R1-20261020:

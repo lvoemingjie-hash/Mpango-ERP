@@ -1,5 +1,16 @@
 # Mpango ERP Project Status
 
+## RC3 Accepted Fixture Source Continuity - 2026-10-20
+
+Current task: CTO-AUTH-RC3-032A77E8-CI-SOURCE-CONTINUITY-R1-20261020.
+The CTO-accepted current whole backend/frontend source is032a77e8 (head042),
+including nine bounded fixture/test corrections. Only local CI admission is
+being continued; historical bac/b46/c2 execution identities remain unchanged.
+Cross-round82 fixture selections and4288 collect identities are not new S3
+business acceptance or a full body PASS. All existing dependency/browser/rcj
+GAPs remain; no remote CI, push/PR, protected merge/deploy or owner-trial change.
+This supersedes older current-source/assignment paragraphs only, not history.
+
 ## RC3 Local Two-Line Intake - 2026-10-20
 
 Current authority: CTO-AUTH-RC3-LOCAL-TWO-LINE-INTEGRATION-AND-REUSE-INTAKE-R1-20261020.

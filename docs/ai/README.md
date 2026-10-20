@@ -1,5 +1,15 @@
 # AI Context Entry
 
+## Current RC3 Source Continuity - 2026-10-20
+
+Read the RC3 release plan's current-source section first. Authority is
+CTO-AUTH-RC3-032A77E8-CI-SOURCE-CONTINUITY-R1-20261020, approved source032a77e8.
+Only local fixed metadata/workflow/contract continuity is authorized. Products,
+fixtures, wrapper and head042 remain frozen; current and historical refs must
+not be conflated. Existing GAPs and release/evidence-ready=false remain.
+Older current-source text below is superseded, not rewritten. No new product
+runs, services, hosted CI, push/PR, merge/deploy or RC2 owner-trial changes.
+
 ## Current Local Integration - 2026-10-20
 
 Use CTO-AUTH-RC3-LOCAL-TWO-LINE-INTEGRATION-AND-REUSE-INTAKE-R1-20261020.

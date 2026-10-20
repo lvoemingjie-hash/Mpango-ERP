@@ -671,10 +671,10 @@ def _git_bytes(repo, *argv):
     return result.stdout
 
 
-REUSE_APPROVED_REF = "bac775df8257ea2fd626d6de425f3564748b37f2"
+REUSE_APPROVED_REF = "032a77e81112e606e85e35f8f609ada5a81c3c1e"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
 # Rebuild inputs/recipe are declared in intake_sources and the delivery receipt.
-REUSE_INTAKE_VERSION = 5
+REUSE_INTAKE_VERSION = 6
 REUSE_EXPECTED_METADATA = json.loads(r'''
 {
   "record": "RC2_VERSIONED_DEDICATED_ACCEPTANCE_INTAKE_V1",
@@ -2404,6 +2404,96 @@ RC3_LOCAL_INTEGRATION = json.loads(r'''
 ''')
 
 
+RC3_SOURCE_CONTINUITY = json.loads(r'''
+{
+  "authorization": "CTO-AUTH-RC3-032A77E8-CI-SOURCE-CONTINUITY-R1-20261020",
+  "approved_ref": "032a77e81112e606e85e35f8f609ada5a81c3c1e",
+  "source_tree": "571568d910af512c7411b03654e4ac7dedf14acf",
+  "source_parent": "4d606e04016fb2eef9d1a269a14f9b2705bc11d2",
+  "backend_tree": "d631107a5a2bb54220a52033cc0599a53567f0e2",
+  "frontend_tree": "d3e3ca842bd6d4eb2caca6aa5d1b1c3137d83f34",
+  "authority_record": {
+    "path": "AI_REPORT_INBOX/rc3-fixture-r1r2-cto-acceptance-20261020/delivery/CODEXL-CI-SOURCE-CONTINUITY.zh-CN.md",
+    "sha256": "ee86c88ab929df03bdf28399a5a108a24984dd66fcc0b90032377532f97d2d4c"
+  },
+  "cto_ruling": {
+    "path": "AI_REPORT_INBOX/rc3-fixture-r1r2-cto-acceptance-20261020/delivery/CTO-ACCEPTANCE.zh-CN.md",
+    "sha256": "6b00cdc5d4b2d1e23ecc84375e748d861113342bf6ee82eed4426ded3868d616"
+  },
+  "source_deltas": [
+    {
+      "path": "backend/tests/test_u6i1_owner_credential_setup_schema.py",
+      "current_blob": "105f37adc842305aff52a12dc157d97206b8cb1d",
+      "current_sha256": "cee1fa64fc0fb6b49efad260afdd3b4bedba580144ed4f735d985f762428e7f7"
+    },
+    {
+      "path": "backend/tests/test_u6f_onboarding_auth_chain_closeout.py",
+      "current_blob": "f7c91ac217ce81e08595cfe7da4d581878a57a3e",
+      "current_sha256": "0c699d6f23bf7d566ff10962295ee86eccbd2e626c2edf0c7325f02add7bc9b5"
+    },
+    {
+      "path": "backend/tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py",
+      "current_blob": "59485795cc8f1a4df7513fc90d205b88cc1e176a",
+      "current_sha256": "913387debbf5d06d51e58a5d211f45eb71622e5e57b2a089b428aa3e5932e719"
+    },
+    {
+      "path": "backend/tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py",
+      "current_blob": "6a44074f290bf28f99d4f1145cf706e3e1945eeb",
+      "current_sha256": "aabf7f80bf218cf335b913911a85387ed766d1e989da991a40491aa999b96e3b"
+    },
+    {
+      "path": "backend/tests/test_combined_setup_authority_contract.py",
+      "current_blob": "229536520f8904f719016b9c6036da96af472943",
+      "current_sha256": "90854ed6b22b2460777dcfdc6a1b86fb8c0dbc3aa4f2cc8aa953bb447f71f2a4"
+    },
+    {
+      "path": "backend/tests/test_g1_r2_lifecycle_and_public_prep_contract.py",
+      "current_blob": "8c2aca6b5519971c9296ebebed4faedf26fd2f85",
+      "current_sha256": "715eebffc638c85ef3f98c9052450b8e6f0df75850e9f65258d9981c578708d1"
+    },
+    {
+      "path": "backend/tests/mpango_invariants_r0_support.py",
+      "current_blob": "433383e5247180561b77d593847be703a9b72cca",
+      "current_sha256": "187e6e1f0ae98b218f99e74738cccbf2bfb523385b4bd328f36d5c6800dcc60e"
+    },
+    {
+      "path": "backend/tests/test_runtime_readiness_gate.py",
+      "current_blob": "849dc50f99983b8ea9109c79f46c691d7baa3942",
+      "current_sha256": "93851f5bc157a3386088f5c8bdd9eae6c138bb243311792d186c7ceadafd8db5"
+    },
+    {
+      "path": "backend/tests/task_owned_pg_resources.py",
+      "current_blob": "6fed2c5aeae93b09168b8af4fad6eaf689571fd0",
+      "current_sha256": "0fe1addb27ac17bdc0725678e18989f4ee31620620f7c2b3858b04f3828649f8"
+    }
+  ],
+  "local_contract_closeout": {
+    "classification": "CTO_ACCEPTED_RC3_CURRENT_042_TEST_CONTRACT_AND_CANONICAL_FIXTURE_FINITE_CLOSEOUT",
+    "source_ref": "032a77e81112e606e85e35f8f609ada5a81c3c1e",
+    "evidence_manifest": {
+      "path": "AI_REPORT_INBOX/rc3-canonical-fixture-env-resume-codexl-r1r2-20261020/delivery/MANIFEST.sha256",
+      "sha256": "ca242c50e3af497afa8275a01db3a2fe94c8db3cb460624dbbd8cb1dc9e8e75d"
+    },
+    "bounded_selections": {
+      "prior_A": 4,
+      "prior_Alembic": 29,
+      "prior_B1_B2": 23,
+      "current_C_D": 26
+    },
+    "execution_identity": "AUTHOR_EXECUTED__CTO_READONLY_ACCEPTED__CROSS_ROUND_NOT_ONE_FIRST_PASS",
+    "fresh_collection": {
+      "nodes": 4288,
+      "body_executed": false,
+      "definition_changed": false
+    },
+    "new_independent_v3": false,
+    "hosted_ci": "NOT_RUN",
+    "release_acceptance": "NOT_ISSUED"
+  }
+}
+''')
+
+
 def _reuse_expected_metadata(repo):
     """Return an independent copy of the versioned fixed intake.
 
@@ -2454,6 +2544,26 @@ def _reuse_expected_metadata(repo):
          "build_candidate": intake["approved_ref"], "not_backend_pytest_nodes": True,
          "remaining_scope": "GAP_CURRENT_INTEGRATED_HOSTED_CI_AND_FULL_BUSINESS_V3_NOT_RUN"},
     ])
+    continuity = json.loads(json.dumps(RC3_SOURCE_CONTINUITY))
+    expected["previous_local_integration_source_intake"] = json.loads(json.dumps(current))
+    expected["previous_local_integration_selection_binding"] = json.loads(json.dumps(expected["selection_binding"]))
+    expected["previous_local_integration_attachment_deltas"] = json.loads(json.dumps(expected["current_attachment_deltas"]))
+    expected.update(record="RC3_LOCAL_CI_SOURCE_CONTINUITY_V1",
+                    authorization=continuity["authorization"],
+                    intake_status="LOCAL_SOURCE_CONTINUITY__CTO_CI_DECISION_PENDING",
+                    product_anchor=continuity["approved_ref"])
+    expected["selection_binding"].update(authority=continuity["authorization"], source_ref=continuity["approved_ref"])
+    current.update(authorization=continuity["authorization"], source_ref=continuity["approved_ref"],
+                   source_tree=continuity["source_tree"], source_parent=continuity["source_parent"],
+                   backend_tree=continuity["backend_tree"], frontend_tree=continuity["frontend_tree"],
+                   authority_record=continuity["authority_record"], cto_ruling=continuity["cto_ruling"],
+                   independent_v3_this_intake="NO_NEW_V3__AUTHOR_FIXTURE_RESULTS_CTO_ACCEPTED",
+                   current_fresh_ordinary_collection="R1R2_COLLECT_ONLY_4288__NO_4288_BODY_RUN")
+    changes.update({item["path"]: item for item in continuity["source_deltas"]})
+    current["source_deltas"] = [changes[path] for path in sorted(changes)]
+    for delta in expected["current_attachment_deltas"]:
+        delta["current_source_ref"] = continuity["approved_ref"]
+    expected["local_fixture_contract_closeout"] = continuity["local_contract_closeout"]
     return expected
 
 

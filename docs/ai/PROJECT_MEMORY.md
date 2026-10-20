@@ -1,5 +1,16 @@
 # Project Memory
 
+## RC3 Fixed Source Continuity - 2026-10-20
+
+Current whole-source approval is032a77e8 under
+CTO-AUTH-RC3-032A77E8-CI-SOURCE-CONTINUITY-R1-20261020; nine fixture/test
+paths are CTO-accepted, not new business logic. Local metadata/CI admission
+must include tests in all-object protection. Preserve bac/b46 build/UI and c2
+S3 identities,166 accepted business nodes, all historical/browser/rcj GAPs.
+Cross-round82 fixture selections and4288 collect-only do not enlarge runtime
+acceptance. No hosted CI or deployment authorization; prior source/assignment
+wording below is historical and superseded only for this local continuity.
+
 ## RC3 Integration Boundary - 2026-10-20
 
 CTO accepted eac40af9 CI closeout and bac775df UI finite closeout separately.

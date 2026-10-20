@@ -31,6 +31,7 @@ import os
 import subprocess
 import sys
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -909,14 +910,104 @@ def _teardown_two_role_lifecycle(server, sandbox_db, app_role, mig_role,
 
 
 @_requires_temp_db
-def test_two_role_lifecycle_and_public_contract_refusals():
+def test_two_role_lifecycle_and_public_contract_refusals(tmp_path):
+    with _canonical_cluster("combinedcanonical", tmp_path) as cluster:
+        server = _canonical_fixture_server(cluster)
+        try:
+            _canonical_two_role_lifecycle(server, cluster["private_root"])
+        finally:
+            if server._conn is not None:
+                server._conn.close()
+
+
+@contextmanager
+def _canonical_cluster(module, root):
+    from tests import task_owned_pg_resources as resources
+
+    # This topology fixture owns its private root; it does not require the
+    # task-managed profile's global resource-root environment contract.
+    root.chmod(0o700)
+    with pytest.MonkeyPatch.context() as scoped:
+        scoped.setenv("C91_R3_RESOURCE_ROOT", str(root))
+        with resources.task_postgres(module, cluster_only=True) as cluster:
+            yield cluster
+
+
+def _canonical_fixture_server(cluster):
+    # Bind only the constructor's endpoint description, then restore the
+    # caller's environment. The not-yet-provisioned URL is no identity proof.
+    with pytest.MonkeyPatch.context() as scoped:
+        scoped.setenv("TEST_DATABASE_URL", cluster["runtime_endpoint"])
+        scoped.setenv("TEST_ADMIN_DATABASE_URL", cluster["admin_sync"])
+        return _SandboxServer()
+
+
+def _canonical_identity_proof(server, app_url, mig_url, tenant, root):
+    from pathlib import Path
+    from tests import task_owned_pg_resources as resources
+
+    connection = _admin_connect(app_url)
+    try:
+        with connection.cursor() as cur:
+            cur.execute("SELECT current_user,rolsuper,rolcreatedb,rolcreaterole,rolbypassrls FROM pg_roles WHERE rolname=current_user")
+            runtime = cur.fetchone()
+            assert runtime == ("mpango_app", False, False, False, False)
+            cur.execute("SELECT has_schema_privilege(current_user,'public','CREATE')")
+            assert cur.fetchone() == (False,)
+            cur.execute("SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname=%s", (tenant,))
+            schema_owner = cur.fetchone()[0]
+            cur.execute("SELECT pg_get_userbyid(c.relowner) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=%s AND c.relname='order_negotiation_proposals'", (tenant,))
+            table_owner = cur.fetchone()[0]
+            cur.execute("SELECT pg_get_userbyid(p.proowner) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=%s AND p.proname='prevent_negotiation_rewrite'", (tenant,))
+            function_owner = cur.fetchone()[0]
+            assert schema_owner == table_owner == function_owner == "mpango_app"
+    finally:
+        connection.close()
+    connection = _admin_connect(mig_url)
+    try:
+        with connection.cursor() as cur:
+            cur.execute("SELECT current_user,rolsuper FROM pg_roles WHERE rolname=current_user")
+            migration = cur.fetchone()
+            assert migration == ("mpango_migrate", False)
+            assert migration[0] != server.admin_role != runtime[0]
+    finally:
+        connection.close()
+    resources._save(Path(root) / "canonical-identity-proof.json", {
+        "runtime": runtime, "migration": migration, "admin": server.admin_role,
+        "schema_owner": schema_owner, "table_owner": table_owner,
+        "trigger_function_owner": function_owner, "runtime_public_create": False,
+    })
+
+
+def _canonical_cleanup_proof(server, root, prestate):
+    from pathlib import Path
+    from tests import task_owned_pg_resources as resources
+
+    connection = _admin_connect(server.admin_url)
+    try:
+        with connection.cursor() as cur:
+            cur.execute("SELECT rolname FROM pg_roles WHERE rolname IN ('mpango_app','mpango_migrate') ORDER BY rolname")
+            residue = cur.fetchall()
+            assert residue == [], "CANONICAL_FIXTURE_ROLE_RESIDUE"
+        observed = _rpt_state(connection)
+        assert observed == prestate, "CANONICAL_FIXTURE_REPORTING_DRIFT"
+        resources._save(Path(root) / "reporting-after.json", observed)
+        resources._save(Path(root) / "canonical-cleanup-proof.json", {
+            "canonical_roles_remaining": residue, "reporting_exact": True,
+        })
+    finally:
+        connection.close()
+
+
+def _canonical_two_role_lifecycle(server, resource_root):
     import psycopg2
+    from pathlib import Path
+    from tests import task_owned_pg_resources as resources
 
     bts = _load_module("combined_contract_bts", BOOTSTRAP)
-    server = _SandboxServer()
     suffix = uuid.uuid4().hex[:8]
-    mig_role = f"mpango_migrate_{suffix}"
-    app_role = f"mpango_app_{suffix}"
+    mig_role = "mpango_migrate"
+    app_role = "mpango_app"
     mig_pw = f"pw_{suffix}_m"
     app_pw = f"pw_{suffix}_a"
     sandbox_db = f"test_combinedauth_{suffix}"
@@ -945,6 +1036,9 @@ def test_two_role_lifecycle_and_public_contract_refusals():
     prestate_conn = _admin_connect(server.admin_url)
     try:
         prestate = _rpt_state(prestate_conn)
+        assert all(value is None for value in prestate["roles"].values())
+        assert prestate["membership"] == []
+        resources._save(Path(resource_root) / "reporting-before.json", prestate)
     finally:
         prestate_conn.close()
     try:
@@ -1035,17 +1129,19 @@ def test_two_role_lifecycle_and_public_contract_refusals():
                             "'038_catalog_identity_vertical_slice'")
             with pytest.raises(RuntimeError) as excinfo:
                 run_coroutine(_boot_refuses())
-            assert "041_catalog_product_main_image" in str(excinfo.value)
+            assert "042_order_negotiation_proposals" in str(excinfo.value)
             assert _tenant_schema_count(admin) == 0
             with admin.cursor() as cur:
                 cur.execute("UPDATE alembic_version SET version_num = "
-                            "'041_catalog_product_main_image'")
+                            "'042_order_negotiation_proposals'")
 
             guard0 = _guard_snapshot(admin)
 
             # phase 5: runtime bootstrap (positive path)
             run_coroutine(bts.bootstrap(tenant, app_url))
             assert _tenant_schema_count(admin) == 1
+            _canonical_identity_proof(server, app_url, mig_url, tenant,
+                                      resource_root)
 
             # guard invariance across further bootstrap attempts
             assert _guard_snapshot(admin) == guard0
@@ -1158,6 +1254,7 @@ def test_two_role_lifecycle_and_public_contract_refusals():
         teardown_errors = []
         _teardown_two_role_lifecycle(server, sandbox_db, app_role, mig_role,
                                      prestate, teardown_errors)
+        _canonical_cleanup_proof(server, resource_root, prestate)
         if teardown_errors:
             pytest.fail("two-role lifecycle teardown failures: "
                         + " | ".join(teardown_errors))

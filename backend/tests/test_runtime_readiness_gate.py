@@ -39,6 +39,10 @@ from tests.test_combined_setup_authority_contract import (
     _rpt_state,
     _run_provisioner,
     _scenario_env,
+    _canonical_fixture_server,
+    _canonical_identity_proof,
+    _canonical_cleanup_proof,
+    _canonical_cluster,
 )
 
 ENTRYPOINT = BACKEND_DIR / "docker-entrypoint.sh"
@@ -246,7 +250,37 @@ def test_gate_refuses_database_without_completed_setup():
 
 
 @pytest.fixture(scope="module")
-def five_stage_database():
+def five_stage_database(tmp_path_factory):
+    from pathlib import Path
+    import secrets
+    from tests import task_owned_pg_resources as resources
+
+    with _canonical_cluster("readinesscanonical", tmp_path_factory.mktemp("canonical-readiness")) as cluster:
+        server = _canonical_fixture_server(cluster)
+        original_password = secrets.token_urlsafe(30)
+        resources._save(Path(cluster["private_root"]) / "reporting-credential-input.json",
+                        {"reporting_password": original_password})
+        connection = _admin_connect(server.admin_url)
+        try:
+            with connection.cursor() as cur:
+                cur.execute("CREATE ROLE reporting_role NOLOGIN")
+                cur.execute("CREATE ROLE reporting_user LOGIN PASSWORD %s", (original_password,))
+                cur.execute("ALTER ROLE reporting_user SET default_transaction_read_only=on")
+                cur.execute("ALTER ROLE reporting_user SET statement_timeout='30000ms'")
+                cur.execute("GRANT reporting_role TO reporting_user WITH ADMIN FALSE, INHERIT TRUE, SET TRUE")
+        finally:
+            connection.close()
+        original_dsn = server.url_for("postgres", "reporting_user", original_password)
+        with pytest.MonkeyPatch.context() as scoped:
+            scoped.setenv("REPORTING_DATABASE_URL", original_dsn)
+            try:
+                yield from _canonical_five_stage_database(server, cluster["private_root"])
+            finally:
+                if server._conn is not None:
+                    server._conn.close()
+
+
+def _canonical_five_stage_database(server, resource_root):
     """A disposable database that has completed the product five-stage
     sequence: provision -> alembic 001..041 -> grants -> verify -> runtime
     bootstrap of the default tenant.
@@ -303,9 +337,8 @@ def five_stage_database():
     to process exit or to a DROP ROLE side effect: every cleanup and every
     check appends to teardown_errors, and any entry fails the module as an
     ERROR."""
-    server = _SandboxServer()
     suffix = uuid.uuid4().hex[:8]
-    mig_role, app_role = "mpango_migrate_" + suffix, "mpango_app_" + suffix
+    mig_role, app_role = "mpango_migrate", "mpango_app"
     mig_pw, app_pw = "pw_" + suffix + "_m", "pw_" + suffix + "_a"
     ctx_reporting = "reporting-" + suffix
     ctx_gate = "gate-fixture-" + suffix
@@ -323,6 +356,11 @@ def five_stage_database():
     capture_conn = _admin_connect(server.admin_db_url("postgres"))
     try:
         original_prestate = _rpt_state(capture_conn)
+        from pathlib import Path
+        from tests import task_owned_pg_resources as resources
+        assert all(value is not None for value in original_prestate["roles"].values())
+        assert original_prestate["membership"]
+        resources._save(Path(resource_root) / "reporting-before.json", original_prestate)
     finally:
         capture_conn.rollback()
         capture_conn.close()
@@ -414,6 +452,7 @@ def five_stage_database():
             env={**os.environ, "DATABASE_URL": app_url, "MPANGO_ENV": "test",
                  "SECRET_KEY": ctx_gate})
         assert result.returncode == 0, result.stderr[-2000:]
+        _canonical_identity_proof(server, app_url, mig_url, "t_dev", resource_root)
         yield {"app_url": app_url, "mig_url": mig_url, "db": sandbox_db,
                "server": server, "reporting_url": reporting_url,
                "original_role_exists": original_role_exists,
@@ -552,6 +591,7 @@ def five_stage_database():
         if teardown_errors:
             pytest.fail("five_stage_database teardown failures: "
                         + " | ".join(teardown_errors))
+        _canonical_cleanup_proof(server, resource_root, original_prestate)
 
 
 @_requires_temp_db

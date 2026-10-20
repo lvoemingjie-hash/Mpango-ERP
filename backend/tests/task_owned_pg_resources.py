@@ -160,7 +160,9 @@ def route_deadline(urls):
 
 
 @contextmanager
-def task_postgres(module, *, bare=False, shell=False):
+def task_postgres(module, *, bare=False, shell=False, cluster_only=False):
+    if cluster_only and (bare or shell):
+        raise ValueError("TASK_PG_CLUSTER_ONLY_MODE_CONFLICT")
     parent = Path(os.environ["C91_R3_RESOURCE_ROOT"])
     if not parent.is_absolute() or parent.is_symlink() or parent.stat().st_mode & 0o777 != 0o700:
         raise RuntimeError("TASK_PG_PRIVATE_ROOT_REFUSED")
@@ -202,6 +204,26 @@ def task_postgres(module, *, bare=False, shell=False):
                     raise RuntimeError("TASK_PG_TCP_READINESS_TIMEOUT") from None
                 time.sleep(0.5)
         database = "test_c91_" + module
+        if cluster_only:
+            connection = psycopg2.connect(admin, connect_timeout=3)
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT rolname FROM pg_roles WHERE rolname IN ('mpango_app','mpango_migrate','reporting_user','reporting_role') ORDER BY rolname")
+                    roles = cursor.fetchall()
+                    cursor.execute("SELECT datname FROM pg_database WHERE datname NOT IN ('postgres','template0','template1') ORDER BY datname")
+                    databases = cursor.fetchall()
+                    if roles or databases:
+                        raise RuntimeError("TASK_PG_CLUSTER_NOT_EMPTY")
+                    _save(root / "cluster-empty-before.json", {
+                        "roles": roles, "databases": databases,
+                        "product_commands_started": 0,
+                    })
+            finally:
+                connection.close()
+            yield {"admin_sync": admin,
+                   "runtime_endpoint": url("mpango_app", database),
+                   "container": cid, "private_root": str(root)}
+            return
         setup = dict(os.environ)
         setup.update(MPANGO_DB_ADMIN_URL=admin, MPANGO_DB_MIGRATE_URL=url("mpango_migrate", database),
                      MPANGO_DB_APP_URL=url("mpango_app", database), MPANGO_DB_MIGRATE_ROLE="mpango_migrate",

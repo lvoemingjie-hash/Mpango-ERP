@@ -53,7 +53,7 @@ from sqlalchemy import text
 from database.session import AsyncSessionLocal, async_engine
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
-BASELINE_MIGRATION_HEAD = "041_catalog_product_main_image"
+BASELINE_MIGRATION_HEAD = "042_order_negotiation_proposals"
 SUPERVISE_TIMEOUT_S = 30.0
 
 CONTAINER_ENV_VAR = "MPANGO_INVARIANTS_R0_PG_CONTAINER"
@@ -1389,7 +1389,7 @@ async def _r0_task_database_stages():
         probe; the administrator performs no migration and no test write);
     3. verify_run_identity_live — run connection really is the declared
        non-privileged, membership-free test-session role;
-    4. run_public_migrations — real 001..039 via the migration subprocess;
+    4. run_public_migrations — real 001..042 via the migration subprocess;
     4b. apply_product_minimum_grants — the PRODUCT provisioner's
         --apply-grants (as the migration authority) + read-only --verify;
     4c. verify_public_object_authority — the shared public ledger guard

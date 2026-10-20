@@ -57,6 +57,26 @@ export function isOrderListPaymentActionVisible(status: OrderStatus) {
     && (ALLOWED_TRANSITIONS[status]?.includes('paid') || status === 'partially_paid');
 }
 
+export function paymentModalBindings(order: Order, remaining: number | null) {
+  return {
+    orderId: order.id,
+    orderTotal: Number(order.total_amount),
+    remainingAmount: remaining ?? Number(order.total_amount),
+    currency: order.currency ?? null,
+  };
+}
+
+export function buildPaymentSuccessMessage(
+  resp: { payment_id?: string | null; payment_amount?: string | number | null; payment_method?: string | null; status: string },
+  currency: string | null | undefined,
+  orderId: string,
+): string {
+  if (resp.payment_id) {
+    return `${formatMoney(Number(resp.payment_amount), currency)} via ${resp.payment_method}. Order ${orderId.slice(0, 8)}... -> ${resp.status}.`;
+  }
+  return `Order ${orderId.slice(0, 8)}... marked as ${resp.status}.`;
+}
+
 export function OrderListPage() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
@@ -143,9 +163,7 @@ export function OrderListPage() {
       useToastStore.getState().addToast({
         type: 'success',
         title: 'Payment Recorded',
-        message: resp.payment_id
-          ? `KES ${Number(resp.payment_amount).toLocaleString()} via ${resp.payment_method}. Order ${orderId.slice(0, 8)}... -> ${resp.status}.`
-          : `Order ${orderId.slice(0, 8)}... marked as ${resp.status}.`,
+        message: buildPaymentSuccessMessage(resp, payModalOrder.currency, orderId),
       });
       setPayModalOrder(null);
       const returnPath = collectReturnPathRef.current;
@@ -532,9 +550,7 @@ export function OrderListPage() {
             setPayAllowCreditSale(false);
           }}
           onSubmit={handlePaySubmit}
-          orderId={payModalOrder.id}
-          orderTotal={Number(payModalOrder.total_amount)}
-          remainingAmount={payRemaining ?? Number(payModalOrder.total_amount)}
+          {...paymentModalBindings(payModalOrder, payRemaining)}
           allowCreditSale={payAllowCreditSale}
           loading={actionLoading === payModalOrder.id}
         />

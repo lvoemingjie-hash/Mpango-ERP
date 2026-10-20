@@ -263,10 +263,9 @@ describe('S5-B frontend real user smoke gate', () => {
     expect(customer).toHaveValue('');
     expect(screen.getByRole('option', { name: 'Select customer' })).toHaveValue('');
     expect(screen.getAllByRole('option')).toHaveLength(1);
-    expect(screen.getByRole('columnheader', { name: 'Base price' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Customer override' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Effective price / source' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/select a customer above/i);
+    expect(screen.queryByRole('columnheader', { name: 'Base price' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Save/ })).not.toBeInTheDocument();
     expect(handled.filter(key => key.startsWith('GET /pricing/'))).toEqual([]);
     await assertNoGuardrailToasts();
 

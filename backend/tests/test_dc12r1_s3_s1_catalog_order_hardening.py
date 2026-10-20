@@ -681,6 +681,8 @@ class TestClientRouteAllowlist:
 
     def test_exact_client_route_inventory(self):
         from api.middleware.rbac import RequirePermission
+        from api.v1.order_negotiations import client_scope
+        from api.v1.client.dependencies import resolve_client_identity
 
         app = FastAPI()
         with mock.patch("auth.factory.get_auth_strategy", return_value=JwtAuthStrategy()):
@@ -694,6 +696,9 @@ class TestClientRouteAllowlist:
             ("GET", "/api/v1/client/orders"): "client:orders:read",
             ("GET", "/api/v1/client/orders/{order_id}"): "client:orders:read",
             ("POST", "/api/v1/client/orders/{order_id}/cancel"): "client:orders:create",
+            ("GET", "/api/v1/client/orders/{order_id}/negotiations"): "client:orders:read",
+            ("POST", "/api/v1/client/orders/{order_id}/negotiations/{proposal_id}/accept"): frozenset({"client:orders:read", "client:orders:create"}),
+            ("POST", "/api/v1/client/orders/{order_id}/negotiations/{proposal_id}/reject"): frozenset({"client:orders:read", "client:orders:create"}),
             ("GET", "/api/v1/client/payments"): "client:payments:read",
             ("GET", "/api/v1/client/finance/balance"): "client:finance:read",
             ("GET", "/api/v1/client/products"): "client:catalog:read",
@@ -728,6 +733,10 @@ class TestClientRouteAllowlist:
                     call = getattr(dep, "call", None)
                     if isinstance(call, RequirePermission):
                         permissions.add(call.permission)
+                    elif call is client_scope:
+                        permissions.update({"client:orders:read", "client:orders:create"})
+                if route.path == "/api/v1/client/orders/{order_id}/negotiations":
+                    assert any(dep.call is resolve_client_identity for dep in route.dependant.dependencies)
             for method in methods:
                 actual[(method, route.path)] = frozenset(permissions)
 

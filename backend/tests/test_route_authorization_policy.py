@@ -80,6 +80,7 @@ from api.app import app
 from api.dependencies import get_current_user_context
 from api.middleware.rbac import RequirePermission, RequirePlatformAdmin
 from core.security import TokenPayload
+from api.v1 import order_negotiations
 
 
 # ===========================================================================
@@ -205,6 +206,7 @@ class RouteClassification:
     detected_auth_deps: List[str] = field(default_factory=list)
     detected_non_auth_deps: List[str] = field(default_factory=list)
     source_file: Optional[str] = None
+    permission_codes: Set[str] = field(default_factory=set)
 
     @property
     def is_compliant(self) -> bool:
@@ -306,13 +308,23 @@ def classify_route(route: APIRoute) -> RouteClassification:
     permission_code: Optional[str] = None
     found_require_permission = False
     found_platform_operator = False  # G2-R2: require_platform_operator guard
+    permission_codes: Set[str] = set()
 
     for dep in deps:
         name = _dependency_name(dep)
         # G2-R2: Check platform operator guard FIRST. require_platform_operator
         # is also in AUTH_DEPENDENCY_NAMES (for compliance counting), so the
         # elif below would swallow it without setting found_platform_operator.
-        if _is_platform_operator_guard(name):
+        if dep is order_negotiations.client_scope or dep is order_negotiations.merchant_scope:
+            codes = ({"client:orders:read", "client:orders:create"}
+                     if dep is order_negotiations.client_scope
+                     else {"pricing:write", "orders:update"})
+            permission_codes.update(codes)
+            auth_deps.append(name)
+            found_require_permission = True
+            if permission_code is None:
+                permission_code = sorted(codes)[0]
+        elif _is_platform_operator_guard(name):
             auth_deps.append(name)
             found_platform_operator = True
             if permission_code is None:
@@ -328,6 +340,8 @@ def classify_route(route: APIRoute) -> RouteClassification:
             ):
                 found_require_permission = True
                 code = _extract_permission_code(dep)
+                if code:
+                    permission_codes.add(code)
                 if code and permission_code is None:
                     permission_code = code
         elif name in NON_AUTH_DEPENDENCY_NAMES:
@@ -376,6 +390,7 @@ def classify_route(route: APIRoute) -> RouteClassification:
         detected_auth_deps=auth_deps,
         detected_non_auth_deps=non_auth_deps,
         source_file=source_file,
+        permission_codes=permission_codes,
     )
 
 
@@ -473,6 +488,25 @@ class TestHarnessIntegrity:
                 f"Export route {c.path} has no detected auth deps. "
                 f"The harness may be broken."
             )
+        from fastapi import Depends
+        for real in (order_negotiations.client_scope, order_negotiations.merchant_scope):
+            async def unguarded():
+                return None
+            unguarded.__name__ = real.__name__
+            route = APIRoute("/api/v1/unguarded-probe", unguarded,
+                             dependencies=[Depends(unguarded)])
+            assert classify_route(route).policy == "non_compliant", "S3_SAME_NAME_IS_NOT_AUTH"
+        expected = {
+            ("GET", "/api/v1/orders/{order_id}/negotiations"): {"pricing:write", "orders:update"},
+            ("POST", "/api/v1/orders/{order_id}/negotiations"): {"pricing:write", "orders:update"},
+            ("POST", "/api/v1/orders/{order_id}/negotiations/{proposal_id}/withdraw"): {"pricing:write", "orders:update"},
+            ("GET", "/api/v1/client/orders/{order_id}/negotiations"): {"client:orders:read"},
+            ("POST", "/api/v1/client/orders/{order_id}/negotiations/{proposal_id}/accept"): {"client:orders:read", "client:orders:create"},
+            ("POST", "/api/v1/client/orders/{order_id}/negotiations/{proposal_id}/reject"): {"client:orders:read", "client:orders:create"},
+        }
+        actual = {(c.method, c.path): c.permission_codes for c in ALL_CLASSIFICATIONS
+                  if (c.method, c.path) in expected}
+        assert actual == expected, "S3_EXACT_WRAPPER_PERMISSION_SET"
 
     def test_known_good_routes_are_classified_correctly(self):
         """Spot-check that routes known to use RequirePermission are classified."""
@@ -1054,6 +1088,47 @@ class TestSmokeAuthGate:
             await rp(request)
         assert exc.value.status_code == 401
 
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from api.context import AuthContext, TenantContext, attach_auth_context, attach_tenant_context
+
+        def contextual(permissions, *, role="retailer_operator", binding=True):
+            req = self._bare_request()
+            token = TokenPayload(user_id="11111111-1111-4111-8111-111111111111",
+                                 tenant_id="22222222-2222-4222-8222-222222222222",
+                                 tenant_schema="t_synthetic", roles=[role])
+            attach_auth_context(req, AuthContext(token=token, raw_token="unusable-synthetic-context"))
+            session = SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(
+                fetchone=lambda: SimpleNamespace(retailer_id="33333333-3333-4333-8333-333333333333", status="active")
+                if binding else None)))
+            user = SimpleNamespace(roles=[SimpleNamespace(name=role, permissions=[
+                SimpleNamespace(code=p) for p in permissions])])
+            attach_tenant_context(req, TenantContext(token.tenant_id, token.tenant_schema, session, user))
+            return req
+
+        for wrapper, required in (
+            (order_negotiations.client_scope, {"client:orders:read", "client:orders:create"}),
+            (order_negotiations.merchant_scope, {"pricing:write", "orders:update"}),
+        ):
+            for missing in sorted(required):
+                req = contextual(required - {missing})
+                with pytest.raises(HTTPException) as denied:
+                    await wrapper(req)
+                assert denied.value.status_code == 403, "S3_MISSING_PERMISSION_MUST_403"
+                assert denied.value.detail["code"] == "PERMISSION_DENIED"
+                req.state.tenant_context.session.execute.assert_not_awaited()
+            allowed = contextual(required)
+            result = await wrapper(allowed)
+            assert result.user_id == allowed.state.auth_context.token.user_id
+
+        permissions = {"client:orders:read", "client:orders:create"}
+        for req, code in ((contextual(permissions, role="employee"), "NOT_RETAILER_OPERATOR"),
+                          (contextual(permissions, binding=False), "BINDING_NOT_FOUND")):
+            with pytest.raises(HTTPException) as denied:
+                await order_negotiations.client_scope(req)
+            assert denied.value.status_code == 403, "S3_CLIENT_IDENTITY_MUST_403"
+            assert denied.value.detail["code"] == code
+
     @pytest.mark.asyncio
     async def test_require_permission_exports_create_rejects_no_auth(self):
         """RequirePermission('exports:create') -> 401 without auth context."""
@@ -1062,6 +1137,11 @@ class TestSmokeAuthGate:
         with pytest.raises(HTTPException) as exc:
             await rp(request)
         assert exc.value.status_code == 401
+
+        for wrapper in (order_negotiations.client_scope, order_negotiations.merchant_scope):
+            with pytest.raises(HTTPException) as denied:
+                await wrapper(self._bare_request())
+            assert denied.value.status_code == 401, "S3_WRAPPER_NO_AUTH_MUST_401"
 
     def test_get_current_user_context_rejects_no_auth(self):
         """get_current_user_context -> 401 without auth context."""

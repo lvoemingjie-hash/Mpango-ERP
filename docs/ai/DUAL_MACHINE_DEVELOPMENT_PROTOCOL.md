@@ -1,5 +1,21 @@
 # Dual Machine Development Protocol
 
+## Current Finite Assignment - 2026-10-20
+
+Codex-L (Lubuntu) prepares RC3 release/CI admission from accepted S3
+`c2fff203`, under CTO-AUTH-RC3-LOCAL-RELEASE-CI-ADMISSION-R1-20261020, in
+an independent clone with exact-owned temporary resources. Backend/frontend
+remain byte-identical; no S3 reimplementation or new business scope.
+ZCode-W's accepted RC2 packaging/owner trial remains a separate line. Neither
+line may alter the other's checkout, data, credentials or resources.
+
+CTO owns source acceptance, separate remote CI budget, integration and release
+decisions; owner trial/target DB upgrade/push/merge/deploy are not granted by
+this local preparation. No additional review team is created. The S3 V3 has
+already been accepted in finite scope and is not repeated here. Refer to the
+RC3 release plan; the historical machine/task assignments below do not grant
+new authority or supersede the dated current directive.
+
 This protocol governs parallel development across two machines for Mpango ERP.
 
 ## Scope

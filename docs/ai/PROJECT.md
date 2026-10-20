@@ -1,5 +1,31 @@
 # Mpango ERP Project Status
 
+## RC3 Release Preparation - 2026-10-20
+
+S3 minimum per-order negotiation is CTO-accepted in its finite functional
+scope at `c2fff203`, tree `aa773acd`, head042. Independent A/B/C = 120/45/1
+passed (166 disjoint nodes), D = 8 UG/KE mobile-width scenarios / 102 checks,
+E = three semantic controls. These are separate layers, not a full suite.
+The former legacy payment preparation gap is closed by the native 45-node
+independent run; its old failures remain historical records.
+
+Current work is `CTO-AUTH-RC3-LOCAL-RELEASE-CI-ADMISSION-R1-20261020`:
+local release/CI admission successor only, frozen backend/frontend unchanged.
+Five ordinary legs keep 236 files / 4288 canonical node identities if fresh
+collection confirms them; 21 exact dedicated files and six old ignores are
+separate. A's 58 S1 nodes do not prove every S1 node, and rcj full node
+coverage remains GAP. Historical dependency changes are explicitly assessed.
+See `RC3-RELEASE-PLAN.zh-CN.md` under the release directory and the new local
+delivery for actual collect/contracts/smoke results, not prefilled PASS here.
+
+S1/S2/images retain their original accepted bounds. RC2 `6d003db6` trial
+preparation remains separate and its owner database must not be upgraded or
+reset. Remote CI budget, push/PR, integration, target backup/restore/042
+upgrade and deployment each need separate CTO/owner authorization. Publication
+stays false; no new business feature, formal-credit/refund or SMTP claim.
+This section supersedes the following older S3-in-progress/deferred wording
+only for the accepted finite scope and the present release-preparation line.
+
 ## S3 implementation branch update - 2026-10-19
 
 BD-3 minimum negotiation is now authorized by

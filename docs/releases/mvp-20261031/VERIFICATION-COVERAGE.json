@@ -1,12 +1,23 @@
 {
-  "record": "RC2_VERSIONED_DEDICATED_ACCEPTANCE_INTAKE_V1",
-  "authorization": "CTO-AUTH-RC2-LOCAL-CI-INTEGRATION-AND-COLLECT-R1-20261017",
+  "record": "RC3_VERSIONED_FINITE_ACCEPTANCE_INTAKE_V1",
+  "authorization": "CTO-AUTH-RC3-LOCAL-RELEASE-CI-ADMISSION-R1-20261020",
   "ruling": {
     "path": "AI_REPORT_INBOX/rc1-finite-closure-cto-20261015/CTO-REVIEW.zh-CN.md",
     "sha256": "37fa77e5ff1889c884f58ab929fe9ed06a7489446c933e9ddb81832a4c31a20c",
     "route": "APPROVED_FINITE_HYBRID_ROUTE__IMPLEMENTATION_AND_LOCAL_VALIDATION_ONLY"
   },
   "selection_binding": {
+    "authority": "CTO-AUTH-RC3-LOCAL-RELEASE-CI-ADMISSION-R1-20261020",
+    "source_ref": "c2fff20365b16254db2163504751fa5f84746e80",
+    "discovered_files": 263,
+    "ordinary_files": 236,
+    "dedicated_files": 21,
+    "ignores": 6,
+    "union": 257,
+    "intersection": 0,
+    "unknown": 0
+  },
+  "historical_selection_binding": {
     "path": "mvp-rc2-post-images-cto-review-20261017/inputs/STATIC-INTEGRATION-INVENTORY.json",
     "sha256": "ed54462a717746c21ec44eec86a4c6b2966fb09d0ce8e00aa5492e819de4ed7e",
     "dedicated_files": 16,
@@ -227,18 +238,305 @@
           "classification": "HISTORICAL_SOURCE_ONLY_NOT_CURRENT_FROZEN_FILE"
         }
       }
+    },
+    {
+      "id": "s3_minimum_negotiation_cto_independent_v3",
+      "family": "s3_negotiation",
+      "candidate": "c2fff20365b16254db2163504751fa5f84746e80",
+      "files": [
+        "backend/tests/s3_negotiation/test_atomicity_and_races.py",
+        "backend/tests/s3_negotiation/test_contract.py",
+        "backend/tests/s3_negotiation/test_migration.py",
+        "backend/tests/s3_negotiation/test_provenance_and_safety.py",
+        "backend/tests/s3_negotiation/test_safety_boundaries.py"
+      ],
+      "coverage_status": "CTO_ACCEPTED_CURRENT_FINITE_SCOPE",
+      "source_manifest_sha256": "0ff05256aec813e1f0f0bfcd6b7edeb13534ad1691c205ea2c8851aa9ee81305",
+      "source_report_sha256": "319911bee56648d0b481c00a1acc9377abffee0b043b9666da3a166e361319e8",
+      "load_bearing_blobs": {
+        "backend/alembic/versions/042_order_negotiation_proposals.py": "77700889ffb92eddb49488ea2b265834b41e2697",
+        "backend/api/app.py": "f247f1baa6ce248d074714148b88ffaab68d772b",
+        "backend/api/middleware/idempotency.py": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+        "backend/api/v1/order_negotiations.py": "4484c0a5056c39a2618573a6dcc4a146e4716ebe",
+        "backend/models/__init__.py": "9ac806be1065c80ee98c49c00b104c23f865e1e2",
+        "backend/models/order_negotiation.py": "4be0609b69afd1297a0bc13041e5f0dc3f69c792",
+        "backend/schemas/order_negotiation.py": "3af0bb3baf2ef5819ad6127f84c61f434b8e0386",
+        "backend/scripts/bootstrap_tenant_schema.py": "4ea5b190188d2db676635b601689d0b9428ff33d",
+        "backend/scripts/runtime_readiness_gate.py": "52c9c44909dfc87c03ec6e6b8544fd02e7f744db",
+        "backend/services/order_command_service.py": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+        "backend/services/order_creation_service.py": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+        "backend/services/order_negotiation_service.py": "16a866b69fcb025500b8a73ff12304bbf20bfaa2",
+        "backend/services/pricing_quote_service.py": "2eddc45b8d69cc4880241334f5227f0094efc852",
+        "backend/tests/s1_pricing_quote/test_review_r2.py": "9a289181c71e3a42a41089abbf11d52b27934540",
+        "backend/tests/s3_negotiation/__init__.py": "ac9fd63217e0b3e63a4f4c85d26fb78c28ee802f",
+        "backend/tests/s3_negotiation/conftest.py": "de9dd188ea15bdd92fa9fecf3629634547f86954",
+        "backend/tests/s3_negotiation/test_atomicity_and_races.py": "67b840dd63f2ddc3bc576823db43422feb89b3b8",
+        "backend/tests/s3_negotiation/test_contract.py": "c15541eb943cc40b3baddfc5470ba91b9e5de88d",
+        "backend/tests/s3_negotiation/test_migration.py": "bcfb5f9321467c15259ffff0846bfe4cb7cfcc66",
+        "backend/tests/s3_negotiation/test_provenance_and_safety.py": "626447beb523f99197d1aa021d31c22a4989bfdf",
+        "backend/tests/s3_negotiation/test_safety_boundaries.py": "66f71981878f6b1ac501b9a715a09f69978df51f",
+        "backend/tests/test_runtime_readiness_gate.py": "681745db2c19251707926e2f3e7748e7aef1d228",
+        "frontend/src/components/orders/OrderNegotiationPanel.tsx": "47974c7a162a6f2cfef10f23001e930f5dbdd2cb",
+        "frontend/src/pages/client/OrderDetailPage.tsx": "06b4cfbba89a6aa8c27fde91b9efe86b82dfc81e",
+        "frontend/src/pages/orders/OrderListPage.tsx": "28e9824506cffa75e7c2365ecf837a5170b8148a",
+        "frontend/src/services/orderNegotiationService.ts": "518794b827f991a21bab29eb4b51720f7bc76e41",
+        "frontend/src/tests/S3Negotiation.test.tsx": "8eea1303649c5570e281021664a71dec7050aee7"
+      },
+      "groups": [
+        {
+          "gate": "A",
+          "candidate": "c2fff20365b16254db2163504751fa5f84746e80",
+          "native_receipt": "evidence/formal-runtime-v3.json",
+          "receipt_sha256": "998c3ac89ec499dfef160e939d93b177e841b0daa04b85cece2c51eec4633b86",
+          "junit": "evidence/formal-runtime-v3.xml",
+          "junit_sha256": "0fb84d178b98fa181e930911293007356c84b9dcf4cd6efb96df4fb934e6b492",
+          "node_list": "evidence/formal-runtime-v3-nodes.txt",
+          "node_list_sha256": "5cfc06f5dc792ef2b4a5d2e7739ecd5c9f31f74385a334f83cf3a6d23da33e8b",
+          "nodes": [
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_accept_save_or_close_failure_is_atomic_even_if_caller_commits[save]",
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_accept_save_or_close_failure_is_atomic_even_if_caller_commits[cancel]",
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_real_source_lock_races_have_one_legal_serial_history[accept-accept]",
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_real_source_lock_races_have_one_legal_serial_history[accept-reject]",
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_real_source_lock_races_have_one_legal_serial_history[reject-accept]",
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_real_source_lock_races_have_one_legal_serial_history[withdraw-accept]",
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_real_source_lock_races_have_one_legal_serial_history[accept-withdraw]",
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_real_source_lock_races_have_one_legal_serial_history[cancel-accept]",
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_real_source_lock_races_have_one_legal_serial_history[confirm-accept]",
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_real_source_lock_races_have_one_legal_serial_history[accept-confirm]",
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_real_source_lock_races_have_one_legal_serial_history[accept-cancel]",
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_accept_waiting_for_source_lock_past_deadline_refuses",
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_confirmation_waiting_for_stock_lock_past_deadline_refuses",
+            "tests/s3_negotiation/test_atomicity_and_races.py::test_committed_acceptance_replays_after_expiry_without_second_order",
+            "tests/s3_negotiation/test_contract.py::test_accept_preserves_history_and_zero_economics_then_confirms_fixed_price[UG]",
+            "tests/s3_negotiation/test_contract.py::test_accept_preserves_history_and_zero_economics_then_confirms_fixed_price[KE]",
+            "tests/s3_negotiation/test_contract.py::test_one_pending_withdraw_new_version_and_reject",
+            "tests/s3_negotiation/test_contract.py::test_invalid_exact_money_has_no_proposal[0]",
+            "tests/s3_negotiation/test_contract.py::test_invalid_exact_money_has_no_proposal[-1]",
+            "tests/s3_negotiation/test_contract.py::test_invalid_exact_money_has_no_proposal[NaN]",
+            "tests/s3_negotiation/test_contract.py::test_invalid_exact_money_has_no_proposal[Infinity]",
+            "tests/s3_negotiation/test_contract.py::test_invalid_exact_money_has_no_proposal[99999999999999]",
+            "tests/s3_negotiation/test_contract.py::test_invalid_exact_money_has_no_proposal[70.001]",
+            "tests/s3_negotiation/test_contract.py::test_deadline_mandatory_aware_and_future[2000-01-01T00:00:00Z]",
+            "tests/s3_negotiation/test_contract.py::test_deadline_mandatory_aware_and_future[2099-01-01T12:00:00]",
+            "tests/s3_negotiation/test_contract.py::test_deadline_mandatory_aware_and_future[None]",
+            "tests/s3_negotiation/test_contract.py::test_committed_replay_checks_intent_and_live_binding",
+            "tests/s3_negotiation/test_contract.py::test_merchant_cannot_accept_and_retailer_cannot_propose",
+            "tests/s3_negotiation/test_migration.py::test_bootstrap_rejects_changed_proposal_contract[constraint]",
+            "tests/s3_negotiation/test_migration.py::test_bootstrap_rejects_changed_proposal_contract[index]",
+            "tests/s3_negotiation/test_migration.py::test_bootstrap_rejects_changed_proposal_contract[trigger]",
+            "tests/s3_negotiation/test_migration.py::test_bootstrap_rejects_changed_proposal_contract[trigger_condition]",
+            "tests/s3_negotiation/test_provenance_and_safety.py::test_counterfeit_source_cannot_skip_s1_price_validation",
+            "tests/s3_negotiation/test_provenance_and_safety.py::test_same_total_different_lines_never_reuses_consent",
+            "tests/s3_negotiation/test_provenance_and_safety.py::test_unavailable_or_short_stock_cannot_confirm[short_stock]",
+            "tests/s3_negotiation/test_provenance_and_safety.py::test_unavailable_or_short_stock_cannot_confirm[inactive_sku]",
+            "tests/s3_negotiation/test_provenance_and_safety.py::test_unavailable_or_short_stock_cannot_confirm[inactive_product]",
+            "tests/s3_negotiation/test_provenance_and_safety.py::test_unavailable_or_short_stock_cannot_confirm[unit]",
+            "tests/s3_negotiation/test_provenance_and_safety.py::test_retained_economic_effect_refuses_accept",
+            "tests/s3_negotiation/test_provenance_and_safety.py::test_negotiated_history_reorders_at_current_price",
+            "tests/s3_negotiation/test_provenance_and_safety.py::test_durable_replay_rechecks_user_and_permission[permission]",
+            "tests/s3_negotiation/test_provenance_and_safety.py::test_durable_replay_rechecks_user_and_permission[user]",
+            "tests/s3_negotiation/test_provenance_and_safety.py::test_other_tenant_never_reads_or_accepts_proposal",
+            "tests/s3_negotiation/test_safety_boundaries.py::test_offer_immutable_and_pending_unique_at_storage[price]",
+            "tests/s3_negotiation/test_safety_boundaries.py::test_offer_immutable_and_pending_unique_at_storage[deadline]",
+            "tests/s3_negotiation/test_safety_boundaries.py::test_offer_immutable_and_pending_unique_at_storage[delete]",
+            "tests/s3_negotiation/test_safety_boundaries.py::test_key_cannot_accept_a_different_proposal",
+            "tests/s3_negotiation/test_safety_boundaries.py::test_foreign_retailer_within_same_tenant_is_denied",
+            "tests/s3_negotiation/test_safety_boundaries.py::test_confirmed_agreement_is_not_undone_by_later_expiry",
+            "tests/s3_negotiation/test_safety_boundaries.py::test_negotiated_price_reaches_only_canonical_payment_once[cash-settled-0]",
+            "tests/s3_negotiation/test_safety_boundaries.py::test_negotiated_price_reaches_only_canonical_payment_once[credit-converted-140]",
+            "tests/s1_pricing_quote/test_contract.py::test_confirmation_quote_refresh_preserves_joined_stock_lock_order",
+            "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[None-override0-None-None-BASE_PRICE_REQUIRED]",
+            "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base1-None-value1-BASE_PRICE-None]",
+            "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base2-override2-value2-RETAILER_OVERRIDE-None]",
+            "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base3-override3-None-None-PRICE_DATA_INTEGRITY_RED]",
+            "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base4-override4-None-None-PRICE_DATA_INTEGRITY_RED]",
+            "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[90.000-UGX-90]",
+            "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[90.000-KES-90.00]",
+            "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[0-UGX-0]",
+            "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[9999999999.99-KES-9999999999.99]",
+            "tests/s1_pricing_quote/test_contract.py::test_money_refusals[90.01-UGX-MONEY_PRECISION]",
+            "tests/s1_pricing_quote/test_contract.py::test_money_refusals[90.001-KES-MONEY_PRECISION]",
+            "tests/s1_pricing_quote/test_contract.py::test_money_refusals[NaN-KES-INVALID_MONEY]",
+            "tests/s1_pricing_quote/test_contract.py::test_money_refusals[Infinity-KES-INVALID_MONEY]",
+            "tests/s1_pricing_quote/test_contract.py::test_money_refusals[-1-KES-INVALID_MONEY]",
+            "tests/s1_pricing_quote/test_contract.py::test_money_refusals[0-KES-INVALID_MONEY]",
+            "tests/s1_pricing_quote/test_contract.py::test_money_refusals[10000000000-KES-INVALID_MONEY]",
+            "tests/s1_pricing_quote/test_contract.py::test_money_refusals[1-XXX-TENANT_CURRENCY_UNRESOLVED]",
+            "tests/s1_pricing_quote/test_contract.py::test_price_change_requires_explicit_consent",
+            "tests/s1_pricing_quote/test_contract.py::test_same_total_opposing_lines_still_red",
+            "tests/s1_pricing_quote/test_contract.py::test_aba_revision_source_and_label_do_not_add_consent_click",
+            "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[retailer-another]",
+            "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[tenant-other]",
+            "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[actor-other]",
+            "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[currency-UGX]",
+            "tests/s1_pricing_quote/test_contract.py::test_quote_tamper_and_expiry",
+            "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[False-KE]",
+            "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[False-UG]",
+            "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[True-KE]",
+            "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[True-UG]",
+            "tests/s1_pricing_quote/test_http.py::test_reconsent_failure_does_not_consume_key",
+            "tests/s1_pricing_quote/test_http.py::test_missing_base_even_with_override",
+            "tests/s1_pricing_quote/test_http.py::test_versioned_override_retire_restore_same_row",
+            "tests/s1_pricing_quote/test_http.py::test_replay_rechecks_active_binding_and_conflicting_intent",
+            "tests/s1_pricing_quote/test_http.py::test_explicit_replacement_preserves_old_items",
+            "tests/s1_pricing_quote/test_http.py::test_confirm_uses_snapshot_and_one_quantity_contract[KE]",
+            "tests/s1_pricing_quote/test_http.py::test_confirm_uses_snapshot_and_one_quantity_contract[UG]",
+            "tests/s1_pricing_quote/test_http.py::test_used_unit_change_refuses_both_entries_label_preserves_history",
+            "tests/s1_pricing_quote/test_http.py::test_client_cannot_replace_merchant_or_confirmed_draft",
+            "tests/s1_pricing_quote/test_http.py::test_stale_confirm_does_not_reprice_or_start_economics",
+            "tests/s1_pricing_quote/test_http.py::test_quote_cannot_move_to_another_authorized_customer",
+            "tests/s1_pricing_quote/test_http.py::test_wrong_tenant_and_current_rbac_revoke_before_replay",
+            "tests/s1_pricing_quote/test_http.py::test_opposing_prices_same_total_requires_real_http_consent",
+            "tests/s1_pricing_quote/test_http.py::test_same_economics_aba_success_records_both_revisions",
+            "tests/s1_pricing_quote/test_http.py::test_old_fractional_ugx_price_remains_readable_but_not_orderable[UG]",
+            "tests/s1_pricing_quote/test_process_and_faults.py::test_two_processes_same_key_and_fresh_process_replay",
+            "tests/s1_pricing_quote/test_process_and_faults.py::test_create_fault_rolls_back_all_effects[second-item]",
+            "tests/s1_pricing_quote/test_process_and_faults.py::test_create_fault_rolls_back_all_effects[commit]",
+            "tests/s1_pricing_quote/test_process_and_faults.py::test_replacement_cancel_failure_restores_old_draft",
+            "tests/s1_pricing_quote/test_cache_integration.py::test_create_cache_and_binding_revocation[merchant]",
+            "tests/s1_pricing_quote/test_cache_integration.py::test_create_cache_and_binding_revocation[client]",
+            "tests/s1_pricing_quote/test_cache_integration.py::test_cached_create_rechecks_live_subject",
+            "tests/s1_pricing_quote/test_cache_integration.py::test_cached_create_preserves_intent_and_quote_ownership",
+            "tests/s1_pricing_quote/test_cache_integration.py::test_s1_commit_publication[barrier]",
+            "tests/s1_pricing_quote/test_cache_integration.py::test_s1_commit_publication[failure]",
+            "tests/s1_pricing_quote/test_cache_integration.py::test_same_process_create_waits_for_commit[merchant]",
+            "tests/s1_pricing_quote/test_cache_integration.py::test_same_process_create_waits_for_commit[client]",
+            "tests/s1_pricing_quote/test_review_r2.py::test_revision_contract_finite_consistency",
+            "tests/order_state_r1/test_static_guards.py::test_single_direct_status_writer",
+            "tests/order_state_r1/test_static_guards.py::test_command_service_holds_exactly_one_status_assignment",
+            "tests/order_state_r1/test_static_guards.py::test_no_confirmation_ledger_call_anywhere_in_production",
+            "tests/order_state_r1/test_static_guards.py::test_no_placeholder_notification_values_in_production",
+            "tests/order_state_r1/test_static_guards.py::test_payment_command_single_caller_guard",
+            "tests/order_state_r1/test_static_guards.py::test_adapter_refuses_payment_states",
+            "tests/order_state_r1/test_static_guards.py::test_all_commands_share_prelock_strategy",
+            "tests/s3_negotiation/test_safety_boundaries.py::test_alternate_uuid_request_rechecks_live_authority[uppercase]",
+            "tests/s3_negotiation/test_safety_boundaries.py::test_alternate_uuid_request_rechecks_live_authority[compact]",
+            "tests/s3_negotiation/test_safety_boundaries.py::test_alternate_uuid_request_rechecks_live_authority[urn]",
+            "tests/s3_negotiation/test_safety_boundaries.py::test_alternate_uuid_request_rechecks_live_authority[braces]"
+          ],
+          "passed": 120,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "gate": "B",
+          "candidate": "c2fff20365b16254db2163504751fa5f84746e80",
+          "native_receipt": "evidence/formal-legacy-v3.json",
+          "receipt_sha256": "2c7cea6e529ca1ca17e5a46417586024d065ddb0d3bb9552cad39bc077c64d05",
+          "junit": "evidence/formal-legacy-v3.xml",
+          "junit_sha256": "d729eb36dea460bfc08239c9a617bbd4ba78725ef84765b349927532a3f9e819",
+          "node_list": "evidence/formal-legacy-v3-nodes.txt",
+          "node_list_sha256": "69a01e42a51949f67471923033121610735e4150ea320d467cf13009e5b44acc",
+          "nodes": [
+            "tests/test_s5_order_state_machine.py::test_state_transition_matrix",
+            "tests/test_s5_order_state_machine.py::test_get_valid_transitions",
+            "tests/test_s5_order_state_machine.py::test_terminal_states",
+            "tests/test_s5_order_state_machine.py::test_partially_paid_self_transition_is_not_globally_valid",
+            "tests/test_s5_order_state_machine.py::test_happy_path_draft_to_fulfilled",
+            "tests/test_s5_order_state_machine.py::test_illegal_transition_draft_to_fulfilled",
+            "tests/test_s5_order_state_machine.py::test_partially_paid_self_transition_allowed_only_for_payment_context",
+            "tests/test_s5_order_state_machine.py::test_invariant_violation_confirm_zero_total",
+            "tests/test_s5_order_state_machine.py::test_terminal_state_no_transitions",
+            "tests/test_s5_order_state_machine.py::test_void_vs_cancel_rules",
+            "tests/test_s5_order_state_machine.py::test_partial_payment_flow",
+            "tests/test_s5_order_state_machine.py::test_concurrent_transition_with_locking",
+            "tests/test_s5_order_state_machine.py::test_transition_with_updated_by",
+            "tests/test_s5_order_state_machine.py::test_order_not_found",
+            "tests/test_s5_order_state_machine.py::test_cannot_fulfill_unpaid_order",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_route_uses_canonical_payment_service_with_behavior_preserving_defaults",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_does_not_commit_or_rollback_calls",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_cash_partial_and_final_matches_route_outcomes",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_transfer_pending_then_completed_matches_route_outcomes",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_credit_collection_reduces_outstanding_balance_like_route",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_duplicate_transaction_id_exact_error",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_idempotent_replay_creates_one_financial_result",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_overpayment_rejection_exact_error",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_force_completed_cannot_create_pending_payment",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_cross_tenant_same_key_isolated",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_service_failures_after_mutation_stages_rollback_all_effects",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_negative_cash_amount_rejected_with_zero_mutation",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_zero_amount_rejected",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_nan_and_infinity_rejected_without_500[nan]",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_nan_and_infinity_rejected_without_500[pos_inf]",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_nan_and_infinity_rejected_without_500[neg_inf]",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_skip_prechecks_cannot_bypass_amount_guard",
+            "tests/test_dc12r1_s3_s2b_i2a_canonical_payment_service.py::test_r3_failed_attempt_leaves_transaction_retryable",
+            "tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_confirm_creates_owned_reservation_rows_and_updates_aggregate",
+            "tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_confirm_insufficient_available_rolls_back_order_stock_and_reservations",
+            "tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_concurrent_confirm_does_not_over_reserve_or_accept_excess_demand",
+            "tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_duplicate_confirm_does_not_create_duplicate_reservation_rows",
+            "tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_cancel_releases_only_this_order_reservation_rows",
+            "tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_duplicate_cancel_does_not_double_release_reservation",
+            "tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_fulfillment_consumes_only_this_order_reservation_and_deducts_on_hand",
+            "tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_direct_paid_order_with_no_reservation_preserves_unrelated_reservations",
+            "tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_return_restores_on_hand_without_creating_reservation",
+            "tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_concurrent_fulfill_consumes_reservation_once_and_writes_one_movement",
+            "tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_reservation_table_and_aggregate_stock_are_tenant_isolated",
+            "tests/business/test_s4e_stock_reservation_lifecycle_audit.py::test_reserve_release_and_consume_movement_boundaries"
+          ],
+          "passed": 45,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "gate": "C",
+          "candidate": "c2fff20365b16254db2163504751fa5f84746e80",
+          "native_receipt": "evidence/formal-migration-v3.json",
+          "receipt_sha256": "ef6fb812ee196f2b901dac238ddecbea48bceba268a9247c49f0a991bdc0d9ce",
+          "junit": "evidence/formal-migration-v3.xml",
+          "junit_sha256": "0e318bfbe9f55628205365c49ef6aecbc59c40b051401eeb4bd5452b956f2470",
+          "node_list": "evidence/formal-migration-v3-nodes.txt",
+          "node_list_sha256": "027b559789f608803a2967bbfa44f2c7028863b2457cd6b8bf4c33674616837a",
+          "nodes": [
+            "tests/s3_negotiation/test_migration.py::test_existing_041_upgrade_preserves_rows_and_matches_new_tenant"
+          ],
+          "passed": 1,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ],
+      "browser": {
+        "receipt": "evidence/formal-browser-01-result.json",
+        "sha256": "f7b78583d4731ffaeda9b35fbed506ce017c8452473793ed91cc11cd0fd65c1f",
+        "scenarios": 8,
+        "literal_true": 102
+      },
+      "mutations": {
+        "receipt": "evidence/s3-mutations-result.json",
+        "sha256": "abe0f810eaa12d428e0d2942d77acd6584ccd79d18896bd964e3af26879cf46d",
+        "semantic_controls": 3
+      },
+      "gaps": [
+        "CURRENT_HOSTED_CI_NOT_RUN",
+        "NOT_ALL_BACKEND_NODES",
+        "NOT_ALL_HISTORICAL_S1_S2_IMAGE_RCJ_NODES"
+      ],
+      "node_union": {
+        "count": 166,
+        "unique": 166,
+        "overlap": 0,
+        "s3_runtime": 55,
+        "s3_migration": 1,
+        "s1_subset": 58,
+        "sole_writer": 7,
+        "legacy_orders_payment_inventory": 45
+      }
     }
   ],
   "explicit_non_claims": [
-    "Ordinary-zone CI is a finite regression selection (236 ordinary files), not the full suite: the six frozen ignores remain uncovered and are listed separately in every supply plan.",
-    "None of the 16 dedicated files has been re-executed on hosted CI in this round; their status is REUSED_ACCEPTED_EVIDENCE with explicit GAPs, never a current CI PASS.",
-    "Evidence scopes stay separate: S1 14 journeys / 104 assertions; S1 pricing_quote pytest 77; S2 backend pytest 53; S2 browser 6 scenarios / 138 assertions; cache/commit-boundary rounds. No summation across scopes.",
-    "Photos A: original 93 passed plus the same GC node 1 passed in a separate repair call; B mobile, C paired task restore, D two HTTP reorders, E three mutations and aged-GC remain distinct bounded CTO-accepted scopes, not one combined runtime or hosted PASS.",
-    "Current 7d86e513 product freeze is CTO-approved source intake only. The author 511/build and four mobile scenarios do not reexecute the historical 77/53/138 or all S2 journeys; no hosted CI or current full collection is claimed."
+    "236 ordinary files / 4288 canonical nodes remain a finite selection; six frozen ignores are unchanged.",
+    "21 dedicated files are exactly registered; only the named evidence scopes are accepted, never automatically all file nodes.",
+    "S3 V3 A/B/C totals 166 disjoint nodes, including only 58 S1 nodes, not a full S1 directory pass.",
+    "RCJ full node coverage remains GAP. Historical S1/S2/images keep their acceptance, not current dependent-byte reexecution.",
+    "Current hosted CI and ordinary full body executions are NOT_RUN in this task.",
+    "Changing approved-ref cannot authorize a different product, missing evidence or an edited coverage-only provenance."
   ],
-  "intake_version": 3,
-  "intake_status": "CTO_APPROVED_CURRENT_SOURCE_FREEZE__LOCAL_ADMISSION_ONLY",
-  "product_anchor": "7d86e513fe8d37558bf4595330a62c9b082c7776",
+  "intake_version": 4,
+  "intake_status": "LOCAL_RC3_ADMISSION_CANDIDATE__CTO_SOURCE_REVIEW_PENDING",
+  "product_anchor": "c2fff20365b16254db2163504751fa5f84746e80",
   "intake_sources": [
     {
       "relative_record": "mvp-rc2-post-images-cto-review-20261017/CTO-REVIEW.zh-CN.md",
@@ -443,6 +741,204 @@
     }
   ],
   "current_source_intake": {
+    "authorization": "CTO-AUTH-RC3-LOCAL-RELEASE-CI-ADMISSION-R1-20261020",
+    "source_ref": "c2fff20365b16254db2163504751fa5f84746e80",
+    "source_tree": "aa773acdb55d4a099656a2f53710360350d53738",
+    "source_parent": "6d6016d594b14f6c90ea6f521d0aa1f06fe0bd43",
+    "backend_tree": "c3eec56f61ff9256570fbcdf5aab4c5fec5f47ee",
+    "frontend_tree": "2d3f2ef3252cabd8c441815bfeb944b2f8a0ee97",
+    "authority_record": {
+      "path": "AI_REPORT_INBOX/s3-cto-final-acceptance-rc3-handoff-20261020/delivery/CODEXL-RC3-RELEASE-CI-PREPARATION.zh-CN.md",
+      "sha256": "509d17bea6d48f159585d3f28e5a93ed3e68900c6279ffe9f5ccf41b0883e14d"
+    },
+    "cto_ruling": {
+      "path": "AI_REPORT_INBOX/s3-cto-final-acceptance-rc3-handoff-20261020/delivery/CTO-FINAL-S3-ACCEPTANCE.zh-CN.md",
+      "sha256": "641dabc81f93a52cd074ffd8fa0d846d9f49ab4e7d18b89a03fdfc641023935b"
+    },
+    "independent_v3_this_intake": "CTO_ACCEPTED_S3_A_B_C_D_E_FINITE_SCOPE_ONLY",
+    "historical_results_reexecuted": false,
+    "hosted_ci_this_intake": "NOT_RUN",
+    "current_fresh_ordinary_collection": "EXPECTED_UNCHANGED__SEE_LOCAL_COLLECTION_RECEIPTS",
+    "ordinary_definition": {
+      "nodes": 4288,
+      "files": 236,
+      "dedicated_files": 21,
+      "ignores": 6,
+      "canonical_definition_changed": false
+    },
+    "source_deltas": [
+      {
+        "path": "backend/alembic/versions/042_order_negotiation_proposals.py",
+        "current_blob": "77700889ffb92eddb49488ea2b265834b41e2697",
+        "current_sha256": "5e26d80dbb16cea1d12f351d374730d252024511f4a378dd5f8e0308f2bd6f2f"
+      },
+      {
+        "path": "backend/api/app.py",
+        "current_blob": "f247f1baa6ce248d074714148b88ffaab68d772b",
+        "current_sha256": "4d3a9b7de558b32e3302c9c92cd05b0dfbfcd6cae62b9e1dce1b360b06245bfd"
+      },
+      {
+        "path": "backend/api/middleware/idempotency.py",
+        "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+        "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
+      },
+      {
+        "path": "backend/api/v1/order_negotiations.py",
+        "current_blob": "4484c0a5056c39a2618573a6dcc4a146e4716ebe",
+        "current_sha256": "0446356cf3dd6d9b67ac44ce12991a447da5935b69c1ac379a702e2e7dc92a44"
+      },
+      {
+        "path": "backend/models/__init__.py",
+        "current_blob": "9ac806be1065c80ee98c49c00b104c23f865e1e2",
+        "current_sha256": "adc0798a4a43aeca0d4c64f10e1bc56e09dacb36f5ec9f03470e18d9334a617f"
+      },
+      {
+        "path": "backend/models/order_negotiation.py",
+        "current_blob": "4be0609b69afd1297a0bc13041e5f0dc3f69c792",
+        "current_sha256": "5442752109103cb3f0a6444368ac3f0ad8e7a220e7ae95d722ab2768229f379f"
+      },
+      {
+        "path": "backend/schemas/order_negotiation.py",
+        "current_blob": "3af0bb3baf2ef5819ad6127f84c61f434b8e0386",
+        "current_sha256": "5cabf08e35921e69474474705f98d383815aba8514009e16ad7c1c8a52f1b868"
+      },
+      {
+        "path": "backend/scripts/bootstrap_tenant_schema.py",
+        "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
+        "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
+      },
+      {
+        "path": "backend/scripts/runtime_readiness_gate.py",
+        "current_blob": "52c9c44909dfc87c03ec6e6b8544fd02e7f744db",
+        "current_sha256": "8c5d99fa200bec9398719dc0ab31a366a61f875a1d6a756afeda3ff9c61d0e34"
+      },
+      {
+        "path": "backend/services/order_command_service.py",
+        "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+        "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
+      },
+      {
+        "path": "backend/services/order_creation_service.py",
+        "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+        "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
+      },
+      {
+        "path": "backend/services/order_negotiation_service.py",
+        "current_blob": "16a866b69fcb025500b8a73ff12304bbf20bfaa2",
+        "current_sha256": "7d6fca9ab8d693a4dcfd0d776e1bdce45dcbb31dddc81d1648d5345dff29dd3c"
+      },
+      {
+        "path": "backend/services/pricing_quote_service.py",
+        "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
+        "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
+      },
+      {
+        "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
+        "current_blob": "9a289181c71e3a42a41089abbf11d52b27934540",
+        "current_sha256": "02427b495680855e97b5251640e990ee4712298a5c1cc74859d2e8fb8b9a150b"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/__init__.py",
+        "current_blob": "ac9fd63217e0b3e63a4f4c85d26fb78c28ee802f",
+        "current_sha256": "786b1be6c91f69f6dad7e7dff9f74b1c09b3e28c0ffa1cff5aed3be9ee7742de"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/conftest.py",
+        "current_blob": "de9dd188ea15bdd92fa9fecf3629634547f86954",
+        "current_sha256": "cc136f57dc8493aee5f26dd84be7c057633d0dfe9fba97c1bcbd178d4ce149cb"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_atomicity_and_races.py",
+        "current_blob": "67b840dd63f2ddc3bc576823db43422feb89b3b8",
+        "current_sha256": "0924fa479b34ff169fc150c6c72ff55eaa863a22f1d14f9460182d48f0c9a0f3"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_contract.py",
+        "current_blob": "c15541eb943cc40b3baddfc5470ba91b9e5de88d",
+        "current_sha256": "ffa43cb5de9cd74d0065e292a3dee1384ba676008d529c237cfeb1d8f8215cf1"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_migration.py",
+        "current_blob": "bcfb5f9321467c15259ffff0846bfe4cb7cfcc66",
+        "current_sha256": "7a7eb4575fd688f3604b16b672eb6c5a2028134028356bb19f67bd71e1a2fa13"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_provenance_and_safety.py",
+        "current_blob": "626447beb523f99197d1aa021d31c22a4989bfdf",
+        "current_sha256": "2257cc79571edd1524121bac16ac1cc7eea1b37cc8583dd94efd3f0a1aeee5cc"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_safety_boundaries.py",
+        "current_blob": "66f71981878f6b1ac501b9a715a09f69978df51f",
+        "current_sha256": "ea19e8171268d9846ede10f849d4c0bc9917d7738bb9e5c90ef51d23888b014a"
+      },
+      {
+        "path": "backend/tests/test_runtime_readiness_gate.py",
+        "current_blob": "681745db2c19251707926e2f3e7748e7aef1d228",
+        "current_sha256": "97939b6b273bf103f77aefba6414a114984a6adb86c824a9a6b674cdd3b70753"
+      },
+      {
+        "path": "frontend/src/components/orders/OrderNegotiationPanel.tsx",
+        "current_blob": "47974c7a162a6f2cfef10f23001e930f5dbdd2cb",
+        "current_sha256": "733be9968b12fac9742cade2257727bd42d90459f67055b69210037bd6dbd215"
+      },
+      {
+        "path": "frontend/src/pages/client/OrderDetailPage.tsx",
+        "current_blob": "06b4cfbba89a6aa8c27fde91b9efe86b82dfc81e",
+        "current_sha256": "3652e01cc41b56b84c76b1b83f7015a60a106d09fe5a8f2a2aa29b8dcb5a1f51"
+      },
+      {
+        "path": "frontend/src/pages/orders/OrderListPage.tsx",
+        "current_blob": "28e9824506cffa75e7c2365ecf837a5170b8148a",
+        "current_sha256": "f300249672f79ae7f2a15595affaf0c4865692319e6add3c808c8cd78cfd47cf"
+      },
+      {
+        "path": "frontend/src/services/orderNegotiationService.ts",
+        "current_blob": "518794b827f991a21bab29eb4b51720f7bc76e41",
+        "current_sha256": "421f9d5660d5ace0d26aea8fdc9cb72174b1a988ff7a9e1f79d7ff5c9795a746"
+      },
+      {
+        "path": "frontend/src/tests/S3Negotiation.test.tsx",
+        "current_blob": "8eea1303649c5570e281021664a71dec7050aee7",
+        "current_sha256": "0245f537f867ce653e661eaec2b1d8937f14971b02b6abc991a01d430f118027"
+      }
+    ]
+  },
+  "current_attachment_deltas": [
+    {
+      "binding_id": "s1_pricing_quote_independent_v3",
+      "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
+      "historical_candidate": "88c7d8157ac5c46795d411ea6799112e017c9532",
+      "historical_load_bearing_blob": "67b97b41518f8851b2d9b4b54eb7095ee66eaa40",
+      "current_source_ref": "c2fff20365b16254db2163504751fa5f84746e80",
+      "current_blob": "9a289181c71e3a42a41089abbf11d52b27934540",
+      "current_content_sha256": "02427b495680855e97b5251640e990ee4712298a5c1cc74859d2e8fb8b9a150b",
+      "classification": "PARTIAL_CURRENT_NODE_ACCEPTED__FULL_FILE_REEXECUTION_GAP",
+      "current_file_same_as_historical": false,
+      "current_file_reexecuted_this_intake": false,
+      "change": "Current revision-consistency node accepted at head042; historical 77-node evidence remains on its original blob, not rebound.",
+      "historical_evidence_rebound": false,
+      "current_accepted_exact_nodes": [
+        "tests/s1_pricing_quote/test_review_r2.py::test_revision_contract_finite_consistency"
+      ]
+    },
+    {
+      "binding_id": "product_images_core_cto_bounded_acceptance",
+      "path": "frontend/src/pages/client/ProductDetailPage.tsx",
+      "historical_candidate": "97eb3d89daf3daca45d7289c6669f1cca18d5ef2",
+      "historical_load_bearing_blob": "24d99bbd8f5fa004e08a73e78c807069c5f66678",
+      "current_source_ref": "c2fff20365b16254db2163504751fa5f84746e80",
+      "current_blob": "61788a64016c03af389e15bc9e287c2f65696af9",
+      "current_content_sha256": "7be62e8c610a09d92956c92fd57e7c7a00546cab4651413cc4200b456df0c411",
+      "classification": "GAP_CURRENT_ATTACHMENT_NOT_REEXECUTED",
+      "current_file_same_as_historical": false,
+      "current_file_reexecuted_this_intake": false,
+      "change": "Mobile UX product-detail layout is changed; prior image/S2 browser scope is not a current frontend reexecution.",
+      "historical_evidence_rebound": false,
+      "current_accepted_exact_nodes": []
+    }
+  ],
+  "previous_rc2_source_intake": {
     "authority_record": {
       "path": "AI_REPORT_INBOX/retailer-mobile-ux-browser-cto-review-20261019/CURRENT-SOURCE-INTAKE.json",
       "sha256": "b15632375e76c36fad7fd01ebe989c74153fa2ae79c8e8b7a924a73c7dc0bed7"
@@ -867,7 +1363,7 @@
       }
     ]
   },
-  "current_attachment_deltas": [
+  "historical_attachment_deltas": [
     {
       "binding_id": "s1_pricing_quote_independent_v3",
       "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
@@ -895,6 +1391,288 @@
       "current_file_reexecuted_this_intake": false,
       "change": "Mobile UX product-detail layout is changed; prior image/S2 browser scope is not a current frontend reexecution.",
       "historical_evidence_rebound": false
+    }
+  ],
+  "current_dependency_assessments": [
+    {
+      "binding_id": "s1_pricing_quote_independent_v3",
+      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "historical_record_not_rebound": true,
+      "current_dependency_changed_blobs": [
+        {
+          "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
+          "historical_blob": "67b97b41518f8851b2d9b4b54eb7095ee66eaa40",
+          "current_blob": "9a289181c71e3a42a41089abbf11d52b27934540"
+        }
+      ],
+      "shared_dependency_delta": [
+        {
+          "path": "backend/api/middleware/idempotency.py",
+          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
+        },
+        {
+          "path": "backend/scripts/bootstrap_tenant_schema.py",
+          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
+          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
+        },
+        {
+          "path": "backend/services/order_command_service.py",
+          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
+        },
+        {
+          "path": "backend/services/order_creation_service.py",
+          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
+        },
+        {
+          "path": "backend/services/pricing_quote_service.py",
+          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
+          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
+        }
+      ],
+      "current_accepted_exact_nodes": [
+        "tests/s1_pricing_quote/test_contract.py::test_confirmation_quote_refresh_preserves_joined_stock_lock_order",
+        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[None-override0-None-None-BASE_PRICE_REQUIRED]",
+        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base1-None-value1-BASE_PRICE-None]",
+        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base2-override2-value2-RETAILER_OVERRIDE-None]",
+        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base3-override3-None-None-PRICE_DATA_INTEGRITY_RED]",
+        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base4-override4-None-None-PRICE_DATA_INTEGRITY_RED]",
+        "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[90.000-UGX-90]",
+        "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[90.000-KES-90.00]",
+        "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[0-UGX-0]",
+        "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[9999999999.99-KES-9999999999.99]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[90.01-UGX-MONEY_PRECISION]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[90.001-KES-MONEY_PRECISION]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[NaN-KES-INVALID_MONEY]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[Infinity-KES-INVALID_MONEY]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[-1-KES-INVALID_MONEY]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[0-KES-INVALID_MONEY]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[10000000000-KES-INVALID_MONEY]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[1-XXX-TENANT_CURRENCY_UNRESOLVED]",
+        "tests/s1_pricing_quote/test_contract.py::test_price_change_requires_explicit_consent",
+        "tests/s1_pricing_quote/test_contract.py::test_same_total_opposing_lines_still_red",
+        "tests/s1_pricing_quote/test_contract.py::test_aba_revision_source_and_label_do_not_add_consent_click",
+        "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[retailer-another]",
+        "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[tenant-other]",
+        "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[actor-other]",
+        "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[currency-UGX]",
+        "tests/s1_pricing_quote/test_contract.py::test_quote_tamper_and_expiry",
+        "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[False-KE]",
+        "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[False-UG]",
+        "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[True-KE]",
+        "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[True-UG]",
+        "tests/s1_pricing_quote/test_http.py::test_reconsent_failure_does_not_consume_key",
+        "tests/s1_pricing_quote/test_http.py::test_missing_base_even_with_override",
+        "tests/s1_pricing_quote/test_http.py::test_versioned_override_retire_restore_same_row",
+        "tests/s1_pricing_quote/test_http.py::test_replay_rechecks_active_binding_and_conflicting_intent",
+        "tests/s1_pricing_quote/test_http.py::test_explicit_replacement_preserves_old_items",
+        "tests/s1_pricing_quote/test_http.py::test_confirm_uses_snapshot_and_one_quantity_contract[KE]",
+        "tests/s1_pricing_quote/test_http.py::test_confirm_uses_snapshot_and_one_quantity_contract[UG]",
+        "tests/s1_pricing_quote/test_http.py::test_used_unit_change_refuses_both_entries_label_preserves_history",
+        "tests/s1_pricing_quote/test_http.py::test_client_cannot_replace_merchant_or_confirmed_draft",
+        "tests/s1_pricing_quote/test_http.py::test_stale_confirm_does_not_reprice_or_start_economics",
+        "tests/s1_pricing_quote/test_http.py::test_quote_cannot_move_to_another_authorized_customer",
+        "tests/s1_pricing_quote/test_http.py::test_wrong_tenant_and_current_rbac_revoke_before_replay",
+        "tests/s1_pricing_quote/test_http.py::test_opposing_prices_same_total_requires_real_http_consent",
+        "tests/s1_pricing_quote/test_http.py::test_same_economics_aba_success_records_both_revisions",
+        "tests/s1_pricing_quote/test_http.py::test_old_fractional_ugx_price_remains_readable_but_not_orderable[UG]",
+        "tests/s1_pricing_quote/test_process_and_faults.py::test_two_processes_same_key_and_fresh_process_replay",
+        "tests/s1_pricing_quote/test_process_and_faults.py::test_create_fault_rolls_back_all_effects[second-item]",
+        "tests/s1_pricing_quote/test_process_and_faults.py::test_create_fault_rolls_back_all_effects[commit]",
+        "tests/s1_pricing_quote/test_process_and_faults.py::test_replacement_cancel_failure_restores_old_draft",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_create_cache_and_binding_revocation[merchant]",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_create_cache_and_binding_revocation[client]",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_cached_create_rechecks_live_subject",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_cached_create_preserves_intent_and_quote_ownership",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_s1_commit_publication[barrier]",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_s1_commit_publication[failure]",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_same_process_create_waits_for_commit[merchant]",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_same_process_create_waits_for_commit[client]",
+        "tests/s1_pricing_quote/test_review_r2.py::test_revision_contract_finite_consistency"
+      ],
+      "related_not_substitute_for_original_nodes": [],
+      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
+      "hosted_current_execution": "NOT_RUN"
+    },
+    {
+      "binding_id": "s2_reorder_independent_v3",
+      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "historical_record_not_rebound": true,
+      "current_dependency_changed_blobs": [],
+      "shared_dependency_delta": [
+        {
+          "path": "backend/api/middleware/idempotency.py",
+          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
+        },
+        {
+          "path": "backend/scripts/bootstrap_tenant_schema.py",
+          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
+          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
+        },
+        {
+          "path": "backend/services/order_command_service.py",
+          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
+        },
+        {
+          "path": "backend/services/order_creation_service.py",
+          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
+        },
+        {
+          "path": "backend/services/pricing_quote_service.py",
+          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
+          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
+        }
+      ],
+      "current_accepted_exact_nodes": [],
+      "related_not_substitute_for_original_nodes": [
+        "tests/s3_negotiation/test_provenance_and_safety.py::test_negotiated_history_reorders_at_current_price"
+      ],
+      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
+      "hosted_current_execution": "NOT_RUN"
+    },
+    {
+      "binding_id": "s2_browser_supplement",
+      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "historical_record_not_rebound": true,
+      "current_dependency_changed_blobs": [],
+      "shared_dependency_delta": [
+        {
+          "path": "backend/api/middleware/idempotency.py",
+          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
+        },
+        {
+          "path": "backend/scripts/bootstrap_tenant_schema.py",
+          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
+          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
+        },
+        {
+          "path": "backend/services/order_command_service.py",
+          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
+        },
+        {
+          "path": "backend/services/order_creation_service.py",
+          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
+        },
+        {
+          "path": "backend/services/pricing_quote_service.py",
+          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
+          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
+        }
+      ],
+      "current_accepted_exact_nodes": [],
+      "related_not_substitute_for_original_nodes": [
+        "tests/s3_negotiation/test_provenance_and_safety.py::test_negotiated_history_reorders_at_current_price"
+      ],
+      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
+      "hosted_current_execution": "NOT_RUN"
+    },
+    {
+      "binding_id": "release_critical_journeys_s1_line",
+      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "historical_record_not_rebound": true,
+      "current_dependency_changed_blobs": [],
+      "shared_dependency_delta": [
+        {
+          "path": "backend/api/middleware/idempotency.py",
+          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
+        },
+        {
+          "path": "backend/scripts/bootstrap_tenant_schema.py",
+          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
+          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
+        },
+        {
+          "path": "backend/services/order_command_service.py",
+          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
+        },
+        {
+          "path": "backend/services/order_creation_service.py",
+          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
+        },
+        {
+          "path": "backend/services/pricing_quote_service.py",
+          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
+          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
+        }
+      ],
+      "current_accepted_exact_nodes": [],
+      "related_not_substitute_for_original_nodes": [],
+      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
+      "hosted_current_execution": "NOT_RUN"
+    },
+    {
+      "binding_id": "product_images_core_cto_bounded_acceptance",
+      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "historical_record_not_rebound": true,
+      "current_dependency_changed_blobs": [
+        {
+          "path": "backend/models/__init__.py",
+          "historical_blob": "f4e5aabe838e32c650ffc4ba99a226fd65e0f0d0",
+          "current_blob": "9ac806be1065c80ee98c49c00b104c23f865e1e2"
+        },
+        {
+          "path": "backend/scripts/bootstrap_tenant_schema.py",
+          "historical_blob": "2a495e964e5be05646e9a5b7aee344ba50b5d59e",
+          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d"
+        },
+        {
+          "path": "backend/api/app.py",
+          "historical_blob": "48a0cc4e93063fc7052ad5b2fd33f9ffdfc0b1f4",
+          "current_blob": "f247f1baa6ce248d074714148b88ffaab68d772b"
+        },
+        {
+          "path": "backend/api/middleware/idempotency.py",
+          "historical_blob": "1c4420175858d41ea93b27789f1e2acc597caa17",
+          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c"
+        },
+        {
+          "path": "frontend/src/pages/client/ProductDetailPage.tsx",
+          "historical_blob": "24d99bbd8f5fa004e08a73e78c807069c5f66678",
+          "current_blob": "61788a64016c03af389e15bc9e287c2f65696af9"
+        }
+      ],
+      "shared_dependency_delta": [
+        {
+          "path": "backend/api/middleware/idempotency.py",
+          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
+        },
+        {
+          "path": "backend/scripts/bootstrap_tenant_schema.py",
+          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
+          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
+        },
+        {
+          "path": "backend/services/order_command_service.py",
+          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
+        },
+        {
+          "path": "backend/services/order_creation_service.py",
+          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
+        },
+        {
+          "path": "backend/services/pricing_quote_service.py",
+          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
+          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
+        }
+      ],
+      "current_accepted_exact_nodes": [],
+      "related_not_substitute_for_original_nodes": [],
+      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
+      "hosted_current_execution": "NOT_RUN"
     }
   ]
 }

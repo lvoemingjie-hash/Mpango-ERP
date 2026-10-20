@@ -15,7 +15,7 @@
 #   phase 1c pgcrypto pre-install (admin, task DB, before/after catalog
 #            facts) — tests need it; app never gains public CREATE
 #   phase 2  migrate    (migration authority)    alembic through exactly
-#            041_catalog_product_main_image + REPORTING_USER_PASSWORD (migration 011)
+#            042_order_negotiation_proposals + REPORTING_USER_PASSWORD (migration 011)
 #   phase 3  grants     (migration authority)    provisioner --apply-grants
 #   phase 4  verify     (read-only)              provisioner --verify
 #   phase 4b read-only capability probe          operator attributes and
@@ -194,7 +194,7 @@ frozen_ignores = [
     "tests/test_s3_profiling.py",
 ]
 # CTO-AUTH-RC1-CI-ADMISSION-CLOSURE-L-R1-20261015: the thirteen
-# dedicated-evidence files (CTO-STATIC-SELECTION.json, 2026-10-15) are
+# historical dedicated-evidence files, plus the five exact S3 paths, are
 # registered OUT of the ordinary hosted regression zone. Matching is the
 # exact full backend-relative path only — no keyword or directory rule, and
 # future files get NO automatic exemption (a new file lands in the ordinary
@@ -202,6 +202,13 @@ frozen_ignores = [
 # re-freezes them). These files are registered as dedicated acceptance
 # evidence; the ordinary legs never run them.
 dedicated_evidence_families = {
+    "s3_negotiation": [
+        "tests/s3_negotiation/test_atomicity_and_races.py",
+        "tests/s3_negotiation/test_contract.py",
+        "tests/s3_negotiation/test_migration.py",
+        "tests/s3_negotiation/test_provenance_and_safety.py",
+        "tests/s3_negotiation/test_safety_boundaries.py",
+    ],
     "product_images": [
         "tests/product_images/test_contract.py",
         "tests/product_images/test_migration.py",
@@ -352,7 +359,7 @@ plan = {
         {"phase": 1, "name": "provision", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--provision", "identity": "admin (maintenance DB)", "roles": [migrate_user, app_user]},
         {"phase": "1b", "name": "task operator supply", "tool": "psql via private stdin", "identity": "admin (maintenance DB)", "grants": ["LOGIN", "CREATEDB (task authorization)", "CREATEROLE (task authorization)", "SET-only membership of " + migrate_user + " (non-inheriting)"]},
         {"phase": "1c", "name": "pgcrypto pre-install", "tool": "psql admin on task DB", "identity": "admin", "evidence": "before/after pg_extension catalog facts"},
-        {"phase": 2, "name": "migrate", "tool": "alembic upgrade head", "head": "041_catalog_product_main_image", "identity": "migration authority (database owner)"},
+        {"phase": 2, "name": "migrate", "tool": "alembic upgrade head", "head": "042_order_negotiation_proposals", "identity": "migration authority (database owner)"},
         {"phase": 3, "name": "apply-grants", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--apply-grants", "identity": "migration authority"},
         {"phase": 4, "name": "verify", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--verify", "identity": "read-only"},
         {"phase": "4b", "name": "capability probe", "tool": "read-only catalog SELECTs", "checks": ["operator rolcreatedb/rolcreaterole true, rolsuper/rolinherit false", "SET-only membership (set_option true, inherit_option false)"]},
@@ -570,7 +577,7 @@ PGCRYPTO_AFTER="$(run_psql "$ADMIN_USER" "$ADMIN_PASSWORD" "$TEST_DB" "SELECT co
 [ "$PGCRYPTO_AFTER" = "1" ] || refuse "pgcrypto not present after install (before=${PGCRYPTO_BEFORE}, after=${PGCRYPTO_AFTER})"
 echo "[supply] pgcrypto catalog facts: before=${PGCRYPTO_BEFORE} after=${PGCRYPTO_AFTER}"
 
-# ---- phase 2: migrations through exactly 041 as the migration authority ----
+# ---- phase 2: migrations through exactly 042 as the migration authority ----
 echo "[supply] phase 2/5 migrate (migration authority; alembic upgrade head)"
 (
     cd "$REPO_ROOT/backend"
@@ -578,8 +585,8 @@ echo "[supply] phase 2/5 migrate (migration authority; alembic upgrade head)"
     poetry run alembic upgrade head 2>&1 | REDACTED_TOOL_PIPE
 )
 HEAD_ROW="$(run_psql "$MIGRATE_USER" "$MIGRATE_PASSWORD" "$TEST_DB" "SELECT version_num FROM public.alembic_version")"
-[ "$HEAD_ROW" = "041_catalog_product_main_image" ] || refuse "alembic head is '$HEAD_ROW', expected exactly 041_catalog_product_main_image"
-echo "[supply] alembic head verified: 041_catalog_product_main_image"
+[ "$HEAD_ROW" = "042_order_negotiation_proposals" ] || refuse "alembic head is '$HEAD_ROW', expected exactly 042_order_negotiation_proposals"
+echo "[supply] alembic head verified: 042_order_negotiation_proposals"
 
 # ---- phase 3: minimum runtime grants ----------------------------------------
 echo "[supply] phase 3/5 apply-grants (migration authority)"

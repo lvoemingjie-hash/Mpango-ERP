@@ -593,7 +593,7 @@ class TestBootstrapPreflight:
         plan = json.loads((self.tmp / "plan.json").read_text(encoding="utf-8"))
         assert [p["name"] for p in plan["phases"]][:3] == ["provision", "task operator supply", "pgcrypto pre-install"]
         migrate = next(p for p in plan["phases"] if p["name"] == "migrate")
-        assert migrate["head"] == "041_catalog_product_main_image"
+        assert migrate["head"] == "042_order_negotiation_proposals"
         identities = plan["identities"]
         assert identities["migration"]["user"] == "mpango_migrate"
         assert identities["app"]["user"] == "mpango_app"
@@ -612,10 +612,10 @@ class TestBootstrapPreflight:
         assert counts["partition_total"] == counts["ordinary"] > 0
         assert counts["ordinary"] + counts["dedicated"] == counts["selected"]
         assert counts["unknown"] == 0
-        assert counts["dedicated"] == 16
+        assert counts["dedicated"] == 21
         assert set(plan["profiles"]) == set(PROFILE_ORDER)
         dedicated = plan["dedicated_evidence"]
-        assert dedicated["count"] == len(dedicated["files"]) == 16
+        assert dedicated["count"] == len(dedicated["files"]) == 21
         assert sorted(dedicated["files"]) == sorted(
             f for family in dedicated["families"].values() for f in family
         )
@@ -639,7 +639,7 @@ class TestBootstrapPreflight:
         dedicated = set(plan["dedicated_evidence"]["files"])
         assert union & dedicated == set()
         assert union | dedicated == expected
-        assert len(dedicated) == 16
+        assert len(dedicated) == 21
 
     def test_missing_or_malformed_redis_url_refused(self):
         missing = self._run({"CI_REDIS_URL": ""}, plan=Path(self.tmp) / "x-redis.json")
@@ -690,7 +690,7 @@ cat > "$DIR/psql-$N.stdin"
 case "$*" in
   *"rolcreatedb, rolcreaterole"*) echo "t|t|f|f" ;;
   *"pg_auth_members"*) echo "mpango_migrate:1:0" ;;
-  *"alembic_version"*) echo 041_catalog_product_main_image ;;
+  *"alembic_version"*) echo 042_order_negotiation_proposals ;;
   *"CREATE EXTENSION"*) : > "$DIR/pgcrypto-installed" ;;
   *"pg_extension WHERE extname"*)
     if [ -f "$DIR/pgcrypto-installed" ]; then echo 1; else echo 0; fi ;;
@@ -3732,7 +3732,7 @@ class TestR6R5HostedPreconditions:
     def test_e03_helper_and_backend_frozen(self):
         diff = self._git(
             "diff", "--name-only",
-            "97eb3d89daf3daca45d7289c6669f1cca18d5ef2", "HEAD",
+            "c2fff20365b16254db2163504751fa5f84746e80", "HEAD",
             "--", "backend",
             cwd=REPO_ROOT,
         )
@@ -3780,14 +3780,14 @@ class TestDedicatedEvidencePartition:
         plan, plan_path = self._preflight_plan(tmp_path)
         proc = self._dedicated_verify(plan_path, "--include-families")
         assert proc.returncode == 0, proc.stderr
-        assert "registry exact (16 files)" in proc.stdout
+        assert "registry exact (21 files)" in proc.stdout
         assert "unknown=0" in proc.stdout
-        assert plan["selection_counts"]["selected"] == 252
+        assert plan["selection_counts"]["selected"] == 257
         assert plan["selection_counts"]["ordinary"] == 236
         families = plan["dedicated_evidence"]["families"]
         assert {k: len(v) for k, v in families.items()} == {
             "s1_pricing_quote": 6, "s2_reorder": 4,
-            "release_critical_journeys": 3, "product_images": 3,
+            "release_critical_journeys": 3, "product_images": 3, "s3_negotiation": 5,
         }
         coverage = json.loads((REPO_ROOT / "docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json").read_text())
         registered = set(plan["dedicated_evidence"]["files"])
@@ -3864,7 +3864,7 @@ class TestDedicatedEvidencePartition:
 
 class TestWrapperWrongHeadRefusal:
     """The migrate-phase head contract is exact equality with
-    041_catalog_product_main_image; a stale or divergent head answer must
+    042_order_negotiation_proposals; a stale or divergent head answer must
     refuse the whole supply before pytest can start."""
 
     def _run_with_head_answer(self, tmp_path, head_answer):
@@ -3872,7 +3872,7 @@ class TestWrapperWrongHeadRefusal:
         bin_dir.mkdir()
         (tmp_path / "records").mkdir()
         fake_psql = FAKE_PSQL.replace(
-            "echo 041_catalog_product_main_image", f"echo {head_answer}"
+            "echo 042_order_negotiation_proposals", f"echo {head_answer}"
         )
         (bin_dir / "psql").write_text(fake_psql, encoding="utf-8", newline="\n")
         (bin_dir / "poetry").write_text(FAKE_POETRY_PASS, encoding="utf-8", newline="\n")
@@ -3900,11 +3900,11 @@ class TestWrapperWrongHeadRefusal:
             capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
         )
 
-    @pytest.mark.parametrize("head", ["039_order_credit_holds", "040_s1_pricing_quote_contract"])
+    @pytest.mark.parametrize("head", ["039_order_credit_holds", "040_s1_pricing_quote_contract", "041_catalog_product_main_image", "043_unapproved_future"])
     def test_stale_head_answer_refuses_before_bootstrap(self, tmp_path, head):
         proc = self._run_with_head_answer(tmp_path, head)
         assert proc.returncode != 0
-        assert "expected exactly 041_catalog_product_main_image" in proc.stderr
+        assert "expected exactly 042_order_negotiation_proposals" in proc.stderr
         argv_texts = [p.read_text(encoding="utf-8") for p in (tmp_path / "records").glob("*.argv")]
         assert any("alembic" in t for t in argv_texts)
         # the head refusal happens inside phase 2: no later phase may start
@@ -3915,7 +3915,7 @@ class TestWrapperWrongHeadRefusal:
 class TestReuseValidityMachineCheck:
     """Approved Git objects, complete metadata and real admission controls."""
 
-    APPROVED = "7d86e513fe8d37558bf4595330a62c9b082c7776"
+    APPROVED = "c2fff20365b16254db2163504751fa5f84746e80"
 
     def _coverage(self, tmp_path):
         path = tmp_path / "coverage.json"
@@ -4103,43 +4103,33 @@ class TestReuseValidityMachineCheck:
         historical = json.loads(subprocess.check_output([
             "git", "show", self.APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
         ], cwd=REPO_ROOT, text=True))
-        assert coverage["bindings"] == historical["bindings"]
+        assert coverage["bindings"][:-1] == historical["bindings"]
         assert coverage["recovered_native_node_maps"] == historical["recovered_native_node_maps"]
+        assert coverage["previous_rc2_source_intake"] == historical["current_source_intake"]
         current = coverage["current_source_intake"]
         assert current["source_ref"] == self.APPROVED
         for subtree, key in (("backend", "backend_tree"), ("frontend", "frontend_tree")):
             assert current[key] == subprocess.check_output([
                 "git", "rev-parse", self.APPROVED + ":" + subtree
             ], cwd=REPO_ROOT, text=True).strip()
-        assert current["authority_record"]["sha256"] == "b15632375e76c36fad7fd01ebe989c74153fa2ae79c8e8b7a924a73c7dc0bed7"
-        assert current["cto_ruling"]["sha256"] == "85511da10ecd25599126d63c7c2233ea10d869c636d599d99ec6de112fe28c57"
-        assert current["current_fresh_ordinary_collection"] == "CURRENT_FRESH_COLLECTION_NOT_ESTABLISHED"
         assert current["ordinary_definition"] == {
-            "nodes": 4288, "files": 236, "dedicated_files": 16, "ignores": 6,
+            "nodes": 4288, "files": 236, "dedicated_files": 21, "ignores": 6,
             "canonical_definition_changed": False,
         }
-        frontend = current["accepted_author_local_frontend_scope"]
-        assert frontend["vitest_files"] == 39 and frontend["vitest_tests_passed"] == 511
-        assert frontend["browser_scenarios"] == ["C1-UG", "C2-KE", "C3-UG", "C4-KE"]
         assert current["historical_results_reexecuted"] is False
         assert current["hosted_ci_this_intake"] == "NOT_RUN"
-        assert current["independent_v3_this_intake"] == "NOT_ESTABLISHED"
-        deltas = {item["path"]: item for item in coverage["current_attachment_deltas"]}
-        assert set(deltas) == {
-            "backend/tests/s1_pricing_quote/test_review_r2.py",
-            "frontend/src/pages/client/ProductDetailPage.tsx",
-        }
-        s1 = deltas["backend/tests/s1_pricing_quote/test_review_r2.py"]
-        assert s1["historical_load_bearing_blob"] == "67b97b41518f8851b2d9b4b54eb7095ee66eaa40"
-        assert s1["current_blob"] == "d1dca2a4e91d2ea13da5627048d4ed44510e57fe"
-        for item in deltas.values():
-            assert item["classification"] == "GAP_CURRENT_ATTACHMENT_NOT_REEXECUTED"
-            assert item["current_file_same_as_historical"] is False
-            assert item["current_file_reexecuted_this_intake"] is False
-            assert item["historical_evidence_rebound"] is False
+        accepted = coverage["bindings"][-1]
+        assert accepted["family"] == "s3_negotiation" and len(accepted["files"]) == 5
+        nodes = [n for g in accepted["groups"] for n in g["nodes"]]
+        assert len(nodes) == len(set(nodes)) == 166
+        assert sum(n.startswith('tests/s1_pricing_quote/') for n in nodes) == 58
+        assert sum(n.startswith('tests/s3_negotiation/') for n in nodes) == 56
+        assert accepted["browser"]["literal_true"] == 102
+        assert all(a["remaining_scope"].startswith("GAP_") for a in coverage["current_dependency_assessments"])
         proc, result = self._check(REPO_ROOT, self._coverage(tmp_path))
         assert proc.returncode == 0 and result["all_valid"]
-        assert result["release_ready"] is False and result["evidence_ready"] is False
+        assert not result["release_ready"] and not result["evidence_ready"]
+        assert result["full_dedicated_node_coverage"] == "GAP_RCJ_NODE_MAP_NOT_ESTABLISHED"
 
     @pytest.mark.parametrize("forgery", ["source_ref", "frontend_tree", "frontend_independence", "historical_reexecution", "attachment_reexecution"])
     def test_coverage_only_current_or_historical_claim_cannot_self_approve(self, tmp_path, forgery):
@@ -4148,7 +4138,7 @@ class TestReuseValidityMachineCheck:
         if forgery in ("source_ref", "frontend_tree"):
             data["current_source_intake"][forgery] = "0" * 40
         elif forgery == "frontend_independence":
-            data["current_source_intake"]["accepted_author_local_frontend_scope"]["tier"] = "INDEPENDENT_V3_REEXECUTED"
+            data["current_source_intake"]["independent_v3_this_intake"] = "ALL_BACKEND_AND_HISTORICAL_NODES_PASS"
         elif forgery == "historical_reexecution":
             data["current_source_intake"]["historical_results_reexecuted"] = True
         else:
@@ -4407,3 +4397,37 @@ class TestBackendFreezeStepCounterexample:
         mutated = "\n".join(line for line in text.splitlines() if "git cat-file -e" not in line)
         assert self._freeze_step_present(text)
         assert not self._freeze_step_present(mutated)
+
+
+class TestRC3FiniteIntake:
+    """Current evidence never promotes unexecuted historical dependencies."""
+
+    def test_current_scope_and_historical_gaps_are_distinct(self, tmp_path):
+        probe = TestReuseValidityMachineCheck()
+        proc, data = probe._check(REPO_ROOT, probe._coverage(tmp_path))
+        assert proc.returncode == 0 and data['all_valid']
+        assert not data['release_ready'] and not data['evidence_ready']
+        assert data['current_accepted_node_union'] == 166
+        current = [b for b in data['bindings'] if b['id'] == 's3_minimum_negotiation_cto_independent_v3']
+        assert len(current) == 1 and current[0]['status'] == 'CTO_ACCEPTED_CURRENT_FINITE_SCOPE'
+        assert all(b['status'] == 'HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS'
+                   for b in data['bindings'] if b not in current)
+        assert data['full_dedicated_node_coverage'] == 'GAP_RCJ_NODE_MAP_NOT_ESTABLISHED'
+
+    @pytest.mark.parametrize('forgery', ['missing_native_group', 'same_count_wrong_node', 'erased_dependency_gap', 'all_s1_claim'])
+    def test_unproved_current_evidence_refuses(self, tmp_path, forgery):
+        probe = TestReuseValidityMachineCheck()
+        path = probe._coverage(tmp_path)
+        data = json.loads(path.read_text())
+        if forgery == 'missing_native_group':
+            data['bindings'][-1]['groups'].pop()
+        elif forgery == 'same_count_wrong_node':
+            data['bindings'][-1]['groups'][0]['nodes'][0] = 'tests/unexecuted.py::test_same_count'
+        elif forgery == 'erased_dependency_gap':
+            data['current_dependency_assessments'][0]['remaining_scope'] = 'ALL_PASSED'
+        else:
+            data['bindings'][0]['coverage_status'] = 'CURRENT_FULL_DIRECTORY_PASS'
+        path.write_text(json.dumps(data))
+        proc, result = probe._check(REPO_ROOT, path)
+        assert proc.returncode == 5 and not result['all_valid']
+        assert 'REUSE_METADATA_PROVENANCE' in result['problems']

@@ -1,5 +1,17 @@
 # AI Context Entry
 
+## Current RC3 Entry - 2026-10-20
+
+Read `docs/releases/mvp-20261031/RC3-RELEASE-PLAN.zh-CN.md` first for the
+finite release/CI preparation at CTO-accepted S3 product `c2fff203` (head042).
+S1, S2, photos and S3 retain their separate accepted scopes. This local
+successor changes only CI admission and current release facts; it is not a
+hosted-CI, full-backend, trial-DB upgrade, protected merge or deployment PASS.
+Codex-L owns this isolated preparation; ZCode-W continues separate RC2 trial
+packaging. No executor gains push/CI/release permission from these documents.
+Historical "current", head040/head041 and S3-deferred text below stays dated
+history and does not override this entry or the current CTO directive.
+
 This folder is the canonical starting point for Codex and other AI coding agents working on Mpango ERP.
 
 ## Read Order

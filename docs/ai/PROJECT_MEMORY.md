@@ -1,5 +1,30 @@
 # Project Memory
 
+## RC3 Durable Boundary - 2026-10-20
+
+CTO finally accepted S3 minimum negotiation at `c2fff203` after one
+non-implementer V3: A/B/C 166 disjoint nodes, D 8 scenarios / 102 checks,
+E three restored semantic controls. The previous legacy-payment gap is
+closed, not retroactively changed into an earlier author PASS. Head is 042.
+S1/S2/photo acceptance remains separately scoped, not enlarged by S3's 58 S1
+selections or its reorder control. RCJ full-file node coverage stays GAP.
+
+RC3 local release/CI admission uses frozen product bytes with the current
+five-phase 042 supply, exact ordinary/dedicated/ignore partition and a
+versioned evidence/dependency intake. Unchanged test files alone do not
+justify reusing old runs after shared quote/order/cache changes. Old receipts
+stay historical; current finite independent selections are listed by exact
+node and source blob. No current hosted/body-all PASS is implied.
+
+RC2 owner trial continues independently. Do not touch its persistent DB,
+reuse its credentials, enable publish or deploy from this preparation.
+Future promotion requires a separate CI budget/source decision, backup and
+DB/media/role recovery plan, explicit target/042 upgrade authorization and
+owner hands-on trial. Preserve one-worker/current cache limits; no Safari,
+physical mobile, capacity or disaster-recovery extension is claimed.
+Older current-head/S3-deferred text below is retained history, not present
+authority. Full current release plan: `docs/releases/mvp-20261031/RC3-RELEASE-PLAN.zh-CN.md`.
+
 ## Current Durable Acceptance Boundary — 2026-10-17
 
 S1 and S2 keep their original accepted scopes (`41fd3adb`, `88c7d815`), not a

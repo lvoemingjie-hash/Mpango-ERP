@@ -1,5 +1,18 @@
 # Dual Machine Development Protocol
 
+## RC3 Local Integration Assignment - 2026-10-20
+
+Codex-L owns CTO-AUTH-RC3-LOCAL-TWO-LINE-INTEGRATION-AND-REUSE-INTAKE-R1-20261020:
+independent local clone, eac40af9 plus bac775df no-ff merge, then exact existing
+reuse intake. Sources remain read-only and concurrent ZCode-W work is not
+rewritten. Backend=c2, frontend=bac, wrapper/head042 stay frozen. Final source,
+CI admission, current CI, protected promotion and deployment are separate gates.
+Only offline contracts (three focused batches maximum, one final whole module,
+20 cumulative minutes) and static retained-evidence reconciliation; no DB,
+Redis, app/browser stack or product reruns. Remote push/PR/CI/protected merge,
+deployment and RC2 owner-trial changes remain unauthorized. Older assignments
+below are history, not permission to recreate their resources.
+
 ## Current Finite Assignment - 2026-10-20
 
 Codex-L (Lubuntu) prepares RC3 release/CI admission from accepted S3

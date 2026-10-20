@@ -1,28 +1,19 @@
 {
-  "record": "RC3_VERSIONED_FINITE_ACCEPTANCE_INTAKE_V1",
-  "authorization": "CTO-AUTH-RC3-LOCAL-RELEASE-CI-ADMISSION-R1-20261020",
+  "record": "RC3_LOCAL_INTEGRATED_PRODUCT_INTAKE_V1",
+  "authorization": "CTO-AUTH-RC3-LOCAL-TWO-LINE-INTEGRATION-AND-REUSE-INTAKE-R1-20261020",
   "ruling": {
     "path": "AI_REPORT_INBOX/rc1-finite-closure-cto-20261015/CTO-REVIEW.zh-CN.md",
     "sha256": "37fa77e5ff1889c884f58ab929fe9ed06a7489446c933e9ddb81832a4c31a20c",
     "route": "APPROVED_FINITE_HYBRID_ROUTE__IMPLEMENTATION_AND_LOCAL_VALIDATION_ONLY"
   },
   "selection_binding": {
-    "authority": "CTO-AUTH-RC3-LOCAL-RELEASE-CI-ADMISSION-R1-20261020",
-    "source_ref": "c2fff20365b16254db2163504751fa5f84746e80",
+    "authority": "CTO-AUTH-RC3-LOCAL-TWO-LINE-INTEGRATION-AND-REUSE-INTAKE-R1-20261020",
+    "source_ref": "bac775df8257ea2fd626d6de425f3564748b37f2",
     "discovered_files": 263,
     "ordinary_files": 236,
     "dedicated_files": 21,
     "ignores": 6,
     "union": 257,
-    "intersection": 0,
-    "unknown": 0
-  },
-  "historical_selection_binding": {
-    "path": "mvp-rc2-post-images-cto-review-20261017/inputs/STATIC-INTEGRATION-INVENTORY.json",
-    "sha256": "ed54462a717746c21ec44eec86a4c6b2966fb09d0ce8e00aa5492e819de4ed7e",
-    "dedicated_files": 16,
-    "ordinary_files": 236,
-    "union": 252,
     "intersection": 0,
     "unknown": 0
   },
@@ -524,6 +515,131 @@
         "sole_writer": 7,
         "legacy_orders_payment_inventory": 45
       }
+    },
+    {
+      "id": "rc3_payment_currency_pricing_ui_cto_bounded_acceptance",
+      "family": "rc3_payment_currency_pricing_ui",
+      "candidate": "b46b74130b582e8e4f42579148b209eca540f576",
+      "files": [],
+      "support_files": [
+        "frontend/src/components/ui/PaymentRecordModal.tsx",
+        "frontend/src/pages/orders/OrderListPage.tsx",
+        "frontend/src/pages/pricing/RetailerPricingPage.tsx",
+        "frontend/src/tests/PaymentCurrencyPricingUx.test.tsx",
+        "frontend/src/tests/S5BRealUserSmoke.test.tsx"
+      ],
+      "coverage_status": "CTO_ACCEPTED_UI_BOUNDED_SCOPE__NOT_CURRENT_CI",
+      "cto_ruling": {
+        "path": "AI_REPORT_INBOX/rc3-ui-closeout-and-local-integration-cto-20261020/delivery/CTO-UI-CLOSEOUT-ACCEPTANCE.zh-CN.md",
+        "sha256": "78d5a06a7781f4f0dc76e31daa44992383f4f52fdf1691675aa8d6a59029aeb9",
+        "accepted_scope": "Payment currency/Pricing UI finite scope; LF-only closeout; not new whole-business V3"
+      },
+      "load_bearing_blobs": {
+        "frontend/src/components/ui/PaymentRecordModal.tsx": "e946942622c2630eb83ef1b5471b214b726a0940",
+        "frontend/src/pages/orders/OrderListPage.tsx": "fd59647026b2545687c4aa864b0217be2e26fbf0",
+        "frontend/src/pages/pricing/RetailerPricingPage.tsx": "3599b6f0866878847741fd8a86d6bf8082f3fc49",
+        "frontend/src/tests/PaymentCurrencyPricingUx.test.tsx": "4128a6a48f3240d8d22a445284c902d59776759d",
+        "frontend/src/tests/S5BRealUserSmoke.test.tsx": "e34bb0cc02ae7f86885dc27f184594b5d034a0de"
+      },
+      "current_product_blobs": {
+        "frontend/src/components/ui/PaymentRecordModal.tsx": "e946942622c2630eb83ef1b5471b214b726a0940",
+        "frontend/src/pages/orders/OrderListPage.tsx": "fd59647026b2545687c4aa864b0217be2e26fbf0",
+        "frontend/src/pages/pricing/RetailerPricingPage.tsx": "3599b6f0866878847741fd8a86d6bf8082f3fc49",
+        "frontend/src/tests/PaymentCurrencyPricingUx.test.tsx": "90a653b45fa8045da565d6e746df7dcb52d5339b",
+        "frontend/src/tests/S5BRealUserSmoke.test.tsx": "e34bb0cc02ae7f86885dc27f184594b5d034a0de"
+      },
+      "evidence": {
+        "vitest": {
+          "candidate": "b46b74130b582e8e4f42579148b209eca540f576",
+          "path": "cto-tasks/rc3-payment-currency-pricing-ux-zcodew-r1-20261020/reports/vitest-full.xml",
+          "sha256": "7f330187b0e31839682d564d57206e33ab03c03c031f258e3efe4ec97329a6a0",
+          "passed": 531,
+          "failed": 0,
+          "identity": "AUTHOR_EXECUTED__CTO_FINITE_ACCEPTANCE__NOT_NEW_INDEPENDENT_RUNTIME"
+        },
+        "browser": {
+          "candidate": "b46b74130b582e8e4f42579148b209eca540f576",
+          "path": "AI_REPORT_INBOX/rc3-payment-currency-pricing-ux-zcodew-r1-20261020/delivery/GATE-RESULTS.json",
+          "sha256": "d41a3ea8245af9d4cb8676bd750b028d4f22eca1d955f40dc2ce3dcad981bdfc",
+          "countries": [
+            "UG",
+            "KE"
+          ],
+          "observations": [
+            "payment modal currency",
+            "payment toast currency",
+            "pricing empty state",
+            "pricing save labels"
+          ],
+          "identity": "AUTHOR_UI_OBSERVATIONS__NOT_NEW_S3_BROWSER_EXECUTION",
+          "screenshots": [
+            {
+              "path": "screenshots/GATE-KE-pay-filled.png",
+              "sha256": "1c6954e941a42abffbce364f941e7e327e0207cc400ac88be6d386fb2655bc13"
+            },
+            {
+              "path": "screenshots/GATE-KE-pay-modal.png",
+              "sha256": "b6419c9daf850175da2ba21e5267fd525519be4926bc69c983b1659140007996"
+            },
+            {
+              "path": "screenshots/GATE-KE-pay-toast.png",
+              "sha256": "c3465246602d6cbe2d09f960c59e6ba77fbb77c436baa20ed7fc95fe2d2856b1"
+            },
+            {
+              "path": "screenshots/GATE-pricing-empty-state.png",
+              "sha256": "72efd05284a88621402fb2ef09f03608f7b812c9889452c5d288c4cf4366c4f1"
+            },
+            {
+              "path": "screenshots/GATE-pricing-save-names.png",
+              "sha256": "2d43c8d21e1f2a563d17508c37f417f949da993f3916a7316657262e4bf9a9a4"
+            },
+            {
+              "path": "screenshots/GATE-UG-pay-filled.png",
+              "sha256": "d52bccf27e978bdfb5224bb57fe259bdb77494f86012c2a44cc968fd8bd34865"
+            },
+            {
+              "path": "screenshots/GATE-UG-pay-modal.png",
+              "sha256": "14bd9d3fb9c1e43e65c192a686a6f25d4c9dff628dc69643dd40603c8906594e"
+            },
+            {
+              "path": "screenshots/GATE-UG-pay-toast.png",
+              "sha256": "03e019e1f2b19a06424e081eb2464532c27f35c2b628a7f88f095ee7d5628bbf"
+            }
+          ]
+        },
+        "build": {
+          "candidate": "bac775df8257ea2fd626d6de425f3564748b37f2",
+          "path": "AI_REPORT_INBOX/rc3-payment-currency-pricing-ux-zcodew-r1-20261020/delivery/normal-gate-closeout-r1/build-final.log",
+          "sha256": "90cfa756bcdb851a371e7184e4a984a2219b7ec92527a27febd47b25e953df55",
+          "rc": 0
+        },
+        "cto_normal_hook": {
+          "path": "AI_REPORT_INBOX/rc3-ui-closeout-and-local-integration-cto-20261020/delivery/CTO-INDEPENDENT-NORMAL-PRECOMMIT.log",
+          "sha256": "10d925202ad82dfcb6f646e3b9617238c8df0a9303b8caac5d07ad49b23ab1bd",
+          "candidate": "bac775df8257ea2fd626d6de425f3564748b37f2",
+          "rc": 0,
+          "passed_hooks": 4,
+          "yaml_hook": "SKIPPED_NO_YAML_INPUT__NOT_PRODUCT_TEST_SKIP"
+        },
+        "cto_native_binding": {
+          "path": "AI_REPORT_INBOX/rc3-ui-closeout-and-local-integration-cto-20261020/delivery/CTO-VERIFICATION.json",
+          "sha256": "d4a75f8a72c91d73c7a8bacbf5e447aad0a9e1c17f7f0e8b1433cb3a75dc016c"
+        }
+      },
+      "line_ending_equivalence": {
+        "path": "frontend/src/tests/PaymentCurrencyPricingUx.test.tsx",
+        "from_candidate": "b46b74130b582e8e4f42579148b209eca540f576",
+        "to_candidate": "bac775df8257ea2fd626d6de425f3564748b37f2",
+        "rule": "new_bytes == old_bytes.replace(CRLF, LF)",
+        "current_sha256": "b643652e23dff99de4aac7736fd8d1c6a6ed5d901b79d6fe4981f8bd70c02732",
+        "only_this_path_changed_between_these_candidates": true
+      },
+      "gaps": [
+        "CURRENT_INTEGRATED_HOSTED_CI_NOT_RUN",
+        "NOT_NEW_FULL_PAYMENT_INVENTORY_V3",
+        "NOT_NEW_S3_BROWSER_EXECUTION",
+        "NOT_A_PYTEST_NODE_UNION"
+      ]
     }
   ],
   "explicit_non_claims": [
@@ -534,9 +650,9 @@
     "Current hosted CI and ordinary full body executions are NOT_RUN in this task.",
     "Changing approved-ref cannot authorize a different product, missing evidence or an edited coverage-only provenance."
   ],
-  "intake_version": 4,
-  "intake_status": "LOCAL_RC3_ADMISSION_CANDIDATE__CTO_SOURCE_REVIEW_PENDING",
-  "product_anchor": "c2fff20365b16254db2163504751fa5f84746e80",
+  "intake_version": 5,
+  "intake_status": "LOCAL_INTEGRATED_ADMISSION__CTO_SOURCE_DECISION_PENDING",
+  "product_anchor": "bac775df8257ea2fd626d6de425f3564748b37f2",
   "intake_sources": [
     {
       "relative_record": "mvp-rc2-post-images-cto-review-20261017/CTO-REVIEW.zh-CN.md",
@@ -551,167 +667,6 @@
       "sha256": "3220014281e139635f515d401007bf781b3bf185e6152a703fc7ac4ed41f6456"
     }
   ],
-  "recovered_native_node_maps": {
-    "record": "CTO_RECOVERED_ACCEPTED_NODE_MAPS",
-    "candidate": "88c7d8157ac5c46795d411ea6799112e017c9532",
-    "historical_results_not_rerun": true,
-    "maps": [
-      {
-        "family": "s1_pricing_quote",
-        "source_xml": "/home/ivy/cto-tasks/s2-reorder-independent-v3-zcodew-remote-20261014/private/zcodew-formal-s1-pricing-quote-01.xml",
-        "source_sha256": "fa4a579aba6e6d20304906180ab8de89e9d516bae76cac5d43d0918c0ff56fae",
-        "tests": 77,
-        "failures": 0,
-        "errors": 0,
-        "skips": 0,
-        "nodeid_mapping_rule": "pytest classname module prefix -> path.py; class suffix retained; testcase name unchanged",
-        "nodeids": [
-          "tests/s1_pricing_quote/test_cache_integration.py::test_create_cache_and_binding_revocation[merchant]",
-          "tests/s1_pricing_quote/test_cache_integration.py::test_create_cache_and_binding_revocation[client]",
-          "tests/s1_pricing_quote/test_cache_integration.py::test_cached_create_rechecks_live_subject",
-          "tests/s1_pricing_quote/test_cache_integration.py::test_cached_create_preserves_intent_and_quote_ownership",
-          "tests/s1_pricing_quote/test_cache_integration.py::test_s1_commit_publication[barrier]",
-          "tests/s1_pricing_quote/test_cache_integration.py::test_s1_commit_publication[failure]",
-          "tests/s1_pricing_quote/test_cache_integration.py::test_same_process_create_waits_for_commit[merchant]",
-          "tests/s1_pricing_quote/test_cache_integration.py::test_same_process_create_waits_for_commit[client]",
-          "tests/s1_pricing_quote/test_contract.py::test_confirmation_quote_refresh_preserves_joined_stock_lock_order",
-          "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[None-override0-None-None-BASE_PRICE_REQUIRED]",
-          "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base1-None-value1-BASE_PRICE-None]",
-          "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base2-override2-value2-RETAILER_OVERRIDE-None]",
-          "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base3-override3-None-None-PRICE_DATA_INTEGRITY_RED]",
-          "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base4-override4-None-None-PRICE_DATA_INTEGRITY_RED]",
-          "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[90.000-UGX-90]",
-          "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[90.000-KES-90.00]",
-          "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[0-UGX-0]",
-          "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[9999999999.99-KES-9999999999.99]",
-          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[90.01-UGX-MONEY_PRECISION]",
-          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[90.001-KES-MONEY_PRECISION]",
-          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[NaN-KES-INVALID_MONEY]",
-          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[Infinity-KES-INVALID_MONEY]",
-          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[-1-KES-INVALID_MONEY]",
-          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[0-KES-INVALID_MONEY]",
-          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[10000000000-KES-INVALID_MONEY]",
-          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[1-XXX-TENANT_CURRENCY_UNRESOLVED]",
-          "tests/s1_pricing_quote/test_contract.py::test_price_change_requires_explicit_consent",
-          "tests/s1_pricing_quote/test_contract.py::test_same_total_opposing_lines_still_red",
-          "tests/s1_pricing_quote/test_contract.py::test_aba_revision_source_and_label_do_not_add_consent_click",
-          "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[retailer-another]",
-          "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[tenant-other]",
-          "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[actor-other]",
-          "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[currency-UGX]",
-          "tests/s1_pricing_quote/test_contract.py::test_quote_tamper_and_expiry",
-          "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[False-KE]",
-          "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[False-UG]",
-          "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[True-KE]",
-          "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[True-UG]",
-          "tests/s1_pricing_quote/test_http.py::test_reconsent_failure_does_not_consume_key",
-          "tests/s1_pricing_quote/test_http.py::test_missing_base_even_with_override",
-          "tests/s1_pricing_quote/test_http.py::test_versioned_override_retire_restore_same_row",
-          "tests/s1_pricing_quote/test_http.py::test_replay_rechecks_active_binding_and_conflicting_intent",
-          "tests/s1_pricing_quote/test_http.py::test_explicit_replacement_preserves_old_items",
-          "tests/s1_pricing_quote/test_http.py::test_confirm_uses_snapshot_and_one_quantity_contract[KE]",
-          "tests/s1_pricing_quote/test_http.py::test_confirm_uses_snapshot_and_one_quantity_contract[UG]",
-          "tests/s1_pricing_quote/test_http.py::test_used_unit_change_refuses_both_entries_label_preserves_history",
-          "tests/s1_pricing_quote/test_http.py::test_client_cannot_replace_merchant_or_confirmed_draft",
-          "tests/s1_pricing_quote/test_http.py::test_stale_confirm_does_not_reprice_or_start_economics",
-          "tests/s1_pricing_quote/test_http.py::test_quote_cannot_move_to_another_authorized_customer",
-          "tests/s1_pricing_quote/test_http.py::test_wrong_tenant_and_current_rbac_revoke_before_replay",
-          "tests/s1_pricing_quote/test_http.py::test_opposing_prices_same_total_requires_real_http_consent",
-          "tests/s1_pricing_quote/test_http.py::test_same_economics_aba_success_records_both_revisions",
-          "tests/s1_pricing_quote/test_http.py::test_old_fractional_ugx_price_remains_readable_but_not_orderable[UG]",
-          "tests/s1_pricing_quote/test_migration.py::test_nonempty_upgrade_conserves_history_and_matches_fresh_bootstrap",
-          "tests/s1_pricing_quote/test_migration.py::test_mid_upgrade_rolls_back_all_tenants_and_identity",
-          "tests/s1_pricing_quote/test_process_and_faults.py::test_two_processes_same_key_and_fresh_process_replay",
-          "tests/s1_pricing_quote/test_process_and_faults.py::test_create_fault_rolls_back_all_effects[second-item]",
-          "tests/s1_pricing_quote/test_process_and_faults.py::test_create_fault_rolls_back_all_effects[commit]",
-          "tests/s1_pricing_quote/test_process_and_faults.py::test_replacement_cancel_failure_restores_old_draft",
-          "tests/s1_pricing_quote/test_review_r2.py::test_old_override_retirement_restore_and_zero_effects[UG]",
-          "tests/s1_pricing_quote/test_review_r2.py::test_retire_cannot_create_or_change_amount",
-          "tests/s1_pricing_quote/test_review_r2.py::test_retired_audit_projection_and_five_effective_paths[UG]",
-          "tests/s1_pricing_quote/test_review_r2.py::test_quote_budget_refuses_before_successful_issue",
-          "tests/s1_pricing_quote/test_review_r2.py::test_normal_token_accepted_by_both_submission_schemas",
-          "tests/s1_pricing_quote/test_review_r2.py::test_max_lines_nonascii_http_preview_has_no_unusable_success",
-          "tests/s1_pricing_quote/test_review_r2.py::test_wrong_table_catalog_objects_rejected[constraint]",
-          "tests/s1_pricing_quote/test_review_r2.py::test_wrong_table_catalog_objects_rejected[index]",
-          "tests/s1_pricing_quote/test_review_r2.py::test_multiple_heads_both_checkers_refuse_without_pk_change",
-          "tests/s1_pricing_quote/test_review_r2.py::test_revision_contract_finite_consistency",
-          "tests/s1_pricing_quote/test_review_r2.py::test_registry_lifecycle_039_to_040_diagnostic[active]",
-          "tests/s1_pricing_quote/test_review_r2.py::test_registry_lifecycle_039_to_040_diagnostic[provisioning]",
-          "tests/s1_pricing_quote/test_review_r2.py::test_registry_lifecycle_039_to_040_diagnostic[invalid]",
-          "tests/s1_pricing_quote/test_review_r2.py::test_registry_lifecycle_039_to_040_diagnostic[bootstrap_only]",
-          "tests/s1_pricing_quote/test_review_r2.py::test_create_and_sibling_update_real_lock_order[local]",
-          "tests/s1_pricing_quote/test_review_r2.py::test_create_and_sibling_update_real_lock_order[sku_shared]",
-          "tests/s1_pricing_quote/test_review_r2.py::test_create_and_sibling_update_real_lock_order[catalog_shared]",
-          "tests/s1_pricing_quote/test_review_r2.py::test_shared_metadata_with_local_unit_fields_preserved"
-        ]
-      },
-      {
-        "family": "s2_reorder",
-        "source_xml": "/home/ivy/cto-tasks/s2-reorder-independent-v3-zcodew-remote-20261014/private/zcodew-formal-s2-backend-01.xml",
-        "source_sha256": "dd7ee474291f27417303db29efb5f3cf7c5771e38f02edf5ab145c973e8b6be8",
-        "tests": 53,
-        "failures": 0,
-        "errors": 0,
-        "skips": 0,
-        "nodeid_mapping_rule": "pytest classname module prefix -> path.py; class suffix retained; testcase name unchanged",
-        "nodeids": [
-          "tests/s2_reorder/test_authority_tcp.py::test_ro11_cross_tenant_and_other_retailer_sources_neutral_404[UG]",
-          "tests/s2_reorder/test_authority_tcp.py::test_ro11_cross_tenant_and_other_retailer_sources_neutral_404[KE]",
-          "tests/s2_reorder/test_authority_tcp.py::test_ro11_completed_cache_replay_rechecks_source_evidence_and_visibility[UG]",
-          "tests/s2_reorder/test_authority_tcp.py::test_ro11_completed_cache_replay_rechecks_source_evidence_and_visibility[KE]",
-          "tests/s2_reorder/test_authority_tcp.py::test_ro10_completed_cache_replay_checks_persisted_source_and_fingerprint[quote_seen-UG]",
-          "tests/s2_reorder/test_authority_tcp.py::test_ro10_completed_cache_replay_checks_persisted_source_and_fingerprint[quote_seen-KE]",
-          "tests/s2_reorder/test_authority_tcp.py::test_ro10_completed_cache_replay_checks_persisted_source_and_fingerprint[quote_resolved-UG]",
-          "tests/s2_reorder/test_authority_tcp.py::test_ro10_completed_cache_replay_checks_persisted_source_and_fingerprint[quote_resolved-KE]",
-          "tests/s2_reorder/test_authority_tcp.py::test_ro10_completed_cache_replay_checks_persisted_source_and_fingerprint[creation_fingerprint-UG]",
-          "tests/s2_reorder/test_authority_tcp.py::test_ro10_completed_cache_replay_checks_persisted_source_and_fingerprint[creation_fingerprint-KE]",
-          "tests/s2_reorder/test_authority_tcp.py::test_ro11_binding_deactivation_refuses_first_submit_and_committed_cached_replay[UG]",
-          "tests/s2_reorder/test_authority_tcp.py::test_ro11_binding_deactivation_refuses_first_submit_and_committed_cached_replay[KE]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro07_linked_legacy_with_complete_persisted_unit_evidence_is_usable[UG]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro07_linked_legacy_with_complete_persisted_unit_evidence_is_usable[KE]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[null_id-LEGACY_IDENTITY_UNRESOLVED-UG]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[null_id-LEGACY_IDENTITY_UNRESOLVED-KE]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[missing_unit-LEGACY_IDENTITY_UNRESOLVED-UG]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[missing_unit-LEGACY_IDENTITY_UNRESOLVED-KE]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[missing_package-LEGACY_IDENTITY_UNRESOLVED-UG]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[missing_package-LEGACY_IDENTITY_UNRESOLVED-KE]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[different_package-PACKAGING_IDENTITY_CHANGED-UG]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[different_package-PACKAGING_IDENTITY_CHANGED-KE]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[different_unit-PACKAGING_IDENTITY_CHANGED-UG]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[different_unit-PACKAGING_IDENTITY_CHANGED-KE]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro01_unknown_historical_currency_remains_raw_no_fabricated_delta[UG]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro01_unknown_historical_currency_remains_raw_no_fabricated_delta[KE]",
-          "tests/s2_reorder/test_history_tcp.py::test_ro01_fractional_ugx_legacy_history_readable_current_strict_no_delta[UG]",
-          "tests/s2_reorder/test_source_economics_tcp.py::test_ro08_nonempty_source_payments_declaration_hold_reservation_ledger_movement_unchanged[UG]",
-          "tests/s2_reorder/test_source_economics_tcp.py::test_ro08_nonempty_source_payments_declaration_hold_reservation_ledger_movement_unchanged[KE]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro01_ro03_ro08_vertical_preview_all_lines_new_zero_effect_draft[UG]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro01_ro03_ro08_vertical_preview_all_lines_new_zero_effect_draft[KE]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro02_ro03_ro04_current_price_unchanged_rise_fall_requires_explicit_acceptance[90-0-UG]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro02_ro03_ro04_current_price_unchanged_rise_fall_requires_explicit_acceptance[90-0-KE]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro02_ro03_ro04_current_price_unchanged_rise_fall_requires_explicit_acceptance[110-40-UG]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro02_ro03_ro04_current_price_unchanged_rise_fall_requires_explicit_acceptance[110-40-KE]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro02_ro03_ro04_current_price_unchanged_rise_fall_requires_explicit_acceptance[80--20-UG]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro02_ro03_ro04_current_price_unchanged_rise_fall_requires_explicit_acceptance[80--20-KE]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro05_unavailable_stays_visible_old_consent_refused_explicit_remove[UG]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro05_unavailable_stays_visible_old_consent_refused_explicit_remove[KE]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro05_missing_price_explicit_replacement_is_unavailable_not_zero[UG]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro05_missing_price_explicit_replacement_is_unavailable_not_zero[KE]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro09_price_change_same_total_rejects_every_changed_economic_line[UG]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro09_price_change_same_total_rejects_every_changed_economic_line[KE]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro09_aba_revision_source_label_changes_same_economics_need_no_extra_acceptance[UG]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro09_aba_revision_source_label_changes_same_economics_need_no_extra_acceptance[KE]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro10_independent_tcp_clients_same_key_one_draft_replay_and_conflicts[UG]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro10_independent_tcp_clients_same_key_one_draft_replay_and_conflicts[KE]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro10_same_economic_lines_different_original_decisions_conflict[UG]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_ro10_same_economic_lines_different_original_decisions_conflict[KE]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_no_silent_omission_duplicate_selected_units_or_all_removed_submission[UG]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_no_silent_omission_duplicate_selected_units_or_all_removed_submission[KE]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_nr06_shortage_preserves_quantity_zero_effects_confirmation_atomic_refusal[UG]",
-          "tests/s2_reorder/test_tcp_reorder.py::test_nr06_shortage_preserves_quantity_zero_effects_confirmation_atomic_refusal[KE]"
-        ]
-      }
-    ]
-  },
   "scope_closeout_authority": [
     {
       "relative_record": "mvp-rc2-local-ci-cto-review-20261018/CTO-REVIEW.zh-CN.md",
@@ -741,24 +696,24 @@
     }
   ],
   "current_source_intake": {
-    "authorization": "CTO-AUTH-RC3-LOCAL-RELEASE-CI-ADMISSION-R1-20261020",
-    "source_ref": "c2fff20365b16254db2163504751fa5f84746e80",
-    "source_tree": "aa773acdb55d4a099656a2f53710360350d53738",
-    "source_parent": "6d6016d594b14f6c90ea6f521d0aa1f06fe0bd43",
+    "authorization": "CTO-AUTH-RC3-LOCAL-TWO-LINE-INTEGRATION-AND-REUSE-INTAKE-R1-20261020",
+    "source_ref": "bac775df8257ea2fd626d6de425f3564748b37f2",
+    "source_tree": "9591f8ea6b613d472f27f8fdbff48b7943b473ee",
+    "source_parent": "b46b74130b582e8e4f42579148b209eca540f576",
     "backend_tree": "c3eec56f61ff9256570fbcdf5aab4c5fec5f47ee",
-    "frontend_tree": "2d3f2ef3252cabd8c441815bfeb944b2f8a0ee97",
+    "frontend_tree": "d3e3ca842bd6d4eb2caca6aa5d1b1c3137d83f34",
     "authority_record": {
-      "path": "AI_REPORT_INBOX/s3-cto-final-acceptance-rc3-handoff-20261020/delivery/CODEXL-RC3-RELEASE-CI-PREPARATION.zh-CN.md",
-      "sha256": "509d17bea6d48f159585d3f28e5a93ed3e68900c6279ffe9f5ccf41b0883e14d"
+      "path": "AI_REPORT_INBOX/rc3-ui-closeout-and-local-integration-cto-20261020/delivery/CODEXL-RC3-LOCAL-INTEGRATION.zh-CN.md",
+      "sha256": "874f6558323748eeace090f16969ff9138e296c57732298f178fdbc42a25523c"
     },
     "cto_ruling": {
-      "path": "AI_REPORT_INBOX/s3-cto-final-acceptance-rc3-handoff-20261020/delivery/CTO-FINAL-S3-ACCEPTANCE.zh-CN.md",
-      "sha256": "641dabc81f93a52cd074ffd8fa0d846d9f49ab4e7d18b89a03fdfc641023935b"
+      "path": "AI_REPORT_INBOX/rc3-ui-closeout-and-local-integration-cto-20261020/delivery/CTO-UI-CLOSEOUT-ACCEPTANCE.zh-CN.md",
+      "sha256": "78d5a06a7781f4f0dc76e31daa44992383f4f52fdf1691675aa8d6a59029aeb9"
     },
-    "independent_v3_this_intake": "CTO_ACCEPTED_S3_A_B_C_D_E_FINITE_SCOPE_ONLY",
+    "independent_v3_this_intake": "NO_NEW_EXECUTION__S3_BACKEND_SAME_BYTES__UI_CTO_BOUNDED_INTAKE",
     "historical_results_reexecuted": false,
     "hosted_ci_this_intake": "NOT_RUN",
-    "current_fresh_ordinary_collection": "EXPECTED_UNCHANGED__SEE_LOCAL_COLLECTION_RECEIPTS",
+    "current_fresh_ordinary_collection": "NOT_RUN_THIS_INTEGRATION__PRIOR_4288_RECONCILED",
     "ordinary_definition": {
       "nodes": 4288,
       "files": 236,
@@ -883,14 +838,24 @@
         "current_sha256": "733be9968b12fac9742cade2257727bd42d90459f67055b69210037bd6dbd215"
       },
       {
+        "path": "frontend/src/components/ui/PaymentRecordModal.tsx",
+        "current_blob": "e946942622c2630eb83ef1b5471b214b726a0940",
+        "current_sha256": "0a2f55c8f164e7bc01d79d46e7ac08874fe4c162e508d4d56579fd16247a77d0"
+      },
+      {
         "path": "frontend/src/pages/client/OrderDetailPage.tsx",
         "current_blob": "06b4cfbba89a6aa8c27fde91b9efe86b82dfc81e",
         "current_sha256": "3652e01cc41b56b84c76b1b83f7015a60a106d09fe5a8f2a2aa29b8dcb5a1f51"
       },
       {
         "path": "frontend/src/pages/orders/OrderListPage.tsx",
-        "current_blob": "28e9824506cffa75e7c2365ecf837a5170b8148a",
-        "current_sha256": "f300249672f79ae7f2a15595affaf0c4865692319e6add3c808c8cd78cfd47cf"
+        "current_blob": "fd59647026b2545687c4aa864b0217be2e26fbf0",
+        "current_sha256": "e7a0f8c1e18cc472f03b96f652104e67753a83724db2b676ce72af18a9016528"
+      },
+      {
+        "path": "frontend/src/pages/pricing/RetailerPricingPage.tsx",
+        "current_blob": "3599b6f0866878847741fd8a86d6bf8082f3fc49",
+        "current_sha256": "990233118cc56978f82aa22b3207c90f37489d6e20d6f2eeb2dd26e8ea7d20dd"
       },
       {
         "path": "frontend/src/services/orderNegotiationService.ts",
@@ -898,9 +863,19 @@
         "current_sha256": "421f9d5660d5ace0d26aea8fdc9cb72174b1a988ff7a9e1f79d7ff5c9795a746"
       },
       {
+        "path": "frontend/src/tests/PaymentCurrencyPricingUx.test.tsx",
+        "current_blob": "90a653b45fa8045da565d6e746df7dcb52d5339b",
+        "current_sha256": "b643652e23dff99de4aac7736fd8d1c6a6ed5d901b79d6fe4981f8bd70c02732"
+      },
+      {
         "path": "frontend/src/tests/S3Negotiation.test.tsx",
         "current_blob": "8eea1303649c5570e281021664a71dec7050aee7",
         "current_sha256": "0245f537f867ce653e661eaec2b1d8937f14971b02b6abc991a01d430f118027"
+      },
+      {
+        "path": "frontend/src/tests/S5BRealUserSmoke.test.tsx",
+        "current_blob": "e34bb0cc02ae7f86885dc27f184594b5d034a0de",
+        "current_sha256": "7e0128ac459fb49560741dafdc942bba296b63c55d3f70c51dbb0584808d78c0"
       }
     ]
   },
@@ -910,7 +885,7 @@
       "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
       "historical_candidate": "88c7d8157ac5c46795d411ea6799112e017c9532",
       "historical_load_bearing_blob": "67b97b41518f8851b2d9b4b54eb7095ee66eaa40",
-      "current_source_ref": "c2fff20365b16254db2163504751fa5f84746e80",
+      "current_source_ref": "bac775df8257ea2fd626d6de425f3564748b37f2",
       "current_blob": "9a289181c71e3a42a41089abbf11d52b27934540",
       "current_content_sha256": "02427b495680855e97b5251640e990ee4712298a5c1cc74859d2e8fb8b9a150b",
       "classification": "PARTIAL_CURRENT_NODE_ACCEPTED__FULL_FILE_REEXECUTION_GAP",
@@ -927,7 +902,7 @@
       "path": "frontend/src/pages/client/ProductDetailPage.tsx",
       "historical_candidate": "97eb3d89daf3daca45d7289c6669f1cca18d5ef2",
       "historical_load_bearing_blob": "24d99bbd8f5fa004e08a73e78c807069c5f66678",
-      "current_source_ref": "c2fff20365b16254db2163504751fa5f84746e80",
+      "current_source_ref": "bac775df8257ea2fd626d6de425f3564748b37f2",
       "current_blob": "61788a64016c03af389e15bc9e287c2f65696af9",
       "current_content_sha256": "7be62e8c610a09d92956c92fd57e7c7a00546cab4651413cc4200b456df0c411",
       "classification": "GAP_CURRENT_ATTACHMENT_NOT_REEXECUTED",
@@ -1393,6 +1368,15 @@
       "historical_evidence_rebound": false
     }
   ],
+  "historical_selection_binding": {
+    "path": "mvp-rc2-post-images-cto-review-20261017/inputs/STATIC-INTEGRATION-INVENTORY.json",
+    "sha256": "ed54462a717746c21ec44eec86a4c6b2966fb09d0ce8e00aa5492e819de4ed7e",
+    "dedicated_files": 16,
+    "ordinary_files": 236,
+    "union": 252,
+    "intersection": 0,
+    "unknown": 0
+  },
   "current_dependency_assessments": [
     {
       "binding_id": "s1_pricing_quote_independent_v3",
@@ -1673,6 +1657,402 @@
       "related_not_substitute_for_original_nodes": [],
       "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
       "hosted_current_execution": "NOT_RUN"
+    },
+    {
+      "binding_id": "s3_minimum_negotiation_cto_independent_v3",
+      "status": "REUSED_S3_BACKEND_166__CURRENT_FRONTEND_GAP",
+      "historical_record_not_rebound": true,
+      "current_dependency_changed_blobs": [
+        {
+          "path": "frontend/src/pages/orders/OrderListPage.tsx",
+          "historical_blob": "28e9824506cffa75e7c2365ecf837a5170b8148a",
+          "current_blob": "fd59647026b2545687c4aa864b0217be2e26fbf0"
+        }
+      ],
+      "backend_nodes_same_bytes_reused": 166,
+      "historical_browser_candidate": "c2fff20365b16254db2163504751fa5f84746e80",
+      "historical_browser_reexecuted": false,
+      "remaining_scope": "GAP_CURRENT_S3_BROWSER_NOT_REEXECUTED__NOT_FULL_NODE_COVERAGE"
+    },
+    {
+      "binding_id": "rc3_payment_currency_pricing_ui_cto_bounded_acceptance",
+      "status": "CTO_ACCEPTED_UI_BOUNDED_SCOPE__NOT_CURRENT_CI",
+      "historical_record_not_rebound": true,
+      "vitest_count": 531,
+      "vitest_candidate": "b46b74130b582e8e4f42579148b209eca540f576",
+      "build_candidate": "bac775df8257ea2fd626d6de425f3564748b37f2",
+      "not_backend_pytest_nodes": true,
+      "remaining_scope": "GAP_CURRENT_INTEGRATED_HOSTED_CI_AND_FULL_BUSINESS_V3_NOT_RUN"
     }
-  ]
+  ],
+  "previous_s3_source_intake": {
+    "authorization": "CTO-AUTH-RC3-LOCAL-RELEASE-CI-ADMISSION-R1-20261020",
+    "source_ref": "c2fff20365b16254db2163504751fa5f84746e80",
+    "source_tree": "aa773acdb55d4a099656a2f53710360350d53738",
+    "source_parent": "6d6016d594b14f6c90ea6f521d0aa1f06fe0bd43",
+    "backend_tree": "c3eec56f61ff9256570fbcdf5aab4c5fec5f47ee",
+    "frontend_tree": "2d3f2ef3252cabd8c441815bfeb944b2f8a0ee97",
+    "authority_record": {
+      "path": "AI_REPORT_INBOX/s3-cto-final-acceptance-rc3-handoff-20261020/delivery/CODEXL-RC3-RELEASE-CI-PREPARATION.zh-CN.md",
+      "sha256": "509d17bea6d48f159585d3f28e5a93ed3e68900c6279ffe9f5ccf41b0883e14d"
+    },
+    "cto_ruling": {
+      "path": "AI_REPORT_INBOX/s3-cto-final-acceptance-rc3-handoff-20261020/delivery/CTO-FINAL-S3-ACCEPTANCE.zh-CN.md",
+      "sha256": "641dabc81f93a52cd074ffd8fa0d846d9f49ab4e7d18b89a03fdfc641023935b"
+    },
+    "independent_v3_this_intake": "CTO_ACCEPTED_S3_A_B_C_D_E_FINITE_SCOPE_ONLY",
+    "historical_results_reexecuted": false,
+    "hosted_ci_this_intake": "NOT_RUN",
+    "current_fresh_ordinary_collection": "EXPECTED_UNCHANGED__SEE_LOCAL_COLLECTION_RECEIPTS",
+    "ordinary_definition": {
+      "nodes": 4288,
+      "files": 236,
+      "dedicated_files": 21,
+      "ignores": 6,
+      "canonical_definition_changed": false
+    },
+    "source_deltas": [
+      {
+        "path": "backend/alembic/versions/042_order_negotiation_proposals.py",
+        "current_blob": "77700889ffb92eddb49488ea2b265834b41e2697",
+        "current_sha256": "5e26d80dbb16cea1d12f351d374730d252024511f4a378dd5f8e0308f2bd6f2f"
+      },
+      {
+        "path": "backend/api/app.py",
+        "current_blob": "f247f1baa6ce248d074714148b88ffaab68d772b",
+        "current_sha256": "4d3a9b7de558b32e3302c9c92cd05b0dfbfcd6cae62b9e1dce1b360b06245bfd"
+      },
+      {
+        "path": "backend/api/middleware/idempotency.py",
+        "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+        "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
+      },
+      {
+        "path": "backend/api/v1/order_negotiations.py",
+        "current_blob": "4484c0a5056c39a2618573a6dcc4a146e4716ebe",
+        "current_sha256": "0446356cf3dd6d9b67ac44ce12991a447da5935b69c1ac379a702e2e7dc92a44"
+      },
+      {
+        "path": "backend/models/__init__.py",
+        "current_blob": "9ac806be1065c80ee98c49c00b104c23f865e1e2",
+        "current_sha256": "adc0798a4a43aeca0d4c64f10e1bc56e09dacb36f5ec9f03470e18d9334a617f"
+      },
+      {
+        "path": "backend/models/order_negotiation.py",
+        "current_blob": "4be0609b69afd1297a0bc13041e5f0dc3f69c792",
+        "current_sha256": "5442752109103cb3f0a6444368ac3f0ad8e7a220e7ae95d722ab2768229f379f"
+      },
+      {
+        "path": "backend/schemas/order_negotiation.py",
+        "current_blob": "3af0bb3baf2ef5819ad6127f84c61f434b8e0386",
+        "current_sha256": "5cabf08e35921e69474474705f98d383815aba8514009e16ad7c1c8a52f1b868"
+      },
+      {
+        "path": "backend/scripts/bootstrap_tenant_schema.py",
+        "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
+        "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
+      },
+      {
+        "path": "backend/scripts/runtime_readiness_gate.py",
+        "current_blob": "52c9c44909dfc87c03ec6e6b8544fd02e7f744db",
+        "current_sha256": "8c5d99fa200bec9398719dc0ab31a366a61f875a1d6a756afeda3ff9c61d0e34"
+      },
+      {
+        "path": "backend/services/order_command_service.py",
+        "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+        "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
+      },
+      {
+        "path": "backend/services/order_creation_service.py",
+        "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+        "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
+      },
+      {
+        "path": "backend/services/order_negotiation_service.py",
+        "current_blob": "16a866b69fcb025500b8a73ff12304bbf20bfaa2",
+        "current_sha256": "7d6fca9ab8d693a4dcfd0d776e1bdce45dcbb31dddc81d1648d5345dff29dd3c"
+      },
+      {
+        "path": "backend/services/pricing_quote_service.py",
+        "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
+        "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
+      },
+      {
+        "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
+        "current_blob": "9a289181c71e3a42a41089abbf11d52b27934540",
+        "current_sha256": "02427b495680855e97b5251640e990ee4712298a5c1cc74859d2e8fb8b9a150b"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/__init__.py",
+        "current_blob": "ac9fd63217e0b3e63a4f4c85d26fb78c28ee802f",
+        "current_sha256": "786b1be6c91f69f6dad7e7dff9f74b1c09b3e28c0ffa1cff5aed3be9ee7742de"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/conftest.py",
+        "current_blob": "de9dd188ea15bdd92fa9fecf3629634547f86954",
+        "current_sha256": "cc136f57dc8493aee5f26dd84be7c057633d0dfe9fba97c1bcbd178d4ce149cb"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_atomicity_and_races.py",
+        "current_blob": "67b840dd63f2ddc3bc576823db43422feb89b3b8",
+        "current_sha256": "0924fa479b34ff169fc150c6c72ff55eaa863a22f1d14f9460182d48f0c9a0f3"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_contract.py",
+        "current_blob": "c15541eb943cc40b3baddfc5470ba91b9e5de88d",
+        "current_sha256": "ffa43cb5de9cd74d0065e292a3dee1384ba676008d529c237cfeb1d8f8215cf1"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_migration.py",
+        "current_blob": "bcfb5f9321467c15259ffff0846bfe4cb7cfcc66",
+        "current_sha256": "7a7eb4575fd688f3604b16b672eb6c5a2028134028356bb19f67bd71e1a2fa13"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_provenance_and_safety.py",
+        "current_blob": "626447beb523f99197d1aa021d31c22a4989bfdf",
+        "current_sha256": "2257cc79571edd1524121bac16ac1cc7eea1b37cc8583dd94efd3f0a1aeee5cc"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_safety_boundaries.py",
+        "current_blob": "66f71981878f6b1ac501b9a715a09f69978df51f",
+        "current_sha256": "ea19e8171268d9846ede10f849d4c0bc9917d7738bb9e5c90ef51d23888b014a"
+      },
+      {
+        "path": "backend/tests/test_runtime_readiness_gate.py",
+        "current_blob": "681745db2c19251707926e2f3e7748e7aef1d228",
+        "current_sha256": "97939b6b273bf103f77aefba6414a114984a6adb86c824a9a6b674cdd3b70753"
+      },
+      {
+        "path": "frontend/src/components/orders/OrderNegotiationPanel.tsx",
+        "current_blob": "47974c7a162a6f2cfef10f23001e930f5dbdd2cb",
+        "current_sha256": "733be9968b12fac9742cade2257727bd42d90459f67055b69210037bd6dbd215"
+      },
+      {
+        "path": "frontend/src/pages/client/OrderDetailPage.tsx",
+        "current_blob": "06b4cfbba89a6aa8c27fde91b9efe86b82dfc81e",
+        "current_sha256": "3652e01cc41b56b84c76b1b83f7015a60a106d09fe5a8f2a2aa29b8dcb5a1f51"
+      },
+      {
+        "path": "frontend/src/pages/orders/OrderListPage.tsx",
+        "current_blob": "28e9824506cffa75e7c2365ecf837a5170b8148a",
+        "current_sha256": "f300249672f79ae7f2a15595affaf0c4865692319e6add3c808c8cd78cfd47cf"
+      },
+      {
+        "path": "frontend/src/services/orderNegotiationService.ts",
+        "current_blob": "518794b827f991a21bab29eb4b51720f7bc76e41",
+        "current_sha256": "421f9d5660d5ace0d26aea8fdc9cb72174b1a988ff7a9e1f79d7ff5c9795a746"
+      },
+      {
+        "path": "frontend/src/tests/S3Negotiation.test.tsx",
+        "current_blob": "8eea1303649c5570e281021664a71dec7050aee7",
+        "current_sha256": "0245f537f867ce653e661eaec2b1d8937f14971b02b6abc991a01d430f118027"
+      }
+    ]
+  },
+  "previous_s3_selection_binding": {
+    "authority": "CTO-AUTH-RC3-LOCAL-RELEASE-CI-ADMISSION-R1-20261020",
+    "source_ref": "c2fff20365b16254db2163504751fa5f84746e80",
+    "discovered_files": 263,
+    "ordinary_files": 236,
+    "dedicated_files": 21,
+    "ignores": 6,
+    "union": 257,
+    "intersection": 0,
+    "unknown": 0
+  },
+  "previous_s3_attachment_deltas": [
+    {
+      "binding_id": "s1_pricing_quote_independent_v3",
+      "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
+      "historical_candidate": "88c7d8157ac5c46795d411ea6799112e017c9532",
+      "historical_load_bearing_blob": "67b97b41518f8851b2d9b4b54eb7095ee66eaa40",
+      "current_source_ref": "c2fff20365b16254db2163504751fa5f84746e80",
+      "current_blob": "9a289181c71e3a42a41089abbf11d52b27934540",
+      "current_content_sha256": "02427b495680855e97b5251640e990ee4712298a5c1cc74859d2e8fb8b9a150b",
+      "classification": "PARTIAL_CURRENT_NODE_ACCEPTED__FULL_FILE_REEXECUTION_GAP",
+      "current_file_same_as_historical": false,
+      "current_file_reexecuted_this_intake": false,
+      "change": "Current revision-consistency node accepted at head042; historical 77-node evidence remains on its original blob, not rebound.",
+      "historical_evidence_rebound": false,
+      "current_accepted_exact_nodes": [
+        "tests/s1_pricing_quote/test_review_r2.py::test_revision_contract_finite_consistency"
+      ]
+    },
+    {
+      "binding_id": "product_images_core_cto_bounded_acceptance",
+      "path": "frontend/src/pages/client/ProductDetailPage.tsx",
+      "historical_candidate": "97eb3d89daf3daca45d7289c6669f1cca18d5ef2",
+      "historical_load_bearing_blob": "24d99bbd8f5fa004e08a73e78c807069c5f66678",
+      "current_source_ref": "c2fff20365b16254db2163504751fa5f84746e80",
+      "current_blob": "61788a64016c03af389e15bc9e287c2f65696af9",
+      "current_content_sha256": "7be62e8c610a09d92956c92fd57e7c7a00546cab4651413cc4200b456df0c411",
+      "classification": "GAP_CURRENT_ATTACHMENT_NOT_REEXECUTED",
+      "current_file_same_as_historical": false,
+      "current_file_reexecuted_this_intake": false,
+      "change": "Mobile UX product-detail layout is changed; prior image/S2 browser scope is not a current frontend reexecution.",
+      "historical_evidence_rebound": false,
+      "current_accepted_exact_nodes": []
+    }
+  ],
+  "recovered_native_node_maps": {
+    "record": "CTO_RECOVERED_ACCEPTED_NODE_MAPS",
+    "candidate": "88c7d8157ac5c46795d411ea6799112e017c9532",
+    "historical_results_not_rerun": true,
+    "maps": [
+      {
+        "family": "s1_pricing_quote",
+        "source_xml": "/home/ivy/cto-tasks/s2-reorder-independent-v3-zcodew-remote-20261014/private/zcodew-formal-s1-pricing-quote-01.xml",
+        "source_sha256": "fa4a579aba6e6d20304906180ab8de89e9d516bae76cac5d43d0918c0ff56fae",
+        "tests": 77,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "nodeid_mapping_rule": "pytest classname module prefix -> path.py; class suffix retained; testcase name unchanged",
+        "nodeids": [
+          "tests/s1_pricing_quote/test_cache_integration.py::test_create_cache_and_binding_revocation[merchant]",
+          "tests/s1_pricing_quote/test_cache_integration.py::test_create_cache_and_binding_revocation[client]",
+          "tests/s1_pricing_quote/test_cache_integration.py::test_cached_create_rechecks_live_subject",
+          "tests/s1_pricing_quote/test_cache_integration.py::test_cached_create_preserves_intent_and_quote_ownership",
+          "tests/s1_pricing_quote/test_cache_integration.py::test_s1_commit_publication[barrier]",
+          "tests/s1_pricing_quote/test_cache_integration.py::test_s1_commit_publication[failure]",
+          "tests/s1_pricing_quote/test_cache_integration.py::test_same_process_create_waits_for_commit[merchant]",
+          "tests/s1_pricing_quote/test_cache_integration.py::test_same_process_create_waits_for_commit[client]",
+          "tests/s1_pricing_quote/test_contract.py::test_confirmation_quote_refresh_preserves_joined_stock_lock_order",
+          "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[None-override0-None-None-BASE_PRICE_REQUIRED]",
+          "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base1-None-value1-BASE_PRICE-None]",
+          "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base2-override2-value2-RETAILER_OVERRIDE-None]",
+          "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base3-override3-None-None-PRICE_DATA_INTEGRITY_RED]",
+          "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base4-override4-None-None-PRICE_DATA_INTEGRITY_RED]",
+          "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[90.000-UGX-90]",
+          "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[90.000-KES-90.00]",
+          "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[0-UGX-0]",
+          "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[9999999999.99-KES-9999999999.99]",
+          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[90.01-UGX-MONEY_PRECISION]",
+          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[90.001-KES-MONEY_PRECISION]",
+          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[NaN-KES-INVALID_MONEY]",
+          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[Infinity-KES-INVALID_MONEY]",
+          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[-1-KES-INVALID_MONEY]",
+          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[0-KES-INVALID_MONEY]",
+          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[10000000000-KES-INVALID_MONEY]",
+          "tests/s1_pricing_quote/test_contract.py::test_money_refusals[1-XXX-TENANT_CURRENCY_UNRESOLVED]",
+          "tests/s1_pricing_quote/test_contract.py::test_price_change_requires_explicit_consent",
+          "tests/s1_pricing_quote/test_contract.py::test_same_total_opposing_lines_still_red",
+          "tests/s1_pricing_quote/test_contract.py::test_aba_revision_source_and_label_do_not_add_consent_click",
+          "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[retailer-another]",
+          "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[tenant-other]",
+          "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[actor-other]",
+          "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[currency-UGX]",
+          "tests/s1_pricing_quote/test_contract.py::test_quote_tamper_and_expiry",
+          "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[False-KE]",
+          "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[False-UG]",
+          "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[True-KE]",
+          "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[True-UG]",
+          "tests/s1_pricing_quote/test_http.py::test_reconsent_failure_does_not_consume_key",
+          "tests/s1_pricing_quote/test_http.py::test_missing_base_even_with_override",
+          "tests/s1_pricing_quote/test_http.py::test_versioned_override_retire_restore_same_row",
+          "tests/s1_pricing_quote/test_http.py::test_replay_rechecks_active_binding_and_conflicting_intent",
+          "tests/s1_pricing_quote/test_http.py::test_explicit_replacement_preserves_old_items",
+          "tests/s1_pricing_quote/test_http.py::test_confirm_uses_snapshot_and_one_quantity_contract[KE]",
+          "tests/s1_pricing_quote/test_http.py::test_confirm_uses_snapshot_and_one_quantity_contract[UG]",
+          "tests/s1_pricing_quote/test_http.py::test_used_unit_change_refuses_both_entries_label_preserves_history",
+          "tests/s1_pricing_quote/test_http.py::test_client_cannot_replace_merchant_or_confirmed_draft",
+          "tests/s1_pricing_quote/test_http.py::test_stale_confirm_does_not_reprice_or_start_economics",
+          "tests/s1_pricing_quote/test_http.py::test_quote_cannot_move_to_another_authorized_customer",
+          "tests/s1_pricing_quote/test_http.py::test_wrong_tenant_and_current_rbac_revoke_before_replay",
+          "tests/s1_pricing_quote/test_http.py::test_opposing_prices_same_total_requires_real_http_consent",
+          "tests/s1_pricing_quote/test_http.py::test_same_economics_aba_success_records_both_revisions",
+          "tests/s1_pricing_quote/test_http.py::test_old_fractional_ugx_price_remains_readable_but_not_orderable[UG]",
+          "tests/s1_pricing_quote/test_migration.py::test_nonempty_upgrade_conserves_history_and_matches_fresh_bootstrap",
+          "tests/s1_pricing_quote/test_migration.py::test_mid_upgrade_rolls_back_all_tenants_and_identity",
+          "tests/s1_pricing_quote/test_process_and_faults.py::test_two_processes_same_key_and_fresh_process_replay",
+          "tests/s1_pricing_quote/test_process_and_faults.py::test_create_fault_rolls_back_all_effects[second-item]",
+          "tests/s1_pricing_quote/test_process_and_faults.py::test_create_fault_rolls_back_all_effects[commit]",
+          "tests/s1_pricing_quote/test_process_and_faults.py::test_replacement_cancel_failure_restores_old_draft",
+          "tests/s1_pricing_quote/test_review_r2.py::test_old_override_retirement_restore_and_zero_effects[UG]",
+          "tests/s1_pricing_quote/test_review_r2.py::test_retire_cannot_create_or_change_amount",
+          "tests/s1_pricing_quote/test_review_r2.py::test_retired_audit_projection_and_five_effective_paths[UG]",
+          "tests/s1_pricing_quote/test_review_r2.py::test_quote_budget_refuses_before_successful_issue",
+          "tests/s1_pricing_quote/test_review_r2.py::test_normal_token_accepted_by_both_submission_schemas",
+          "tests/s1_pricing_quote/test_review_r2.py::test_max_lines_nonascii_http_preview_has_no_unusable_success",
+          "tests/s1_pricing_quote/test_review_r2.py::test_wrong_table_catalog_objects_rejected[constraint]",
+          "tests/s1_pricing_quote/test_review_r2.py::test_wrong_table_catalog_objects_rejected[index]",
+          "tests/s1_pricing_quote/test_review_r2.py::test_multiple_heads_both_checkers_refuse_without_pk_change",
+          "tests/s1_pricing_quote/test_review_r2.py::test_revision_contract_finite_consistency",
+          "tests/s1_pricing_quote/test_review_r2.py::test_registry_lifecycle_039_to_040_diagnostic[active]",
+          "tests/s1_pricing_quote/test_review_r2.py::test_registry_lifecycle_039_to_040_diagnostic[provisioning]",
+          "tests/s1_pricing_quote/test_review_r2.py::test_registry_lifecycle_039_to_040_diagnostic[invalid]",
+          "tests/s1_pricing_quote/test_review_r2.py::test_registry_lifecycle_039_to_040_diagnostic[bootstrap_only]",
+          "tests/s1_pricing_quote/test_review_r2.py::test_create_and_sibling_update_real_lock_order[local]",
+          "tests/s1_pricing_quote/test_review_r2.py::test_create_and_sibling_update_real_lock_order[sku_shared]",
+          "tests/s1_pricing_quote/test_review_r2.py::test_create_and_sibling_update_real_lock_order[catalog_shared]",
+          "tests/s1_pricing_quote/test_review_r2.py::test_shared_metadata_with_local_unit_fields_preserved"
+        ]
+      },
+      {
+        "family": "s2_reorder",
+        "source_xml": "/home/ivy/cto-tasks/s2-reorder-independent-v3-zcodew-remote-20261014/private/zcodew-formal-s2-backend-01.xml",
+        "source_sha256": "dd7ee474291f27417303db29efb5f3cf7c5771e38f02edf5ab145c973e8b6be8",
+        "tests": 53,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "nodeid_mapping_rule": "pytest classname module prefix -> path.py; class suffix retained; testcase name unchanged",
+        "nodeids": [
+          "tests/s2_reorder/test_authority_tcp.py::test_ro11_cross_tenant_and_other_retailer_sources_neutral_404[UG]",
+          "tests/s2_reorder/test_authority_tcp.py::test_ro11_cross_tenant_and_other_retailer_sources_neutral_404[KE]",
+          "tests/s2_reorder/test_authority_tcp.py::test_ro11_completed_cache_replay_rechecks_source_evidence_and_visibility[UG]",
+          "tests/s2_reorder/test_authority_tcp.py::test_ro11_completed_cache_replay_rechecks_source_evidence_and_visibility[KE]",
+          "tests/s2_reorder/test_authority_tcp.py::test_ro10_completed_cache_replay_checks_persisted_source_and_fingerprint[quote_seen-UG]",
+          "tests/s2_reorder/test_authority_tcp.py::test_ro10_completed_cache_replay_checks_persisted_source_and_fingerprint[quote_seen-KE]",
+          "tests/s2_reorder/test_authority_tcp.py::test_ro10_completed_cache_replay_checks_persisted_source_and_fingerprint[quote_resolved-UG]",
+          "tests/s2_reorder/test_authority_tcp.py::test_ro10_completed_cache_replay_checks_persisted_source_and_fingerprint[quote_resolved-KE]",
+          "tests/s2_reorder/test_authority_tcp.py::test_ro10_completed_cache_replay_checks_persisted_source_and_fingerprint[creation_fingerprint-UG]",
+          "tests/s2_reorder/test_authority_tcp.py::test_ro10_completed_cache_replay_checks_persisted_source_and_fingerprint[creation_fingerprint-KE]",
+          "tests/s2_reorder/test_authority_tcp.py::test_ro11_binding_deactivation_refuses_first_submit_and_committed_cached_replay[UG]",
+          "tests/s2_reorder/test_authority_tcp.py::test_ro11_binding_deactivation_refuses_first_submit_and_committed_cached_replay[KE]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro07_linked_legacy_with_complete_persisted_unit_evidence_is_usable[UG]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro07_linked_legacy_with_complete_persisted_unit_evidence_is_usable[KE]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[null_id-LEGACY_IDENTITY_UNRESOLVED-UG]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[null_id-LEGACY_IDENTITY_UNRESOLVED-KE]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[missing_unit-LEGACY_IDENTITY_UNRESOLVED-UG]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[missing_unit-LEGACY_IDENTITY_UNRESOLVED-KE]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[missing_package-LEGACY_IDENTITY_UNRESOLVED-UG]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[missing_package-LEGACY_IDENTITY_UNRESOLVED-KE]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[different_package-PACKAGING_IDENTITY_CHANGED-UG]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[different_package-PACKAGING_IDENTITY_CHANGED-KE]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[different_unit-PACKAGING_IDENTITY_CHANGED-UG]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro06_ro07_unresolved_history_or_changed_unit_never_guessed_explicit_replace[different_unit-PACKAGING_IDENTITY_CHANGED-KE]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro01_unknown_historical_currency_remains_raw_no_fabricated_delta[UG]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro01_unknown_historical_currency_remains_raw_no_fabricated_delta[KE]",
+          "tests/s2_reorder/test_history_tcp.py::test_ro01_fractional_ugx_legacy_history_readable_current_strict_no_delta[UG]",
+          "tests/s2_reorder/test_source_economics_tcp.py::test_ro08_nonempty_source_payments_declaration_hold_reservation_ledger_movement_unchanged[UG]",
+          "tests/s2_reorder/test_source_economics_tcp.py::test_ro08_nonempty_source_payments_declaration_hold_reservation_ledger_movement_unchanged[KE]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro01_ro03_ro08_vertical_preview_all_lines_new_zero_effect_draft[UG]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro01_ro03_ro08_vertical_preview_all_lines_new_zero_effect_draft[KE]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro02_ro03_ro04_current_price_unchanged_rise_fall_requires_explicit_acceptance[90-0-UG]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro02_ro03_ro04_current_price_unchanged_rise_fall_requires_explicit_acceptance[90-0-KE]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro02_ro03_ro04_current_price_unchanged_rise_fall_requires_explicit_acceptance[110-40-UG]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro02_ro03_ro04_current_price_unchanged_rise_fall_requires_explicit_acceptance[110-40-KE]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro02_ro03_ro04_current_price_unchanged_rise_fall_requires_explicit_acceptance[80--20-UG]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro02_ro03_ro04_current_price_unchanged_rise_fall_requires_explicit_acceptance[80--20-KE]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro05_unavailable_stays_visible_old_consent_refused_explicit_remove[UG]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro05_unavailable_stays_visible_old_consent_refused_explicit_remove[KE]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro05_missing_price_explicit_replacement_is_unavailable_not_zero[UG]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro05_missing_price_explicit_replacement_is_unavailable_not_zero[KE]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro09_price_change_same_total_rejects_every_changed_economic_line[UG]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro09_price_change_same_total_rejects_every_changed_economic_line[KE]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro09_aba_revision_source_label_changes_same_economics_need_no_extra_acceptance[UG]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro09_aba_revision_source_label_changes_same_economics_need_no_extra_acceptance[KE]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro10_independent_tcp_clients_same_key_one_draft_replay_and_conflicts[UG]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro10_independent_tcp_clients_same_key_one_draft_replay_and_conflicts[KE]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro10_same_economic_lines_different_original_decisions_conflict[UG]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_ro10_same_economic_lines_different_original_decisions_conflict[KE]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_no_silent_omission_duplicate_selected_units_or_all_removed_submission[UG]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_no_silent_omission_duplicate_selected_units_or_all_removed_submission[KE]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_nr06_shortage_preserves_quantity_zero_effects_confirmation_atomic_refusal[UG]",
+          "tests/s2_reorder/test_tcp_reorder.py::test_nr06_shortage_preserves_quantity_zero_effects_confirmation_atomic_refusal[KE]"
+        ]
+      }
+    ]
+  }
 }

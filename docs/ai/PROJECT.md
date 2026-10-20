@@ -1,5 +1,20 @@
 # Mpango ERP Project Status
 
+## RC3 Local Two-Line Intake - 2026-10-20
+
+Current authority: CTO-AUTH-RC3-LOCAL-TWO-LINE-INTEGRATION-AND-REUSE-INTAKE-R1-20261020.
+Integrate accepted eac40af9 CI and bac775df UI only on the task's local branch;
+backend=c2, frontend=bac, head042 and wrapper unchanged. Reuse compares the
+whole product against accepted bac and keeps original historical candidates.
+S3 backend166 is byte-equivalent reuse, not a new run; its c2 browser is not
+reexecuted on the changed OrderListPage. UI 531 Vitest/UG-KE observations stay
+on b46, LF-equivalent to bac; build stays on bac. Current hosted/full ordinary
+body, rcj full node coverage and historical S1/S2/images gaps remain open.
+No product environment, business test or browser rerun in this task. Source
+integration and CI admission do not authorize remote CI, protected promotion,
+deployment or changing Jeff's RC2/head041 trial. This supersedes only the
+older current-assignment paragraphs, not their historical evidence.
+
 ## RC3 Release Preparation - 2026-10-20
 
 S3 minimum per-order negotiation is CTO-accepted in its finite functional

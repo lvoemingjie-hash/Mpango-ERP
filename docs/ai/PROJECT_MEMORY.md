@@ -1,5 +1,17 @@
 # Project Memory
 
+## RC3 Integration Boundary - 2026-10-20
+
+CTO accepted eac40af9 CI closeout and bac775df UI finite closeout separately.
+The authorized local no-ff integration preserves both input histories;
+subsequent admission edits must not change backend=c2/frontend=bac or wrapper.
+Product source bac is fixed independently of coverage and future commit IDs.
+Original S3 backend166/c2 and UI531/b46 observations are different evidence
+layers; LF-only bac equivalence and final bac build do not create fresh V3.
+Maintain current S3 browser and older dependency/rcj gaps. Only bounded offline
+contracts and retained collect reconciliation are authorized, not services,
+new business/browser runs, remote CI, protected merge, deployment or trial upgrade.
+
 ## RC3 Durable Boundary - 2026-10-20
 
 CTO finally accepted S3 minimum negotiation at `c2fff203` after one

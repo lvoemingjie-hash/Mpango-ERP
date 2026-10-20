@@ -1,5 +1,19 @@
 # AI Context Entry
 
+## Current Local Integration - 2026-10-20
+
+Use CTO-AUTH-RC3-LOCAL-TWO-LINE-INTEGRATION-AND-REUSE-INTAKE-R1-20261020.
+Accepted CI input eac40af9 and UI input bac775df are combined only on a new
+local nonprotected branch. Product authority is bac (backend unchanged from
+c2); wrapper/head042, 236 ordinary files/4288 historical collect nodes and
+21 dedicated files remain fixed. UI 531 Vitest/two-country observations are
+on b46 with LF equivalence to bac; build is on bac. S3 backend166 keeps c2
+provenance; current S3 browser and historical dependency GAPs remain open.
+No new product environments or body/browser reruns; no push, PR, protected
+merge, remote CI, deployment or RC2 owner-trial upgrade. See the release plan
+and external final identity. This section supersedes prior preparation-only
+wording for this local integration, not any evidence execution identity.
+
 ## Current RC3 Entry - 2026-10-20
 
 Read `docs/releases/mvp-20261031/RC3-RELEASE-PLAN.zh-CN.md` first for the

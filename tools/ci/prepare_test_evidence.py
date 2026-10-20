@@ -671,10 +671,10 @@ def _git_bytes(repo, *argv):
     return result.stdout
 
 
-REUSE_APPROVED_REF = "c2fff20365b16254db2163504751fa5f84746e80"
+REUSE_APPROVED_REF = "bac775df8257ea2fd626d6de425f3564748b37f2"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
 # Rebuild inputs/recipe are declared in intake_sources and the delivery receipt.
-REUSE_INTAKE_VERSION = 4
+REUSE_INTAKE_VERSION = 5
 REUSE_EXPECTED_METADATA = json.loads(r'''
 {
   "record": "RC2_VERSIONED_DEDICATED_ACCEPTANCE_INTAKE_V1",
@@ -2224,11 +2224,191 @@ RC3_INTAKE = {
 }
 
 
+RC3_LOCAL_INTEGRATION = json.loads(r'''
+{
+  "authorization": "CTO-AUTH-RC3-LOCAL-TWO-LINE-INTEGRATION-AND-REUSE-INTAKE-R1-20261020",
+  "approved_ref": "bac775df8257ea2fd626d6de425f3564748b37f2",
+  "ci_input": "eac40af9167044d64b42e92a69fdfd751893e358",
+  "source_tree": "9591f8ea6b613d472f27f8fdbff48b7943b473ee",
+  "source_parent": "b46b74130b582e8e4f42579148b209eca540f576",
+  "backend_tree": "c3eec56f61ff9256570fbcdf5aab4c5fec5f47ee",
+  "frontend_tree": "d3e3ca842bd6d4eb2caca6aa5d1b1c3137d83f34",
+  "authority_record": {
+    "path": "AI_REPORT_INBOX/rc3-ui-closeout-and-local-integration-cto-20261020/delivery/CODEXL-RC3-LOCAL-INTEGRATION.zh-CN.md",
+    "sha256": "874f6558323748eeace090f16969ff9138e296c57732298f178fdbc42a25523c"
+  },
+  "cto_ruling": {
+    "path": "AI_REPORT_INBOX/rc3-ui-closeout-and-local-integration-cto-20261020/delivery/CTO-UI-CLOSEOUT-ACCEPTANCE.zh-CN.md",
+    "sha256": "78d5a06a7781f4f0dc76e31daa44992383f4f52fdf1691675aa8d6a59029aeb9"
+  },
+  "source_deltas": [
+    {
+      "path": "frontend/src/components/ui/PaymentRecordModal.tsx",
+      "current_blob": "e946942622c2630eb83ef1b5471b214b726a0940",
+      "current_sha256": "0a2f55c8f164e7bc01d79d46e7ac08874fe4c162e508d4d56579fd16247a77d0"
+    },
+    {
+      "path": "frontend/src/pages/orders/OrderListPage.tsx",
+      "current_blob": "fd59647026b2545687c4aa864b0217be2e26fbf0",
+      "current_sha256": "e7a0f8c1e18cc472f03b96f652104e67753a83724db2b676ce72af18a9016528"
+    },
+    {
+      "path": "frontend/src/pages/pricing/RetailerPricingPage.tsx",
+      "current_blob": "3599b6f0866878847741fd8a86d6bf8082f3fc49",
+      "current_sha256": "990233118cc56978f82aa22b3207c90f37489d6e20d6f2eeb2dd26e8ea7d20dd"
+    },
+    {
+      "path": "frontend/src/tests/PaymentCurrencyPricingUx.test.tsx",
+      "current_blob": "90a653b45fa8045da565d6e746df7dcb52d5339b",
+      "current_sha256": "b643652e23dff99de4aac7736fd8d1c6a6ed5d901b79d6fe4981f8bd70c02732"
+    },
+    {
+      "path": "frontend/src/tests/S5BRealUserSmoke.test.tsx",
+      "current_blob": "e34bb0cc02ae7f86885dc27f184594b5d034a0de",
+      "current_sha256": "7e0128ac459fb49560741dafdc942bba296b63c55d3f70c51dbb0584808d78c0"
+    }
+  ],
+  "ui_binding": {
+    "id": "rc3_payment_currency_pricing_ui_cto_bounded_acceptance",
+    "family": "rc3_payment_currency_pricing_ui",
+    "candidate": "b46b74130b582e8e4f42579148b209eca540f576",
+    "files": [],
+    "support_files": [
+      "frontend/src/components/ui/PaymentRecordModal.tsx",
+      "frontend/src/pages/orders/OrderListPage.tsx",
+      "frontend/src/pages/pricing/RetailerPricingPage.tsx",
+      "frontend/src/tests/PaymentCurrencyPricingUx.test.tsx",
+      "frontend/src/tests/S5BRealUserSmoke.test.tsx"
+    ],
+    "coverage_status": "CTO_ACCEPTED_UI_BOUNDED_SCOPE__NOT_CURRENT_CI",
+    "cto_ruling": {
+      "path": "AI_REPORT_INBOX/rc3-ui-closeout-and-local-integration-cto-20261020/delivery/CTO-UI-CLOSEOUT-ACCEPTANCE.zh-CN.md",
+      "sha256": "78d5a06a7781f4f0dc76e31daa44992383f4f52fdf1691675aa8d6a59029aeb9",
+      "accepted_scope": "Payment currency/Pricing UI finite scope; LF-only closeout; not new whole-business V3"
+    },
+    "load_bearing_blobs": {
+      "frontend/src/components/ui/PaymentRecordModal.tsx": "e946942622c2630eb83ef1b5471b214b726a0940",
+      "frontend/src/pages/orders/OrderListPage.tsx": "fd59647026b2545687c4aa864b0217be2e26fbf0",
+      "frontend/src/pages/pricing/RetailerPricingPage.tsx": "3599b6f0866878847741fd8a86d6bf8082f3fc49",
+      "frontend/src/tests/PaymentCurrencyPricingUx.test.tsx": "4128a6a48f3240d8d22a445284c902d59776759d",
+      "frontend/src/tests/S5BRealUserSmoke.test.tsx": "e34bb0cc02ae7f86885dc27f184594b5d034a0de"
+    },
+    "current_product_blobs": {
+      "frontend/src/components/ui/PaymentRecordModal.tsx": "e946942622c2630eb83ef1b5471b214b726a0940",
+      "frontend/src/pages/orders/OrderListPage.tsx": "fd59647026b2545687c4aa864b0217be2e26fbf0",
+      "frontend/src/pages/pricing/RetailerPricingPage.tsx": "3599b6f0866878847741fd8a86d6bf8082f3fc49",
+      "frontend/src/tests/PaymentCurrencyPricingUx.test.tsx": "90a653b45fa8045da565d6e746df7dcb52d5339b",
+      "frontend/src/tests/S5BRealUserSmoke.test.tsx": "e34bb0cc02ae7f86885dc27f184594b5d034a0de"
+    },
+    "evidence": {
+      "vitest": {
+        "candidate": "b46b74130b582e8e4f42579148b209eca540f576",
+        "path": "cto-tasks/rc3-payment-currency-pricing-ux-zcodew-r1-20261020/reports/vitest-full.xml",
+        "sha256": "7f330187b0e31839682d564d57206e33ab03c03c031f258e3efe4ec97329a6a0",
+        "passed": 531,
+        "failed": 0,
+        "identity": "AUTHOR_EXECUTED__CTO_FINITE_ACCEPTANCE__NOT_NEW_INDEPENDENT_RUNTIME"
+      },
+      "browser": {
+        "candidate": "b46b74130b582e8e4f42579148b209eca540f576",
+        "path": "AI_REPORT_INBOX/rc3-payment-currency-pricing-ux-zcodew-r1-20261020/delivery/GATE-RESULTS.json",
+        "sha256": "d41a3ea8245af9d4cb8676bd750b028d4f22eca1d955f40dc2ce3dcad981bdfc",
+        "countries": [
+          "UG",
+          "KE"
+        ],
+        "observations": [
+          "payment modal currency",
+          "payment toast currency",
+          "pricing empty state",
+          "pricing save labels"
+        ],
+        "identity": "AUTHOR_UI_OBSERVATIONS__NOT_NEW_S3_BROWSER_EXECUTION",
+        "screenshots": [
+          {
+            "path": "screenshots/GATE-KE-pay-filled.png",
+            "sha256": "1c6954e941a42abffbce364f941e7e327e0207cc400ac88be6d386fb2655bc13"
+          },
+          {
+            "path": "screenshots/GATE-KE-pay-modal.png",
+            "sha256": "b6419c9daf850175da2ba21e5267fd525519be4926bc69c983b1659140007996"
+          },
+          {
+            "path": "screenshots/GATE-KE-pay-toast.png",
+            "sha256": "c3465246602d6cbe2d09f960c59e6ba77fbb77c436baa20ed7fc95fe2d2856b1"
+          },
+          {
+            "path": "screenshots/GATE-pricing-empty-state.png",
+            "sha256": "72efd05284a88621402fb2ef09f03608f7b812c9889452c5d288c4cf4366c4f1"
+          },
+          {
+            "path": "screenshots/GATE-pricing-save-names.png",
+            "sha256": "2d43c8d21e1f2a563d17508c37f417f949da993f3916a7316657262e4bf9a9a4"
+          },
+          {
+            "path": "screenshots/GATE-UG-pay-filled.png",
+            "sha256": "d52bccf27e978bdfb5224bb57fe259bdb77494f86012c2a44cc968fd8bd34865"
+          },
+          {
+            "path": "screenshots/GATE-UG-pay-modal.png",
+            "sha256": "14bd9d3fb9c1e43e65c192a686a6f25d4c9dff628dc69643dd40603c8906594e"
+          },
+          {
+            "path": "screenshots/GATE-UG-pay-toast.png",
+            "sha256": "03e019e1f2b19a06424e081eb2464532c27f35c2b628a7f88f095ee7d5628bbf"
+          }
+        ]
+      },
+      "build": {
+        "candidate": "bac775df8257ea2fd626d6de425f3564748b37f2",
+        "path": "AI_REPORT_INBOX/rc3-payment-currency-pricing-ux-zcodew-r1-20261020/delivery/normal-gate-closeout-r1/build-final.log",
+        "sha256": "90cfa756bcdb851a371e7184e4a984a2219b7ec92527a27febd47b25e953df55",
+        "rc": 0
+      },
+      "cto_normal_hook": {
+        "path": "AI_REPORT_INBOX/rc3-ui-closeout-and-local-integration-cto-20261020/delivery/CTO-INDEPENDENT-NORMAL-PRECOMMIT.log",
+        "sha256": "10d925202ad82dfcb6f646e3b9617238c8df0a9303b8caac5d07ad49b23ab1bd",
+        "candidate": "bac775df8257ea2fd626d6de425f3564748b37f2",
+        "rc": 0,
+        "passed_hooks": 4,
+        "yaml_hook": "SKIPPED_NO_YAML_INPUT__NOT_PRODUCT_TEST_SKIP"
+      },
+      "cto_native_binding": {
+        "path": "AI_REPORT_INBOX/rc3-ui-closeout-and-local-integration-cto-20261020/delivery/CTO-VERIFICATION.json",
+        "sha256": "d4a75f8a72c91d73c7a8bacbf5e447aad0a9e1c17f7f0e8b1433cb3a75dc016c"
+      }
+    },
+    "line_ending_equivalence": {
+      "path": "frontend/src/tests/PaymentCurrencyPricingUx.test.tsx",
+      "from_candidate": "b46b74130b582e8e4f42579148b209eca540f576",
+      "to_candidate": "bac775df8257ea2fd626d6de425f3564748b37f2",
+      "rule": "new_bytes == old_bytes.replace(CRLF, LF)",
+      "current_sha256": "b643652e23dff99de4aac7736fd8d1c6a6ed5d901b79d6fe4981f8bd70c02732",
+      "only_this_path_changed_between_these_candidates": true
+    },
+    "gaps": [
+      "CURRENT_INTEGRATED_HOSTED_CI_NOT_RUN",
+      "NOT_NEW_FULL_PAYMENT_INVENTORY_V3",
+      "NOT_NEW_S3_BROWSER_EXECUTION",
+      "NOT_A_PYTEST_NODE_UNION"
+    ]
+  },
+  "s3_frontend_changed_blobs": [
+    {
+      "path": "frontend/src/pages/orders/OrderListPage.tsx",
+      "historical_blob": "28e9824506cffa75e7c2365ecf837a5170b8148a",
+      "current_blob": "fd59647026b2545687c4aa864b0217be2e26fbf0"
+    }
+  ]
+}
+''')
+
+
 def _reuse_expected_metadata(repo):
     """Return an independent copy of the versioned fixed intake.
 
     No coverage-supplied hash, machine path, network or side Git object
-    participates. This new expectation awaits CTO source adjudication.
+    participates. Historical execution identities remain unchanged.
     """
     expected = json.loads(json.dumps(REUSE_EXPECTED_METADATA))
     expected["previous_rc2_source_intake"] = expected["current_source_intake"]
@@ -2236,6 +2416,44 @@ def _reuse_expected_metadata(repo):
     expected["historical_selection_binding"] = expected["selection_binding"]
     expected.update(json.loads(json.dumps(RC3_INTAKE["updates"])))
     expected["bindings"].append(json.loads(json.dumps(RC3_INTAKE["additional_binding"])))
+    intake = json.loads(json.dumps(RC3_LOCAL_INTEGRATION))
+    expected["previous_s3_source_intake"] = json.loads(json.dumps(expected["current_source_intake"]))
+    expected["previous_s3_selection_binding"] = json.loads(json.dumps(expected["selection_binding"]))
+    expected["previous_s3_attachment_deltas"] = json.loads(json.dumps(expected["current_attachment_deltas"]))
+    expected.update(record="RC3_LOCAL_INTEGRATED_PRODUCT_INTAKE_V1",
+                    authorization=intake["authorization"], intake_version=REUSE_INTAKE_VERSION,
+                    intake_status="LOCAL_INTEGRATED_ADMISSION__CTO_SOURCE_DECISION_PENDING",
+                    product_anchor=intake["approved_ref"])
+    expected["selection_binding"].update(authority=intake["authorization"], source_ref=intake["approved_ref"])
+    current = expected["current_source_intake"]
+    current.update(authorization=intake["authorization"], source_ref=intake["approved_ref"],
+                   source_tree=intake["source_tree"], source_parent=intake["source_parent"],
+                   backend_tree=intake["backend_tree"], frontend_tree=intake["frontend_tree"],
+                   authority_record=intake["authority_record"], cto_ruling=intake["cto_ruling"],
+                   independent_v3_this_intake="NO_NEW_EXECUTION__S3_BACKEND_SAME_BYTES__UI_CTO_BOUNDED_INTAKE",
+                   current_fresh_ordinary_collection="NOT_RUN_THIS_INTEGRATION__PRIOR_4288_RECONCILED")
+    changes = {item["path"]: item for item in current["source_deltas"]}
+    changes.update({item["path"]: item for item in intake["source_deltas"]})
+    current["source_deltas"] = [changes[path] for path in sorted(changes)]
+    for delta in expected["current_attachment_deltas"]:
+        delta["current_source_ref"] = intake["approved_ref"]
+    expected["bindings"].append(intake["ui_binding"])
+    expected["current_dependency_assessments"].extend([
+        {"binding_id": "s3_minimum_negotiation_cto_independent_v3",
+         "status": "REUSED_S3_BACKEND_166__CURRENT_FRONTEND_GAP",
+         "historical_record_not_rebound": True,
+         "current_dependency_changed_blobs": intake["s3_frontend_changed_blobs"],
+         "backend_nodes_same_bytes_reused": 166,
+         "historical_browser_candidate": RC3_INTAKE["additional_binding"]["candidate"],
+         "historical_browser_reexecuted": False,
+         "remaining_scope": "GAP_CURRENT_S3_BROWSER_NOT_REEXECUTED__NOT_FULL_NODE_COVERAGE"},
+        {"binding_id": intake["ui_binding"]["id"],
+         "status": intake["ui_binding"]["coverage_status"],
+         "historical_record_not_rebound": True,
+         "vitest_count": 531, "vitest_candidate": intake["ui_binding"]["candidate"],
+         "build_candidate": intake["approved_ref"], "not_backend_pytest_nodes": True,
+         "remaining_scope": "GAP_CURRENT_INTEGRATED_HOSTED_CI_AND_FULL_BUSINESS_V3_NOT_RUN"},
+    ])
     return expected
 
 

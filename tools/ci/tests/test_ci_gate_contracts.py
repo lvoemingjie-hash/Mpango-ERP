@@ -3915,7 +3915,7 @@ class TestWrapperWrongHeadRefusal:
 class TestReuseValidityMachineCheck:
     """Approved Git objects, complete metadata and real admission controls."""
 
-    APPROVED = "c2fff20365b16254db2163504751fa5f84746e80"
+    APPROVED = "bac775df8257ea2fd626d6de425f3564748b37f2"
 
     def _coverage(self, tmp_path):
         path = tmp_path / "coverage.json"
@@ -4103,7 +4103,7 @@ class TestReuseValidityMachineCheck:
         historical = json.loads(subprocess.check_output([
             "git", "show", self.APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
         ], cwd=REPO_ROOT, text=True))
-        assert coverage["bindings"][:-1] == historical["bindings"]
+        assert coverage["bindings"][:-2] == historical["bindings"]
         assert coverage["recovered_native_node_maps"] == historical["recovered_native_node_maps"]
         assert coverage["previous_rc2_source_intake"] == historical["current_source_intake"]
         current = coverage["current_source_intake"]
@@ -4118,7 +4118,7 @@ class TestReuseValidityMachineCheck:
         }
         assert current["historical_results_reexecuted"] is False
         assert current["hosted_ci_this_intake"] == "NOT_RUN"
-        accepted = coverage["bindings"][-1]
+        accepted = next(b for b in coverage["bindings"] if b["family"] == "s3_negotiation")
         assert accepted["family"] == "s3_negotiation" and len(accepted["files"]) == 5
         nodes = [n for g in accepted["groups"] for n in g["nodes"]]
         assert len(nodes) == len(set(nodes)) == 166
@@ -4409,9 +4409,11 @@ class TestRC3FiniteIntake:
         assert not data['release_ready'] and not data['evidence_ready']
         assert data['current_accepted_node_union'] == 166
         current = [b for b in data['bindings'] if b['id'] == 's3_minimum_negotiation_cto_independent_v3']
-        assert len(current) == 1 and current[0]['status'] == 'CTO_ACCEPTED_CURRENT_FINITE_SCOPE'
+        assert len(current) == 1 and current[0]['status'] == 'REUSED_S3_BACKEND_166__CURRENT_FRONTEND_GAP'
+        ui = [b for b in data['bindings'] if b['id'] == 'rc3_payment_currency_pricing_ui_cto_bounded_acceptance']
+        assert len(ui) == 1 and ui[0]['status'] == 'CTO_ACCEPTED_UI_BOUNDED_SCOPE__NOT_CURRENT_CI'
         assert all(b['status'] == 'HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS'
-                   for b in data['bindings'] if b not in current)
+                   for b in data['bindings'] if b not in current and b not in ui)
         assert data['full_dedicated_node_coverage'] == 'GAP_RCJ_NODE_MAP_NOT_ESTABLISHED'
 
     @pytest.mark.parametrize('forgery', ['missing_native_group', 'same_count_wrong_node', 'erased_dependency_gap', 'all_s1_claim'])
@@ -4419,10 +4421,11 @@ class TestRC3FiniteIntake:
         probe = TestReuseValidityMachineCheck()
         path = probe._coverage(tmp_path)
         data = json.loads(path.read_text())
+        s3 = next(b for b in data['bindings'] if b['family'] == 's3_negotiation')
         if forgery == 'missing_native_group':
-            data['bindings'][-1]['groups'].pop()
+            s3['groups'].pop()
         elif forgery == 'same_count_wrong_node':
-            data['bindings'][-1]['groups'][0]['nodes'][0] = 'tests/unexecuted.py::test_same_count'
+            s3['groups'][0]['nodes'][0] = 'tests/unexecuted.py::test_same_count'
         elif forgery == 'erased_dependency_gap':
             data['current_dependency_assessments'][0]['remaining_scope'] = 'ALL_PASSED'
         else:
@@ -4431,3 +4434,67 @@ class TestRC3FiniteIntake:
         proc, result = probe._check(REPO_ROOT, path)
         assert proc.returncode == 5 and not result['all_valid']
         assert 'REUSE_METADATA_PROVENANCE' in result['problems']
+
+
+class TestRC3LocalIntegrationIntake:
+    """UI intake is explicit provenance, never a new backend or browser run."""
+
+    def test_exact_product_source_and_ui_execution_layers(self, tmp_path):
+        probe = TestReuseValidityMachineCheck()
+        path = probe._coverage(tmp_path)
+        coverage = json.loads(path.read_text())
+        current = coverage['current_source_intake']
+        assert current['source_ref'] == probe.APPROVED
+        assert coverage['previous_s3_source_intake']['source_ref'] == 'c2fff20365b16254db2163504751fa5f84746e80'
+        ui = next(b for b in coverage['bindings'] if b['family'] == 'rc3_payment_currency_pricing_ui')
+        assert ui['candidate'] == 'b46b74130b582e8e4f42579148b209eca540f576'
+        assert ui['evidence']['vitest']['passed'] == 531
+        assert ui['evidence']['vitest']['candidate'] == ui['candidate']
+        assert ui['evidence']['browser']['candidate'] == ui['candidate']
+        assert ui['evidence']['browser']['countries'] == ['UG', 'KE']
+        assert len(ui['evidence']['browser']['screenshots']) == 8
+        assert ui['evidence']['build']['candidate'] == probe.APPROVED
+        assert ui['evidence']['build']['rc'] == 0
+        assert ui['evidence']['cto_normal_hook']['passed_hooks'] == 4
+        assert not ui['files'], 'UI Vitest/browser observations are not backend pytest nodes'
+        for rel, blob in ui['current_product_blobs'].items():
+            actual = subprocess.check_output(['git', 'rev-parse', probe.APPROVED + ':' + rel], cwd=REPO_ROOT, text=True).strip()
+            assert actual == blob
+        proc, result = probe._check(REPO_ROOT, path)
+        assert proc.returncode == 0 and result['all_valid']
+        assert result['current_accepted_node_union'] == 166
+        assert not result['release_ready'] and not result['evidence_ready']
+
+    @pytest.mark.parametrize('forgery', ['missing_ui', 'ui_native_digest', 's3_browser_gap', 'ui_independence'])
+    def test_missing_or_forged_ui_or_historical_gap_refused(self, tmp_path, forgery):
+        probe = TestReuseValidityMachineCheck()
+        path = probe._coverage(tmp_path)
+        coverage = json.loads(path.read_text())
+        ui = next(b for b in coverage['bindings'] if b['family'] == 'rc3_payment_currency_pricing_ui')
+        if forgery == 'missing_ui':
+            coverage['bindings'].remove(ui)
+        elif forgery == 'ui_native_digest':
+            ui['evidence']['vitest']['sha256'] = '0' * 64
+        elif forgery == 's3_browser_gap':
+            item = next(x for x in coverage['current_dependency_assessments'] if x['binding_id'] == 's3_minimum_negotiation_cto_independent_v3')
+            item['remaining_scope'] = 'CLOSED_BY_UI_INTAKE'
+        else:
+            ui['evidence']['vitest']['identity'] = 'NEW_INDEPENDENT_V3_AT_CURRENT_INTEGRATION'
+        path.write_text(json.dumps(coverage))
+        proc, result = probe._check(REPO_ROOT, path)
+        assert proc.returncode == 5 and not result['all_valid']
+        assert 'REUSE_METADATA_PROVENANCE' in result['problems']
+        assert not result['release_ready'] and not result['evidence_ready']
+        path.write_bytes((REPO_ROOT / 'docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json').read_bytes())
+        proc, restored = probe._check(REPO_ROOT, path)
+        assert proc.returncode == 0 and restored['all_valid']
+        assert not restored['release_ready'] and not restored['evidence_ready']
+
+    def test_preintegration_c2_ref_is_no_longer_authorized(self, tmp_path):
+        probe = TestReuseValidityMachineCheck()
+        path = probe._coverage(tmp_path)
+        proc = subprocess.run([sys.executable, str(EVIDENCE_TOOL), 'verify-reuse', '--coverage', str(path),
+                               '--repo-root', str(REPO_ROOT), '--approved-ref',
+                               'c2fff20365b16254db2163504751fa5f84746e80'], capture_output=True, text=True)
+        assert proc.returncode == 5
+        assert 'REUSE_APPROVED_REF_NOT_AUTHORIZED' in proc.stderr

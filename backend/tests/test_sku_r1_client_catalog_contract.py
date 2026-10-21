@@ -48,7 +48,7 @@ from tests.test_dc12r1_s3_s1_catalog_order_hardening import (
 )
 from tests.rc2_current_contract_support import registered_pool_ke
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.usefixtures("registered_pool_ke")]
 
 
 # ---------------------------------------------------------------------------

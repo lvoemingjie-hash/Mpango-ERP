@@ -167,6 +167,7 @@ async def _create_order(client: AsyncClient, token: str, sku_code: str) -> str:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("registered_pool_ke")
 class TestHappyPathPreserved:
     async def test_catalog_readable(self, s3_client, two_tenants):
         token = await _login_retailer(s3_client, two_tenants)
@@ -197,6 +198,7 @@ class TestHappyPathPreserved:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("registered_pool_ke")
 class TestDualKeyDbScoping:
     """Wrong-wholesaler and wrong-retailer rows in the SAME schema are excluded
     by the DB query — not just post-fetch in the handler."""
@@ -323,6 +325,7 @@ class TestDualKeyDbScoping:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("registered_pool_ke")
 class TestBindingFailClosed:
     async def test_inactive_binding_denied(self, s3_client, two_tenants, s2_clean_db):
         from sqlalchemy import text
@@ -411,6 +414,7 @@ class TestBindingFailClosed:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("registered_pool_ke")
 class TestTokenFailClosed:
     async def test_identity_only_jwt_denied(self, s3_client, two_tenants):
         from core.security import create_identity_token
@@ -437,6 +441,7 @@ class TestTokenFailClosed:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("registered_pool_ke")
 class TestPermissionDenial:
     @staticmethod
     async def _strip_perm(db, schema: str, code: str):
@@ -548,6 +553,7 @@ class TestPermissionDenial:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("registered_pool_ke")
 class TestGenericRoutesDenied:
     async def test_generic_orders_denied(self, s3_client, two_tenants):
         token = await _login_retailer(s3_client, two_tenants)
@@ -627,6 +633,7 @@ class TestGap07GovernanceFreeze:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("registered_pool_ke")
 class TestProvisioningRolePermissions:
     """After provisioning: admin has only ADMIN_PERMISSION_CODES;
     retailer_operator has exactly RETAILER_OPERATOR_PERMISSION_CODES.
@@ -772,6 +779,7 @@ class TestClientRouteAllowlist:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("registered_pool_ke")
 class TestSameSchemaWrongEntityExclusion:
     """Wrong-wholesaler and wrong-retailer rows in the same schema are excluded
     at the DB-query level for list, detail AND cancel."""
@@ -915,6 +923,7 @@ class TestSameSchemaWrongEntityExclusion:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("registered_pool_ke")
 class TestMalformedUuidFailClosed:
     async def test_malformed_uuid_zero_order_query(
         self, s3_client, two_tenants, s2_clean_db
@@ -945,6 +954,7 @@ class TestMalformedUuidFailClosed:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("registered_pool_ke")
 class TestMalformedIdentity:
     """Direct repository tests for malformed wholesaler_id and retailer_id.
 
@@ -1061,6 +1071,7 @@ class _ContaminationHelper:
                     f'DELETE FROM "{schema}".users WHERE id = :u'), {"u": uid})
 
 
+@pytest.mark.usefixtures("registered_pool_ke")
 class TestRealPgSeederPaths:
     """Each test exercises a real production seeder callable on real PG16 with
     deliberately contaminated RBAC state, then proves exact canonical
@@ -1344,6 +1355,7 @@ class TestRealPgSeederPaths:
 # ===========================================================================
 
 
+@pytest.mark.usefixtures("registered_pool_ke")
 class TestMalformedIdentityHttp:
     """Registered HTTP routes with malformed ClientIdentity (wholesaler_id or
     retailer_id set to non-UUID strings) must return controlled responses

@@ -198,7 +198,7 @@ async def verified_from_template(db, template):
         notes=template.notes)
 
 
-@pytest_asyncio.fixture(autouse=True)
+@pytest_asyncio.fixture
 async def registered_pool_ke(provisioned_pool):
     """These fractional-price cases require a supported KES tenant, not legacy TZ.
 

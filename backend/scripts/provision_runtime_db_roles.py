@@ -690,8 +690,17 @@ class Provisioner:
 
         migrate = await asyncpg.connect(self.migrate_url)
         try:
-            for sql in statements:
-                await migrate.execute(sql)
+            # The broad legacy grant and the exact M1 audit exception become
+            # visible together; repeated grants must not reopen audit writes.
+            async with migrate.transaction():
+                for sql in statements:
+                    await migrate.execute(sql)
+                if await migrate.fetchval("SELECT to_regclass('public.staff_stock_audit_events')"):
+                    await migrate.execute(
+                        'REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER '
+                        f'ON public.staff_stock_audit_events FROM "{self.app_role}"'
+                    )
+                    await migrate.execute('REVOKE ALL ON public.staff_stock_audit_events FROM PUBLIC')
             print(
                 f"[grants] {len(statements)} minimum grants applied as "
                 f"{self.migrate_role}"
@@ -878,6 +887,18 @@ class Provisioner:
                 owner=public_owner,
                 database_owner=db_owner,
             )
+            if await migrate.fetchval("SELECT to_regclass('public.staff_stock_audit_events')"):
+                audit = await migrate.fetchrow(
+                    "SELECT pg_get_userbyid(c.relowner) AS owner, "
+                    "has_table_privilege($1,c.oid,'SELECT') AS can_read, "
+                    "has_table_privilege($1,c.oid,'INSERT') AS can_append, "
+                    "has_table_privilege($1,c.oid,'UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS can_rewrite "
+                    "FROM pg_class c WHERE c.oid='public.staff_stock_audit_events'::regclass",
+                    self.app_role,
+                )
+                _record('staff_audit_append_only_privileges', bool(
+                    audit and audit['owner'] == self.migrate_role and audit['can_read']
+                    and audit['can_append'] and not audit['can_rewrite']), **dict(audit or {}))
             app_create_on_public = await migrate.fetchval(
                 "SELECT has_schema_privilege($1, 'public', 'CREATE')",
                 self.app_role,

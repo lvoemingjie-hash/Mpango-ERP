@@ -2698,6 +2698,85 @@ async def _reconcile_order_negotiations(db, ts: str) -> None:
         raise RuntimeError('NEGOTIATION_CATALOG_HISTORY_GUARD_MISMATCH')
 
 
+async def _reconcile_staff_authority(db, ts: str) -> None:
+    """Independent M1 schema installer. Never claim an existing user as Owner."""
+    from sqlalchemy import text
+
+    q = '"' + ts + '"'
+    names = ('staff_authority', 'staff_role_templates', 'staff_memberships')
+    present = [(await db.execute(text('SELECT to_regclass(:name)'),
+                                {'name': ts + '.' + name})).scalar() is not None for name in names]
+    if any(present) and not all(present):
+        raise RuntimeError('STAFF_BOOTSTRAP_PARTIAL_SCHEMA')
+    if not any(present):
+        if (await db.execute(text(f'SELECT EXISTS (SELECT 1 FROM {q}.users)'))).scalar_one():
+            raise RuntimeError('STAFF_BOOTSTRAP_MIGRATION_REQUIRED')
+        statements = (
+            '''CREATE TABLE {q}.staff_authority (
+                singleton INTEGER PRIMARY KEY DEFAULT 1 CONSTRAINT ck_staff_authority_singleton CHECK (singleton=1),
+                tenant_id UUID, registration_id UUID,
+                owner_user_id UUID UNIQUE REFERENCES {q}.users(id) ON DELETE RESTRICT,
+                state VARCHAR(16) NOT NULL DEFAULT 'unmapped', source VARCHAR(32), evidence_digest VARCHAR(64),
+                authz_revision BIGINT NOT NULL DEFAULT 1 CONSTRAINT ck_staff_authority_revision CHECK (authz_revision>0),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                CONSTRAINT ck_staff_authority_shape CHECK (
+                    (state='unmapped' AND owner_user_id IS NULL AND source IS NULL AND evidence_digest IS NULL) OR
+                    (state='verified' AND owner_user_id IS NOT NULL AND tenant_id IS NOT NULL AND registration_id IS NOT NULL
+                     AND source IN ('owner_setup','approved_mapping') AND evidence_digest ~ '^[0-9a-f]{{64}}$'))
+            )''',
+            '''CREATE TABLE {q}.staff_role_templates (
+                template_key VARCHAR(16) PRIMARY KEY CONSTRAINT ck_staff_template_key CHECK (template_key IN ('warehouse','sales','finance')),
+                role_id UUID NOT NULL UNIQUE REFERENCES {q}.roles(id) ON DELETE RESTRICT,
+                version BIGINT NOT NULL DEFAULT 1 CONSTRAINT ck_staff_template_version CHECK (version>0)
+            )''',
+            '''CREATE TABLE {q}.staff_memberships (
+                user_id UUID PRIMARY KEY REFERENCES {q}.users(id) ON DELETE RESTRICT,
+                template_key VARCHAR(16) NOT NULL REFERENCES {q}.staff_role_templates(template_key) ON DELETE RESTRICT,
+                credential_state VARCHAR(16) NOT NULL DEFAULT 'pending' CONSTRAINT ck_staff_membership_state CHECK (credential_state IN ('pending','ready')),
+                employment_state VARCHAR(16) NOT NULL DEFAULT 'invited' CONSTRAINT ck_staff_employment_state CHECK (employment_state IN ('invited','active','disabled')),
+                version BIGINT NOT NULL DEFAULT 1 CONSTRAINT ck_staff_membership_version CHECK (version>0),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                CONSTRAINT ck_staff_ready_active CHECK (employment_state<>'active' OR credential_state='ready')
+            )''',
+            '''CREATE FUNCTION {q}.protect_staff_owner() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $m1$
+            BEGIN
+                IF TG_OP='DELETE' OR (OLD.state='verified' AND
+                    ROW(NEW.owner_user_id,NEW.tenant_id,NEW.registration_id,NEW.state,NEW.source,NEW.evidence_digest)
+                    IS DISTINCT FROM ROW(OLD.owner_user_id,OLD.tenant_id,OLD.registration_id,OLD.state,OLD.source,OLD.evidence_digest)) THEN
+                    RAISE EXCEPTION 'OWNER_PROTECTED';
+                END IF;
+                RETURN NEW;
+            END; $m1$''',
+            '''CREATE TRIGGER staff_owner_immutable BEFORE UPDATE OR DELETE ON {q}.staff_authority
+               FOR EACH ROW EXECUTE FUNCTION {q}.protect_staff_owner()''',
+        )
+        for statement in statements:
+            await db.execute(text(statement.format(q=q)))
+        registration = (await db.execute(text(
+            'SELECT id,wholesaler_id FROM public.tenant_registrations '
+            'WHERE tenant_schema=:s AND is_deleted IS FALSE'), {'s': ts})).one_or_none()
+        await db.execute(text(f'INSERT INTO {q}.staff_authority (tenant_id,registration_id) VALUES (:t,:r)'),
+                         {'t': registration.wholesaler_id if registration else None,
+                          'r': registration.id if registration else None})
+    # A repeat may verify but must never reset the Owner, versions or memberships.
+    columns = {
+        'staff_authority': {'singleton','tenant_id','registration_id','owner_user_id','state','source',
+                            'evidence_digest','authz_revision','created_at','updated_at'},
+        'staff_role_templates': {'template_key','role_id','version'},
+        'staff_memberships': {'user_id','template_key','credential_state','employment_state','version','created_at','updated_at'},
+    }
+    for table, expected in columns.items():
+        found = (await db.execute(text(
+            'SELECT a.attname FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid '
+            'JOIN pg_namespace n ON n.oid=c.relnamespace '
+            'WHERE n.nspname=:s AND c.relname=:t AND a.attnum>0 AND NOT a.attisdropped'),
+            {'s': ts, 't': table})).scalars().all()
+        if set(found) != expected:
+            raise RuntimeError('STAFF_BOOTSTRAP_CATALOG_MISMATCH')
+    if (await db.execute(text(f'SELECT count(*) FROM {q}.staff_authority WHERE singleton=1'))).scalar_one() != 1:
+        raise RuntimeError('STAFF_BOOTSTRAP_AUTHORITY_MISSING')
+
+
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
     """Create tenant schema and all required tables."""
     from sqlalchemy import text
@@ -2739,7 +2818,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # C5 deployment-order gate (Order stream): refuse BEFORE creating ANY
         # tenant object.
-        await _require_alembic_revision(db, "042_order_negotiation_proposals")
+        await _require_alembic_revision(db, "043_staff_authority_and_credentials")
 
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))
@@ -3129,6 +3208,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
         await _reconcile_s1_pricing(db, ts)
         await _reconcile_product_images(db, ts)
         await _reconcile_order_negotiations(db, ts)
+        await _reconcile_staff_authority(db, ts)
 
         await db.commit()
 

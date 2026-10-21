@@ -32,6 +32,7 @@ ADMIN_PERMISSIONS: Final[tuple[PermissionSpec, ...]] = (
     ("orders:confirm", "Confirm orders"),
     ("orders:ship", "Ship orders"),
     ("orders:cancel", "Cancel orders"),
+    ("orders:return", "Return orders"),
     ("skus:read", "Read SKUs"),
     ("skus:create", "Create SKUs"),
     ("skus:update", "Update SKUs"),
@@ -83,6 +84,29 @@ ADMIN_MANAGEMENT_PERMISSION_CODES: Final[frozenset[str]] = frozenset(
 RETAILER_OPERATOR_PERMISSION_CODES: Final[frozenset[str]] = frozenset(
     code for code, _ in RETAILER_OPERATOR_PERMISSIONS
 )
+
+# M1 templates reuse native Role/Permission rows, not a second RBAC engine.
+# M2 adjustment request/read/approve capabilities are deliberately not active.
+STAFF_DELEGABLE_PERMISSION_CODES: Final[frozenset[str]] = frozenset({
+    'orders:read', 'orders:create', 'orders:confirm', 'orders:ship', 'orders:cancel', 'orders:return',
+    'skus:read', 'inventory:read', 'retailers:read', 'pricing:read', 'pricing:write',
+    'payments:read', 'payments:create', 'payments:confirm_declaration', 'finance:read', 'dashboards:read',
+})
+STAFF_DEFAULT_PERMISSION_CODES: Final = {
+    'warehouse': frozenset({'skus:read', 'inventory:read', 'orders:read', 'orders:ship'}),
+    'sales': frozenset({'skus:read', 'retailers:read', 'pricing:read', 'orders:read', 'orders:create'}),
+    'finance': frozenset({'orders:read', 'payments:read', 'finance:read'}),
+}
+
+
+def validate_staff_permission_codes(codes: list[str]) -> frozenset[str]:
+    """Exact capability strings only; no wildcards, aliases or role UUIDs."""
+    if not isinstance(codes, list) or any(type(code) is not str for code in codes):
+        raise ValueError('INVALID_STAFF_TEMPLATE')
+    result = frozenset(codes)
+    if len(result) != len(codes) or not result <= STAFF_DELEGABLE_PERMISSION_CODES:
+        raise ValueError('INVALID_STAFF_TEMPLATE')
+    return result
 
 
 def assert_unique_permission_codes(permission_specs: tuple[PermissionSpec, ...]) -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -15,6 +15,39 @@ from models.inventory_stock import InventoryStock
 from models.catalog_product import CatalogProduct
 from models.sku import SKU
 from repositories.inventory_repository import InventoryRepository
+
+
+def _manual_quantity_cents(value, *, allow_zero: bool = False) -> int:
+    """Validate without quantize/modulo or arithmetic in the caller's context."""
+    if isinstance(value, bool):
+        raise ValueError("INVALID_ADJUSTMENT_QUANTITY")
+    try:
+        quantity = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValueError("INVALID_ADJUSTMENT_QUANTITY") from None
+    if not quantity.is_finite() or quantity.copy_abs() > Decimal("9999999999.99"):
+        raise ValueError("INVALID_ADJUSTMENT_QUANTITY")
+    if quantity.is_zero():
+        if allow_zero:
+            return 0
+        raise ValueError("INVALID_ADJUSTMENT_QUANTITY")
+    sign, digits, exponent = quantity.as_tuple()
+    shift = exponent + 2
+    if shift < 0:
+        discarded = -shift
+        if discarded >= len(digits) or any(digits[-discarded:]):
+            raise ValueError("INVALID_ADJUSTMENT_QUANTITY")
+        digits = digits[:-discarded]
+    cents = 0
+    for digit in digits:
+        cents = cents * 10 + digit
+    if shift > 0:
+        cents *= 10 ** shift
+    return -cents if sign else cents
+
+
+def _manual_decimal_from_cents(cents: int) -> Decimal:
+    return Decimal((int(cents < 0), tuple(int(digit) for digit in str(abs(cents))), -2))
 
 
 class InventoryService:
@@ -468,6 +501,16 @@ class InventoryService:
         Creates a movement journal entry for audit trail.
         Uses SELECT FOR UPDATE to prevent concurrent issues.
         """
+        try:
+            delta_cents = _manual_quantity_cents(quantity)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"code": "INVALID_ADJUSTMENT_QUANTITY",
+                        "message": "Adjustment must be finite, nonzero and exactly representable as NUMERIC(12,2)"},
+            ) from None
+        quantity = _manual_decimal_from_cents(delta_cents)
+
         # Look up SKU
         row = await self._inventory_repo.get_stock_by_sku_code(db, sku_code=sku_code)
         if not row:
@@ -489,15 +532,38 @@ class InventoryService:
         stock = result.scalar_one()
 
         qty_before = stock.quantity_on_hand
-        qty_after = qty_before + quantity
+        try:
+            before_cents = _manual_quantity_cents(qty_before, allow_zero=True)
+            reserved_cents = _manual_quantity_cents(stock.quantity_reserved, allow_zero=True)
+            if before_cents < 0 or reserved_cents < 0 or reserved_cents > before_cents:
+                raise ValueError("STOCK_STATE_INVALID")
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "STOCK_STATE_INVALID", "message": "Existing stock requires explicit reconciliation"},
+            ) from None
+        after_cents = before_cents + delta_cents
+        if abs(after_cents) > 999999999999:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"code": "INVALID_ADJUSTMENT_QUANTITY", "message": "Adjusted stock exceeds NUMERIC(12,2)"},
+            )
+        qty_after = _manual_decimal_from_cents(after_cents)
 
-        if qty_after < Decimal("0.00"):
+        if after_cents < 0:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={
                     "code": "NEGATIVE_STOCK",
                     "message": f"Adjustment would result in negative stock ({qty_after})",
                 },
+            )
+
+        if after_cents < reserved_cents:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "STOCK_RESERVED_CONFLICT",
+                        "message": "Adjustment would reduce stock below its reserved quantity"},
             )
 
         stock.quantity_on_hand = qty_after

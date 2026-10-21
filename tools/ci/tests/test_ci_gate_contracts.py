@@ -507,7 +507,9 @@ class TestDeployWorkflowContract:
         assert 'docker inspect --format' in cleanup["run"]
         assert "mpango.owner" in cleanup["run"]
         assert 'docker rm -f -v "$cid"' in cleanup["run"]
-        assert 'rm -f "$CI_CREDENTIALS_FILE" "$RUNNER_TEMP/c91-test-env.sh"' in cleanup["run"]
+        assert 'if [ -n "${CI_CREDENTIALS_FILE:-}" ]; then' in cleanup["run"]
+        assert 'rm -f "$CI_CREDENTIALS_FILE"' in cleanup["run"]
+        assert 'rm -f "$RUNNER_TEMP/c91-test-env.sh"' in cleanup["run"]
         assert 'rm -rf "$RUNNER_TEMP/c91-resource-root"' in cleanup["run"]
         assert 'echo "cleanup_failed" > "$RUNNER_TEMP/GAP-cleanup.txt"' in cleanup["run"]
         # prune/prefix/time-window deletion never appears
@@ -3587,7 +3589,7 @@ class TestR6R5HostedPreconditions:
         assert "MPANGO_TEST_ADMIN_PASSWORD" in gate_line
 
     # ------------------------------------------------------------------
-    # E-03: exact postgres:16 image precondition (task-managed-pg only)
+    # E-03: exact postgres:16 image precondition for both helper consumers
     # ------------------------------------------------------------------
     @staticmethod
     def _helper_consumed_tag():
@@ -3611,6 +3613,7 @@ class TestR6R5HostedPreconditions:
     def test_e03_step_scoped_ordered_and_exact_tag(self):
         doc = self._doc()
         step = self._step(doc, "Pre-pull exact postgres:16")
+        assert "matrix.shard == 'topology'" in step.get("if", "")
         assert "matrix.shard == 'task-managed-pg'" in step.get("if", "")
         names = [s.get("name", "") for s in doc["jobs"]["test"]["steps"]]
         pre_i = next(i for i, n in enumerate(names) if "Pre-pull exact postgres:16" in n)
@@ -3732,7 +3735,7 @@ class TestR6R5HostedPreconditions:
     def test_e03_helper_and_backend_frozen(self):
         diff = self._git(
             "diff", "--name-only",
-            "032a77e81112e606e85e35f8f609ada5a81c3c1e", "HEAD",
+            "82ad641d67baf3035c5e35fc449d701780a22b3a", "HEAD",
             "--", "backend",
             cwd=REPO_ROOT,
         )
@@ -3915,7 +3918,7 @@ class TestWrapperWrongHeadRefusal:
 class TestReuseValidityMachineCheck:
     """Approved Git objects, complete metadata and real admission controls."""
 
-    APPROVED = "032a77e81112e606e85e35f8f609ada5a81c3c1e"
+    APPROVED = "82ad641d67baf3035c5e35fc449d701780a22b3a"
     HISTORICAL_COVERAGE_REF = "bac775df8257ea2fd626d6de425f3564748b37f2"
 
     def _coverage(self, tmp_path):
@@ -4508,7 +4511,7 @@ class TestRC3FixtureSourceContinuity:
         probe = TestReuseValidityMachineCheck()
         coverage = json.loads(probe._coverage(tmp_path).read_text())
         prior = json.loads(subprocess.check_output([
-            'git', 'show', probe.APPROVED + ':docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json'
+            'git', 'show', '032a77e81112e606e85e35f8f609ada5a81c3c1e:docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json'
         ], cwd=REPO_ROOT, text=True))
         assert coverage['bindings'] == prior['bindings']
         assert coverage['recovered_native_node_maps'] == prior['recovered_native_node_maps']
@@ -4525,7 +4528,7 @@ class TestRC3FixtureSourceContinuity:
             'git', 'rev-parse', probe.APPROVED + '^'
         ], cwd=REPO_ROOT, text=True).strip()
         closure = coverage['local_fixture_contract_closeout']
-        assert closure['source_ref'] == probe.APPROVED
+        assert closure['source_ref'] == '032a77e81112e606e85e35f8f609ada5a81c3c1e'
         assert closure['execution_identity'] == 'AUTHOR_EXECUTED__CTO_READONLY_ACCEPTED__CROSS_ROUND_NOT_ONE_FIRST_PASS'
         assert closure['fresh_collection'] == {'nodes': 4288, 'body_executed': False, 'definition_changed': False}
         assert closure['new_independent_v3'] is False
@@ -4585,3 +4588,150 @@ class TestRC3FixtureSourceContinuity:
         assert proc.returncode == 0 and restored['all_valid']
         assert not restored['release_ready'] and not restored['evidence_ready']
         assert subprocess.check_output(['git', 'status', '--porcelain'], cwd=repo) == b''
+
+
+class TestThreeFamilyFiniteCloseout:
+    """Execute only extracted workflow fragments against offline substitutes."""
+
+    def test_e03_both_helper_legs_and_no_other_leg(self, tmp_path):
+        helper = TestR6R5HostedPreconditions()
+        step = helper._step(helper._doc(), "Pre-pull exact postgres:16")
+        condition = step["if"].replace("steps.provision.outcome", '"$PROVISION_OUTCOME"').replace(
+            "matrix.shard", '"$SHARD"')
+        assert re.fullmatch(r'[A-Za-z0-9_\s"\'$=()&|.:-]+', condition)
+        for status in ("success", "failure"):
+            for shard in PROFILE_ORDER:
+                case = tmp_path / (status + "-" + shard)
+                case.mkdir()
+                (case / "records").mkdir()
+                (case / "bin").mkdir()
+                docker = case / "bin/docker"
+                docker.write_text(helper.FAKE_DOCKER_E03_GOOD)
+                docker.chmod(0o755)
+                env = dict(os.environ, PROVISION_OUTCOME=status, SHARD=shard,
+                           PATH=str(case / "bin") + os.pathsep + os.environ["PATH"],
+                           C91_FAKE_DIR=str(case / "records"), RUNNER_TEMP=str(case))
+                script = "set -e\nif [[ " + condition + " ]]; then\n" + step["run"] + "\nfi\n"
+                proc = subprocess.run([BASH, "-c", script], env=env, capture_output=True, text=True)
+                assert proc.returncode == 0, proc.stderr
+                calls = helper._argv_calls(case / "records")
+                expected = status == "success" and shard in {"topology", "task-managed-pg"}
+                assert bool(calls) == expected, "THREE_FAMILY_E03_BOTH_LEGS_EXACT"
+                if expected:
+                    assert calls[0] == "pull postgres:16"
+                    assert len(calls) == 3
+                    assert helper.GOOD_ID in (case / "postgres-image-record.txt").read_text()
+
+    def test_install_download_environment_and_failure_blocking(self, tmp_path):
+        doc = yaml.safe_load(DEPLOY_WF.read_text())
+        step = TestR6R5HostedPreconditions._step(doc, "Install dependencies")
+        assert step["timeout-minutes"] == 8, "THREE_FAMILY_DOWNLOAD_STEP_BOUND"
+        assert step["run"] == "poetry install --no-interaction --no-ansi"
+        bindir = tmp_path / "bin"
+        bindir.mkdir()
+        poetry = bindir / "poetry"
+        poetry.write_text('#!/bin/bash\nprintf "%s\\n" "$POETRY_REQUESTS_TIMEOUT" '
+                          '"$POETRY_REQUESTS_MAX_RETRIES" "$*" > "$CAPTURE"\nexit "$FAKE_RC"\n')
+        poetry.chmod(0o755)
+        for code in ("0", "23"):
+            capture, sentinel = tmp_path / (code + ".txt"), tmp_path / (code + ".body")
+            env = dict(os.environ, PATH=str(bindir)+os.pathsep+os.environ["PATH"],
+                       CAPTURE=str(capture), FAKE_RC=code, SENTINEL=str(sentinel))
+            env.update(step.get("env", {}))
+            proc = subprocess.run([BASH, "-e", "-o", "pipefail", "-c",
+                                   step["run"]+'\ntouch "$SENTINEL"\n'], env=env,
+                                  cwd=REPO_ROOT / step["working-directory"], capture_output=True, text=True)
+            assert capture.read_text().splitlines() == ["120", "2", "install --no-interaction --no-ansi"], "THREE_FAMILY_EXECUTED_DOWNLOAD_ENV"
+            assert proc.returncode == int(code)
+            assert sentinel.exists() == (code == "0"), "INSTALL_FAILURE_MUST_BLOCK_BODY"
+        assert step["env"] == {
+            "POETRY_REQUESTS_TIMEOUT": "120", "POETRY_REQUESTS_MAX_RETRIES": "2"
+        }, "THREE_FAMILY_DOWNLOAD_KEYS_REQUIRED"
+
+    def test_cleanup_without_registered_store_still_cleans_owned_resources(self, tmp_path):
+        helper = TestR6R1FragmentControls()
+        bindir = helper._bin_dir(tmp_path)
+        rt, records = tmp_path / "rt", tmp_path / "records"
+        rt.mkdir(); records.mkdir()
+        (rt / "c91-test-env.sh").write_text("synthetic\n")
+        (rt / "c91-resource-root").mkdir()
+        unrelated = rt / "keep.txt"
+        unrelated.write_text("keep\n")
+        env = dict(os.environ, PATH=str(bindir)+os.pathsep+os.environ["PATH"],
+                   RUNNER_TEMP=str(rt), C91_FAKE_DIR=str(records), CI_OWNER_LABEL="task-owner",
+                   CI_PG_CONTAINER_ID="own-only", C91_FAKE_OWNER_IDS="own-only")
+        env.pop("CI_CREDENTIALS_FILE", None)
+        env.pop("CI_REDIS_CONTAINER_ID", None)
+        cleanup = helper._step(yaml.safe_load(DEPLOY_WF.read_text()), "Cleanup task-owned resources")
+        proc = helper._run_script(cleanup["run"], env, str(tmp_path))
+        assert proc.returncode == 0, "UNREGISTERED_STORE_CLEANUP_MUST_SUCCEED: " + proc.stderr
+        calls = [p.read_text().strip() for p in records.glob("docker-*.argv")]
+        assert "rm -f -v own-only" in calls
+        assert not (rt / "c91-test-env.sh").exists()
+        assert not (rt / "c91-resource-root").exists()
+        assert not (rt / "GAP-cleanup.txt").exists()
+        assert unrelated.read_text() == "keep\n"
+        final = helper._step(yaml.safe_load(DEPLOY_WF.read_text()), "Assert shard outcome")
+        refused = helper._run_script(final["run"].replace("${{ matrix.shard }}", "topology"), env, str(tmp_path))
+        assert refused.returncode != 0, "NEVER_RAN_MUST_STAY_RED"
+        assert "pytest rc=never_ran" in refused.stdout
+
+    def test_route_intake_preserves_fixture_and_execution_identities(self, tmp_path):
+        import ast
+
+        hardening = ast.parse((REPO_ROOT / "backend/tests/test_dc12r1_s3_s1_catalog_order_hardening.py").read_text())
+        support = ast.parse((REPO_ROOT / "backend/tests/rc2_current_contract_support.py").read_text())
+        sku = ast.parse((REPO_ROOT / "backend/tests/test_sku_r1_client_catalog_contract.py").read_text())
+        fixture = next(n for n in support.body if isinstance(n, ast.AsyncFunctionDef)
+                       and n.name == "registered_pool_ke")
+        assert [ast.unparse(d) for d in fixture.decorator_list] == ["pytest_asyncio.fixture"]
+        assert [a.arg for a in fixture.args.args] == ["provisioned_pool"]
+        pure = {"TestGap07GovernanceFreeze", "TestClientRouteAllowlist"}
+        seen_pure = set()
+        for cls in (n for n in hardening.body if isinstance(n, ast.ClassDef)
+                    and n.name.startswith("Test")):
+            marks = [d for d in cls.decorator_list if isinstance(d, ast.Call)
+                     and isinstance(d.func, ast.Attribute) and d.func.attr == "usefixtures"]
+            uses_ke = any(any(isinstance(a, ast.Constant) and a.value == "registered_pool_ke"
+                              for a in d.args) for d in marks)
+            assert uses_ke == (cls.name not in pure), "FIXTURE_SCOPE_ALL_BUSINESS_CLASSES: " + cls.name
+            if cls.name in pure:
+                seen_pure.add(cls.name)
+        assert seen_pure == pure
+        sku_marks = next(n.value for n in sku.body if isinstance(n, ast.Assign)
+                         and any(isinstance(t, ast.Name) and t.id == "pytestmark" for t in n.targets))
+        assert isinstance(sku_marks, ast.List)
+        assert {ast.unparse(m) for m in sku_marks.elts} == {
+            "pytest.mark.asyncio", "pytest.mark.usefixtures('registered_pool_ke')"
+        }, "FIXTURE_SCOPE_SKU_MODULE_KE_AND_ASYNCIO"
+        probe = TestReuseValidityMachineCheck()
+        coverage = json.loads(probe._coverage(tmp_path).read_text())
+        original = json.loads(subprocess.check_output([
+            "git", "show", "afb133c805203cd371bb08878b2e65fe55ab733d:docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+        ], cwd=REPO_ROOT))
+        assert coverage["previous_fixture_source_intake"] == original["current_source_intake"]
+        assert coverage["previous_fixture_selection_binding"] == original["selection_binding"]
+        assert coverage["previous_fixture_attachment_deltas"] == original["current_attachment_deltas"]
+        for key in ("bindings", "recovered_native_node_maps", "current_dependency_assessments", "local_fixture_contract_closeout"):
+            assert coverage[key] == original[key]
+        route = coverage["route_contract_closeout"]
+        assert route["classification"] == "AUTHOR_ROUTE_CONTRACT_CANDIDATE_PENDING_CTO"
+        assert route["source_ref"] == probe.APPROVED
+        assert not route["new_independent_v3"] and route["added_business_accepted_nodes"] == 0
+        assert coverage["intake_version"] == 8
+        previous = coverage["previous_route_contract_closeout"]
+        assert previous["source_ref"] == "9e2221393f0a8c3da493ea32d4a3d93e41f4fa33"
+        assert coverage["previous_route_contract_source_intake"]["source_ref"] == previous["source_ref"]
+        assert route["source_parent"] == previous["source_ref"]
+        assert route["previous_tool_contract_execution"]["source_ref"] == previous["source_ref"]
+        assert route["previous_tool_contract_execution"]["passed"] == 202
+        assert {d["path"] for d in route["source_deltas"]} == {
+            "backend/tests/rc2_current_contract_support.py",
+            "backend/tests/test_dc12r1_s3_s1_catalog_order_hardening.py",
+            "backend/tests/test_dc12r1_s3_s2_read_only_retailer_finance.py",
+            "backend/tests/test_route_authorization_policy.py",
+            "backend/tests/test_sku_r1_client_catalog_contract.py",
+        }
+        proc, result = probe._check(REPO_ROOT, probe._coverage(tmp_path))
+        assert proc.returncode == 0 and result["all_valid"]
+        assert not result["release_ready"] and not result["evidence_ready"]

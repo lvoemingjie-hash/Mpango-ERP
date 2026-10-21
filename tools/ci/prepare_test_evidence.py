@@ -671,10 +671,10 @@ def _git_bytes(repo, *argv):
     return result.stdout
 
 
-REUSE_APPROVED_REF = "032a77e81112e606e85e35f8f609ada5a81c3c1e"
+REUSE_APPROVED_REF = "82ad641d67baf3035c5e35fc449d701780a22b3a"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
 # Rebuild inputs/recipe are declared in intake_sources and the delivery receipt.
-REUSE_INTAKE_VERSION = 6
+REUSE_INTAKE_VERSION = 8
 REUSE_EXPECTED_METADATA = json.loads(r'''
 {
   "record": "RC2_VERSIONED_DEDICATED_ACCEPTANCE_INTAKE_V1",
@@ -2494,6 +2494,86 @@ RC3_SOURCE_CONTINUITY = json.loads(r'''
 ''')
 
 
+RC3_ROUTE_CONTRACT_INTAKE = {
+    "authorization": "CTO-AUTH-RC3-CI-THREE-FAMILY-FINITE-CLOSEOUT-R1-20261021",
+    "source_ref": "9e2221393f0a8c3da493ea32d4a3d93e41f4fa33",
+    "source_tree": "e98ef29fa641a404129b4d253829394f7f28d07a",
+    "source_parent": "afb133c805203cd371bb08878b2e65fe55ab733d",
+    "backend_tree": "2ec06ad1f3a37f08319f6f6b405d1eb8543692df",
+    "frontend_tree": "d3e3ca842bd6d4eb2caca6aa5d1b1c3137d83f34",
+    "classification": "AUTHOR_ROUTE_CONTRACT_CANDIDATE_PENDING_CTO",
+    "authority_record": {
+        "path": "AI_REPORT_INBOX/rc3-ci-three-family-finite-closeout-cto-20261021/delivery/CODEXL-FINITE-REPAIR.zh-CN.md",
+        "sha256": "e7f0a2d8ffe7f587c0aba1963617740c33829e2a15753a266e662881ea0c1f6f",
+    },
+    "cto_ruling": {
+        "path": "AI_REPORT_INBOX/rc3-ci-three-family-finite-closeout-cto-20261021/delivery/CTO-REVIEW.zh-CN.md",
+        "sha256": "b5cfbc20d072647ae73c171ca8934f0d034f3079f7f55099506f45c2a9041448",
+    },
+    "source_deltas": [
+        {"path": "backend/tests/test_dc12r1_s3_s1_catalog_order_hardening.py",
+         "current_blob": "2683718ce1ed2e7bff05655e9ea4ed92d6b8282d",
+         "current_sha256": "357f9eb1b30ad6279da3e8c4df03882b66ad300c0a4c9892a4a9b9266df946b1"},
+        {"path": "backend/tests/test_dc12r1_s3_s2_read_only_retailer_finance.py",
+         "current_blob": "3d1e38bcec1ee4b99afb40a478db96bd6b5abcfa",
+         "current_sha256": "e2616c754e853aa0088861e36f4a6291408957cc85e3930a84806ad8d3e11965"},
+        {"path": "backend/tests/test_route_authorization_policy.py",
+         "current_blob": "b3ffdd204ea71c76bec179845e26fd55dab58670",
+         "current_sha256": "78177b533677aa5324d8402c447d4620005ca56dce75d4f1174d3f555b66a848"},
+    ],
+    "new_independent_v3": False,
+    "added_business_accepted_nodes": 0,
+    "hosted_ci": "NOT_RUN",
+}
+
+
+RC3_FIXTURE_SCOPE_INTAKE = {
+    "authorization": "CTO-AUTH-RC3-CI-FIXTURE-SCOPE-CONTINUE-R1-20261021",
+    "source_ref": "82ad641d67baf3035c5e35fc449d701780a22b3a",
+    "source_tree": "43d9051ab20e262e6096254eba465cc37c860075",
+    "source_parent": "9e2221393f0a8c3da493ea32d4a3d93e41f4fa33",
+    "backend_tree": "4efaa92c7b2189cee5ac876b174adf46c21829da",
+    "frontend_tree": "d3e3ca842bd6d4eb2caca6aa5d1b1c3137d83f34",
+    "classification": "AUTHOR_ROUTE_CONTRACT_CANDIDATE_PENDING_CTO",
+    "authority_record": {
+        "path": "AI_REPORT_INBOX/rc3-ci-three-family-finite-supplement-cto-20261021/delivery/CODEXL-FINITE-CONTINUE.zh-CN.md",
+        "sha256": "c6533bcd1e1572dfb74a9f58a5217e1161adc9b9e46fd8e579a90d1966a02245",
+    },
+    "cto_ruling": {
+        "path": "AI_REPORT_INBOX/rc3-ci-three-family-finite-supplement-cto-20261021/delivery/CTO-REVIEW.zh-CN.md",
+        "sha256": "3da6e1dc798fcbbf698ffbfbc708aafde7d438063480d2c39929e293c7cbd6fe",
+    },
+    "source_deltas": [
+        {"path": "backend/tests/rc2_current_contract_support.py",
+         "current_blob": "dcbba531e7bfc4f358fa6314a09329395eebec71",
+         "current_sha256": "7bc3c512eaf1ff6fddbfe302a6a67ce833c2f81c84b093651aba0aad812b5192"},
+        {"path": "backend/tests/test_dc12r1_s3_s1_catalog_order_hardening.py",
+         "current_blob": "88e904a2a9dff7e2a291ff2379619a3a385db7f4",
+         "current_sha256": "e33c0ebc92ed358f4eea5a2dfc6aa5467805b5cf7fbbae8ef396a9d33d00009a"},
+        {"path": "backend/tests/test_dc12r1_s3_s2_read_only_retailer_finance.py",
+         "current_blob": "3d1e38bcec1ee4b99afb40a478db96bd6b5abcfa",
+         "current_sha256": "e2616c754e853aa0088861e36f4a6291408957cc85e3930a84806ad8d3e11965"},
+        {"path": "backend/tests/test_route_authorization_policy.py",
+         "current_blob": "b3ffdd204ea71c76bec179845e26fd55dab58670",
+         "current_sha256": "78177b533677aa5324d8402c447d4620005ca56dce75d4f1174d3f555b66a848"},
+        {"path": "backend/tests/test_sku_r1_client_catalog_contract.py",
+         "current_blob": "8c19a0ec4fcfa1b55f9374ff5aa5c2a74456e2ed",
+         "current_sha256": "f64ee8e4c03b34d7403a75b5401cba7311189e8834367eaa30ccc03dcb843f0d"},
+    ],
+    "previous_tool_contract_execution": {
+        "source_ref": "9e2221393f0a8c3da493ea32d4a3d93e41f4fa33",
+        "tool_source_sha256": "363fa02b3980ad4de27dba769705996746afd2a60ef44b23a1e2666d32b42369",
+        "junit_sha256": "04a4d2aa6fbe18cc389d687fd27defce553fbc28029e8a9b1981ce56f6509ed4",
+        "passed": 202,
+        "classification": "AUTHOR_OFFLINE_TOOL_EVIDENCE_AT_OLD_BYTES__NOT_REEXECUTED",
+    },
+    "poetry_configuration": "POETRY_221_VERSIONED_SOURCE_CHECKED_BY_CTO__LOCAL_CLI_NOT_RUN",
+    "new_independent_v3": False,
+    "added_business_accepted_nodes": 0,
+    "hosted_ci": "NOT_RUN",
+}
+
+
 def _reuse_expected_metadata(repo):
     """Return an independent copy of the versioned fixed intake.
 
@@ -2564,6 +2644,40 @@ def _reuse_expected_metadata(repo):
     for delta in expected["current_attachment_deltas"]:
         delta["current_source_ref"] = continuity["approved_ref"]
     expected["local_fixture_contract_closeout"] = continuity["local_contract_closeout"]
+    route = json.loads(json.dumps(RC3_ROUTE_CONTRACT_INTAKE))
+    expected["previous_fixture_source_intake"] = json.loads(json.dumps(current))
+    expected["previous_fixture_selection_binding"] = json.loads(json.dumps(expected["selection_binding"]))
+    expected["previous_fixture_attachment_deltas"] = json.loads(json.dumps(expected["current_attachment_deltas"]))
+    expected.update(record="RC3_ROUTE_CONTRACT_SOURCE_CONTINUITY_V1",
+                    authorization=route["authorization"], intake_status=route["classification"],
+                    product_anchor=route["source_ref"])
+    expected["selection_binding"].update(authority=route["authorization"], source_ref=route["source_ref"])
+    current.update({key: route[key] for key in (
+        "authorization", "source_ref", "source_tree", "source_parent", "backend_tree",
+        "frontend_tree", "authority_record", "cto_ruling")})
+    current.update(independent_v3_this_intake="AUTHOR_ROUTE_CONTRACT_CANDIDATE_PENDING_CTO",
+                   current_fresh_ordinary_collection="NOT_RUN_THIS_INTAKE__PRIOR_4288_DEFINITION_UNCHANGED")
+    changes.update({item["path"]: item for item in route["source_deltas"]})
+    current["source_deltas"] = [changes[path] for path in sorted(changes)]
+    for delta in expected["current_attachment_deltas"]:
+        delta["current_source_ref"] = route["source_ref"]
+    expected["route_contract_closeout"] = route
+    expected["previous_route_contract_source_intake"] = json.loads(json.dumps(current))
+    expected["previous_route_contract_selection_binding"] = json.loads(json.dumps(expected["selection_binding"]))
+    expected["previous_route_contract_attachment_deltas"] = json.loads(json.dumps(expected["current_attachment_deltas"]))
+    expected["previous_route_contract_closeout"] = route
+    route = json.loads(json.dumps(RC3_FIXTURE_SCOPE_INTAKE))
+    expected.update(authorization=route["authorization"], intake_status=route["classification"],
+                    product_anchor=route["source_ref"])
+    expected["selection_binding"].update(authority=route["authorization"], source_ref=route["source_ref"])
+    current.update({key: route[key] for key in (
+        "authorization", "source_ref", "source_tree", "source_parent", "backend_tree",
+        "frontend_tree", "authority_record", "cto_ruling")})
+    changes.update({item["path"]: item for item in route["source_deltas"]})
+    current["source_deltas"] = [changes[path] for path in sorted(changes)]
+    for delta in expected["current_attachment_deltas"]:
+        delta["current_source_ref"] = route["source_ref"]
+    expected["route_contract_closeout"] = route
     return expected
 
 

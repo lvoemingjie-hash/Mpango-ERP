@@ -1,5 +1,32 @@
 # RC3 本地发布候选与 CI 准入计划
 
+## 夹具作用域有限续接 - 2026-10-21
+
+授权CTO-AUTH-RC3-CI-FIXTURE-SCOPE-CONTINUE-R1-20261021。
+真实A1为82ad641d67baf3035c5e35fc449d701780a22b3a，唯一父为下节原A；
+仅三条测试侧夹具作用域变化，准备/恢复正文与测试断言不变。两个纯类不供给数据库，
+全部业务类与SKU导入模块显式保留registered_pool_ke及provisioned_pool链。
+原开发9P/1E不改写；原十节点正式门本轮一次10P/0F/0E/0S，保持原节点和顺序。
+原202工具证据只归旧工具字节及A；新引用和结构控制仅认本轮六个既有节点定向门，
+不得合成为新字节202整文件运行。旧032、198/202、历史166与全部GAP保留真实归属。
+Poetry前提为POETRY_221_VERSIONED_SOURCE_CHECKED_BY_CTO__LOCAL_CLI_NOT_RUN，
+配置值2不是所有HTTP错误的重试保证；不宣称hosted下载或实际CI已恢复。
+产品/前端/迁移/wrapper/依赖冻结，五腿范围和4288定义不变；来源候选待CTO裁定，
+不自行签SOURCE_OK。远端预算零，不push/dispatch/rerun/PR/merge/deploy。
+下节是原轮停止时快照，后续状态由本节与外部A1/B1回执限定，不回写旧交付。
+
+## 三族有限候选准备 - 2026-10-21
+
+授权CTO-AUTH-RC3-CI-THREE-FAMILY-FINITE-CLOSEOUT-R1-20261021。
+真实来源A为9e2221393f0a8c3da493ea32d4a3d93e41f4fa33，仅修三条路由测试合同；
+分类AUTHOR_ROUTE_CONTRACT_CANDIDATE_PENDING_CTO，不冒称已获CTO接受。
+来源接续保留032夹具、旧collect以及bac/b46/c2执行身份和全部GAP；业务166不增加。
+现有镜像前置扩至topology与task-managed-pg；下载步骤有界120秒/2重试/8分钟，
+不保证hosted网络恢复。未登记凭据文件的早期清理仍须核销精确登记的自有资源。
+本地开发10节点出现9通过/1夹具setup ERROR，backend正式信封未启动；需要原Poetry2.2.1
+配置证明的前提尚未建立。B仍待验证与CTO裁定，不宣称SOURCE_OK或远端通过。
+五腿canonical/4288/专用21/ignore6、预算和默认不发布保持；产品实现继续冻结。
+
 ## 当前来源接续 - 2026-10-20
 
 当前授权：CTO-AUTH-RC3-032A77E8-CI-SOURCE-CONTINUITY-R1-20261020。

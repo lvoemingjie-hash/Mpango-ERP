@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import Numeric, ForeignKey, Index
+from sqlalchemy import BigInteger, CheckConstraint, Numeric, ForeignKey, Index, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -22,7 +22,10 @@ class InventoryStock(BaseModel):
     __tablename__ = "inventory_stocks"
     __table_args__ = (
         Index("ux_inventory_stocks_sku_id", "sku_id", unique=True),
+        CheckConstraint('stock_revision>0', name='ck_stock_revision'),
     )
+
+    stock_revision: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text('1'))
 
     sku_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

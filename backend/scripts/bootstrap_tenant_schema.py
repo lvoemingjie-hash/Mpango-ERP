@@ -2698,6 +2698,216 @@ async def _reconcile_order_negotiations(db, ts: str) -> None:
         raise RuntimeError('NEGOTIATION_CATALOG_HISTORY_GUARD_MISMATCH')
 
 
+
+STOCK_APPROVAL_DDL = (
+    """ALTER TABLE {q}.staff_authority
+       ADD COLUMN policy_version BIGINT NOT NULL DEFAULT 1 CHECK (policy_version>0),
+       ADD COLUMN owner_direct_enabled BOOLEAN NOT NULL DEFAULT true""",
+    """ALTER TABLE {q}.inventory_stocks ADD COLUMN stock_revision BIGINT NOT NULL DEFAULT 1
+       CONSTRAINT ck_stock_revision CHECK (stock_revision>0)""",
+    """CREATE TABLE {q}.inventory_adjustment_approvers (
+       user_id UUID PRIMARY KEY REFERENCES {q}.users(id) ON DELETE RESTRICT)""",
+    """CREATE TABLE {q}.inventory_adjustment_requests (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       requester_id UUID NOT NULL REFERENCES {q}.users(id) ON DELETE RESTRICT,
+       sellable_unit_id UUID NOT NULL REFERENCES {q}.skus(id) ON DELETE RESTRICT,
+       stock_id UUID NOT NULL REFERENCES {q}.inventory_stocks(id) ON DELETE RESTRICT,
+       payload JSONB NOT NULL, delta NUMERIC(12,2) NOT NULL,
+       policy_version BIGINT NOT NULL CHECK (policy_version>0),
+       create_key_digest VARCHAR(64) NOT NULL, create_fingerprint VARCHAR(64) NOT NULL,
+       version BIGINT NOT NULL DEFAULT 1 CHECK (version>0),
+       status VARCHAR(24) NOT NULL DEFAULT 'pending',
+       decision_actor_id UUID REFERENCES {q}.users(id) ON DELETE RESTRICT,
+       decision_key_digest VARCHAR(64), decision_fingerprint VARCHAR(64),
+       result JSONB, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), decided_at TIMESTAMPTZ,
+       CONSTRAINT uq_adjustment_request_key UNIQUE(requester_id,create_key_digest),
+       CONSTRAINT ck_adjustment_delta CHECK (delta <> 0 AND delta > '-Infinity'::numeric AND delta < 'Infinity'::numeric),
+       CONSTRAINT ck_adjustment_state CHECK (
+           (status='pending' AND version=1 AND decision_actor_id IS NULL AND decided_at IS NULL
+            AND decision_key_digest IS NULL AND decision_fingerprint IS NULL AND result IS NULL) OR
+           (status IN ('approved_applied','rejected','withdrawn','applied_direct') AND version=2
+            AND decision_actor_id IS NOT NULL AND decided_at IS NOT NULL
+            AND decision_key_digest IS NOT NULL AND decision_fingerprint IS NOT NULL AND result IS NOT NULL)),
+       CONSTRAINT ck_adjustment_no_self_approval CHECK (status <> 'approved_applied' OR decision_actor_id <> requester_id),
+       CONSTRAINT ck_adjustment_direct_actor CHECK (status <> 'applied_direct' OR decision_actor_id=requester_id))""",
+    """ALTER TABLE {q}.inventory_movements ADD COLUMN manual_adjustment_id UUID
+       CONSTRAINT fk_movement_manual_adjustment REFERENCES {q}.inventory_adjustment_requests(id) ON DELETE RESTRICT,
+       ADD CONSTRAINT uq_movement_manual_adjustment UNIQUE(manual_adjustment_id)""",
+    """CREATE FUNCTION {q}.advance_stock_revision() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $m2$
+       BEGIN
+         IF TG_OP='INSERT' THEN NEW.stock_revision := 1;
+         ELSIF ROW(NEW.quantity_on_hand,NEW.quantity_reserved,NEW.is_deleted)
+             IS DISTINCT FROM ROW(OLD.quantity_on_hand,OLD.quantity_reserved,OLD.is_deleted)
+         THEN NEW.stock_revision := OLD.stock_revision+1;
+         ELSE NEW.stock_revision := OLD.stock_revision;
+         END IF;
+         RETURN NEW;
+       END; $m2$""",
+    """CREATE TRIGGER stock_revision_monotonic BEFORE INSERT OR UPDATE ON {q}.inventory_stocks
+       FOR EACH ROW EXECUTE FUNCTION {q}.advance_stock_revision()""",
+    """CREATE FUNCTION {q}.protect_adjustment_request() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $m2$
+       BEGIN
+         IF TG_OP='DELETE' THEN RAISE EXCEPTION 'ADJUSTMENT_IMMUTABLE'; END IF;
+         IF OLD.status <> 'pending' OR NEW.status='pending' OR
+           ROW(NEW.id,NEW.requester_id,NEW.sellable_unit_id,NEW.stock_id,NEW.payload,NEW.delta,
+               NEW.policy_version,NEW.create_key_digest,NEW.create_fingerprint,NEW.created_at)
+           IS DISTINCT FROM
+           ROW(OLD.id,OLD.requester_id,OLD.sellable_unit_id,OLD.stock_id,OLD.payload,OLD.delta,
+               OLD.policy_version,OLD.create_key_digest,OLD.create_fingerprint,OLD.created_at)
+         THEN RAISE EXCEPTION 'ADJUSTMENT_IMMUTABLE'; END IF;
+         RETURN NEW;
+       END; $m2$""",
+    """CREATE TRIGGER adjustment_request_immutable BEFORE UPDATE OR DELETE ON {q}.inventory_adjustment_requests
+       FOR EACH ROW EXECUTE FUNCTION {q}.protect_adjustment_request()""",
+    """CREATE FUNCTION {q}.protect_manual_movement() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $m2$
+       BEGIN
+         IF OLD.manual_adjustment_id IS NOT NULL THEN RAISE EXCEPTION 'MANUAL_MOVEMENT_IMMUTABLE'; END IF;
+         IF TG_OP='UPDATE' AND NEW.manual_adjustment_id IS NOT NULL THEN RAISE EXCEPTION 'MANUAL_MOVEMENT_IMMUTABLE'; END IF;
+         IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+         RETURN NEW;
+       END; $m2$""",
+    """CREATE TRIGGER manual_movement_immutable BEFORE UPDATE OR DELETE ON {q}.inventory_movements
+       FOR EACH ROW EXECUTE FUNCTION {q}.protect_manual_movement()""",
+    """INSERT INTO {q}.inventory_adjustment_approvers(user_id)
+       SELECT owner_user_id FROM {q}.staff_authority WHERE state='verified'""",
+)
+
+
+async def _reconcile_stock_approval(db, ts):
+    """Independent 044 bootstrap; repeat checks, never rewrites approval history."""
+    from sqlalchemy import text
+    q = '"' + ts + '"'
+    tables = ('inventory_adjustment_approvers', 'inventory_adjustment_requests')
+    present = [await _table_exists(db, ts, name) for name in tables]
+    if any(present) and not all(present):
+        raise RuntimeError('ADJUSTMENT_BOOTSTRAP_PARTIAL_SCHEMA')
+    if not any(present):
+        if await db.scalar(text(f'SELECT EXISTS(SELECT 1 FROM {q}.users)')):
+            raise RuntimeError('ADJUSTMENT_BOOTSTRAP_MIGRATION_REQUIRED')
+        if not await _column_exists(db, ts, 'inventory_stocks', 'stock_revision'):
+            await db.execute(text(STOCK_APPROVAL_DDL[1].format(q=q)))
+        for statement in STOCK_APPROVAL_DDL[2:]:
+            await db.execute(text(statement.format(q=q)))
+    expected_columns = {
+        'inventory_adjustment_approvers': {'user_id'},
+        'inventory_adjustment_requests': {'id','requester_id','sellable_unit_id','stock_id','payload','delta',
+            'policy_version','create_key_digest','create_fingerprint','version','status','decision_actor_id',
+            'decision_key_digest','decision_fingerprint','result','created_at','decided_at'},
+    }
+    for name, expected in expected_columns.items():
+        rows = await _relation_columns(db, await _regclass_oid(db, ts+'.'+name))
+        if set(rows) != expected:
+            raise RuntimeError('ADJUSTMENT_BOOTSTRAP_CATALOG_MISMATCH')
+        uuid_fields={'id','requester_id','sellable_unit_id','stock_id','decision_actor_id','user_id'}
+        nullable={'decision_actor_id','decision_key_digest','decision_fingerprint','result','decided_at'}
+        for column, spec in rows.items():
+            typename=('uuid' if column in uuid_fields else 'bigint' if column in {'policy_version','version'}
+                else 'numeric(12,2)' if column=='delta' else 'jsonb' if column in {'payload','result'}
+                else 'timestamp with time zone' if column in {'created_at','decided_at'}
+                else 'character varying(24)' if column=='status' else 'character varying(64)')
+            if spec['formatted_type'] != typename or spec['attnotnull'] != (column not in nullable):
+                raise RuntimeError('ADJUSTMENT_BOOTSTRAP_CATALOG_MISMATCH')
+    for table, column, typename, required in (
+        ('inventory_stocks','stock_revision','bigint',True),
+        ('inventory_movements','manual_adjustment_id','uuid',False),
+        ('staff_authority','policy_version','bigint',True),
+        ('staff_authority','owner_direct_enabled','boolean',True),
+    ):
+        rows = await _relation_columns(db, await _regclass_oid(db, ts+'.'+table))
+        found = rows.get(column)
+        if not found or found['formatted_type'] != typename or found['attnotnull'] != required:
+            raise RuntimeError('ADJUSTMENT_BOOTSTRAP_CATALOG_MISMATCH')
+    # Bind trigger definitions to their actual functions and canonical source,
+    # rather than accepting any trigger merely bearing the expected name.
+    for trigger, table, function in (
+        ('stock_revision_monotonic','inventory_stocks','advance_stock_revision'),
+        ('adjustment_request_immutable','inventory_adjustment_requests','protect_adjustment_request'),
+        ('manual_movement_immutable','inventory_movements','protect_manual_movement'),
+    ):
+        row = (await db.execute(text(
+            "SELECT t.tgtype,t.tgenabled::text AS tgenabled,p.prosrc,p.prosecdef,p.proconfig,p.proname FROM pg_trigger t "
+            "JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace "
+            "JOIN pg_proc p ON p.oid=t.tgfoid JOIN pg_namespace pn ON pn.oid=p.pronamespace "
+            "WHERE n.nspname=:s AND pn.nspname=:s AND c.relname=:table AND t.tgname=:trigger AND NOT t.tgisinternal"),
+            {'s':ts,'table':table,'trigger':trigger})).mappings().one_or_none()
+        statement = next(s for s in STOCK_APPROVAL_DDL if s.startswith('CREATE FUNCTION {q}.'+function+'('))
+        body = statement.split('$m2$')[1]
+        expected_type = 23 if table == 'inventory_stocks' else 27
+        if (not row or row['proname'] != function or row['tgtype'] != expected_type or row['tgenabled'] != 'O'
+                or row['prosecdef'] or row['proconfig'] != ['search_path=pg_catalog']
+                or ' '.join(row['prosrc'].split()) != ' '.join(body.split())):
+            raise RuntimeError('ADJUSTMENT_BOOTSTRAP_TRIGGER_MISMATCH')
+    constraints = (await db.execute(text(
+        "SELECT c.relname,con.conname,con.contype::text AS contype,con.convalidated,con.condeferrable,"
+        "pg_get_expr(con.conbin,con.conrelid) AS expression,pg_get_constraintdef(con.oid) AS definition FROM pg_constraint con "
+        "JOIN pg_class c ON c.oid=con.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace "
+        "WHERE n.nspname=:s AND c.relname=ANY(:tables)"),
+        {'s':ts,'tables':list(tables)})).mappings().all()
+    required_names = {
+        'inventory_adjustment_approvers': {'inventory_adjustment_approvers_pkey','inventory_adjustment_approvers_user_id_fkey'},
+        'inventory_adjustment_requests': {'inventory_adjustment_requests_pkey','inventory_adjustment_requests_requester_id_fkey',
+            'inventory_adjustment_requests_sellable_unit_id_fkey','inventory_adjustment_requests_stock_id_fkey',
+            'inventory_adjustment_requests_policy_version_check','inventory_adjustment_requests_version_check',
+            'inventory_adjustment_requests_decision_actor_id_fkey','uq_adjustment_request_key','ck_adjustment_delta',
+            'ck_adjustment_state','ck_adjustment_no_self_approval','ck_adjustment_direct_actor'},
+    }
+    for table, names in required_names.items():
+        if {r['conname'] for r in constraints if r['relname']==table} != names:
+            raise RuntimeError('ADJUSTMENT_BOOTSTRAP_CONSTRAINT_MISMATCH')
+    checks={'inventory_adjustment_requests_policy_version_check':'policy_version>0',
+            'inventory_adjustment_requests_version_check':'version>0'}
+    # Extract only this frozen DDL's named CHECK expressions, preserving nested
+    # boolean grouping. No runtime module or migration import supplies authority.
+    request_ddl=STOCK_APPROVAL_DDL[3]
+    for match in re.finditer(r'CONSTRAINT (ck_adjustment_[a-z_]+) CHECK \(',request_ddl):
+        begin=match.end();depth=1;cursor=begin;quoted=False
+        while depth:
+            char=request_ddl[cursor]
+            if char=="'":quoted=not quoted
+            elif not quoted:depth+=(char=='(')-(char==')')
+            cursor+=1
+        checks[match.group(1)]=request_ddl[begin:cursor-1]
+    key_definitions={
+        'inventory_adjustment_approvers_pkey':'PRIMARY KEY (user_id)',
+        'inventory_adjustment_approvers_user_id_fkey':f'FOREIGN KEY (user_id) REFERENCES {q}.users(id) ON DELETE RESTRICT',
+        'inventory_adjustment_requests_pkey':'PRIMARY KEY (id)',
+        'inventory_adjustment_requests_requester_id_fkey':f'FOREIGN KEY (requester_id) REFERENCES {q}.users(id) ON DELETE RESTRICT',
+        'inventory_adjustment_requests_sellable_unit_id_fkey':f'FOREIGN KEY (sellable_unit_id) REFERENCES {q}.skus(id) ON DELETE RESTRICT',
+        'inventory_adjustment_requests_stock_id_fkey':f'FOREIGN KEY (stock_id) REFERENCES {q}.inventory_stocks(id) ON DELETE RESTRICT',
+        'inventory_adjustment_requests_decision_actor_id_fkey':f'FOREIGN KEY (decision_actor_id) REFERENCES {q}.users(id) ON DELETE RESTRICT',
+        'uq_adjustment_request_key':'UNIQUE (requester_id, create_key_digest)',
+    }
+    def check_tree(value):return _staff_check_tree(re.sub(r'::numeric','',value))
+    for row in constraints:
+        if not row['convalidated'] or row['condeferrable']:
+            raise RuntimeError('ADJUSTMENT_BOOTSTRAP_CONSTRAINT_MISMATCH')
+        if row['contype']=='c':
+            if row['conname'] not in checks or check_tree(row['expression']) != check_tree(checks[row['conname']]):
+                raise RuntimeError('ADJUSTMENT_BOOTSTRAP_CONSTRAINT_MISMATCH')
+        elif _compact_sql(row['definition'].replace(ts+'.','').replace(q+'.','')) != _compact_sql(key_definitions[row['conname']].replace(q+'.','')):
+            raise RuntimeError('ADJUSTMENT_BOOTSTRAP_CONSTRAINT_MISMATCH')
+    additional=(await db.execute(text(
+        "SELECT con.conname,con.convalidated,con.condeferrable,pg_get_expr(con.conbin,con.conrelid) AS expression,"
+        "pg_get_constraintdef(con.oid) AS definition FROM pg_constraint con JOIN pg_class c ON c.oid=con.conrelid "
+        "JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=:s AND "
+        "((c.relname='inventory_stocks' AND con.conname='ck_stock_revision') OR "
+        "(c.relname='inventory_movements' AND con.conname IN ('fk_movement_manual_adjustment','uq_movement_manual_adjustment')))"),
+        {'s':ts})).mappings().all()
+    expected={'ck_stock_revision':'stock_revision>0',
+        'fk_movement_manual_adjustment':f'FOREIGN KEY (manual_adjustment_id) REFERENCES {q}.inventory_adjustment_requests(id) ON DELETE RESTRICT',
+        'uq_movement_manual_adjustment':'UNIQUE (manual_adjustment_id)'}
+    if {row['conname'] for row in additional} != set(expected):
+        raise RuntimeError('ADJUSTMENT_BOOTSTRAP_CONSTRAINT_MISMATCH')
+    for row in additional:
+        if not row['convalidated'] or row['condeferrable']:
+            raise RuntimeError('ADJUSTMENT_BOOTSTRAP_CONSTRAINT_MISMATCH')
+        if row['conname']=='ck_stock_revision':
+            if check_tree(row['expression']) != check_tree(expected[row['conname']]):
+                raise RuntimeError('ADJUSTMENT_BOOTSTRAP_CONSTRAINT_MISMATCH')
+        elif _compact_sql(row['definition'].replace(ts+'.','').replace(q+'.','')) != _compact_sql(expected[row['conname']].replace(q+'.','')):
+            raise RuntimeError('ADJUSTMENT_BOOTSTRAP_CONSTRAINT_MISMATCH')
+
+
 async def _reconcile_staff_authority(db, ts: str) -> None:
     """Independent M1 schema installer. Never claim an existing user as Owner."""
     from sqlalchemy import text
@@ -2718,6 +2928,8 @@ async def _reconcile_staff_authority(db, ts: str) -> None:
                 owner_user_id UUID UNIQUE REFERENCES {q}.users(id) ON DELETE RESTRICT,
                 state VARCHAR(16) NOT NULL DEFAULT 'unmapped', source VARCHAR(32), evidence_digest VARCHAR(64),
                 authz_revision BIGINT NOT NULL DEFAULT 1 CONSTRAINT ck_staff_authority_revision CHECK (authz_revision>0),
+                policy_version BIGINT NOT NULL DEFAULT 1 CHECK (policy_version>0),
+                owner_direct_enabled BOOLEAN NOT NULL DEFAULT true,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 CONSTRAINT ck_staff_authority_shape CHECK (
                     (state='unmapped' AND owner_user_id IS NULL AND source IS NULL AND evidence_digest IS NULL) OR
@@ -2814,7 +3026,9 @@ async def _assert_staff_catalog(db, ts: str) -> None:
             'singleton': (i, True, '1'), 'tenant_id': (u, False, None), 'registration_id': (u, False, None),
             'owner_user_id': (u, False, None), 'state': ('character varying(16)', True, "'unmapped'"),
             'source': ('character varying(32)', False, None), 'evidence_digest': ('character varying(64)', False, None),
-            'authz_revision': (b, True, '1'), 'created_at': (dt, True, 'now()'), 'updated_at': (dt, True, 'now()')},
+            'authz_revision': (b, True, '1'), 'policy_version': (b, True, '1'),
+            'owner_direct_enabled': ('boolean', True, 'true'),
+            'created_at': (dt, True, 'now()'), 'updated_at': (dt, True, 'now()')},
         'staff_role_templates': {'template_key': ('character varying(16)', True, None), 'role_id': (u, True, None), 'version': (b, True, '1')},
         'staff_memberships': {'user_id': (u, True, None), 'template_key': ('character varying(16)', True, None),
             'credential_state': ('character varying(16)', True, "'pending'"), 'employment_state': ('character varying(16)', True, "'invited'"),
@@ -2829,6 +3043,7 @@ async def _assert_staff_catalog(db, ts: str) -> None:
     }
     checks = {
         'staff_authority': {'ck_staff_authority_singleton': 'singleton=1', 'ck_staff_authority_revision': 'authz_revision>0',
+            'staff_authority_policy_version_check': 'policy_version>0',
             'ck_staff_authority_shape': "(state='unmapped' AND owner_user_id IS NULL AND source IS NULL AND evidence_digest IS NULL) OR "
             "(state='verified' AND owner_user_id IS NOT NULL AND tenant_id IS NOT NULL AND registration_id IS NOT NULL "
             "AND source IS NOT NULL AND evidence_digest IS NOT NULL AND source IN ('owner_setup','approved_mapping') AND evidence_digest ~ '^[0-9a-f]{64}$')"},
@@ -2841,6 +3056,12 @@ async def _assert_staff_catalog(db, ts: str) -> None:
             'ck_staff_token_email': "email=lower(btrim(email)) AND email NOT LIKE '% %'"},
         'staff_stock_audit_events': {},
     }
+    # The standalone 043 historical-upgrade probe remains a 043 probe.
+    # Full current bootstrap admits only 044 and checks the M2 objects below.
+    if not await _column_exists(db, ts, 'staff_authority', 'policy_version'):
+        columns['staff_authority'].pop('policy_version')
+        columns['staff_authority'].pop('owner_direct_enabled')
+        checks['staff_authority'].pop('staff_authority_policy_version_check')
     # PK/UNIQUE and FK targets are compared structurally, including delete policy.
     keys = {
         'staff_authority': {'staff_authority_pkey': ('p', ('singleton',)), 'staff_authority_owner_user_id_key': ('u', ('owner_user_id',)),
@@ -2984,7 +3205,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # C5 deployment-order gate (Order stream): refuse BEFORE creating ANY
         # tenant object.
-        await _require_alembic_revision(db, "043_staff_authority_and_credentials")
+        await _require_alembic_revision(db, "044_inventory_adjustment_approval")
 
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))
@@ -3375,6 +3596,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
         await _reconcile_product_images(db, ts)
         await _reconcile_order_negotiations(db, ts)
         await _reconcile_staff_authority(db, ts)
+        await _reconcile_stock_approval(db, ts)
 
         await db.commit()
 

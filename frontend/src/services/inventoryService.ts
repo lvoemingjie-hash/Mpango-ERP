@@ -1,6 +1,6 @@
 import { api } from '@/services/api';
 import type { ApiResponse, PaginatedData } from '@/types/api';
-import type { StockView } from '@/types/inventory';
+import type { StockView, AdjustmentPolicy, AdjustmentSnapshot, StockAdjustment, AdjustmentInput } from '@/types/inventory';
 
 export interface MovementLogEntry {
   id: string;
@@ -42,6 +42,19 @@ export interface InventoryAdjustResponse {
 }
 
 export const inventoryService = {
+  getAdjustmentPolicy: async () => (await api.get<{data:AdjustmentPolicy}>('/inventory/adjustment-policy')).data.data,
+  saveAdjustmentPolicy: async (body: {approver_ids:string[];owner_direct_enabled:boolean;expected_policy_version:number}) =>
+    (await api.put<{data:AdjustmentPolicy}>('/inventory/adjustment-policy',body)).data.data,
+  getAdjustmentSnapshot: async (id:string) =>
+    (await api.get<{data:AdjustmentSnapshot}>('/inventory/adjustment-snapshot/'+id)).data.data,
+  getAdjustmentRequests: async () =>
+    (await api.get<{data:{items:StockAdjustment[];can_approve:boolean}}>('/inventory/adjustment-requests')).data.data,
+  submitAdjustment: async (body:AdjustmentInput,key:string,direct=false) =>
+    (await api.post<{data:StockAdjustment}>(direct?'/inventory/owner-adjustments':'/inventory/adjustment-requests',body,
+      {headers:{'Idempotency-Key':key}})).data.data,
+  decideAdjustment: async (row:StockAdjustment,action:'approve'|'reject'|'withdraw',key:string,reason='') =>
+    (await api.post<{data:StockAdjustment}>(`/inventory/adjustment-requests/${row.id}/${action}`,
+      {expected_version:row.version,reason},{headers:{'Idempotency-Key':key}})).data.data,
   getStocks: (page = 1, size = 50) =>
     api.get<ApiResponse<PaginatedData<StockView>>>('/inventory/stocks', {
       params: { page, size },

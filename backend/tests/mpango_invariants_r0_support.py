@@ -53,7 +53,7 @@ from sqlalchemy import text
 from database.session import AsyncSessionLocal, async_engine
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
-BASELINE_MIGRATION_HEAD = "043_staff_authority_and_credentials"
+BASELINE_MIGRATION_HEAD = "044_inventory_adjustment_approval"
 SUPERVISE_TIMEOUT_S = 30.0
 
 CONTAINER_ENV_VAR = "MPANGO_INVARIANTS_R0_PG_CONTAINER"

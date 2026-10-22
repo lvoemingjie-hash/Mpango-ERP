@@ -9,7 +9,7 @@ import uuid
 from decimal import Decimal
 from enum import Enum as PyEnum
 
-from sqlalchemy import Numeric, ForeignKey, Index, String, Text
+from sqlalchemy import Numeric, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,7 +28,11 @@ class InventoryMovement(BaseModel):
     __table_args__ = (
         Index("ix_inventory_movements_sku_id", "sku_id"),
         Index("ix_inventory_movements_created_at", "created_at"),
+        UniqueConstraint('manual_adjustment_id', name='uq_movement_manual_adjustment'),
     )
+
+    manual_adjustment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey('inventory_adjustment_requests.id', ondelete='RESTRICT', name='fk_movement_manual_adjustment'))
 
     sku_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

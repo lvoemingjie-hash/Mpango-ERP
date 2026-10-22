@@ -11,7 +11,8 @@ beforeEach(()=>{vi.clearAllMocks();mocks.templates.mockResolvedValue([template])
 it('shows affected employees and sends only the closed capability set with the current version',async()=>{
   render(<MemoryRouter><StaffRolesPage/></MemoryRouter>);
   await screen.findByText('Affects 3 employees · version 4');
-  expect(screen.getAllByRole('checkbox')).toHaveLength(STAFF_CAPABILITIES.length);
+  expect(screen.getAllByRole('checkbox')).toHaveLength(STAFF_CAPABILITIES.length+3);
+  expect(screen.getByLabelText('inventory:adjustments:approve')).not.toBeChecked();
   expect(screen.queryByLabelText('inventory:update')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('users:create')).not.toBeInTheDocument();
   await userEvent.click(screen.getByLabelText('orders:ship'));

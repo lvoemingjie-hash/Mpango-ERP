@@ -172,70 +172,13 @@ async def get_stock_by_sku(
         raise
 
 
-@router.post("/adjust", response_model=DataResponse[InventoryAdjustResponse], status_code=status.HTTP_200_OK)
+@router.post("/adjust")
 async def adjust_inventory(
-    request_body: InventoryAdjustRequest,
-    request: Request,
-    token: TokenPayload = Depends(RequireOwner()),
-    db: AsyncSession = Depends(get_tenant_db_session),
+    token: TokenPayload = Depends(get_current_user_context),
 ):
-    """
-    Manual inventory adjustment (stocktake / damage / correction).
-
-    Positive quantity = add stock, negative = remove stock.
-    Creates an audit trail entry in inventory_movements.
-    """
-    request_id = getattr(request.state, 'request_id', 'N/A')
-    tenant_id = getattr(request.state, 'tenant_id', 'N/A')
-    logger = get_request_logger(request_id, tenant_id)
-
-    logger.info(
-        "adjust_inventory_started",
-        extra={
-            "action": "adjust_inventory",
-            "user_id": token.user_id,
-            "sku_code": request_body.sku_code,
-            "quantity": float(request_body.quantity),
-            "reason": request_body.reason,
-        }
-    )
-
-    # Trusted request actor, not a body field; the service checks DB scope too.
-    db.info['_staff_stock_actor']=str(token.user_id)
-    service = InventoryService()
-    stock, movement = await service.adjust_stock(
-        db,
-        sku_code=request_body.sku_code,
-        quantity=request_body.quantity,
-        reason=request_body.reason,
-        adjusted_by=token.user_id,
-        tenant_id=token.tenant_id,
-        tenant_schema=token.tenant_schema,
-    )
-
-    logger.info(
-        "adjust_inventory_completed",
-        extra={
-            "action": "adjust_inventory",
-            "sku_code": request_body.sku_code,
-            "quantity_before": float(movement.quantity_before),
-            "quantity_after": float(movement.quantity_after),
-            "success": True,
-        }
-    )
-
-    return DataResponse(
-        success=True,
-        data=InventoryAdjustResponse(
-            sku_code=request_body.sku_code,
-            quantity_before=movement.quantity_before,
-            quantity_after=movement.quantity_after,
-            adjustment=request_body.quantity,
-            reason=request_body.reason,
-        ),
-        message="Stock adjusted successfully",
-        timestamp=datetime.utcnow(),
-    )
+    """Retired endpoint: every authenticated old client must use an explicit command."""
+    from services.staff_management_service import staff_error
+    raise staff_error('MANUAL_ADJUSTMENT_REQUEST_REQUIRED')
 
 
 @router.get("/logs", response_model=DataResponse[MovementLogListData], status_code=status.HTTP_200_OK)

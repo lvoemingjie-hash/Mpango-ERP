@@ -899,6 +899,26 @@ class Provisioner:
                 _record('staff_audit_append_only_privileges', bool(
                     audit and audit['owner'] == self.migrate_role and audit['can_read']
                     and audit['can_append'] and not audit['can_rewrite']), **dict(audit or {}))
+            if await migrate.fetchval("SELECT EXISTS(SELECT 1 FROM public.alembic_version WHERE version_num='044_inventory_adjustment_approval')"):
+                # Tenant objects are app-owned under the existing tenant DDL
+                # contract: no public-schema or role capability is added.
+                schemas = await migrate.fetch("SELECT nspname FROM pg_namespace WHERE nspname ~ '^t_[0-9a-f]{32}$'")
+                for schema in schemas:
+                    name = schema['nspname']
+                    objects = await migrate.fetch(
+                        "SELECT c.relname,pg_get_userbyid(c.relowner) AS owner,"
+                        "has_table_privilege($1,c.oid,'SELECT,INSERT,UPDATE') AS usable "
+                        "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+                        "WHERE n.nspname=$2 AND c.relname IN ('inventory_adjustment_requests','inventory_adjustment_approvers')",
+                        self.app_role, name)
+                    _record('stock_approval_objects_'+name, bool(len(objects)==2 and all(
+                        r['owner']==self.app_role and r['usable'] for r in objects)), schema=name,
+                        objects=[dict(r) for r in objects])
+                    guards = await migrate.fetchval(
+                        "SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid "
+                        "JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND NOT t.tgisinternal "
+                        "AND t.tgenabled='O' AND t.tgname IN ('stock_revision_monotonic','adjustment_request_immutable','manual_movement_immutable')", name)
+                    _record('stock_approval_guards_'+name, guards==3, schema=name, guards=guards)
             app_create_on_public = await migrate.fetchval(
                 "SELECT has_schema_privilege($1, 'public', 'CREATE')",
                 self.app_role,

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,6 +17,7 @@ class StaffAuthority(Base):
     __table_args__ = (
         CheckConstraint('singleton = 1', name='ck_staff_authority_singleton'),
         CheckConstraint('authz_revision > 0', name='ck_staff_authority_revision'),
+        CheckConstraint('policy_version>0', name='staff_authority_policy_version_check'),
         CheckConstraint("(state='unmapped' AND owner_user_id IS NULL AND source IS NULL AND evidence_digest IS NULL) OR "
                         "(state='verified' AND owner_user_id IS NOT NULL AND tenant_id IS NOT NULL AND "
                         "registration_id IS NOT NULL AND source IS NOT NULL AND evidence_digest IS NOT NULL AND "
@@ -34,6 +35,8 @@ class StaffAuthority(Base):
     source: Mapped[str | None] = mapped_column(String(32))
     evidence_digest: Mapped[str | None] = mapped_column(String(64))
     authz_revision: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text('1'))
+    policy_version: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text('1'))
+    owner_direct_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text('now()'))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text('now()'))
 
@@ -101,3 +104,42 @@ class StaffStockAuditEvent(Base):
     subject_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     details: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text('now()'))
+
+
+class InventoryAdjustmentApprover(Base):
+    __tablename__ = 'inventory_adjustment_approvers'
+    user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey('users.id', ondelete='RESTRICT'), primary_key=True)
+
+
+class InventoryAdjustmentRequest(Base):
+    __tablename__ = 'inventory_adjustment_requests'
+    __table_args__ = (
+        UniqueConstraint('requester_id','create_key_digest',name='uq_adjustment_request_key'),
+        CheckConstraint('policy_version>0',name='inventory_adjustment_requests_policy_version_check'),
+        CheckConstraint('version>0',name='inventory_adjustment_requests_version_check'),
+        CheckConstraint("delta <> 0 AND delta > '-Infinity'::numeric AND delta < 'Infinity'::numeric",name='ck_adjustment_delta'),
+        CheckConstraint("(status='pending' AND version=1 AND decision_actor_id IS NULL AND decided_at IS NULL "
+            "AND decision_key_digest IS NULL AND decision_fingerprint IS NULL AND result IS NULL) OR "
+            "(status IN ('approved_applied','rejected','withdrawn','applied_direct') AND version=2 "
+            "AND decision_actor_id IS NOT NULL AND decided_at IS NOT NULL AND decision_key_digest IS NOT NULL "
+            "AND decision_fingerprint IS NOT NULL AND result IS NOT NULL)",name='ck_adjustment_state'),
+        CheckConstraint("status <> 'approved_applied' OR decision_actor_id <> requester_id",name='ck_adjustment_no_self_approval'),
+        CheckConstraint("status <> 'applied_direct' OR decision_actor_id=requester_id",name='ck_adjustment_direct_actor'),
+    )
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    requester_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey('users.id', ondelete='RESTRICT'))
+    sellable_unit_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey('skus.id', ondelete='RESTRICT'))
+    stock_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey('inventory_stocks.id', ondelete='RESTRICT'))
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    delta: Mapped[Any] = mapped_column(Numeric(12, 2), nullable=False)
+    policy_version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    create_key_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    create_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text('1'))
+    status: Mapped[str] = mapped_column(String(24), nullable=False, server_default=text("'pending'"))
+    decision_actor_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey('users.id', ondelete='RESTRICT'))
+    decision_key_digest: Mapped[str | None] = mapped_column(String(64))
+    decision_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text('now()'))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

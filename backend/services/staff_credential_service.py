@@ -38,6 +38,8 @@ class StaffCredentialService:
             "AND event_type IN ('staff_created','staff_invited') ORDER BY created_at DESC,id DESC LIMIT 1"),
             {'t':staff.tenant_id,'u':user_id})).scalar_one_or_none()
         established=member['credential_state']=='ready' or bool(events and events.get('target_had_credential'))
+        if member['credential_state']=='ready' and member['employment_state']=='active':
+            await staff.invalidate_approval_policy(user_id=user_id)
         version=member['version']+1
         await self.db.execute(text('UPDATE public.staff_credential_setup_tokens SET revoked_at=now() WHERE tenant_id=:t AND user_id=:u AND used_at IS NULL AND revoked_at IS NULL'),{'t':staff.tenant_id,'u':user_id})
         await self.db.execute(text(f"UPDATE {staff.q}.staff_memberships SET credential_state='pending',employment_state='invited',version=:v,updated_at=now() WHERE user_id=:u"),{'v':version,'u':user_id})
@@ -99,6 +101,7 @@ class StaffCredentialService:
             if rows: raise proof_failed()
             verified_hash=hash_password(password)
         await self.db.execute(text(f'UPDATE {staff.q}.users SET password_hash=:p,is_active=TRUE,updated_at=now() WHERE id=:u AND is_deleted IS FALSE'),{'p':verified_hash,'u':token['user_id']})
+        await staff.invalidate_approval_policy(user_id=token['user_id'])
         await self.db.execute(text(f"UPDATE {staff.q}.staff_memberships SET credential_state='ready',employment_state='active',version=version+1,updated_at=now() WHERE user_id=:u"),{'u':token['user_id']})
         await self.db.execute(text('UPDATE public.staff_credential_setup_tokens SET used_at=now() WHERE id=:i'),{'i':token['id']})
         await staff._advance()

@@ -67,7 +67,9 @@ function SidebarBody() {
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
   const showPlatformNav = isIdentityPlatformOperator(user);
-  const visibleItems=user?.is_owner===true?[...navItems,{label:'Team',path:'/users',icon:BuildingOfficeIcon}]:navItems;
+  const stockItems=user?.is_owner===true||(user?.staff_state==='active'&&user.permissions?.includes('inventory:adjustments:read'))
+    ?[...navItems,{label:'Stock requests',path:'/inventory/adjustments',icon:CubeIcon}]:navItems;
+  const visibleItems=user?.is_owner===true?[...stockItems,{label:'Team',path:'/users',icon:BuildingOfficeIcon}]:stockItems;
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';

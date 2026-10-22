@@ -169,12 +169,18 @@ class StockWorld:
             ), {'id': self.sku})).one_or_none()
 
     async def adjust(self, quantity, *, repository=None, sku_code='INV-BOX'):
+        from services.inventory_adjustment_service import InventoryAdjustmentService, adjustment_quantity
+        # Numeric rejection remains before repository access or any business write.
+        adjustment_quantity(quantity,'correction')
         async with self.session() as db:
-            return await InventoryService(repository).adjust_stock(
-                db, sku_code=sku_code, quantity=quantity, reason='inventory safety control',
-                adjusted_by=str(self.actor),
-                tenant_id=str(self.wid), tenant_schema=self.schema,
-            )
+            row=await (repository or InventoryRepository()).get_stock_by_sku_code(db,sku_code=sku_code)
+            if not row:
+                raise HTTPException(status_code=404,detail={'code':'SELLABLE_UNIT_NOT_FOUND'})
+            service=InventoryAdjustmentService(db,self.wid,self.schema)
+            snap=await service.snapshot(self.actor,row[0].id)
+            return await service.submit(self.actor,key=uuid.uuid4().hex,sellable_unit_id=row[0].id,
+                quantity_delta=quantity,reason_kind='correction',reason='inventory safety control',
+                expected_policy_version=snap['policy_version'],expected_stock_revision=snap['stock_revision'],direct=True)
 
 
 @pytest_asyncio.fixture
@@ -204,9 +210,11 @@ async def test_invalid_quantity_before_repository(quantity):
         async def get_stock_by_sku_code(self, *args, **kwargs):
             raise AssertionError('INVALID_QUANTITY_REACHED_REPOSITORY')
     with pytest.raises(HTTPException) as caught:
-        await InventoryService(NoWrites()).adjust_stock(
-            None, sku_code='NO-ROW', quantity=quantity, reason='invalid',
-        )
+        from services.inventory_adjustment_service import InventoryAdjustmentService
+        tenant=uuid.uuid4()
+        await InventoryAdjustmentService(NoWrites(),tenant,'t_'+tenant.hex).submit(uuid.uuid4(),key='invalid',
+            sellable_unit_id=uuid.uuid4(),quantity_delta=quantity,reason_kind='correction',reason='invalid',
+            expected_stock_revision=1,expected_policy_version=1,direct=True)
     assert caught.value.status_code == 422
     assert caught.value.detail['code'] == 'INVALID_ADJUSTMENT_QUANTITY'
 
@@ -297,7 +305,7 @@ async def test_missing_sku_compatibility(stock_world):
     before = await stock_world.snapshot()
     with pytest.raises(HTTPException) as caught:
         await stock_world.adjust(Decimal('1'), sku_code='ABSENT')
-    assert caught.value.status_code == 404 and caught.value.detail['code'] == 'SKU_NOT_FOUND'
+    assert caught.value.status_code == 404 and caught.value.detail['code'] == 'SELLABLE_UNIT_NOT_FOUND'
     assert await stock_world.snapshot() == before
 
 
@@ -387,23 +395,21 @@ async def test_movement_failure_rolls_back_whole_transaction(stock_world, withou
     else:
         await stock_world.reserve(80)
     before = await stock_world.snapshot()
+    if without_stock:
+        # M2 intentionally removes opportunistic stock creation entirely.
+        with pytest.raises(HTTPException) as caught:await stock_world.adjust(Decimal('1'))
+        assert caught.value.detail['code']=='STOCK_NOT_INITIALIZED'
+        assert await stock_world.snapshot()==before
+        return
     reached = []
-    with pytest.raises(RuntimeError, match='INV_MOVEMENT_AFTER_FLUSH'):
-        async with stock_world.session() as db:
-            original = db.flush
-
-            async def failed_flush(*args, **kwargs):
-                writing_movement = any(isinstance(obj, InventoryMovement) for obj in db.new)
-                await original(*args, **kwargs)
-                if writing_movement:
-                    reached.append(True)
-                    raise RuntimeError('INV_MOVEMENT_AFTER_FLUSH')
-
-            db.flush = failed_flush
-            await InventoryService().adjust_stock(
-                db, sku_code='INV-BOX', quantity=Decimal('1'), reason='fault',
-                adjusted_by=str(stock_world.actor), tenant_id=str(stock_world.wid),
-                tenant_schema=stock_world.schema)
+    def fail_after_movement(_c,_cu,sql,_p,_ctx,_many):
+        if '.inventory_movements ' in sql and 'INSERT INTO' in sql and 'manual_adjustment_id' in sql:
+            reached.append(True);raise RuntimeError('INV_MOVEMENT_AFTER_FLUSH')
+    event.listen(stock_world.engine.sync_engine,'after_cursor_execute',fail_after_movement)
+    try:
+        with pytest.raises(RuntimeError, match='INV_MOVEMENT_AFTER_FLUSH'):
+            await stock_world.adjust(Decimal('1'))
+    finally:event.remove(stock_world.engine.sync_engine,'after_cursor_execute',fail_after_movement)
     assert reached == [True]
     after = await stock_world.snapshot()
     retain('movement-fault', {'before': before, 'after': after, 'without_stock': without_stock})

@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import { staffService } from '@/services/staffService';
 import { STAFF_CAPABILITIES, type StaffTemplate } from '@/types/staff';
 
+const capabilities = [...STAFF_CAPABILITIES, 'inventory:adjustments:request',
+  'inventory:adjustments:read', 'inventory:adjustments:approve'];
+
 function TemplateCard({template,onSaved}:{template:StaffTemplate;onSaved:()=>Promise<void>}){
   const [codes,setCodes]=useState(template.permission_codes);
   const [busy,setBusy]=useState(false);
@@ -11,10 +14,11 @@ function TemplateCard({template,onSaved}:{template:StaffTemplate;onSaved:()=>Pro
   return <form className="space-y-4 rounded-xl border border-gray-200 bg-white p-4" onSubmit={e=>{e.preventDefault();setBusy(true);void staffService.editTemplate(template,codes).then(onSaved).then(()=>setMessage('Job permissions updated.')).catch(()=>setMessage('Not saved. Reload the current version before retrying.')).finally(()=>setBusy(false));}}>
     <h2 className="text-lg font-semibold capitalize">{template.key}</h2>
     <p className="text-sm text-gray-600">Affects {template.affected_count} employees · version {template.version}</p>
-    <div className="grid gap-3 sm:grid-cols-2">{STAFF_CAPABILITIES.map(code=><label className="flex min-w-0 items-center gap-3 rounded border p-3" key={code}>
+    <div className="grid gap-3 sm:grid-cols-2">{capabilities.map(code=><label className="flex min-w-0 items-center gap-3 rounded border p-3" key={code}>
       <input type="checkbox" checked={codes.includes(code)} disabled={busy} onChange={e=>setCodes(e.target.checked?[...codes,code]:codes.filter(c=>c!==code))}/><span className="break-all text-sm">{code}</span>
     </label>)}</div>
     <p className="text-sm text-gray-600">Payments create is the existing full payment capability, not cash-only. Owner and direct inventory authority cannot be delegated.</p>
+    <p className="text-sm text-gray-600">Adjustment approval also requires the employee to be named in Stock approval settings. Nobody may approve their own request.</p>
     {message&&<p role="status">{message}</p>}<button disabled={busy} className="rounded-lg bg-primary-600 px-4 py-3 text-white disabled:opacity-50">Save permissions for all {template.affected_count} employees</button>
   </form>;
 }

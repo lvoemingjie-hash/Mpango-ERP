@@ -34,6 +34,9 @@ export function isAdmin(user: CurrentUserData | null): boolean {
  */
 export function can(user: CurrentUserData | null, permission: string): boolean {
   if (!user || !user.permissions) return false;
+  if (permission.startsWith('inventory:adjustments:')) {
+    return user.is_owner === true || (user.staff_state === 'active' && user.permissions.includes(permission));
+  }
   if (user.staff_state != null) return user.staff_state === 'active' && user.permissions.includes(permission);
   if (['owner:manage', 'inventory:update', 'inventory:write'].includes(permission)) return user.is_owner === true;
   if (isAdmin(user)) return true;

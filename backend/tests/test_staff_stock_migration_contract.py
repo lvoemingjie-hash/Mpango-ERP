@@ -22,7 +22,10 @@ def test_migration_and_independent_bootstrap_declare_identical_tenant_ddl():
     function = next(node for node in bootstrap.body if isinstance(node, ast.AsyncFunctionDef)
                     and node.name == '_reconcile_staff_authority')
     normalize = lambda statements: tuple(re.sub(r'\s+', ' ', value).strip() for value in statements)
-    assert normalize(literal_assignment(migration, 'TENANT_DDL')) == normalize(literal_assignment(function, 'statements'))
+    current=list(literal_assignment(function, 'statements'))
+    # 043 is frozen. Current bootstrap additionally includes the two 044 columns.
+    current[0]=current[0].replace('policy_version BIGINT NOT NULL DEFAULT 1 CHECK (policy_version>0),','').replace('owner_direct_enabled BOOLEAN NOT NULL DEFAULT true,','')
+    assert normalize(literal_assignment(migration, 'TENANT_DDL')) == normalize(current)
 
 
 def test_migration_revision_is_exact_successor_and_has_no_runtime_service_import():
@@ -291,7 +294,41 @@ async def test_actual_042_history_upgrade_and_repeated_grants_preserve_native_au
                 for statement in ('UPDATE public.staff_stock_audit_events SET event_type=event_type','DELETE FROM public.staff_stock_audit_events'):
                     with pytest.raises(DBAPIError):
                         async with db.begin_nested(): await db.execute(text(statement))
+        # Preserve the real nonempty 043 stage above, then upgrade its exact
+        # users, Owner evidence and manual stock history to 044.
+        history={}
+        for schema,wid,registration in schemas:
+            async with app_engine.begin() as db:
+                await db.execute(text(f'SET LOCAL search_path TO "{schema}",public'))
+                uid=await db.scalar(text('SELECT id FROM users LIMIT 1'))
+                await db.execute(text("UPDATE staff_authority SET owner_user_id=:u,state='verified',source='approved_mapping',evidence_digest=:d,authz_revision=7 WHERE singleton=1"),
+                    {'u':uid,'d':__import__('hashlib').sha256(str(registration).encode()).hexdigest()})
+                product=await db.scalar(text("INSERT INTO catalog_products(name,is_active) VALUES ('Retained 043 stock',true) RETURNING id"))
+                sku=await db.scalar(text("INSERT INTO skus(catalog_product_id,sku_code,name,unit,package_quantity,is_active,base_price) VALUES (:p,'UPGRADE-BOX','Retained 043 stock','box',1,true,1) RETURNING id"),{'p':product})
+                await db.execute(text('INSERT INTO inventory_stocks(sku_id,quantity_on_hand,quantity_reserved) VALUES (:s,100,0)'),{'s':sku})
+                await db.execute(text("INSERT INTO inventory_movements(sku_id,movement_type,quantity,quantity_before,quantity_after,reference_type) VALUES (:s,'adjustment',100,0,100,'manual')"),{'s':sku})
+                history[schema]={table:list((await db.execute(text(f'SELECT to_jsonb(t)::text FROM {table} t ORDER BY id'))).scalars())
+                                 for table in ('users','inventory_stocks','inventory_movements')}
+        call('alembic044',[sys.executable,'-B','-m','alembic','upgrade','044_inventory_adjustment_approval'],env)
+        call('grants044',[sys.executable,'-B',provisioner,'--apply-grants'],env)
+        call('verify044',[sys.executable,'-B',provisioner,'--verify'],env)
+        from scripts.bootstrap_tenant_schema import _reconcile_stock_approval
+        for schema,wid,registration in schemas:
+            async with app_engine.begin() as db:
+                await db.execute(text(f'SET LOCAL search_path TO "{schema}",public'))
+                await _reconcile_staff_authority(db,schema)
+                await _reconcile_stock_approval(db,schema)
+                assert await db.scalar(text('SELECT authz_revision FROM staff_authority'))==7
+                assert await db.scalar(text('SELECT policy_version FROM staff_authority'))==1
+                assert await db.scalar(text('SELECT owner_direct_enabled FROM staff_authority')) is True
+                assert await db.scalar(text('SELECT count(*) FROM inventory_adjustment_approvers'))==1
+                assert await db.scalar(text('SELECT count(*) FROM inventory_adjustment_requests'))==0
+                for table,added in [('users',None),('inventory_stocks','stock_revision'),('inventory_movements','manual_adjustment_id')]:
+                    expression='to_jsonb(t)' if added is None else "to_jsonb(t)-'"+added+"'"
+                    assert list((await db.execute(text(f'SELECT ({expression})::text FROM {table} t ORDER BY id'))).scalars())==history[schema][table]
+                assert await db.scalar(text('SELECT stock_revision FROM inventory_stocks'))==1
         record['result']='PASS'
+        record['044_nonempty_history_preserved']=True
     finally:
         if app_engine is not None: await app_engine.dispose()
         with connection.cursor() as cursor:

@@ -19,6 +19,8 @@ import { OrderListPage } from '@/pages/orders/OrderListPage';
 import { CreateOrderPage as WholesalerCreateOrderPage } from '@/pages/orders/CreateOrderPage';
 import { InventoryPage } from '@/pages/inventory/InventoryPage';
 import { InventoryLogPage } from '@/pages/inventory/InventoryLogPage';
+import { StockAdjustmentPage } from '@/pages/inventory/StockAdjustmentPage';
+import { StockApprovalSettingsPage } from '@/pages/inventory/StockApprovalSettingsPage';
 import { SKUListPage } from '@/pages/skus/SKUListPage';
 import { DataIntakePage } from '@/pages/skus/DataIntakePage';
 import { MobileScanPreview } from '@/pages/skus/MobileScanPreview';
@@ -156,9 +158,11 @@ const router = createBrowserRouter([
               { path: '/orders/new', element: <WholesalerCreateOrderPage /> },
               { path: '/inventory', element: <InventoryPage /> },
               { path: '/inventory/logs', element: <InventoryLogPage /> },
+              {path:'/inventory/adjustments',element:<StockAdjustmentPage/>},
               {element:<OwnerRoute/>,children:[
                 {path:'/users',element:<StaffPage/>},
                 {path:'/users/roles',element:<StaffRolesPage/>},
+                {path:'/settings/stock-approval',element:<StockApprovalSettingsPage/>},
               ]},
               { path: '/skus', element: <SKUListPage /> },
               { path: '/skus/intake', element: <DataIntakePage /> },

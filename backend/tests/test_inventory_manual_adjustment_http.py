@@ -65,7 +65,18 @@ async def inventory_http(stock_world, monkeypatch):
                   if item.cls.__name__ == 'AuthenticationMiddleware']
     assert len(strategies) == 1 and isinstance(strategies[0], JwtAuthStrategy)
     probe = {'events': [], 'fail_commit': False, 'fail_movement': False}
-    real_flush, real_commit = AsyncSession.flush, AsyncSession.commit
+    real_flush, real_commit, real_execute = AsyncSession.flush, AsyncSession.commit, AsyncSession.execute
+
+    async def observed_execute(session, statement, *args, **kwargs):
+        result=await real_execute(session,statement,*args,**kwargs)
+        sql=str(statement)
+        if 'INSERT INTO' in sql and '.inventory_movements ' in sql and 'manual_adjustment_id' in sql:
+            session.info['inventory_safety_manual_write']=True
+            probe['events'].append(('manual_flush_end',time.monotonic()))
+            if probe['fail_movement']:
+                probe['events'].append(('manual_movement_injected_failure',time.monotonic()))
+                raise RuntimeError('INV_HTTP_MOVEMENT_AFTER_FLUSH')
+        return result
 
     async def observed_flush(session, *args, **kwargs):
         manual = any(isinstance(obj, InventoryMovement) and obj.reference_type == 'manual'
@@ -93,6 +104,7 @@ async def inventory_http(stock_world, monkeypatch):
 
     monkeypatch.setattr(AsyncSession, 'flush', observed_flush)
     monkeypatch.setattr(AsyncSession, 'commit', observed_commit)
+    monkeypatch.setattr(AsyncSession, 'execute', observed_execute)
 
     async def timing(scope, receive, send):
         async def observed_send(message):
@@ -104,6 +116,7 @@ async def inventory_http(stock_world, monkeypatch):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=timing, raise_app_exceptions=False),
                                 base_url='http://inventory-safety.invalid', timeout=30) as client:
         headers = await login(client, stock_world)
+        client._inventory_world=stock_world
         probe['events'].clear()
         yield client, headers, probe
     from database.session import async_engine
@@ -111,9 +124,16 @@ async def inventory_http(stock_world, monkeypatch):
 
 
 async def adjust(client, headers, quantity, *, sku_code='INV-BOX'):
-    return await client.post('/api/v1/inventory/adjust', headers=headers,
-                             json={'sku_code': sku_code, 'quantity': quantity,
-                                   'reason': 'native inventory safety'})
+    world=client._inventory_world
+    # Read-only observer supplies the new explicit input contract; the real
+    # request still authenticates and validates every identity/version itself.
+    async with world.session() as db:
+        row=(await db.execute(text('SELECT s.id,coalesce(st.stock_revision,1) AS revision '
+            'FROM skus s LEFT JOIN inventory_stocks st ON st.sku_id=s.id WHERE s.sku_code=:c'),{'c':sku_code})).one_or_none()
+        policy=await db.scalar(text('SELECT policy_version FROM staff_authority'))
+    return await client.post('/api/v1/inventory/owner-adjustments', headers={**headers,'Idempotency-Key':uuid.uuid4().hex},
+        json={'sellable_unit_id':str(row.id if row else uuid.uuid4()),'quantity_delta':quantity,'reason_kind':'correction',
+              'reason':'native inventory safety','expected_stock_revision':row.revision if row else 1,'expected_policy_version':policy})
 
 
 async def test_reserved_lower_bound_http(stock_world, inventory_http):
@@ -139,7 +159,7 @@ async def test_reserved_boundary_http_commits_before_response(stock_world, inven
     after = await stock_world.snapshot()
     retain('http-boundary', {'status': response.status_code, 'before': before,
                             'after': after, 'events': probe['events']})
-    assert response.status_code == 200
+    assert response.status_code == 201
     assert await stock_world.stock() == (Decimal('80'), Decimal('80'))
     assert len(after['inventory_movements']) == len(before['inventory_movements']) + 1
     added = [json.loads(row, parse_float=Decimal) for row in after['inventory_movements']
@@ -148,7 +168,7 @@ async def test_reserved_boundary_http_commits_before_response(stock_world, inven
     assert (added[0]['quantity'], added[0]['quantity_before'], added[0]['quantity_after']) == (-20, 100, 80)
     events = probe['events']
     commit_end = [timestamp for name, timestamp in events if name == 'manual_commit_end']
-    response_start = [timestamp for name, timestamp in events if name == 'response_200']
+    response_start = [timestamp for name, timestamp in events if name == 'response_201']
     assert len(commit_end) == len(response_start) == 1
     assert commit_end[0] < response_start[0], 'INV_HTTP_SUCCESS_BEFORE_COMMIT'
     assert_non_stock_unchanged(before, after)
@@ -166,7 +186,7 @@ async def test_http_invalid_quantities_and_equivalent_tail_zero(stock_world, inv
         assert await stock_world.snapshot() == before
     retain('http-invalid-categories', observed)
     response = await adjust(client, headers, '1.2300')
-    assert response.status_code == 200
+    assert response.status_code == 201
     assert await stock_world.stock() == (Decimal('101.23'), Decimal('0'))
 
 
@@ -176,7 +196,7 @@ async def test_http_missing_sku_and_negative_compatibility(stock_world, inventor
     response = await adjust(client, headers, '-101')
     assert response.status_code == 409 and error_code(response) == 'NEGATIVE_STOCK'
     response = await adjust(client, headers, '1', sku_code='ABSENT')
-    assert response.status_code == 404 and error_code(response) == 'SKU_NOT_FOUND'
+    assert response.status_code == 404 and error_code(response) == 'SELLABLE_UNIT_NOT_FOUND'
     assert await stock_world.snapshot() == before
 
 
@@ -219,13 +239,13 @@ async def test_http_tenant_same_and_different_sku_isolation(stock_world, invento
         await other.reserve(80)
         before = await other.snapshot()
         response = await adjust(client, headers, '-1')
-        assert response.status_code == 200
+        assert response.status_code == 201
         assert await other.snapshot() == before
         async with other.session() as db:
             await db.execute(text("UPDATE skus SET sku_code='ONLY-IN-B' WHERE id=:id"), {'id': other.sku})
         before = await other.snapshot()
         response = await adjust(client, headers, '-1', sku_code='ONLY-IN-B')
-        assert response.status_code == 404 and error_code(response) == 'SKU_NOT_FOUND'
+        assert response.status_code == 404 and error_code(response) == 'SELLABLE_UNIT_NOT_FOUND'
         assert await other.snapshot() == before
     finally:
         if hasattr(other, 'engine'):

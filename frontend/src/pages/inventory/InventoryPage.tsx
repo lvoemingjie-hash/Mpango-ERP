@@ -5,9 +5,8 @@ import type { StockView } from '@/types/inventory';
 
 import { PageHeader } from '@/components/layout/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { InventoryAdjustModal, type AdjustFormData } from './InventoryAdjustModal';
 import { useAuthStore } from '@/stores/authStore';
-import { useToastStore } from '@/stores/toastStore';
+import { can } from '@/utils/permissions';
 import { Link } from 'react-router-dom';
 import { CardGridSkeleton } from '@/components/skeletons/CardGridSkeleton';
 import { CubeIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
@@ -18,11 +17,7 @@ export function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Modal state
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedSkuCode, setSelectedSkuCode] = useState<string>('');
-
-  const hasUpdatePermission = user?.is_owner === true;
+  const hasUpdatePermission = can(user,'inventory:adjustments:request');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -38,21 +33,6 @@ export function InventoryPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  const handleAdjustSubmit = async (data: AdjustFormData) => {
-    await inventoryService.adjustStock(data);
-    useToastStore.getState().addToast({
-      type: 'success',
-      title: 'Stock Adjusted',
-      message: `Successfully adjusted stock for ${data.sku_code}.`,
-    });
-    await load();
-  };
-
-  const openAdjustModal = (skuCode: string) => {
-    setSelectedSkuCode(skuCode);
-    setIsModalOpen(true);
-  };
 
   return (
     <div>
@@ -150,12 +130,12 @@ export function InventoryPage() {
 
               {hasUpdatePermission && (
                 <div className="mt-4 border-t border-gray-100 pt-3 flex justify-end">
-                  <button
-                    onClick={() => openAdjustModal(s.sku_code)}
+                  <Link
+                    to={'/inventory/adjustments?sku='+encodeURIComponent(s.sku_id)}
                     className="text-sm font-medium text-primary-600 hover:text-primary-800"
                   >
-                    Adjust Stock
-                  </button>
+                    Request adjustment
+                  </Link>
                 </div>
               )}
             </div>
@@ -163,12 +143,6 @@ export function InventoryPage() {
         </div>
       )}
 
-      <InventoryAdjustModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSubmit={handleAdjustSubmit}
-        initialSkuCode={selectedSkuCode}
-      />
     </div>
   );
 }

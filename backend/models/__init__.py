@@ -11,6 +11,7 @@ from models.order_negotiation import OrderNegotiationProposal
 from models.staff_approval import (
     StaffAuthority, StaffRoleTemplate, StaffMembership,
     StaffCredentialSetupToken, StaffStockAuditEvent,
+    InventoryAdjustmentApprover, InventoryAdjustmentRequest,
 )
 from models.retailer import Retailer
 from models.invitation import Invitation
@@ -92,6 +93,8 @@ __all__ = [
     "StaffMembership",
     "StaffCredentialSetupToken",
     "StaffStockAuditEvent",
+    "InventoryAdjustmentApprover",
+    "InventoryAdjustmentRequest",
     "CatalogProduct",
     "CatalogProductImage",
     "SKU",

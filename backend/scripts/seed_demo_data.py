@@ -457,6 +457,46 @@ async def _seed_orders(db, ts: str) -> None:
     print(f"  + {len(DEMO_ORDERS)} demo orders seeded with ledger entries")
 
 
+async def _admit_fresh_task_demo_target(db):
+    """A demo stock seed is not a general manual-adjustment bypass."""
+    import json
+    import subprocess
+    from pathlib import Path
+    from urllib.parse import urlsplit
+    from sqlalchemy import text
+
+    manifest_path = os.getenv('MPANGO_FRESH_DEMO_TASK_MANIFEST')
+    if not manifest_path or os.getenv('MPANGO_ENV') not in {'test','dev'}:
+        raise RuntimeError('FRESH_TASK_DEMO_TARGET_REQUIRED')
+    try:
+        manifest = json.loads(Path(manifest_path).read_text())
+        cid, task, owner = manifest['container_id'], manifest['task'], manifest['owner']
+        if len(cid) != 64 or any(c not in '0123456789abcdef' for c in cid) or not task or not owner:
+            raise ValueError()
+        info = json.loads(subprocess.check_output(['docker','inspect',cid], timeout=5))[0]
+        labels = info['Config']['Labels']
+        if (info['Id'] != cid or not info['State']['Running'] or not info['Config']['Image'].startswith('postgres:16')
+                or labels.get('mpango.task') != task or labels.get('mpango.owner') != owner
+                or not owner.startswith('zcode-mvp-invariants-')):
+            raise ValueError()
+        url = urlsplit(os.environ['DATABASE_URL'].replace('postgresql+asyncpg://','postgresql://'))
+        ports = info['NetworkSettings']['Ports']['5432/tcp']
+        if (url.hostname != '127.0.0.1' or len(ports) != 1 or ports[0]['HostIp'] != '127.0.0.1'
+                or str(url.port) != ports[0]['HostPort'] or url.path.lstrip('/') != manifest['database']):
+            raise ValueError()
+    except Exception:
+        raise RuntimeError('FRESH_TASK_DEMO_TARGET_REQUIRED') from None
+    database = await db.scalar(text('SELECT current_database()'))
+    privileges=(await db.execute(text("SELECT current_user,rolsuper,rolcreatedb,rolcreaterole,rolbypassrls,"
+        "has_schema_privilege(current_user,'public','CREATE') FROM pg_roles WHERE rolname=current_user"))).one()
+    head = await db.scalar(text('SELECT version_num FROM public.alembic_version'))
+    occupied = await db.scalar(text("SELECT EXISTS(SELECT 1 FROM public.wholesalers) OR "
+        "EXISTS(SELECT 1 FROM pg_namespace WHERE nspname ~ '^t_[0-9a-f]{32}$')"))
+    if (database != manifest['database'] or head != '044_inventory_adjustment_approval' or occupied
+            or privileges[0]!='mpango_app' or tuple(privileges[1:])!=(False,)*5):
+        raise RuntimeError('FRESH_TASK_DEMO_TARGET_REQUIRED')
+
+
 async def seed(*, allow_production: bool) -> None:
     _require_safe_environment(allow_production=allow_production)
     _add_backend_to_path()
@@ -468,6 +508,9 @@ async def seed(*, allow_production: bool) -> None:
     os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:6379/0")
 
     from database.session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as admission:
+        await _admit_fresh_task_demo_target(admission)
 
     print("\n=== Mpango ERP Demo Seeder (Track E2) ===\n")
 

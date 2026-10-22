@@ -36,6 +36,8 @@ class LockedStaffAuthority:
     owner_user_id: UUID | None
     state: str
     authz_revision: int
+    policy_version: int
+    owner_direct_enabled: bool
 
 
 class StaffManagementService:
@@ -66,7 +68,7 @@ class StaffManagementService:
         if registration is None or not valid_ids:
             raise staff_error('OWNER_MAPPING_REQUIRED')
         return LockedStaffAuthority(self.tenant_id, registration, row['owner_user_id'],
-                                    row['state'], row['authz_revision'])
+                                    row['state'], row['authz_revision'], row['policy_version'], row['owner_direct_enabled'])
 
     async def assert_non_customer_active_user(self, user_id: UUID, *, lock_user: bool = True) -> None:
         user = (await self.db.execute(text(
@@ -125,6 +127,7 @@ class StaffManagementService:
                 'evidence_digest=:digest,authz_revision=authz_revision+1,updated_at=now() WHERE singleton=1'),
                 {'u': user_id, 't': self.tenant_id, 'r': registration_id, 'source': source, 'digest': evidence_digest})
             await self.audit(user_id, 'owner_bound', user_id, {'source': source, 'evidence_digest': evidence_digest})
+            await self.db.execute(text(f'INSERT INTO {self.q}.inventory_adjustment_approvers(user_id) VALUES (:u) ON CONFLICT DO NOTHING'), {'u': user_id})
         return {'action': 'would_bind' if dry_run else 'bound', 'dry_run': dry_run}
 
     async def ensure_templates(self):
@@ -149,6 +152,16 @@ class StaffManagementService:
 
     async def _advance(self):
         await self.db.execute(text(f'UPDATE {self.q}.staff_authority SET authz_revision=authz_revision+1,updated_at=now() WHERE singleton=1'))
+
+    async def invalidate_approval_policy(self, *, user_id=None, template_key=None):
+        """Caller already owns authority exclusively, after the credential email mutex."""
+        affected = await self.db.scalar(text(
+            f'SELECT EXISTS(SELECT 1 FROM {self.q}.inventory_adjustment_approvers a '
+            f'LEFT JOIN {self.q}.staff_memberships m ON m.user_id=a.user_id '
+            'WHERE (CAST(:u AS uuid) IS NOT NULL AND a.user_id=CAST(:u AS uuid)) OR (CAST(:k AS text) IS NOT NULL AND m.template_key=:k))'),
+            {'u': str(user_id) if user_id else None, 'k': template_key})
+        if affected:
+            await self.db.execute(text(f'UPDATE {self.q}.staff_authority SET policy_version=policy_version+1,updated_at=now() WHERE singleton=1'))
 
     async def member(self,user_id):
         row=(await self.db.execute(text(
@@ -183,6 +196,10 @@ class StaffManagementService:
         row=(await self.db.execute(text(f'SELECT role_id,version FROM {self.q}.staff_role_templates WHERE template_key=:k'),{'k':key})).one_or_none()
         if row is None: raise staff_error('INVALID_STAFF_TEMPLATE',422)
         if row.version!=expected_version: raise staff_error('STALE_STAFF_VERSION')
+        previous_codes=set((await self.db.execute(text(f'SELECT p.code FROM {self.q}.permissions p JOIN {self.q}.role_permissions rp '
+            'ON p.id=rp.permission_id WHERE rp.role_id=:r AND p.is_deleted IS FALSE'), {'r':row.role_id})).scalars())
+        if ('inventory:adjustments:approve' in previous_codes) != ('inventory:adjustments:approve' in codes):
+            await self.invalidate_approval_policy(template_key=key)
         await self._set_role_codes(row.role_id,codes)
         await self.db.execute(text(f'UPDATE {self.q}.staff_role_templates SET version=version+1 WHERE template_key=:k'),{'k':key})
         await self._advance()
@@ -232,6 +249,8 @@ class StaffManagementService:
         if user_id==owner.owner_user_id: raise staff_error('OWNER_PROTECTED')
         row=await self.member(user_id)
         if row['version']!=expected_version: raise staff_error('STALE_STAFF_VERSION')
+        if is_active is not None or (template_key is not None and template_key != row['template_key']):
+            await self.invalidate_approval_policy(user_id=user_id)
         if full_name is not None:
             await self.db.execute(text(f'UPDATE {self.q}.users SET full_name=:n,updated_at=now() WHERE id=:u'),{'n':full_name,'u':user_id})
         if template_key is not None:

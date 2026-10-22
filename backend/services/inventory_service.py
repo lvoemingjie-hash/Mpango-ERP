@@ -487,127 +487,13 @@ class InventoryService:
         return stock, movement
 
     async def adjust_stock(
-        self,
-        db: AsyncSession,
-        *,
-        sku_code: str,
-        quantity: Decimal,
-        reason: str,
-        adjusted_by: str | None = None,
-        tenant_id: str | None = None,
+        self, db: AsyncSession, *, sku_code: str, quantity: Decimal, reason: str,
+        adjusted_by: str | None = None, tenant_id: str | None = None,
         tenant_schema: str | None = None,
     ) -> tuple["InventoryStock", "InventoryMovement"]:
-        """
-        Manual stock adjustment (stocktake / damage / correction).
-        Positive quantity = add stock, negative = remove stock.
-        Creates a movement journal entry for audit trail.
-        Uses SELECT FOR UPDATE to prevent concurrent issues.
-        """
-        try:
-            delta_cents = _manual_quantity_cents(quantity)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={"code": "INVALID_ADJUSTMENT_QUANTITY",
-                        "message": "Adjustment must be finite, nonzero and exactly representable as NUMERIC(12,2)"},
-            ) from None
-        quantity = _manual_decimal_from_cents(delta_cents)
-
-        # The authority lock, stock write and mandatory audit share one transaction.
-        from services.staff_management_service import StaffManagementService, staff_error
-        if db is None or not tenant_id or not tenant_schema or not adjusted_by:
-            raise staff_error('OWNER_REQUIRED', 403)
-        expected_schema='t_'+uuid.UUID(str(tenant_id)).hex
-        if (tenant_schema!=expected_schema or db.info.get('tenant_schema')!=expected_schema
-                or db.info.get('_staff_stock_actor')!=str(adjusted_by)
-                or await db.scalar(text('SELECT current_schema()'))!=expected_schema):
-            raise staff_error('INVENTORY_AUTHORITY_SCOPE_MISMATCH',403)
-        authority = StaffManagementService(db, tenant_id, tenant_schema)
-        await authority.require_owner(adjusted_by)
-
-        # Look up SKU
-        row = await self._inventory_repo.get_stock_by_sku_code(db, sku_code=sku_code)
-        if not row:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "SKU_NOT_FOUND", "message": f"SKU '{sku_code}' not found"},
-            )
-        sku, stock = row
-        if stock is None:
-            stock = await self._inventory_repo.ensure_stock_row(db, sku_id=sku.id)
-
-        # Lock row
-        result = await db.execute(
-            select(InventoryStock)
-            .where(InventoryStock.id == stock.id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-        stock = result.scalar_one()
-
-        qty_before = stock.quantity_on_hand
-        try:
-            before_cents = _manual_quantity_cents(qty_before, allow_zero=True)
-            reserved_cents = _manual_quantity_cents(stock.quantity_reserved, allow_zero=True)
-            if before_cents < 0 or reserved_cents < 0 or reserved_cents > before_cents:
-                raise ValueError("STOCK_STATE_INVALID")
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={"code": "STOCK_STATE_INVALID", "message": "Existing stock requires explicit reconciliation"},
-            ) from None
-        after_cents = before_cents + delta_cents
-        if abs(after_cents) > 999999999999:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={"code": "INVALID_ADJUSTMENT_QUANTITY", "message": "Adjusted stock exceeds NUMERIC(12,2)"},
-            )
-        qty_after = _manual_decimal_from_cents(after_cents)
-
-        if after_cents < 0:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "code": "NEGATIVE_STOCK",
-                    "message": f"Adjustment would result in negative stock ({qty_after})",
-                },
-            )
-
-        if after_cents < reserved_cents:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={"code": "STOCK_RESERVED_CONFLICT",
-                        "message": "Adjustment would reduce stock below its reserved quantity"},
-            )
-
-        stock.quantity_on_hand = qty_after
-
-        # Create movement log
-        adjusted_by_uuid = None
-        if adjusted_by:
-            try:
-                adjusted_by_uuid = uuid.UUID(adjusted_by)
-            except Exception:
-                pass
-
-        movement = InventoryMovement(
-            sku_id=sku.id,
-            movement_type="adjustment",
-            quantity=quantity,
-            quantity_before=qty_before,
-            quantity_after=qty_after,
-            reason=reason,
-            reference_type="manual",
-            created_by=adjusted_by_uuid,
-        )
-        db.add(movement)
-        await db.flush()
-
-        await authority.audit(uuid.UUID(str(adjusted_by)), 'owner_inventory_adjusted', sku.id, {
-            'movement_id': str(movement.id), 'quantity': str(quantity),
-            'quantity_before': str(qty_before), 'quantity_after': str(qty_after), 'reason': reason,
-        })
-        return stock, movement
+        """Retired direct writer. Only explicit approval commands may adjust."""
+        from services.staff_management_service import staff_error
+        raise staff_error('MANUAL_ADJUSTMENT_REQUEST_REQUIRED')
 
     async def list_movements(
         self,

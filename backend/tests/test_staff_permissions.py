@@ -16,7 +16,8 @@ from services.staff_management_service import checked_staff_schema
 
 def test_staff_defaults_are_exact_and_nonadministrative():
     assert STAFF_DEFAULT_PERMISSION_CODES == {
-        'warehouse': {'skus:read', 'inventory:read', 'orders:read', 'orders:ship'},
+        'warehouse': {'skus:read', 'inventory:read', 'orders:read', 'orders:ship',
+                      'inventory:adjustments:request','inventory:adjustments:read'},
         'sales': {'skus:read', 'retailers:read', 'pricing:read', 'orders:read', 'orders:create'},
         'finance': {'orders:read', 'payments:read', 'finance:read'},
     }
@@ -28,9 +29,9 @@ def test_staff_defaults_are_exact_and_nonadministrative():
 @pytest.mark.parametrize('code', [
     'users:create', 'roles:assign', 'orders:update', 'inventory:update', 'inventory:write',
     'system:admin', 'metrics:admin', 'client:orders:create', 'platform:admin', 'orders:*',
-    'inventory:adjustments:approve',
+    'inventory:adjustments:*',
 ])
-def test_staff_protected_and_m2_capabilities_cannot_be_delegated(code):
+def test_staff_protected_and_unknown_capabilities_cannot_be_delegated(code):
     with pytest.raises(ValueError, match='INVALID_STAFF_TEMPLATE'):
         validate_staff_permission_codes([code])
 
@@ -170,10 +171,10 @@ async def test_stock_session_cannot_use_another_owner_or_untrusted_actor(stock_w
                 async with stock_world.session() as db:
                     if mode=='missing_actor': db.info.pop('_staff_stock_actor')
                     if mode=='wrong_actor': db.info['_staff_stock_actor']=str(uuid4())
-                    await InventoryService().adjust_stock(db,sku_code='INV-BOX',quantity=Decimal('1'),reason='scope control',
-                        adjusted_by=str(other.actor if mode=='other_tenant' else stock_world.actor),
-                        tenant_id=str(other.wid if mode=='other_tenant' else stock_world.wid),
-                        tenant_schema=other.schema if mode=='other_tenant' else stock_world.schema)
+                    from services.inventory_adjustment_service import InventoryAdjustmentService
+                    await InventoryAdjustmentService(db, other.wid if mode=='other_tenant' else stock_world.wid,
+                        other.schema if mode=='other_tenant' else stock_world.schema).snapshot(
+                            other.actor if mode=='other_tenant' else stock_world.actor,stock_world.sku)
             except HTTPException as exc:
                 refused=exc.status_code==403 and exc.detail['code']=='INVENTORY_AUTHORITY_SCOPE_MISMATCH'
             assert refused,'M1_STOCK_SCOPE_ACCEPTED'
@@ -237,7 +238,7 @@ async def test_admin_alias_and_identity_only_token_are_not_owner(stock_world,inv
     spoof=await client.post('/api/v1/inventory/adjust',headers=alias,json={
         'sku_code':'INV-BOX','quantity':'1','reason':'payload cannot authorize',
         'adjusted_by':str(stock_world.actor),'tenant_id':str(stock_world.wid),'tenant_schema':stock_world.schema})
-    assert spoof.status_code==403,'M1_PAYLOAD_OWNER_SPOOF'
+    assert spoof.status_code==409 and error_code(spoof)=='MANUAL_ADJUSTMENT_REQUEST_REQUIRED','M1_PAYLOAD_OWNER_SPOOF'
     assert await stock_world.snapshot()==before
     identity=(await client.post('/api/v1/auth/login',json={'email':stock_world.email,'password':stock_world.password})).json()['data']['access_token']
     response=await client.get('/api/v1/staff',headers={'Authorization':'Bearer '+identity})
@@ -297,7 +298,7 @@ async def test_inventory_service_requires_current_owner_and_atomic_audit(stock_w
         async with stock_world.session() as db:
             await InventoryService().adjust_stock(db,sku_code='INV-BOX',quantity=Decimal('1'),
                 reason='untrusted label',adjusted_by=str(stock_world.actor))
-    assert caught.value.status_code==403 and await stock_world.snapshot()==before,'M1_RAW_SERVICE_BYPASS'
+    assert caught.value.status_code==409 and caught.value.detail['code']=='MANUAL_ADJUSTMENT_REQUEST_REQUIRED' and await stock_world.snapshot()==before,'M1_RAW_SERVICE_BYPASS'
     def fault(_c,_cu,sql,_p,_ctx,_m):
         if 'INSERT INTO public.staff_stock_audit_events' in sql: raise RuntimeError('M1_STOCK_AUDIT_FAULT')
     event.listen(stock_world.engine.sync_engine,'before_cursor_execute',fault)
@@ -308,7 +309,7 @@ async def test_inventory_service_requires_current_owner_and_atomic_audit(stock_w
     assert await stock_world.snapshot()==before,'M1_AUDIT_STOCK_PARTIAL_COMMIT'
     await stock_world.adjust(Decimal('1'))
     async with stock_world.session() as db:
-        assert await db.scalar(text("SELECT count(*) FROM public.staff_stock_audit_events WHERE tenant_id=:t AND event_type='owner_inventory_adjusted'"),{'t':stock_world.wid})==1
+        assert await db.scalar(text("SELECT count(*) FROM public.staff_stock_audit_events WHERE tenant_id=:t AND event_type='adjustment_applied_direct'"),{'t':stock_world.wid})==1
 
 
 @pytest.mark.asyncio

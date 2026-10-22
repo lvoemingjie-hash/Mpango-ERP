@@ -15,6 +15,9 @@ ADMIN_MANAGEMENT_PERMISSIONS: Final[tuple[PermissionSpec, ...]] = (
 )
 
 ADMIN_PERMISSIONS: Final[tuple[PermissionSpec, ...]] = (
+    ('inventory:adjustments:request', 'Request a manual inventory adjustment'),
+    ('inventory:adjustments:read', 'Read visible manual inventory adjustment requests'),
+    ('inventory:adjustments:approve', 'Approve only when named in the current inventory policy'),
     ("users:read", "Read users"),
     ("users:create", "Create users"),
     ("users:update", "Update users"),
@@ -86,14 +89,16 @@ RETAILER_OPERATOR_PERMISSION_CODES: Final[frozenset[str]] = frozenset(
 )
 
 # M1 templates reuse native Role/Permission rows, not a second RBAC engine.
-# M2 adjustment request/read/approve capabilities are deliberately not active.
+# Approve is closed and opt-in; membership in the named approver policy is also required.
 STAFF_DELEGABLE_PERMISSION_CODES: Final[frozenset[str]] = frozenset({
     'orders:read', 'orders:create', 'orders:confirm', 'orders:ship', 'orders:cancel', 'orders:return',
     'skus:read', 'inventory:read', 'retailers:read', 'pricing:read', 'pricing:write',
     'payments:read', 'payments:create', 'payments:confirm_declaration', 'finance:read', 'dashboards:read',
+    'inventory:adjustments:request', 'inventory:adjustments:read', 'inventory:adjustments:approve',
 })
 STAFF_DEFAULT_PERMISSION_CODES: Final = {
-    'warehouse': frozenset({'skus:read', 'inventory:read', 'orders:read', 'orders:ship'}),
+    'warehouse': frozenset({'skus:read', 'inventory:read', 'orders:read', 'orders:ship',
+                            'inventory:adjustments:request', 'inventory:adjustments:read'}),
     'sales': frozenset({'skus:read', 'retailers:read', 'pricing:read', 'orders:read', 'orders:create'}),
     'finance': frozenset({'orders:read', 'payments:read', 'finance:read'}),
 }

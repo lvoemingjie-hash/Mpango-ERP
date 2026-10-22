@@ -1,5 +1,9 @@
 import { createBrowserRouter, RouterProvider, Navigate, useSearchParams } from 'react-router-dom';
 import { ProtectedRoute, PublicRoute, PlatformRoute, RetailerRoute, RetailerPermissionRoute, WholesalerRoute, WholesalerPermissionRoute } from '@/router/guards';
+import { OwnerRoute } from '@/router/guards';
+import { StaffPage } from '@/pages/staff/StaffPage';
+import { StaffRolesPage } from '@/pages/staff/StaffRolesPage';
+import { StaffSetupCredentialPage } from '@/pages/staff/StaffSetupCredentialPage';
 import { CLIENT_PERMISSIONS, INVITATION_PERMISSIONS } from '@/utils/permissions';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ClientLayout } from '@/components/layout/ClientLayout';
@@ -78,6 +82,7 @@ import { OpsNoisyNeighborsPage } from '@/pages/platform/ops/OpsNoisyNeighborsPag
 import { IncidentTriagePage } from '@/pages/platform/ops/IncidentTriagePage';
 
 const router = createBrowserRouter([
+  {path:'/staff/setup-credential',element:<StaffSetupCredentialPage/>},
   {
     element: <PublicRoute />,
     children: [
@@ -151,6 +156,10 @@ const router = createBrowserRouter([
               { path: '/orders/new', element: <WholesalerCreateOrderPage /> },
               { path: '/inventory', element: <InventoryPage /> },
               { path: '/inventory/logs', element: <InventoryLogPage /> },
+              {element:<OwnerRoute/>,children:[
+                {path:'/users',element:<StaffPage/>},
+                {path:'/users/roles',element:<StaffRolesPage/>},
+              ]},
               { path: '/skus', element: <SKUListPage /> },
               { path: '/skus/intake', element: <DataIntakePage /> },
               { path: '/skus/scan', element: <MobileScanPreview /> },

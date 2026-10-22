@@ -102,13 +102,13 @@ def collect_route_authority_dependencies(route) -> list:
     dependencies (database sessions etc.) are NOT collected: running them is
     the route pipeline's job during the fall-through rejection path.
     """
-    from api.middleware.rbac import RequirePermission, RequirePlatformAdmin
+    from api.middleware.rbac import RequirePermission, RequirePlatformAdmin, RequireOwner
 
     authority = []
     seen = set()
 
     def _consider(call) -> None:
-        if isinstance(call, (RequirePermission, RequirePlatformAdmin)):
+        if isinstance(call, (RequirePermission, RequirePlatformAdmin, RequireOwner)):
             key = id(call)
             if key not in seen:
                 seen.add(key)

@@ -52,6 +52,16 @@ class RequirePermission:
 
         user = tenant_ctx.user
 
+        # Real tenant identities use current SQL RBAC under the M1 authority
+        # lock. Legacy test-profile noncanonical fixtures are not M1 evidence.
+        from uuid import UUID
+        if token.tenant_id and tenant_ctx.tenant_schema == 't_'+UUID(str(token.tenant_id)).hex:
+            from services.staff_management_service import current_staff_access
+            access=await current_staff_access(tenant_ctx.session,tenant_ctx.tenant_id,tenant_ctx.tenant_schema,token.user_id)
+            if self.permission not in access['permissions']:
+                raise HTTPException(status_code=403,detail={'code':'PERMISSION_DENIED','message':'Current permission required'})
+            return token
+
         # Super admin within a tenant context also bypasses permission checks
         if token.is_super_admin:
             return token
@@ -72,6 +82,36 @@ class RequirePermission:
                 }
             )
 
+        return token
+
+
+class RequireCredentialReissuePermission(RequirePermission):
+    """Preview only for reissue; its writer rechecks under the domain locks."""
+
+    def __init__(self):
+        super().__init__('retailers:reissue_credential')
+
+    async def __call__(self, request: Request) -> TokenPayload:
+        from services.staff_management_service import current_staff_access
+        token=get_auth_context(request).token
+        context=get_tenant_context(request)
+        access=await current_staff_access(context.session,context.tenant_id,context.tenant_schema,token.user_id,lock=False)
+        if self.permission not in access['permissions']:
+            raise HTTPException(status_code=403,detail={'code':'PERMISSION_DENIED'})
+        return token
+
+
+class RequireOwner:
+    """Preview only; command services acquire identity/authority in lock order."""
+    permission='owner:manage'
+
+    async def __call__(self,request: Request) -> TokenPayload:
+        token=get_auth_context(request).token
+        if not token.tenant_id or not token.tenant_schema:
+            raise HTTPException(status_code=403,detail={'code':'OWNER_REQUIRED','message':'Owner required'})
+        context=get_tenant_context(request)
+        from services.staff_management_service import StaffManagementService
+        await StaffManagementService(context.session,context.tenant_id,context.tenant_schema).require_owner(token.user_id,exclusive=None)
         return token
 
 

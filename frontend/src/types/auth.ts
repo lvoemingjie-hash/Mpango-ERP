@@ -94,6 +94,9 @@ export interface CurrentUserData {
   tenant_schema: string | null;
   roles: string[];
   permissions: string[];
+  is_owner?: boolean;
+  staff_state?: string | null;
+  authz_revision?: number | null;
 }
 
 export interface CurrentUserResponse {

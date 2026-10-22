@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, text
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,7 +19,8 @@ class StaffAuthority(Base):
         CheckConstraint('authz_revision > 0', name='ck_staff_authority_revision'),
         CheckConstraint("(state='unmapped' AND owner_user_id IS NULL AND source IS NULL AND evidence_digest IS NULL) OR "
                         "(state='verified' AND owner_user_id IS NOT NULL AND tenant_id IS NOT NULL AND "
-                        "registration_id IS NOT NULL AND source IN ('owner_setup','approved_mapping') AND "
+                        "registration_id IS NOT NULL AND source IS NOT NULL AND evidence_digest IS NOT NULL AND "
+                        "source IN ('owner_setup','approved_mapping') AND "
                         "evidence_digest ~ '^[0-9a-f]{64}$')", name='ck_staff_authority_shape'),
     )
     singleton: Mapped[int] = mapped_column(Integer, primary_key=True, server_default=text('1'))
@@ -73,6 +74,8 @@ class StaffCredentialSetupToken(Base):
         CheckConstraint('used_at IS NULL OR revoked_at IS NULL', name='ck_staff_token_terminal'),
         CheckConstraint('expires_at > created_at', name='ck_staff_token_expiry'),
         CheckConstraint('email=lower(btrim(email)) AND email NOT LIKE \'% %\'', name='ck_staff_token_email'),
+        Index('ux_staff_token_active', 'tenant_id', 'user_id', unique=True,
+              postgresql_where=text('used_at IS NULL AND revoked_at IS NULL')),
         {'schema': 'public'},
     )
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4, server_default=text('gen_random_uuid()'))

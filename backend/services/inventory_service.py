@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.exceptions import InventoryShortageError
@@ -494,6 +494,8 @@ class InventoryService:
         quantity: Decimal,
         reason: str,
         adjusted_by: str | None = None,
+        tenant_id: str | None = None,
+        tenant_schema: str | None = None,
     ) -> tuple["InventoryStock", "InventoryMovement"]:
         """
         Manual stock adjustment (stocktake / damage / correction).
@@ -510,6 +512,18 @@ class InventoryService:
                         "message": "Adjustment must be finite, nonzero and exactly representable as NUMERIC(12,2)"},
             ) from None
         quantity = _manual_decimal_from_cents(delta_cents)
+
+        # The authority lock, stock write and mandatory audit share one transaction.
+        from services.staff_management_service import StaffManagementService, staff_error
+        if db is None or not tenant_id or not tenant_schema or not adjusted_by:
+            raise staff_error('OWNER_REQUIRED', 403)
+        expected_schema='t_'+uuid.UUID(str(tenant_id)).hex
+        if (tenant_schema!=expected_schema or db.info.get('tenant_schema')!=expected_schema
+                or db.info.get('_staff_stock_actor')!=str(adjusted_by)
+                or await db.scalar(text('SELECT current_schema()'))!=expected_schema):
+            raise staff_error('INVENTORY_AUTHORITY_SCOPE_MISMATCH',403)
+        authority = StaffManagementService(db, tenant_id, tenant_schema)
+        await authority.require_owner(adjusted_by)
 
         # Look up SKU
         row = await self._inventory_repo.get_stock_by_sku_code(db, sku_code=sku_code)
@@ -589,6 +603,10 @@ class InventoryService:
         db.add(movement)
         await db.flush()
 
+        await authority.audit(uuid.UUID(str(adjusted_by)), 'owner_inventory_adjusted', sku.id, {
+            'movement_id': str(movement.id), 'quantity': str(quantity),
+            'quantity_before': str(qty_before), 'quantity_after': str(qty_after), 'reason': reason,
+        })
         return stock, movement
 
     async def list_movements(

@@ -2,6 +2,10 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CurrentUserData, TokenData, IdentityTokenData } from '@/types/auth';
 
+function notifyAuthorityContextChanged() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('mpango-authority-context-changed'));
+}
+
 interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
@@ -82,7 +86,7 @@ export const useAuthStore = create<AuthStore>()(
     (set, get) => ({
       ...initialState,
 
-      login: (tokens, user, tenantCode) =>
+      login: (tokens, user, tenantCode) => {
         set({
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
@@ -90,16 +94,21 @@ export const useAuthStore = create<AuthStore>()(
           tenantCode,
           // DC-12R1-S2: owner login clears any retailer portal context.
           retailerPortalCode: null,
-        }),
+        });
+        notifyAuthorityContextChanged();
+      },
 
-      retailerLogin: (tokens, user, wholesalerCode) =>
+      retailerLogin: (tokens, user, wholesalerCode) => {
         set({
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
           user,
           tenantCode: wholesalerCode,
           retailerPortalCode: wholesalerCode,
-        }),
+        });
+        // The portal login already returns its current contextual permissions.
+        // Focus/403/refresh still revalidate this established session.
+      },
 
       logout: () =>
         set({
@@ -112,11 +121,13 @@ export const useAuthStore = create<AuthStore>()(
           tenantCode: null,
         }),
 
-      updateTokens: (tokens) =>
+      updateTokens: (tokens) => {
         set({
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
-        }),
+        });
+        notifyAuthorityContextChanged();
+      },
 
       setUser: (user) => set({ user }),
 

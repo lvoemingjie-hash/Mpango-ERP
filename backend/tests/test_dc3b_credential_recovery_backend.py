@@ -98,7 +98,7 @@ async def _clear_dc3b_rows() -> None:
                 text("DELETE FROM public.tenant_registrations WHERE wholesaler_id = ANY(:ws_ids)"),
                 {"ws_ids": ws_ids},
             )
-        await session.execute(text("DELETE FROM public.wholesalers WHERE code LIKE 'DC3B%'"))
+        await session.execute(text("UPDATE public.wholesalers SET is_deleted=TRUE WHERE code LIKE 'DC3B%'"))
         await session.commit()
 
 
@@ -219,7 +219,8 @@ async def _make_tenant(
     password-reset can resolve the schema from the wholesaler row.
     """
     now = datetime.now(timezone.utc)
-    code = f"DC3B{(code_suffix or uuid.uuid4().hex[:8]).upper()}"
+    # 043 audit anchors survive fixture retirement, including unique codes.
+    code = f"DC3B{(code_suffix or '').upper()}{uuid.uuid4().hex[:12].upper()}"
 
     async with AsyncSessionLocal() as session:
         await session.execute(text("SET search_path TO public"))
@@ -233,8 +234,11 @@ async def _make_tenant(
         session.add(ws)
         await session.flush()
         schema_name = ws.get_tenant_schema()
-        session.add(_registration_row(ws.id, schema_name, owner_email, now))
+        registration=_registration_row(ws.id, schema_name, owner_email, now)
+        session.add(registration)
         await session.commit()
+        registration_id=registration.id
+        wholesaler_id=ws.id
 
     async with async_engine.begin() as connection:
         await connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"'))
@@ -242,13 +246,22 @@ async def _make_tenant(
             stmt = stmt.strip()
             if stmt:
                 await connection.execute(text(stmt + ";"))
-        await connection.execute(
+        from scripts.bootstrap_tenant_schema import _reconcile_staff_authority
+        await _reconcile_staff_authority(connection,schema_name)
+        user_id=await connection.scalar(
             text(
                 f'INSERT INTO "{schema_name}".users (email, password_hash, full_name, is_active) '
-                "VALUES (:email, :ph, 'Owner Admin', true)"
+                "VALUES (:email, :ph, 'Owner Admin', true) RETURNING id"
             ),
             {"email": owner_email, "ph": hash_password(password)},
         )
+    async with AsyncSessionLocal() as session:
+        import hashlib
+        from services.staff_management_service import StaffManagementService
+        await StaffManagementService(session,wholesaler_id,schema_name).bind_owner(
+            registration_id=registration_id,user_id=user_id,source='approved_mapping',
+            evidence_digest=hashlib.sha256(('DC3B explicit new fixture Owner '+str(user_id)).encode()).hexdigest(),dry_run=False)
+        await session.commit()
     return schema_name, owner_email
 
 

@@ -31,7 +31,7 @@ OWNER_CREDENTIAL_SERVICE_PATH = ROOT / "backend" / "services" / "owner_credentia
 SETUP_CREDENTIAL_URL = "/api/v1/auth/onboarding/setup-credential"
 NEUTRAL_SETUP_MESSAGE = "Credential setup result is not disclosed through this endpoint."
 TEST_SETUP_PW = "0wnerCredSetup_01!"  # pragma: allowlist secret
-U6I5_SCHEMA_RE = re.compile(r"^t_u6i5_[0-9a-f]{20}$")
+U6I5_SCHEMA_RE = re.compile(r"^t_[0-9a-f]{32}$")
 
 
 @pytest.fixture(autouse=True)
@@ -87,6 +87,7 @@ async def _clear_u6i5_rows() -> None:
                 or wholesaler_id is None
                 or not isinstance(schema_name, str)
                 or U6I5_SCHEMA_RE.fullmatch(schema_name) is None
+                or schema_name != 't_'+wholesaler_id.hex
             ):
                 raise RuntimeError("Invalid U6I5 teardown ownership anchor")
             registration_ids.append(registration_id)
@@ -123,7 +124,8 @@ async def _clear_u6i5_rows() -> None:
             )
         if wholesaler_ids:
             await session.execute(
-                text("DELETE FROM public.wholesalers WHERE id = ANY(:wholesaler_ids)"),
+                # The native 043 audit is append-only and retains its FK.
+                text("UPDATE public.wholesalers SET is_deleted=TRUE WHERE id = ANY(:wholesaler_ids)"),
                 {"wholesaler_ids": wholesaler_ids},
             )
 
@@ -147,7 +149,8 @@ async def _client() -> AsyncClient:
 
 async def _setup_provisioned_tenant() -> tuple[str, str]:
     now = datetime.now(timezone.utc)
-    schema_name = f"t_u6i5_{uuid.uuid4().hex[:20]}"
+    wholesaler_id = uuid.uuid4()
+    schema_name = 't_'+wholesaler_id.hex
     owner_email = f"u6i5_{uuid.uuid4().hex}@example.com"
 
     async with async_engine.begin() as connection:
@@ -216,6 +219,7 @@ async def _setup_provisioned_tenant() -> tuple[str, str]:
     async with AsyncSessionLocal() as session:
         await session.execute(text("SET search_path TO public"))
         wholesaler = Wholesaler(
+            id=wholesaler_id,
             code=f"U6I5{uuid.uuid4().hex[:8].upper()}",
             name="U6I5 Owner Credential Wholesaler",
             contact=owner_email,
@@ -241,6 +245,9 @@ async def _setup_provisioned_tenant() -> tuple[str, str]:
         setattr(registration, "password_" "hash_cleanup_reason", "provisioned")
         session.add(registration)
         await session.commit()
+        from scripts.bootstrap_tenant_schema import _reconcile_staff_authority
+        async with async_engine.begin() as connection:
+            await _reconcile_staff_authority(connection,schema_name)
         return owner_email, schema_name
 
 
@@ -436,7 +443,7 @@ async def test_duplicate_setup_is_idempotent():
     assert response_1.status_code == 200
     assert response_2.status_code == 401
     assert await _table_count(schema, "users") == 1
-    assert await _table_count(schema, "roles") == 1
+    assert await _table_count(schema, "roles") == 4  # One admin plus three native M1 job templates.
 
 
 async def test_replay_with_different_password_does_not_change_password_hash():
@@ -463,7 +470,7 @@ async def test_replay_with_different_password_does_not_change_password_hash():
     pw_hash_after_replay = await _user_password_hash(schema, owner_email)
     assert pw_hash_after_replay == pw_hash_after_first
     assert await _table_count(schema, "users") == 1
-    assert await _table_count(schema, "roles") == 1
+    assert await _table_count(schema, "roles") == 4
     assert await _table_count(schema, "permissions") > 0
     assert await _table_count(schema, "user_roles") == 1
     assert await _table_count(schema, "role_permissions") > 0

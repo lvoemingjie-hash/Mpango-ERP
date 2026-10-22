@@ -4,7 +4,7 @@ import axios, {
 } from 'axios';
 import { useAuthStore } from '@/stores/authStore';
 import { useToastStore } from '@/stores/toastStore';
-import type { LoginResponse } from '@/types/auth';
+import type { LoginResponse, CurrentUserResponse } from '@/types/auth';
 import type { ApiErrorResponse } from '@/types/api';
 
 /**
@@ -130,6 +130,7 @@ api.interceptors.response.use(
         message: 'Your session context was lost. Please refresh the page or log in again.',
       });
     } else if (status === 403) {
+      void refreshCurrentAuthority();
       useToastStore.getState().addToast({
         type: 'warning',
         title: 'Access Denied',
@@ -230,3 +231,40 @@ api.interceptors.response.use(
 );
 
 export { api };
+
+let authorityRefresh: { key: string; promise: Promise<void> } | null = null;
+export function refreshCurrentAuthority(): Promise<void> {
+  const { accessToken, user } = useAuthStore.getState();
+  if (!accessToken || !user?.tenant_id) return Promise.resolve();
+  const tenant = user.tenant_id;
+  const key = tenant + ':' + accessToken;
+  if (authorityRefresh?.key === key) return authorityRefresh.promise;
+  const promise = api.get<CurrentUserResponse>('/auth/me', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    skipAuthInterceptors: true,
+  }).then(({ data }) => {
+    const current = useAuthStore.getState();
+    if (current.accessToken !== accessToken || current.user?.tenant_id !== tenant) return;
+    const fresh = data.data;
+    if (fresh?.id !== current.user.id || fresh.tenant_id !== tenant
+        || fresh.tenant_schema !== current.user.tenant_schema
+        || !Array.isArray(fresh.permissions) || !fresh.permissions.every(code => typeof code === 'string')
+        || !Array.isArray(fresh.roles) || !fresh.roles.every(role => typeof role === 'string')) {
+      throw new Error('AUTHORITY_RESPONSE_MISMATCH');
+    }
+    current.setUser(fresh);
+  }).catch((error: AxiosError) => {
+    const current = useAuthStore.getState();
+    if (error.response?.status === 401 && current.accessToken === accessToken) current.logout();
+    else if (current.accessToken === accessToken && current.user?.tenant_id === tenant) {
+      current.setUser({ ...current.user, is_owner: false, permissions: [], authz_revision: null });
+    }
+  }).finally(() => { if (authorityRefresh?.key === key) authorityRefresh = null; });
+  authorityRefresh = { key, promise };
+  return promise;
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('focus', () => { void refreshCurrentAuthority(); });
+  window.addEventListener('mpango-authority-context-changed', () => { void refreshCurrentAuthority(); });
+}

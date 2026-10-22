@@ -51,6 +51,7 @@ from db.tenant_filter import mark_session_as_system, run_as_system
 from models.tenant_onboarding import PASSWORD_RESET_TOKEN_PURPOSE, PasswordResetToken
 from models.wholesaler import Wholesaler
 from services.email_delivery import record_password_reset_email
+from services.staff_identity_guard import lock_credential_domain, assert_managed_credential_write_allowed
 from services.onboarding_service import (
     build_password_reset_link,
     generate_verification_token,
@@ -243,6 +244,8 @@ class PasswordResetService:
         persisted (the exception propagates before commit).
         """
         normalized = _normalize_email(email)
+        if normalized and '@' in normalized:
+            await lock_credential_domain(self.db,[normalized])
         eh = _email_hash(normalized)
         # Confirm at least one active tenant user exists for this email.
         scan = await _enumerate_active_tenant_users(self.db)
@@ -321,6 +324,15 @@ class PasswordResetService:
         """
         validate_password_policy(new_password)
 
+        hint = await self._actionable_reset_token(token, lock=False)
+        initial = await _enumerate_active_tenant_users(self.db)
+        if initial.failed_schema_count:
+            raise PasswordResetScanIncompleteError(failed_schema_count=initial.failed_schema_count,
+                scanned_schema_count=initial.scanned_schema_count)
+        emails={e for e,_schema,_uid in initial.rows if hashlib.sha256(e.encode()).hexdigest()==hint.user_email_hash}
+        if not emails:
+            raise PasswordResetTokenInvalidError(INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN)
+        await lock_credential_domain(self.db,emails)
         token_row = await self._actionable_reset_token(token)
         target_hash = token_row.user_email_hash
 
@@ -366,6 +378,7 @@ class PasswordResetService:
                     remaining_copy_count=len(copies) - updated,
                 ) from None
             try:
+                await assert_managed_credential_write_allowed(self.db,schema,uid)
                 result = await self.db.execute(
                     text(
                         f'UPDATE "{schema}".users '
@@ -398,17 +411,15 @@ class PasswordResetService:
         await self.db.flush()
         return PasswordResetConsumeResult(action="reset", updated_tenant_count=updated)
 
-    async def _actionable_reset_token(self, raw_token: str) -> PasswordResetToken:
+    async def _actionable_reset_token(self, raw_token: str, *, lock: bool = True) -> PasswordResetToken:
         """Lock and validate a reset token row by hash. Single-use enforced."""
         th = hash_token(raw_token, self.settings)
         now = datetime.now(timezone.utc)
-        result = await self.db.execute(
-            select(PasswordResetToken)
+        query = (select(PasswordResetToken)
             .where(PasswordResetToken.token_hash == th)
             .where(PasswordResetToken.purpose == PASSWORD_RESET_TOKEN_PURPOSE)
-            .with_for_update()
-            .execution_options(ignore_tenant=True)
-        )
+            .execution_options(ignore_tenant=True,populate_existing=True))
+        result = await self.db.execute(query.with_for_update() if lock else query)
         token_row = result.scalar_one_or_none()
         if not self._is_actionable(token_row, now):
             raise PasswordResetTokenInvalidError(INVALID_OR_EXPIRED_PASSWORD_RESET_TOKEN)

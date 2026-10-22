@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_tenant_db_session
-from api.middleware.rbac import RequirePermission
+from api.middleware.rbac import RequireOwner
 from core.security import TokenPayload
 from crud.role import get_all_roles
 from schemas.user import RoleListResponse, RoleRead
@@ -20,7 +20,7 @@ router = APIRouter()
 
 @router.get("", response_model=RoleListResponse, status_code=status.HTTP_200_OK)
 async def list_roles(
-    token: TokenPayload = Depends(RequirePermission("roles:read")),
+    token: TokenPayload = Depends(RequireOwner()),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """

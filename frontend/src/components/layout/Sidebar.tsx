@@ -67,6 +67,7 @@ function SidebarBody() {
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
   const showPlatformNav = isIdentityPlatformOperator(user);
+  const visibleItems=user?.is_owner===true?[...navItems,{label:'Team',path:'/users',icon:BuildingOfficeIcon}]:navItems;
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -85,7 +86,7 @@ function SidebarBody() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const active = isActive(item.path);
           return (
             <Link

@@ -22,7 +22,7 @@ export function InventoryPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSkuCode, setSelectedSkuCode] = useState<string>('');
 
-  const hasUpdatePermission = user?.permissions.includes('inventory:update') || user?.roles.includes('admin');
+  const hasUpdatePermission = user?.is_owner === true;
 
   const load = useCallback(async () => {
     setLoading(true);

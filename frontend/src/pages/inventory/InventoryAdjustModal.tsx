@@ -5,6 +5,7 @@ import * as z from 'zod';
 import { Dialog } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { normalizeApiError } from '@/utils/errorHandling';
+import { useAuthStore } from '@/stores/authStore';
 
 const schema = z.object({
   sku_code: z.string().min(1, 'SKU code is required'),
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export function InventoryAdjustModal({ isOpen, onClose, onSubmit, initialSkuCode = '' }: Props) {
+  const isOwner = useAuthStore((state) => state.user?.is_owner === true);
   const [error, setError] = useState<string | null>(null);
 
   const {
@@ -49,6 +51,7 @@ export function InventoryAdjustModal({ isOpen, onClose, onSubmit, initialSkuCode
   }, [isOpen, initialSkuCode, reset, setError]);
 
   const handleFormSubmit = async (data: AdjustFormData) => {
+    if (!useAuthStore.getState().user?.is_owner) return;
     try {
       setError(null);
       await onSubmit(data);
@@ -60,7 +63,7 @@ export function InventoryAdjustModal({ isOpen, onClose, onSubmit, initialSkuCode
   };
 
   return (
-    <Dialog open={isOpen} onClose={onClose} className="relative z-50">
+    <Dialog open={isOpen && isOwner} onClose={onClose} className="relative z-50">
       <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
       <div className="fixed inset-0 flex items-center justify-center p-4">
         <Dialog.Panel className="mx-auto w-full max-w-md rounded-xl bg-white shadow-xl">

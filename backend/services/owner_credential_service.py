@@ -22,6 +22,8 @@ from models.tenant_onboarding import (
 )
 from models.wholesaler import Wholesaler
 from services.onboarding_service import generate_verification_token, hash_token
+from services.staff_identity_guard import lock_credential_domain, assert_managed_credential_write_allowed
+from services.staff_management_service import StaffManagementService, setup_binding_digest
 
 
 OWNER_CREDENTIAL_SETUP_TOKEN_TTL = timedelta(hours=24)
@@ -89,6 +91,9 @@ class OwnerCredentialSetupService:
     async def issue_setup_token(
         self, registration_id: UUID
     ) -> OwnerCredentialSetupTokenIssueResult:
+        hint=await self.db.scalar(text('SELECT owner_email FROM public.tenant_registrations WHERE id=:r'), {'r':registration_id})
+        if hint:
+            await lock_credential_domain(self.db,[hint])
         registration = await self._get_registration(registration_id)
         if registration is None:
             return OwnerCredentialSetupTokenIssueResult(
@@ -145,13 +150,20 @@ class OwnerCredentialSetupService:
         if raw_token is None or not raw_token.strip():
             _raise_invalid_setup_token()
 
+        hint=await self.db.scalar(text(
+            'SELECT r.owner_email FROM public.owner_credential_setup_tokens t '
+            'JOIN public.tenant_registrations r ON r.id=t.registration_id WHERE t.token_hash=:h'),
+            {'h':hash_token(raw_token.strip(),self.settings)})
+        if hint:
+            await lock_credential_domain(self.db,[hint])
+
         now = datetime.now(timezone.utc)
         result = await self.db.execute(
             select(OwnerCredentialSetupToken, TenantRegistration)
             .join(TenantRegistration, OwnerCredentialSetupToken.registration_id == TenantRegistration.id)
             .where(OwnerCredentialSetupToken.token_hash == hash_token(raw_token.strip(), self.settings))
             .with_for_update()
-            .execution_options(ignore_tenant=True)
+            .execution_options(ignore_tenant=True, populate_existing=True)
         )
         row = result.one_or_none()
         if row is None:
@@ -183,11 +195,22 @@ class OwnerCredentialSetupService:
         if not await self._tenant_auth_schema_ready(tenant_schema):
             _raise_admin_creation_failed()
 
+        await lock_credential_domain(self.db,[setup.owner_email])
+        registration=(await self.db.execute(text(
+            'SELECT wholesaler_id,tenant_schema,owner_email FROM public.tenant_registrations '
+            'WHERE id=:r AND is_deleted IS FALSE'), {'r':setup.registration_id})).one_or_none()
+        if registration is None or registration.tenant_schema!=tenant_schema or registration.owner_email!=setup.owner_email:
+            _raise_admin_creation_failed()
+        staff=StaffManagementService(self.db,registration.wholesaler_id,tenant_schema)
+        await staff.lock_authority(exclusive=True)
+
         user_id, created_user = await self._ensure_owner_user(setup, tenant_schema)
         role_id = await self._ensure_admin_role(tenant_schema)
         permission_ids = await self._ensure_admin_permissions(tenant_schema)
         await self._ensure_user_role(tenant_schema, user_id, role_id)
         await self._ensure_role_perms(tenant_schema, role_id, permission_ids)
+        await staff.bind_owner(registration_id=setup.registration_id,user_id=user_id,source='owner_setup',
+            evidence_digest=setup_binding_digest(setup.registration_id,user_id),dry_run=False)
         await self.db.flush()
 
         return OwnerCredentialSetupAdminResult(
@@ -259,6 +282,10 @@ class OwnerCredentialSetupService:
         )
         user_id = result.scalar_one_or_none()
         if user_id is not None:
+            owner=await self.db.scalar(text(f'SELECT owner_user_id FROM "{tenant_schema}".staff_authority WHERE singleton=1 AND state=\'verified\''))
+            active=(await self.db.execute(text(f'SELECT is_active,is_deleted FROM "{tenant_schema}".users WHERE id=:u'), {'u':user_id})).one()
+            if owner!=user_id or not active.is_active or active.is_deleted:
+                _raise_admin_creation_failed()
             await self.db.execute(
                 text(
                     f'UPDATE "{tenant_schema}".users '
@@ -332,6 +359,9 @@ class OwnerCredentialSetupService:
                 continue
             try:
                 async with self.db.begin_nested():
+                    uid=await self.db.scalar(text(f'SELECT id FROM "{schema}".users WHERE lower(email)=:e AND is_active IS TRUE AND is_deleted IS FALSE'),{'e':normalized})
+                    if uid is not None:
+                        await assert_managed_credential_write_allowed(self.db,schema,uid)
                     await self.db.execute(
                         text(
                             f'UPDATE "{schema}".users '

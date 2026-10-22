@@ -84,6 +84,10 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         # Replacement retains S1's durable-only replay contract. Creation
         # cache hits now recheck the live S1 authority without rerunning it.
         path = request.url.path.rstrip('/')
+        if (path=='/api/v1/staff' or path.startswith('/api/v1/staff/') or
+            path=='/api/v1/users' or path.startswith('/api/v1/users/') or
+            path=='/api/v1/auth/staff/setup-credential' or path=='/api/v1/inventory/adjust'):
+            return await call_next(request)
         # Media uses authenticated streaming plus revision conflicts, not body
         # buffering or the generic response cache. No other route opts out.
         if request.method in {'PUT', 'DELETE'} and re.fullmatch(

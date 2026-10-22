@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_current_user_context, get_tenant_db_session
-from api.middleware.rbac import RequirePermission  # S2.5: Added RBAC import
+from api.middleware.rbac import RequireOwner, RequirePermission
 from core.logging_config import get_request_logger
 from core.security import TokenPayload
 from schemas.common import DataResponse, Pagination
@@ -176,7 +176,7 @@ async def get_stock_by_sku(
 async def adjust_inventory(
     request_body: InventoryAdjustRequest,
     request: Request,
-    token: TokenPayload = Depends(RequirePermission("inventory:update")),
+    token: TokenPayload = Depends(RequireOwner()),
     db: AsyncSession = Depends(get_tenant_db_session),
 ):
     """
@@ -200,6 +200,8 @@ async def adjust_inventory(
         }
     )
 
+    # Trusted request actor, not a body field; the service checks DB scope too.
+    db.info['_staff_stock_actor']=str(token.user_id)
     service = InventoryService()
     stock, movement = await service.adjust_stock(
         db,
@@ -207,6 +209,8 @@ async def adjust_inventory(
         quantity=request_body.quantity,
         reason=request_body.reason,
         adjusted_by=token.user_id,
+        tenant_id=token.tenant_id,
+        tenant_schema=token.tenant_schema,
     )
 
     logger.info(

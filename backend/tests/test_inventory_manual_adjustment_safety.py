@@ -44,7 +44,7 @@ def retain(label, value):
 class StockWorld:
     """Product-provisioned synthetic tenant, with native Owner credentials."""
 
-    async def initialize(self):
+    async def initialize(self, *, country='KE', bind_owner=True):
         from db.tenant_filter import mark_session_as_system
         from services.owner_credential_service import OwnerCredentialSetupService
         from services.tenant_provisioning_service import TenantProvisioningService
@@ -68,9 +68,9 @@ class StockWorld:
             await db.execute(text(
                 'INSERT INTO public.tenant_registrations '
                 '(id,company_name,tenant_code,country,owner_email,status,expires_at,email_verified_at) '
-                "VALUES (:id,'Inventory safety',:code,'KE',:email,'email_verified',"
+                "VALUES (:id,'Inventory safety',:code,:country,:email,'email_verified',"
                 "now()+interval '1 day',now())"
-            ), {'id': self.registration, 'code': self.code, 'email': self.email})
+            ), {'id': self.registration, 'code': self.code, 'email': self.email, 'country': country})
             await db.commit()
             provisioner = TenantProvisioningService(db)
             claim = await provisioner.claim_registration_for_provisioning(str(self.registration))
@@ -82,11 +82,13 @@ class StockWorld:
             self.wid, self.schema = (await db.execute(text(
                 'SELECT wholesaler_id,tenant_schema FROM public.tenant_registrations WHERE id=:id'
             ), {'id': self.registration})).one()
-            owner = OwnerCredentialSetupService(db)
-            issued = await owner.issue_setup_token(self.registration)
-            assert issued.action == 'issued'
-            setup = await owner.consume_setup_token(issued.raw_token, self.password)
-            self.actor = (await owner.create_first_admin_rbac(setup)).user_id
+            self.actor = None
+            if bind_owner:
+                owner = OwnerCredentialSetupService(db)
+                issued = await owner.issue_setup_token(self.registration)
+                assert issued.action == 'issued'
+                setup = await owner.consume_setup_token(issued.raw_token, self.password)
+                self.actor = (await owner.create_first_admin_rbac(setup)).user_id
             await db.execute(text(
                 "INSERT INTO public.retailers (id,phone,name) VALUES (:id,:phone,'Inventory safety')"
             ), {'id': self.retailer, 'phone': '+254' + str(uuid.uuid4().int)[:12]})
@@ -107,7 +109,7 @@ class StockWorld:
 
     def session(self):
         db = self.factory()
-        db.info.update(tenant_schema=self.schema, tenant_id=str(self.wid))
+        db.info.update(tenant_schema=self.schema, tenant_id=str(self.wid),_staff_stock_actor=str(self.actor))
 
         @event.listens_for(db.sync_session, 'after_begin')
         def set_path(_session, _transaction, connection):
@@ -171,6 +173,7 @@ class StockWorld:
             return await InventoryService(repository).adjust_stock(
                 db, sku_code=sku_code, quantity=quantity, reason='inventory safety control',
                 adjusted_by=str(self.actor),
+                tenant_id=str(self.wid), tenant_schema=self.schema,
             )
 
 
@@ -397,7 +400,10 @@ async def test_movement_failure_rolls_back_whole_transaction(stock_world, withou
                     raise RuntimeError('INV_MOVEMENT_AFTER_FLUSH')
 
             db.flush = failed_flush
-            await InventoryService().adjust_stock(db, sku_code='INV-BOX', quantity=Decimal('1'), reason='fault')
+            await InventoryService().adjust_stock(
+                db, sku_code='INV-BOX', quantity=Decimal('1'), reason='fault',
+                adjusted_by=str(stock_world.actor), tenant_id=str(stock_world.wid),
+                tenant_schema=stock_world.schema)
     assert reached == [True]
     after = await stock_world.snapshot()
     retain('movement-fault', {'before': before, 'after': after, 'without_stock': without_stock})

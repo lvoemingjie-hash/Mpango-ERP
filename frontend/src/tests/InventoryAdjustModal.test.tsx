@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InventoryAdjustModal } from '@/pages/inventory/InventoryAdjustModal';
+import { useAuthStore } from '@/stores/authStore';
 
 // ---------------------------------------------------------------------------
 // Mock normalizeApiError
@@ -34,6 +35,18 @@ vi.mock('@/utils/errorHandling', () => ({
 describe('InventoryAdjustModal SKU binding (S5-D2-R2)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+    useAuthStore.setState({ user: { id: 'owner', email: 'owner@example.com',
+      full_name: 'Owner', tenant_id: 'tenant', tenant_schema: 't_tenant',
+      roles: ['admin'], permissions: [], is_owner: true } });
+  });
+
+  it('does not expose the legacy adjustment form to an admin alias without Owner proof', () => {
+    useAuthStore.setState({ user: { id: 'employee', email: 'staff@example.com',
+      full_name: 'Staff', tenant_id: 'tenant', tenant_schema: 't_tenant',
+      roles: ['admin'], permissions: ['inventory:update'], is_owner: false } });
+    render(<InventoryAdjustModal isOpen onClose={vi.fn()} onSubmit={vi.fn()} initialSkuCode="SKU-A" />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('displays the initialSkuCode in the disabled SKU field when open', async () => {

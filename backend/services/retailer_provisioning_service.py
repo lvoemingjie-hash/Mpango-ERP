@@ -142,6 +142,25 @@ class RetailerProvisioningService:
         self.db = db
         self.settings = settings or get_settings()
 
+    async def _lock_credential_mapping(self,retailer_id,*,wholesaler_id=None):
+        from services.staff_identity_guard import lock_credential_domain
+        mappings=await self._mapped_tenant_users(retailer_id)
+        canonical=await self.db.scalar(text('SELECT email FROM public.retailers WHERE id=:r'),{'r':retailer_id})
+        emails={canonical} if canonical else set()
+        hints={}
+        for _bid,schema,uid in mappings:
+            email=await self.db.scalar(text(f'SELECT email FROM "{schema}".users WHERE id=:u'),{'u':uid})
+            if email: emails.add(email)
+            hints[(schema,uid)]=email
+        targets={uuid.UUID(schema[2:]) for _bid,schema,_uid in mappings}
+        if wholesaler_id is not None: targets.add(wholesaler_id)
+        await lock_credential_domain(self.db,emails,tenant_ids=targets)
+        if set(mappings)!=set(await self._mapped_tenant_users(retailer_id)):
+            raise RetailerProvisioningError('RETAILER_MAPPING_CHANGED',http_status=409)
+        for (schema,uid),email in hints.items():
+            if await self.db.scalar(text(f'SELECT email FROM "{schema}".users WHERE id=:u'),{'u':uid}) != email:
+                raise RetailerProvisioningError('RETAILER_MAPPING_CHANGED',http_status=409)
+
     # ------------------------------------------------------------------
     # Atomic invitation acceptance (CTO order B)
     # ------------------------------------------------------------------
@@ -367,6 +386,7 @@ class RetailerProvisioningService:
         invitation: Optional[Invitation] = None,
     ) -> tuple[WholesalerRetailerBinding, Optional[str]]:
         """Steps 4-6: binding + tenant user + mapping + role + optional setup token."""
+        await self._lock_credential_mapping(retailer.id)
         # Binding (respect (wholesaler_id, retailer_id) uniqueness).
         binding = await self._get_or_create_binding(
             wholesaler_id=wholesaler.id, retailer_id=retailer.id
@@ -387,6 +407,12 @@ class RetailerProvisioningService:
             return binding, None
 
         # Create the tenant-local user for this relationship.
+        existing=await self.db.scalar(text(f'SELECT id FROM "{tenant_schema}".users WHERE lower(email)=:e'),{'e':retailer.email})
+        if existing is not None:
+            from services.staff_identity_guard import assert_not_managed_customer
+            try: await assert_not_managed_customer(self.db,tenant_schema,existing)
+            except RuntimeError:
+                raise RetailerProvisioningError('RETAILER_STAFF_IDENTITY_CONFLICT',http_status=409) from None
         if cred_state.identical_hash is not None:
             # Copy existing identical hash; user is active immediately.
             user_id = await self._create_tenant_user(
@@ -725,6 +751,8 @@ class RetailerProvisioningService:
         self, raw_token: str, new_password: str
     ) -> RetailerCredentialConsumeResult:
         validate_password_policy(new_password)
+        hint=await self.db.scalar(text('SELECT retailer_id FROM public.retailer_credential_setup_tokens WHERE token_hash=:h'),{'h':hash_token(raw_token,self.settings)})
+        if hint: await self._lock_credential_mapping(hint)
         token_row = await self._actionable_setup_token(raw_token)
         retailer_id = token_row.retailer_id
         # Fail-closed: the token's binding must reference the same retailer.
@@ -807,6 +835,7 @@ class RetailerProvisioningService:
         retailer_id. Returns the raw token (memory-only; handed to SMTP). Raises
         RetailerProvisioningError(CREDENTIAL_ALREADY_ESTABLISHED) otherwise.
         """
+        await self._lock_credential_mapping(retailer_id,wholesaler_id=wholesaler_id)
         binding = await self._verify_tenant_owns_retailer(
             wholesaler_id=wholesaler_id, retailer_id=retailer_id
         )
@@ -916,6 +945,7 @@ class RetailerProvisioningService:
         # wholesaler code from the matched DB row — never the caller's raw
         # input casing (e.g. a lowercase request code).
         retailer, canonical_wholesaler_code = match
+        await self._lock_credential_mapping(retailer.id)
         if not await self._retailer_has_established_password(retailer.id):
             return False
         now = _now()
@@ -963,6 +993,8 @@ class RetailerProvisioningService:
         self, raw_token: str, new_password: str
     ) -> RetailerCredentialConsumeResult:
         validate_password_policy(new_password)
+        hint=await self.db.scalar(text('SELECT retailer_id FROM public.retailer_password_reset_tokens WHERE token_hash=:h'),{'h':hash_token(raw_token,self.settings)})
+        if hint: await self._lock_credential_mapping(hint)
         token_row = await self._actionable_reset_token(raw_token)
         retailer_id = token_row.retailer_id
         new_hash = hash_password(new_password)
@@ -1069,6 +1101,10 @@ class RetailerProvisioningService:
         validated: list[tuple[str, uuid.UUID]] = []
         for _binding_id, schema, user_id in mappings:
             validate_identifier(schema, "tenant schema")
+            from services.staff_identity_guard import assert_not_managed_customer
+            try: await assert_not_managed_customer(self.db,schema,user_id)
+            except RuntimeError:
+                raise RetailerProvisioningError('RETAILER_STAFF_IDENTITY_CONFLICT',http_status=409) from None
             exists = (
                 await self.db.execute(
                     text(

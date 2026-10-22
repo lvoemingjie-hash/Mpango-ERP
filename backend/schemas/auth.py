@@ -132,6 +132,9 @@ class CurrentUserData(BaseModel):
     id: str = Field(..., description="User UUID")
     email: EmailStr | None = Field(None, description="User email")
     full_name: str | None = Field(None, description="User full name")
+    is_owner: bool = False
+    staff_state: str | None = None
+    authz_revision: int | None = None
 
     tenant_id: Optional[str] = Field(None, description="Tenant UUID (None for identity-only)")
     tenant_schema: Optional[str] = Field(None, description="Tenant schema name")

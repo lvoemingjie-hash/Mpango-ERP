@@ -2,6 +2,13 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore, sessionKind } from '@/stores/authStore';
 import { can } from '@/utils/permissions';
 
+export function OwnerRoute(){
+  const user=useAuthStore(s=>s.user);
+  const token=useAuthStore(s=>s.accessToken);
+  if(!token||user?.is_owner!==true||!user.tenant_id||!user.tenant_schema)return <Navigate to="/" replace/>;
+  return <Outlet/>;
+}
+
 /**
  * ProtectedRoute — admits ONLY a contextual authenticated session
  * (PW1-R2 binding contract: accessToken != null AND user != null).

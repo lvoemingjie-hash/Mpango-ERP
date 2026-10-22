@@ -21,6 +21,7 @@ TENANT_DDL = (
         CONSTRAINT ck_staff_authority_shape CHECK (
             (state='unmapped' AND owner_user_id IS NULL AND source IS NULL AND evidence_digest IS NULL) OR
             (state='verified' AND owner_user_id IS NOT NULL AND tenant_id IS NOT NULL AND registration_id IS NOT NULL
+             AND source IS NOT NULL AND evidence_digest IS NOT NULL
              AND source IN ('owner_setup','approved_mapping') AND evidence_digest ~ '^[0-9a-f]{{64}}$'))
     )''',
     '''CREATE TABLE {q}.staff_role_templates (
@@ -131,7 +132,12 @@ def upgrade():
                         {'s': schema}).scalar() != 'mpango_app':
             raise RuntimeError('STAFF_TENANT_OWNER_MISMATCH')
         for name in ('staff_authority','staff_role_templates','staff_memberships'):
-            if bind.execute(sa.text('SELECT to_regclass(:name)'), {'name': schema+'.'+name}).scalar() is not None:
+            # Inspect the catalog without requiring USAGE on app-owned schemas.
+            # Tenant DDL itself remains inside the explicit SET ROLE window.
+            if bind.execute(sa.text(
+                'SELECT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace '
+                'WHERE n.nspname=:schema AND c.relname=:name)'),
+                {'schema':schema,'name':name}).scalar_one():
                 raise RuntimeError('STAFF_PREDECESSOR_ALREADY_MODIFIED')
     for statement in PUBLIC_DDL:
         bind.execute(sa.text(statement))
@@ -144,7 +150,7 @@ def upgrade():
                          {'t': row['wholesaler_id'], 'r': row['id']})
             for action in ('confirm','ship','cancel','return'):
                 code = 'orders:' + action
-                bind.execute(sa.text(f'INSERT INTO {q}.permissions (code,description) VALUES (:code,:code) ON CONFLICT (code) DO NOTHING'), {'code': code})
+                bind.execute(sa.text(f'INSERT INTO {q}.permissions (code,description) VALUES (:code,:description) ON CONFLICT (code) DO NOTHING'), {'code': code,'description':code})
                 bind.execute(sa.text(
                     f'INSERT INTO {q}.role_permissions (role_id,permission_id) '
                     f'SELECT DISTINCT r.id,new.id FROM {q}.roles r JOIN {q}.role_permissions rp ON rp.role_id=r.id '

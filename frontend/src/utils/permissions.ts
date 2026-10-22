@@ -34,6 +34,8 @@ export function isAdmin(user: CurrentUserData | null): boolean {
  */
 export function can(user: CurrentUserData | null, permission: string): boolean {
   if (!user || !user.permissions) return false;
+  if (user.staff_state != null) return user.staff_state === 'active' && user.permissions.includes(permission);
+  if (['owner:manage', 'inventory:update', 'inventory:write'].includes(permission)) return user.is_owner === true;
   if (isAdmin(user)) return true;
   return user.permissions.includes(permission);
 }
@@ -47,9 +49,7 @@ export function can(user: CurrentUserData | null, permission: string): boolean {
  */
 export function canAny(user: CurrentUserData | null, permissions: string[]): boolean {
   if (!user) return false;
-  if (isAdmin(user)) return true;
-  if (!user.permissions) return false;
-  return permissions.some((p) => user.permissions.includes(p));
+  return permissions.some((permission) => can(user, permission));
 }
 
 // ===========================================================================

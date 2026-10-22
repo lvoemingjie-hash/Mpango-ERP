@@ -2722,6 +2722,7 @@ async def _reconcile_staff_authority(db, ts: str) -> None:
                 CONSTRAINT ck_staff_authority_shape CHECK (
                     (state='unmapped' AND owner_user_id IS NULL AND source IS NULL AND evidence_digest IS NULL) OR
                     (state='verified' AND owner_user_id IS NOT NULL AND tenant_id IS NOT NULL AND registration_id IS NOT NULL
+                     AND source IS NOT NULL AND evidence_digest IS NOT NULL
                      AND source IN ('owner_setup','approved_mapping') AND evidence_digest ~ '^[0-9a-f]{{64}}$'))
             )''',
             '''CREATE TABLE {q}.staff_role_templates (
@@ -2758,23 +2759,188 @@ async def _reconcile_staff_authority(db, ts: str) -> None:
         await db.execute(text(f'INSERT INTO {q}.staff_authority (tenant_id,registration_id) VALUES (:t,:r)'),
                          {'t': registration.wholesaler_id if registration else None,
                           'r': registration.id if registration else None})
-    # A repeat may verify but must never reset the Owner, versions or memberships.
-    columns = {
-        'staff_authority': {'singleton','tenant_id','registration_id','owner_user_id','state','source',
-                            'evidence_digest','authz_revision','created_at','updated_at'},
-        'staff_role_templates': {'template_key','role_id','version'},
-        'staff_memberships': {'user_id','template_key','credential_state','employment_state','version','created_at','updated_at'},
-    }
-    for table, expected in columns.items():
-        found = (await db.execute(text(
-            'SELECT a.attname FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid '
-            'JOIN pg_namespace n ON n.oid=c.relnamespace '
-            'WHERE n.nspname=:s AND c.relname=:t AND a.attnum>0 AND NOT a.attisdropped'),
-            {'s': ts, 't': table})).scalars().all()
-        if set(found) != expected:
-            raise RuntimeError('STAFF_BOOTSTRAP_CATALOG_MISMATCH')
+    await _assert_staff_catalog(db, ts)
     if (await db.execute(text(f'SELECT count(*) FROM {q}.staff_authority WHERE singleton=1'))).scalar_one() != 1:
         raise RuntimeError('STAFF_BOOTSTRAP_AUTHORITY_MISSING')
+
+
+def _staff_check_tree(expression: str):
+    """Compare only M1's fixed CHECK vocabulary, preserving AND/OR grouping."""
+    expression = re.sub(r'::(?:character varying|text|bigint|integer|jsonb)(?:\[\])?', '', expression)
+    tokens = re.findall(r"'(?:''|[^'])*'|[A-Za-z_]+|\d+|<>|\S", expression)
+    tokens = [token.lower() if not token.startswith("'") else token for token in tokens]
+
+    def parse(parts):
+        while parts and parts[0] == '(':
+            depth = 0
+            end = None
+            for i, token in enumerate(parts):
+                depth += (token == '(') - (token == ')')
+                if depth == 0:
+                    end = i
+                    break
+            if end != len(parts) - 1:
+                break
+            parts = parts[1:-1]
+        for operator in ('or', 'and'):
+            depth, start, children = 0, 0, []
+            for i, token in enumerate(parts):
+                depth += (token in ('(', '[')) - (token in (')', ']'))
+                if token == operator and depth == 0:
+                    children.append(parse(parts[start:i]))
+                    start = i + 1
+            if children:
+                return (operator, *children, parse(parts[start:]))
+        # Cast/parenthesis differences inside atomic comparisons do not alter
+        # this closed vocabulary; boolean parentheses were handled above.
+        atom = ''.join(token for token in parts if token not in ('(', ')'))
+        atom = atom.replace('notlike', '!~~')
+        if 'in' in parts:
+            i = parts.index('in')
+            column = ''.join(parts[:i])
+            values = ''.join(token for token in parts[i+1:] if token not in ('(', ')'))
+            atom = column + '=anyarray[' + values + ']'
+        return ('atom', atom)
+    return parse(tokens)
+
+
+async def _assert_staff_catalog(db, ts: str) -> None:
+    """Exact M1 objects only. A repeat verifies, never repairs existing state."""
+    from sqlalchemy import text
+    u, i, b, dt = 'uuid', 'integer', 'bigint', 'timestamp with time zone'
+    # Each column includes type, NOT NULL and default; missing/extra columns fail.
+    columns = {
+        'staff_authority': {
+            'singleton': (i, True, '1'), 'tenant_id': (u, False, None), 'registration_id': (u, False, None),
+            'owner_user_id': (u, False, None), 'state': ('character varying(16)', True, "'unmapped'"),
+            'source': ('character varying(32)', False, None), 'evidence_digest': ('character varying(64)', False, None),
+            'authz_revision': (b, True, '1'), 'created_at': (dt, True, 'now()'), 'updated_at': (dt, True, 'now()')},
+        'staff_role_templates': {'template_key': ('character varying(16)', True, None), 'role_id': (u, True, None), 'version': (b, True, '1')},
+        'staff_memberships': {'user_id': (u, True, None), 'template_key': ('character varying(16)', True, None),
+            'credential_state': ('character varying(16)', True, "'pending'"), 'employment_state': ('character varying(16)', True, "'invited'"),
+            'version': (b, True, '1'), 'created_at': (dt, True, 'now()'), 'updated_at': (dt, True, 'now()')},
+        'staff_credential_setup_tokens': {'id': (u, True, 'gen_random_uuid()'), 'tenant_id': (u, True, None),
+            'user_id': (u, True, None), 'email': ('character varying(255)', True, None), 'membership_version': (b, True, None),
+            'token_hash': ('character varying(128)', True, None), 'purpose': ('character varying(32)', True, "'staff_credential_setup'"),
+            'created_at': (dt, True, 'now()'), 'expires_at': (dt, True, None), 'used_at': (dt, False, None), 'revoked_at': (dt, False, None)},
+        'staff_stock_audit_events': {'id': (u, True, 'gen_random_uuid()'), 'tenant_id': (u, True, None),
+            'actor_id': (u, True, None), 'event_type': ('character varying(48)', True, None), 'subject_id': (u, False, None),
+            'details': ('jsonb', True, "'{}'"), 'created_at': (dt, True, 'now()')},
+    }
+    checks = {
+        'staff_authority': {'ck_staff_authority_singleton': 'singleton=1', 'ck_staff_authority_revision': 'authz_revision>0',
+            'ck_staff_authority_shape': "(state='unmapped' AND owner_user_id IS NULL AND source IS NULL AND evidence_digest IS NULL) OR "
+            "(state='verified' AND owner_user_id IS NOT NULL AND tenant_id IS NOT NULL AND registration_id IS NOT NULL "
+            "AND source IS NOT NULL AND evidence_digest IS NOT NULL AND source IN ('owner_setup','approved_mapping') AND evidence_digest ~ '^[0-9a-f]{64}$')"},
+        'staff_role_templates': {'ck_staff_template_key': "template_key IN ('warehouse','sales','finance')", 'ck_staff_template_version': 'version>0'},
+        'staff_memberships': {'ck_staff_membership_state': "credential_state IN ('pending','ready')",
+            'ck_staff_employment_state': "employment_state IN ('invited','active','disabled')", 'ck_staff_membership_version': 'version>0',
+            'ck_staff_ready_active': "employment_state<>'active' OR credential_state='ready'"},
+        'staff_credential_setup_tokens': {'ck_staff_token_version': 'membership_version>0', 'ck_staff_token_terminal': 'used_at IS NULL OR revoked_at IS NULL',
+            'ck_staff_token_expiry': 'expires_at>created_at', 'ck_staff_token_purpose': "purpose='staff_credential_setup'",
+            'ck_staff_token_email': "email=lower(btrim(email)) AND email NOT LIKE '% %'"},
+        'staff_stock_audit_events': {},
+    }
+    # PK/UNIQUE and FK targets are compared structurally, including delete policy.
+    keys = {
+        'staff_authority': {'staff_authority_pkey': ('p', ('singleton',)), 'staff_authority_owner_user_id_key': ('u', ('owner_user_id',)),
+            'staff_authority_owner_user_id_fkey': ('f', ('owner_user_id',), ts, 'users', ('id',), 'r')},
+        'staff_role_templates': {'staff_role_templates_pkey': ('p', ('template_key',)), 'staff_role_templates_role_id_key': ('u', ('role_id',)),
+            'staff_role_templates_role_id_fkey': ('f', ('role_id',), ts, 'roles', ('id',), 'r')},
+        'staff_memberships': {'staff_memberships_pkey': ('p', ('user_id',)), 'staff_memberships_user_id_fkey': ('f', ('user_id',), ts, 'users', ('id',), 'r'),
+            'staff_memberships_template_key_fkey': ('f', ('template_key',), ts, 'staff_role_templates', ('template_key',), 'r')},
+        'staff_credential_setup_tokens': {'staff_credential_setup_tokens_pkey': ('p', ('id',)),
+            'staff_credential_setup_tokens_token_hash_key': ('u', ('token_hash',)),
+            'staff_credential_setup_tokens_tenant_id_fkey': ('f', ('tenant_id',), 'public', 'wholesalers', ('id',), 'r')},
+        'staff_stock_audit_events': {'staff_stock_audit_events_pkey': ('p', ('id',)),
+            'staff_stock_audit_events_tenant_id_fkey': ('f', ('tenant_id',), 'public', 'wholesalers', ('id',), 'r')},
+    }
+    authority = (await db.execute(text("SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid='public.prevent_ledger_modification()'::regprocedure"))).scalar_one()
+    normalize_default = lambda value: re.sub(r'::(?:character varying|text|jsonb)', '', value) if value else None
+    for table, expected_columns in columns.items():
+        schema = 'public' if table in ('staff_credential_setup_tokens','staff_stock_audit_events') else ts
+        meta = (await db.execute(text(
+            'SELECT c.oid,c.relkind::text AS kind,pg_get_userbyid(c.relowner) AS owner,c.relrowsecurity,c.relforcerowsecurity '
+            'FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=:s AND c.relname=:t'),
+            {'s': schema, 't': table})).mappings().one_or_none()
+        if not meta or (meta['kind'],meta['owner'],meta['relrowsecurity'],meta['relforcerowsecurity']) != ('r',authority if schema=='public' else 'mpango_app',False,False):
+            raise RuntimeError('STAFF_BOOTSTRAP_RELATION_MISMATCH')
+        oid = meta['oid']
+        attrs = (await db.execute(text(
+            'SELECT a.attnum,a.attname,format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull,pg_get_expr(d.adbin,d.adrelid) AS default '
+            'FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum '
+            'WHERE a.attrelid=:oid AND a.attnum>0 AND NOT a.attisdropped'), {'oid':oid})).mappings().all()
+        actual = {r['attname']:(r['type'],r['attnotnull'],normalize_default(r['default'])) for r in attrs}
+        if actual != expected_columns:
+            raise RuntimeError('STAFF_BOOTSTRAP_COLUMN_MISMATCH')
+        names = {r['attnum']:r['attname'] for r in attrs}
+        constraints = (await db.execute(text(
+            'SELECT k.*,k.contype::text AS kind,pg_get_expr(k.conbin,k.conrelid) AS expression, '
+            'n.nspname AS target_schema,c.relname AS target_table '
+            'FROM pg_constraint k LEFT JOIN pg_class c ON c.oid=k.confrelid LEFT JOIN pg_namespace n ON n.oid=c.relnamespace '
+            'WHERE k.conrelid=:oid'), {'oid':oid})).mappings().all()
+        actual_keys, actual_checks = {}, {}
+        for row in constraints:
+            if row['condeferrable'] or row['condeferred'] or not row['convalidated']:
+                raise RuntimeError('STAFF_BOOTSTRAP_CONSTRAINT_MISMATCH')
+            if row['kind']=='c':
+                actual_checks[row['conname']] = _staff_check_tree(row['expression'])
+            elif row['kind'] in ('p','u'):
+                actual_keys[row['conname']] = (row['kind'],tuple(names[k] for k in row['conkey']))
+            elif row['kind']=='f':
+                targets = (await db.execute(text('SELECT attnum,attname FROM pg_attribute WHERE attrelid=:oid'), {'oid':row['confrelid']})).all()
+                lookup = dict(targets)
+                if _catalog_code(row['confupdtype']) != 'a' or _catalog_code(row['confmatchtype']) != 's':
+                    raise RuntimeError('STAFF_BOOTSTRAP_CONSTRAINT_MISMATCH')
+                actual_keys[row['conname']] = ('f',tuple(names[k] for k in row['conkey']),row['target_schema'],row['target_table'],
+                    tuple(lookup[k] for k in row['confkey']),_catalog_code(row['confdeltype']))
+            else:
+                raise RuntimeError('STAFF_BOOTSTRAP_CONSTRAINT_MISMATCH')
+        if actual_keys != keys[table] or actual_checks != {k:_staff_check_tree(v) for k,v in checks[table].items()}:
+            raise RuntimeError('STAFF_BOOTSTRAP_CONSTRAINT_MISMATCH')
+        indexes = (await db.execute(text(
+            'SELECT ic.relname,x.indisunique,x.indisvalid,x.indisready,x.indnullsnotdistinct,x.indnatts,x.indnkeyatts, '
+            'x.indkey::smallint[] AS keys,x.indexprs,pg_get_expr(x.indpred,x.indrelid) AS predicate,am.amname '
+            'FROM pg_index x JOIN pg_class ic ON ic.oid=x.indexrelid JOIN pg_am am ON am.oid=ic.relam WHERE x.indrelid=:oid'),
+            {'oid':oid})).mappings().all()
+        expected_indexes = {name:(spec[1],None) for name,spec in keys[table].items() if spec[0] in ('p','u')}
+        if table=='staff_credential_setup_tokens':
+            expected_indexes['ux_staff_token_active'] = (('tenant_id','user_id'),_staff_check_tree('used_at IS NULL AND revoked_at IS NULL'))
+        actual_indexes = {}
+        for row in indexes:
+            if not(row['indisunique'] and row['indisvalid'] and row['indisready']) or row['indnullsnotdistinct'] or row['indexprs'] or row['amname']!='btree' or row['indnatts']!=row['indnkeyatts']:
+                raise RuntimeError('STAFF_BOOTSTRAP_INDEX_MISMATCH')
+            actual_indexes[row['relname']] = (tuple(names[k] for k in row['keys']), _staff_check_tree(row['predicate']) if row['predicate'] else None)
+        if actual_indexes != expected_indexes:
+            raise RuntimeError('STAFF_BOOTSTRAP_INDEX_MISMATCH')
+        triggers = (await db.execute(text(
+            'SELECT t.tgname,t.tgtype,t.tgenabled::text AS enabled,t.tgnargs,t.tgqual,t.tgfoid,p.prosrc,p.prosecdef, '
+            'p.proconfig,p.provolatile::text AS volatility,p.pronargs,format_type(p.prorettype,NULL) AS returns, '
+            'p.proname,pg_get_userbyid(p.proowner) AS owner,l.lanname,n.nspname AS function_schema '
+            'FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid JOIN pg_language l ON l.oid=p.prolang '
+            'JOIN pg_namespace n ON n.oid=p.pronamespace WHERE t.tgrelid=:oid AND NOT t.tgisinternal'), {'oid':oid})).mappings().all()
+        if table not in ('staff_authority','staff_stock_audit_events'):
+            if triggers:
+                raise RuntimeError('STAFF_BOOTSTRAP_TRIGGER_MISMATCH')
+            continue
+        name, function, body = ('staff_owner_immutable','protect_staff_owner', """
+            BEGIN
+                IF TG_OP='DELETE' OR (OLD.state='verified' AND
+                    ROW(NEW.owner_user_id,NEW.tenant_id,NEW.registration_id,NEW.state,NEW.source,NEW.evidence_digest)
+                    IS DISTINCT FROM ROW(OLD.owner_user_id,OLD.tenant_id,OLD.registration_id,OLD.state,OLD.source,OLD.evidence_digest)) THEN
+                    RAISE EXCEPTION 'OWNER_PROTECTED';
+                END IF;
+                RETURN NEW;
+            END;
+        """) if table=='staff_authority' else ('staff_audit_immutable','prevent_staff_audit_rewrite',"BEGIN RAISE EXCEPTION 'STAFF_AUDIT_IMMUTABLE'; END;")
+        if len(triggers)!=1:
+            raise RuntimeError('STAFF_BOOTSTRAP_TRIGGER_MISMATCH')
+        row = triggers[0]
+        if ((row['tgname'],row['tgtype'],row['enabled'],row['tgnargs'],row['tgqual'],row['proname'],row['function_schema'],row['owner'],
+             row['prosecdef'],row['proconfig'],row['volatility'],row['pronargs'],row['returns'],row['lanname']) !=
+            (name,27,'O',0,None,function,schema,authority if schema=='public' else 'mpango_app',False,['search_path=pg_catalog'],'v',0,'trigger','plpgsql')
+            or ' '.join(row['prosrc'].split()) != ' '.join(body.split())):
+            raise RuntimeError('STAFF_BOOTSTRAP_TRIGGER_MISMATCH')
 
 
 async def bootstrap(tenant_schema: str, database_url: str) -> None:

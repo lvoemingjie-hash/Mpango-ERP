@@ -443,7 +443,7 @@ async def print_order(
 async def confirm_order(
     order_id: str,
     request: Request = None,
-    token: TokenPayload = Depends(RequirePermission("orders:update")),  # S2.5: Added RBAC
+    token: TokenPayload = Depends(RequirePermission("orders:confirm")),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
@@ -592,7 +592,7 @@ async def pay_order(
 async def fulfill_order(
     order_id: str,
     request: Request = None,
-    token: TokenPayload = Depends(RequirePermission("orders:update")),
+    token: TokenPayload = Depends(RequirePermission("orders:ship")),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
@@ -661,7 +661,7 @@ async def fulfill_order(
 async def cancel_order(
     order_id: str,
     request: Request = None,
-    token: TokenPayload = Depends(RequirePermission("orders:update")),  # S2.5: Added RBAC
+    token: TokenPayload = Depends(RequirePermission("orders:cancel")),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """
@@ -719,7 +719,7 @@ async def cancel_order(
 async def return_order(
     order_id: str,
     request: Request = None,
-    token: TokenPayload = Depends(RequirePermission("orders:update")),
+    token: TokenPayload = Depends(RequirePermission("orders:return")),
     db: AsyncSession = Depends(get_tenant_db_session)
 ):
     """

@@ -55,6 +55,34 @@ class RetailerCredentialEmailDelivery:
 _DEV_RETAILER_EMAIL_DELIVERIES: list[RetailerCredentialEmailDelivery] = []
 
 
+@dataclass(frozen=True)
+class StaffCredentialEmailDelivery:
+    to_email: str
+    link: str
+    token: str
+    created_at: datetime
+    purpose: str = 'staff_credential_setup'
+
+
+_DEV_STAFF_EMAIL_DELIVERIES: list[StaffCredentialEmailDelivery] = []
+
+
+def record_staff_setup_email(*, settings: Settings, to_email: str, token: str, link: str) -> None:
+    if not is_verification_email_delivery_configured(settings=settings):
+        raise EmailDeliveryNotConfiguredError('EMAIL_DELIVERY_NOT_CONFIGURED')
+    if settings.MPANGO_ENV=='production':
+        _send_smtp_email(settings=settings,to_email=to_email,subject='Join your Mpango ERP team',
+            body='Use your own email invitation to join the team.\n\n'+link+'\n\nIgnore this message if unexpected.')
+    else:
+        _DEV_STAFF_EMAIL_DELIVERIES.append(StaffCredentialEmailDelivery(to_email,link,token,datetime.now(timezone.utc)))
+
+
+def get_dev_staff_email_deliveries(email: str) -> list[StaffCredentialEmailDelivery]:
+    """Non-production test sink, not exposed through any HTTP endpoint."""
+    normalized=email.strip().lower()
+    return [delivery for delivery in _DEV_STAFF_EMAIL_DELIVERIES if delivery.to_email==normalized]
+
+
 class EmailDeliveryNotConfiguredError(RuntimeError):
     """Raised when signup email delivery cannot run safely."""
 

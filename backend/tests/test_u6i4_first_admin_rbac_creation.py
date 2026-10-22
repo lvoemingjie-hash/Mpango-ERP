@@ -25,6 +25,8 @@ AUTH_ROUTE_PATH = ROOT / "backend" / "api" / "v1" / "auth.py"
 OWNER_CREDENTIAL_SERVICE_PATH = ROOT / "backend" / "services" / "owner_credential_service.py"
 TENANT_PROVISIONING_SERVICE_PATH = ROOT / "backend" / "services" / "tenant_provisioning_service.py"
 CANONICAL_ADMIN_PERMISSION_CODES = {code for code, _description in OWNER_ADMIN_PERMISSION_REGISTRY}
+REGISTRATIONS = {}
+OWNER_EMAILS = {}
 
 
 @pytest.fixture
@@ -35,11 +37,24 @@ async def tenant_schemas():
     finally:
         async with async_engine.begin() as connection:
             for schema in reversed(schemas):
+                if schema in REGISTRATIONS:
+                    await connection.execute(text('UPDATE public.tenant_registrations SET is_deleted=TRUE WHERE id=:r'),{'r':REGISTRATIONS[schema]})
+                    await connection.execute(text('UPDATE public.wholesalers SET is_deleted=TRUE WHERE id=:w'),{'w':uuid.UUID(schema[2:])})
                 await connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
 
 
 async def _create_tenant_auth_schema(schema: str) -> None:
+    registration=uuid.uuid4()
+    REGISTRATIONS[schema]=registration
+    OWNER_EMAILS[schema]=uuid.uuid4().hex+'@example.com'
     async with async_engine.begin() as connection:
+        code='U6I4'+uuid.uuid4().hex[:16].upper()
+        await connection.execute(text("INSERT INTO public.wholesalers (id,code,name) VALUES (:w,:c,'U6I4 M1 fixture')"),
+            {'w':uuid.UUID(schema[2:]),'c':code})
+        await connection.execute(text(
+            "INSERT INTO public.tenant_registrations (id,company_name,tenant_code,country,owner_email,status,expires_at,wholesaler_id,tenant_schema,password_hash_cleared_at) "
+            "VALUES (:r,'U6I4 M1 fixture',:c,'KE',:email,'active',now()+interval '1 day',:w,:s,now())"),
+            {'r':registration,'c':code,'w':uuid.UUID(schema[2:]),'s':schema,'email':OWNER_EMAILS[schema]})
         await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
         await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         await connection.execute(
@@ -102,22 +117,24 @@ async def _create_tenant_auth_schema(schema: str) -> None:
                 "PRIMARY KEY (role_id, permission_id))"
             )
         )
+        from scripts.bootstrap_tenant_schema import _reconcile_staff_authority
+        await _reconcile_staff_authority(connection,schema)
 
 
 def _schema_name() -> str:
-    return f't_u6i4_{uuid.uuid4().hex[:20]}'
+    return 't_'+uuid.uuid4().hex
 
 
 def _consume_result(
     *,
     tenant_schema: str,
-    owner_email: str = "u6i4_owner@example.com",
+    owner_email: str | None = None,
     password_hash: str | None = None,
 ) -> OwnerCredentialSetupConsumeResult:
     return OwnerCredentialSetupConsumeResult(
-        registration_id=uuid.uuid4(),
+        registration_id=REGISTRATIONS.get(tenant_schema,uuid.uuid4()),
         tenant_schema=tenant_schema,
-        owner_email=owner_email,
+        owner_email=owner_email or OWNER_EMAILS.get(tenant_schema,"u6i4_owner@example.com"),
         password_hash=password_hash or hash_password("OwnerSetup123!"),
     )
 
@@ -235,10 +252,11 @@ async def test_first_admin_creation_is_idempotent_without_duplicate_rbac(tenant_
     assert first.user_id == second.user_id
     assert first.role_id == second.role_id
     assert await _table_count(tenant_schema, "users") == 1
-    assert await _table_count(tenant_schema, "roles") == 1
+    assert await _table_count(tenant_schema, "roles") == 4
     assert await _table_count(tenant_schema, "permissions") == len(CANONICAL_ADMIN_PERMISSION_CODES)
     assert await _table_count(tenant_schema, "user_roles") == 1
-    assert await _table_count(tenant_schema, "role_permissions") == len(CANONICAL_ADMIN_PERMISSION_CODES)
+    from core.permission_registry import STAFF_DEFAULT_PERMISSION_CODES
+    assert await _table_count(tenant_schema, "role_permissions") == len(CANONICAL_ADMIN_PERMISSION_CODES)+sum(map(len,STAFF_DEFAULT_PERMISSION_CODES.values()))
 
 
 async def test_reconciles_existing_owner_user_with_provided_hash_and_missing_rbac(tenant_schemas):
@@ -253,16 +271,16 @@ async def test_reconciles_existing_owner_user_with_provided_hash_and_missing_rba
         )
         await session.commit()
 
+    before = await _owner_row(tenant_schema, setup.owner_email)
     async with AsyncSessionLocal() as session:
-        result = await OwnerCredentialSetupService(session).create_first_admin_rbac(setup)
-        await session.commit()
-
+        with pytest.raises(OwnerCredentialSetupAdminCreationError):
+            await OwnerCredentialSetupService(session).create_first_admin_rbac(setup)
+        await session.rollback()
     owner = await _owner_row(tenant_schema, setup.owner_email)
-    assert result.action == "existing"
-    assert owner["password_hash"] == setup.password_hash
-    assert owner["is_active"] is True
-    assert await _owner_role_count(tenant_schema, setup.owner_email) == 1
-    assert await _admin_permission_codes(tenant_schema) == CANONICAL_ADMIN_PERMISSION_CODES
+    assert dict(owner)==dict(before), 'M1_MUST_NOT_AUTO_CLAIM_OR_REACTIVATE_OLD_OWNER'
+    assert owner["is_active"] is False
+    assert await _owner_role_count(tenant_schema, setup.owner_email) == 0
+    assert await _admin_permission_codes(tenant_schema) == set()
 
 
 async def test_cross_tenant_isolation_only_writes_requested_schema(tenant_schemas):
@@ -278,7 +296,7 @@ async def test_cross_tenant_isolation_only_writes_requested_schema(tenant_schema
         await session.commit()
 
     assert await _table_count(target_schema, "users") == 1
-    assert await _table_count(target_schema, "roles") == 1
+    assert await _table_count(target_schema, "roles") == 4
     assert await _table_count(target_schema, "permissions") == len(CANONICAL_ADMIN_PERMISSION_CODES)
     assert await _table_count(other_schema, "users") == 0
     assert await _table_count(other_schema, "roles") == 0

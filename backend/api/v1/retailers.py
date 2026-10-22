@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_current_user_context, get_db_session
-from api.middleware.rbac import RequirePermission  # S2.5: Added RBAC import
+from api.middleware.rbac import RequirePermission, RequireCredentialReissuePermission
 from core.security import TokenPayload
 from schemas.common import DataResponse, Pagination
 from schemas.retailer import (
@@ -234,7 +234,7 @@ async def retailer_setup_credential(
 )
 async def retailer_reissue_setup(
     retailer_id: str,
-    token: TokenPayload = Depends(RequirePermission("retailers:reissue_credential")),
+    token: TokenPayload = Depends(RequireCredentialReissuePermission()),
     db: AsyncSession = Depends(get_db_session),
 ):
     """Reissue a retailer setup token (restricted).
@@ -254,6 +254,11 @@ async def retailer_reissue_setup(
         )
     service = RetailerProvisioningService(db)
     try:
+        from services.staff_management_service import current_staff_access
+        await service._lock_credential_mapping(retailer_uuid,wholesaler_id=wholesaler_id)
+        access=await current_staff_access(db,wholesaler_id,'t_'+wholesaler_id.hex,token.user_id)
+        if 'retailers:reissue_credential' not in access['permissions']:
+            raise HTTPException(status_code=403,detail={'code':'PERMISSION_DENIED'})
         await service.reissue_setup_token(
             wholesaler_id=wholesaler_id,
             retailer_id=retailer_uuid,

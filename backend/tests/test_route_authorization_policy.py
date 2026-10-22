@@ -78,7 +78,7 @@ from starlette.requests import Request as StarletteRequest
 
 from api.app import app
 from api.dependencies import get_current_user_context
-from api.middleware.rbac import RequirePermission, RequirePlatformAdmin
+from api.middleware.rbac import RequirePermission, RequirePlatformAdmin, RequireOwner, RequireCredentialReissuePermission
 from core.security import TokenPayload
 from api.v1 import order_negotiations
 
@@ -92,6 +92,8 @@ from api.v1 import order_negotiations
 # NOT "non_compliant" (it requires some form of auth).
 AUTH_DEPENDENCY_NAMES: Set[str] = {
     "RequirePermission",       # api.middleware.rbac.RequirePermission
+    "RequireCredentialReissuePermission",  # Preview, final writer authorization is mandatory.
+    "RequireOwner",            # Exact live M1 Owner, not an admin role alias
     "RequirePlatformAdmin",    # api.middleware.rbac.RequirePlatformAdmin (S2-R1)
     "RequireBIPermission",     # api.middleware.bi_access.RequireBIPermission
     "RequireAnyIntakePermission",  # api.v1.intake.RequireAnyIntakePermission
@@ -152,6 +154,7 @@ PLATFORM_PERMISSION_PREFIXES: Tuple[str, ...] = (
 #
 # NOTE: NO platform, export, or business data routes are on this list.
 PUBLIC_ALLOWLIST: Set[str] = {
+    "/api/v1/auth/staff/setup-credential",  # CTO M1: body-only employee mailbox proof
     "/api/v1/auth/login",
     "/api/v1/auth/signup",
     "/api/v1/auth/verify-email",
@@ -268,6 +271,8 @@ def _dependency_name(dep: Any) -> str:
 
 def _extract_permission_code(dep: Any) -> Optional[str]:
     """Extract a representative permission code from RBAC dependency instances."""
+    if isinstance(dep, RequireOwner):
+        return 'owner:manage'
     # RequirePermission stores the code on .permission
     permission = getattr(dep, "permission", None)
     if permission:
@@ -332,7 +337,9 @@ def classify_route(route: APIRoute) -> RouteClassification:
         elif name in AUTH_DEPENDENCY_NAMES:
             auth_deps.append(name)
             if name in (
+                "RequireOwner",
                 "RequirePermission",
+                "RequireCredentialReissuePermission",
                 "RequirePlatformAdmin",
                 "RequireBIPermission",
                 "RequireAnyIntakePermission",
@@ -516,8 +523,8 @@ class TestHarnessIntegrity:
             assert c.policy == "tenant_permission", (
                 f"{c.path} should be tenant_permission, got {c.policy}"
             )
-            assert c.permission_code and c.permission_code.startswith("users:"), (
-                f"{c.path} permission code should be users:*, got {c.permission_code}"
+            assert c.permission_code == 'owner:manage', (
+                f"{c.path} must use current Owner authority, got {c.permission_code}"
             )
 
     def test_classification_table_printable(self):
@@ -977,6 +984,7 @@ class TestPublicAllowlistIntegrity:
     def test_public_allowlist_is_minimal(self):
         """The PUBLIC_ALLOWLIST must only contain pre-auth auth/registration routes."""
         assert PUBLIC_ALLOWLIST == {
+            "/api/v1/auth/staff/setup-credential",
             "/api/v1/auth/login",
             "/api/v1/auth/signup",
             "/api/v1/auth/verify-email",

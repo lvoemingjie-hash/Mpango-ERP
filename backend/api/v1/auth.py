@@ -95,6 +95,21 @@ from services.password_reset_service import (
 
 router = APIRouter()
 
+
+from schemas.staff import StaffCredentialConsume
+
+
+@router.post('/staff/setup-credential')
+async def consume_staff_credential(body: StaffCredentialConsume,db: AsyncSession=Depends(get_db_session)):
+    from services.staff_credential_service import StaffCredentialService
+    try:
+        result=await StaffCredentialService(db).consume(body.setup_token.get_secret_value(),body.password.get_secret_value())
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    return {'success':True,'data':result}
+
 logger = get_logger(__name__)
 
 # H2-B-R0: internal forgot-password failures (never user-facing). Defined
@@ -692,7 +707,6 @@ async def logout(token: TokenPayload = Depends(get_current_user_context)):
     )
 
 
-@cache(ttl_seconds=30, key_prefix="auth_me", key_builder=lambda user_id, db: user_id)
 async def _get_user_with_permissions_cached(user_id: str, db: AsyncSession):
     """
     S3-C: Cached helper for getting user with permissions.
@@ -762,7 +776,8 @@ async def get_current_user(
     tenant_ctx = _get_tc(request)
     db: AsyncSession = tenant_ctx.session
 
-    user_data = await _get_user_with_permissions_cached(token.user_id, db)
+    from services.staff_management_service import current_staff_access
+    user_data = await current_staff_access(db,token.tenant_id,token.tenant_schema,token.user_id)
 
     if not user_data:
         raise HTTPException(
@@ -779,7 +794,8 @@ async def get_current_user(
             tenant_id=token.tenant_id,
             tenant_schema=token.tenant_schema,
             roles=user_data["roles"],
-            permissions=user_data["permissions"]
+            permissions=user_data["permissions"],
+            is_owner=user_data['is_owner'],staff_state=user_data['staff_state'],authz_revision=user_data['authz_revision'],
         ),
         timestamp=datetime.utcnow()
     )

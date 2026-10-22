@@ -93,10 +93,14 @@ export function OrderListPage() {
   const [negotiating, setNegotiating] = useState<Order | null>(null);
 
   // H3: Payment actions require payments:create (matching backend POST /orders/{id}/pay).
-  // Order-edit actions (confirm, fulfill, cancel, return) require orders:update.
+  // Draft replacement/negotiation retain orders:update; each state action has its own capability.
   // Role-name shortcuts are NOT used as authorization truth; the backend permission
   // set is the sole source of truth (admin works because it is granted payments:create).
   const hasUpdatePermission = user?.permissions.includes('orders:update') ?? false;
+  const hasConfirmPermission = user?.permissions.includes('orders:confirm') ?? false;
+  const hasShipPermission = user?.permissions.includes('orders:ship') ?? false;
+  const hasCancelPermission = user?.permissions.includes('orders:cancel') ?? false;
+  const hasReturnPermission = user?.permissions.includes('orders:return') ?? false;
   const hasCreatePermission = user?.permissions.includes('orders:create') ?? false;
   const hasPayPermission = user?.permissions.includes('payments:create') ?? false;
   const hasNegotiationPermission = hasUpdatePermission && Boolean(user?.permissions.includes('pricing:write'));
@@ -464,8 +468,8 @@ export function OrderListPage() {
                       {canConfirm(o.status) && (
                         <button
                           onClick={() => handleConfirm(o.id)}
-                          disabled={!!actionLoading || !hasUpdatePermission}
-                          title={!hasUpdatePermission ? "Permission Denied" : undefined}
+                          disabled={!!actionLoading || !hasConfirmPermission}
+                          title={!hasConfirmPermission ? "Permission Denied" : undefined}
                           className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Confirm
@@ -484,8 +488,8 @@ export function OrderListPage() {
                       {canFulfill(o.status) && (
                         <button
                           onClick={() => handleFulfill(o.id)}
-                          disabled={!!actionLoading || !hasUpdatePermission}
-                          title={!hasUpdatePermission ? "Permission Denied" : undefined}
+                          disabled={!!actionLoading || !hasShipPermission}
+                          title={!hasShipPermission ? "Permission Denied" : undefined}
                           className="text-emerald-600 hover:text-emerald-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Fulfill
@@ -494,8 +498,8 @@ export function OrderListPage() {
                       {canCancelOrder(o.status) && (
                         <button
                           onClick={() => handleCancel(o.id)}
-                          disabled={!!actionLoading || !hasUpdatePermission}
-                          title={!hasUpdatePermission ? "Permission Denied" : undefined}
+                          disabled={!!actionLoading || !hasCancelPermission}
+                          title={!hasCancelPermission ? "Permission Denied" : undefined}
                           className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Cancel
@@ -504,8 +508,8 @@ export function OrderListPage() {
                       {canReturn(o.status) && (
                         <button
                           onClick={() => handleReturn(o.id)}
-                          disabled={!!actionLoading || !hasUpdatePermission}
-                          title={!hasUpdatePermission ? "Permission Denied" : undefined}
+                          disabled={!!actionLoading || !hasReturnPermission}
+                          title={!hasReturnPermission ? "Permission Denied" : undefined}
                           className="text-amber-600 hover:text-amber-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Return

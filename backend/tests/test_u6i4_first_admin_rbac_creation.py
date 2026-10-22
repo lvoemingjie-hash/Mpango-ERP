@@ -119,6 +119,9 @@ async def _create_tenant_auth_schema(schema: str) -> None:
         )
         from scripts.bootstrap_tenant_schema import _reconcile_staff_authority
         await _reconcile_staff_authority(connection,schema)
+        await connection.execute(text(
+            f'CREATE TABLE "{schema}".inventory_adjustment_approvers ('
+            f'user_id UUID PRIMARY KEY REFERENCES "{schema}".users(id) ON DELETE RESTRICT)'))
 
 
 def _schema_name() -> str:

@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
 
-from services.inventory_service import _manual_decimal_from_cents, _manual_quantity_cents
+from services.inventory_service import InventoryService, _manual_decimal_from_cents, _manual_quantity_cents
 from services.staff_management_service import StaffManagementService, current_staff_access, staff_error
 
 
@@ -105,15 +105,30 @@ class InventoryAdjustmentService:
         return await self.policy(actor)
 
     async def _stock(self, sku_id):
-        # Lock SKU identity then the one stock row; no order/hold/binding locks.
-        sku = (await self.db.execute(text(
+        # Locate without locks, then use exactly the normal order stock kernel.
+        identity = text(
             f'SELECT s.id,s.sku_code,s.name,s.unit,s.package_quantity,s.is_active,s.is_deleted,'
             f'c.is_active AS product_active,c.is_deleted AS product_deleted FROM {self.q}.skus s '
-            f'JOIN {self.q}.catalog_products c ON c.id=s.catalog_product_id WHERE s.id=:s FOR SHARE OF s,c'),
+            f'JOIN {self.q}.catalog_products c ON c.id=s.catalog_product_id WHERE s.id=:s')
+        sku = (await self.db.execute(identity,
             {'s': sku_id})).mappings().one_or_none()
         if not sku or not sku['is_active'] or sku['is_deleted'] or not sku['product_active'] or sku['product_deleted']:
             raise staff_error('SELLABLE_UNIT_NOT_FOUND', 404)
-        stock = (await self.db.execute(text(f'SELECT * FROM {self.q}.inventory_stocks WHERE sku_id=:s FOR UPDATE'),
+        code = sku['sku_code']
+        try:
+            await InventoryService()._locked_stock_by_sku_id(
+                self.db, sku_id=sku_id, sku_code=code, require_active=True)
+        except HTTPException as error:
+            if not isinstance(error.detail, dict) or error.detail.get('code') != 'SELLABLE_UNIT_UNAVAILABLE':
+                raise
+            latest = (await self.db.execute(identity, {'s': sku_id})).mappings().one_or_none()
+            if (not latest or latest['sku_code'] != code or not latest['is_active'] or latest['is_deleted']
+                    or not latest['product_active'] or latest['product_deleted']):
+                raise staff_error('SELLABLE_UNIT_NOT_FOUND', 404) from None
+            raise staff_error('STOCK_NOT_INITIALIZED') from None
+        # The kernel holds all three rows; no identity-first second lock order.
+        sku = (await self.db.execute(identity, {'s': sku_id})).mappings().one()
+        stock = (await self.db.execute(text(f'SELECT * FROM {self.q}.inventory_stocks WHERE sku_id=:s'),
             {'s': sku_id})).mappings().one_or_none()
         if not stock or stock['is_deleted']:
             raise staff_error('STOCK_NOT_INITIALIZED')

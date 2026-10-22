@@ -60,6 +60,85 @@ async def facts(world):
     return values
 
 
+@pytest.mark.parametrize('first', ['adjustment', 'order_kernel'])
+async def test_stock_lock_composition_with_order_kernel(stock_world, first):
+    """Real joined locks, both arrival orders; no simulated database outcomes."""
+    world = stock_world
+    before = await facts(world)
+    held, waiter_started, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    pids, outcomes = {}, {}
+
+    async def participant(kind):
+        leader = kind == first
+        if not leader:
+            await asyncio.wait_for(held.wait(), 10)
+        try:
+            async with world.session() as db:
+                pids[kind] = await db.scalar(text('SELECT pg_backend_pid()'))
+                await db.execute(text("SET LOCAL lock_timeout='8s'"))
+                await db.execute(text("SET LOCAL statement_timeout='10s'"))
+                if not leader:
+                    waiter_started.set()
+                if kind == 'adjustment':
+                    original = db.execute
+                    paused = False
+
+                    async def observed(statement, *args, **kwargs):
+                        nonlocal paused
+                        answer = await original(statement, *args, **kwargs)
+                        sql = str(statement).upper()
+                        if (leader and not paused and ('FOR UPDATE' in sql or 'FOR SHARE' in sql)
+                                and any(name in sql for name in ('INVENTORY_STOCKS', 'SKUS', 'CATALOG_PRODUCTS'))):
+                            paused = True
+                            held.set()
+                            await asyncio.wait_for(release.wait(), 10)
+                        return answer
+
+                    db.execute = observed
+                    await command(world, db).snapshot(world.actor, world.sku)
+                else:
+                    await InventoryService()._locked_stock_by_sku_id(
+                        db, sku_id=world.sku, sku_code='INV-BOX', require_active=True)
+                    if leader:
+                        held.set()
+                        await asyncio.wait_for(release.wait(), 10)
+            outcomes[kind] = 'COMPLETED'
+        except DBAPIError as error:
+            outcomes[kind] = {'sqlstate': getattr(error.orig, 'sqlstate', None)
+                             or getattr(error.orig, 'pgcode', None)}
+
+    async def observer():
+        await asyncio.wait_for(waiter_started.wait(), 10)
+        waiting = 'order_kernel' if first == 'adjustment' else 'adjustment'
+        deadline = asyncio.get_running_loop().time() + 5
+        async with world.session() as db:
+            while asyncio.get_running_loop().time() < deadline:
+                blockers = await db.scalar(text('SELECT pg_blocking_pids(:pid)'), {'pid': pids[waiting]})
+                if pids[first] in blockers:
+                    release.set()
+                    return
+        raise AssertionError('M2_LOCK_ORCHESTRATION_NO_OBSERVED_WAITER')
+
+    tasks = [asyncio.create_task(participant(kind)) for kind in ('adjustment', 'order_kernel')]
+    tasks.append(asyncio.create_task(observer()))
+    try:
+        try:
+            await asyncio.wait_for(asyncio.gather(*tasks), 20)
+        except TimeoutError as error:
+            raise AssertionError('M2_LOCK_ORCHESTRATION_TIMEOUT_NOT_PRODUCT_RED') from error
+    finally:
+        release.set()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    assert len(pids) == 2 and len(set(pids.values())) == 2, 'M2_LOCK_SESSIONS_NOT_INDEPENDENT'
+    print('M2_LOCK_COMPOSITION_FACTS=' + json.dumps({'first': first, 'pids': pids, 'outcomes': outcomes}))
+    assert await facts(world) == before, 'M2_LOCK_COMPOSITION_ECONOMIC_DRIFT'
+    assert outcomes == {'adjustment': 'COMPLETED', 'order_kernel': 'COMPLETED'}, (
+        'M2_ORDER_STOCK_LOCK_COMPOSITION: ' + json.dumps(outcomes))
+
+
 @pytest.mark.parametrize('value',['0','0.001','NaN','Infinity','-Infinity','10000000000','1e-1000000'])
 def test_quantity_contract(value):
     with pytest.raises(HTTPException) as error: adjustment_quantity(value,'correction')

@@ -290,6 +290,32 @@ def _extract_permission_code(dep: Any) -> Optional[str]:
     return None
 
 
+def test_m2_inventory_routes_keep_native_jwt_authorization():
+    expected = {
+        ('GET', '/api/v1/inventory/adjustment-policy'),
+        ('PUT', '/api/v1/inventory/adjustment-policy'),
+        ('GET', '/api/v1/inventory/adjustment-snapshot/{sku_id}'),
+        ('GET', '/api/v1/inventory/adjustment-requests'),
+        ('POST', '/api/v1/inventory/adjustment-requests'),
+        ('POST', '/api/v1/inventory/owner-adjustments'),
+        ('GET', '/api/v1/inventory/adjustment-requests/{request_id}'),
+        ('POST', '/api/v1/inventory/adjustment-requests/{request_id}/{action}'),
+    }
+    actual = set()
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        for method in route.methods:
+            if (method, route.path) not in expected:
+                continue
+            actual.add((method, route.path))
+            assert route.path not in PUBLIC_ALLOWLIST
+            assert get_current_user_context in _collect_all_dependencies(route)
+            assert any(_dependency_name(dep) == 'get_tenant_db_session'
+                       for dep in _collect_all_dependencies(route)), 'M2_ROUTE_TENANT_DB_MISSING'
+    assert actual == expected, 'M2_ROUTE_NATIVE_AUTHORIZATION_COVERAGE'
+
+
 def classify_route(route: APIRoute) -> RouteClassification:
     """
     Classify a single FastAPI route into a policy category.

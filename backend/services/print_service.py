@@ -509,9 +509,9 @@ async def build_statement_print(
     # receivable-ledger leg with no corresponding confirmation charge.
     from fastapi import HTTPException
     today_eat = _to_eat(datetime.now(timezone.utc)).date()
-    if date_to < today_eat:
+    if not date_from <= today_eat <= date_to:
         raise HTTPException(409, detail={"code": "STATEMENT_HISTORY_UNSUPPORTED",
-            "message": "Historical as-of statements require immutable lifecycle history"})
+            "message": "Only periods containing the current EAT date are supported"})
     events, currency, current_due = await repo.account_timeline(
         db, schema=schema, wholesaler_id=wholesaler_id, retailer_id=retailer_id)
     opening = sum((row['amount'] for row in events

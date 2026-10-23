@@ -23,8 +23,8 @@ Disposition classes (R2, closing F1/F2):
        decoded (core.security.decode_token) and the contextual subject is
        revalidated with the handler's own validator
        (api.v1.auth._validate_contextual_refresh_subject). Identity-only
-       refresh stays claim-based — the product's own recorded boundary,
-       identical to what a fresh request would do.
+       refresh uses services.identity_authority.current_identity, exactly
+       as the live refresh handler does.
      - POST /api/v1/orders and PUT /api/v1/pricing/prices: the current S1
        services.order_creation_service.assert_binding, shared with both
        live handlers; no pre-S1 SQL or handler is restored.
@@ -197,7 +197,7 @@ async def _seam_select_tenant(request, body, token, tenant_ctx) -> bool:
 async def _seam_refresh(request, body, token, tenant_ctx) -> bool:
     """Re-validate the presented refresh credential and its CURRENT subject
     with the handler's own validator; no token is minted here. Identity-only
-    refresh remains claim-based — the product's own recorded boundary."""
+    and contextual credentials both recheck their live subject authority."""
     if not isinstance(body, dict) or not body.get("refresh_token"):
         return False
     from core.security import decode_token
@@ -208,8 +208,6 @@ async def _seam_refresh(request, body, token, tenant_ctx) -> bool:
         return False
     if getattr(payload, "type", None) != "refresh":
         return False
-    if payload.is_identity_only:
-        return True
     from api.v1.auth import _validate_contextual_refresh_subject
     from database.session import get_db
 
@@ -219,7 +217,11 @@ async def _seam_refresh(request, body, token, tenant_ctx) -> bool:
     agen = get_db()
     session = await agen.__anext__()
     try:
-        await _validate_contextual_refresh_subject(session, payload)
+        if payload.is_identity_only:
+            from services.identity_authority import current_identity
+            await current_identity(session, payload)
+        else:
+            await _validate_contextual_refresh_subject(session, payload)
     except Exception:
         return False
     finally:

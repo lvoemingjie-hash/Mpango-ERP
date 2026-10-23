@@ -226,7 +226,7 @@ async def export_inventory_csv(
             },
         )
 
-    async def _generate() -> AsyncGenerator[str, None]:
+    async def _generate_rows(export_db: AsyncSession) -> AsyncGenerator[str, None]:
         # Header row
         yield _csv_row([
             "Stock ID",
@@ -251,7 +251,7 @@ async def export_inventory_csv(
                 .offset(offset)
                 .limit(_BATCH_SIZE)
             )
-            result = await db.execute(stmt)
+            result = await export_db.execute(stmt)
             rows = result.scalars().all()
 
             if not rows:
@@ -277,6 +277,30 @@ async def export_inventory_csv(
 
             if len(rows) < _BATCH_SIZE:
                 break
+
+    async def _generate() -> AsyncGenerator[str, None]:
+        import sys
+        import anyio
+        from database.session import get_tenant_db
+        from db.tenant_filter import set_current_tenant, reset_current_tenant
+
+        scope = set_current_tenant(tenant_id=token.tenant_id, tenant_schema=token.tenant_schema)
+        manager = asynccontextmanager(get_tenant_db)(token.tenant_schema)
+        try:
+            export_db = await manager.__aenter__()
+            try:
+                async for chunk in _generate_rows(export_db):
+                    yield chunk
+            except BaseException:
+                # A disconnect must not cancel rollback/search-path reset/close.
+                with anyio.CancelScope(shield=True):
+                    await manager.__aexit__(*sys.exc_info())
+                raise
+            else:
+                with anyio.CancelScope(shield=True):
+                    await manager.__aexit__(None, None, None)
+        finally:
+            reset_current_tenant(*scope)
 
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     filename = f"inventory_export_{timestamp}.csv"

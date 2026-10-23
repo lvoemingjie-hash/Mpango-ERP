@@ -161,13 +161,25 @@ async def export_orders_csv(
     async def _generate() -> AsyncGenerator[str, None]:
         # Response streaming outlives the request transaction. Never race its
         # middleware commit/close using the same connection for batch reads.
+        import sys
+        import anyio
         from database.session import get_tenant_db
         from db.tenant_filter import set_current_tenant, reset_current_tenant
         scope = set_current_tenant(tenant_id=token.tenant_id, tenant_schema=token.tenant_schema)
+        manager = asynccontextmanager(get_tenant_db)(token.tenant_schema)
         try:
-            async with asynccontextmanager(get_tenant_db)(token.tenant_schema) as export_db:
+            export_db = await manager.__aenter__()
+            try:
                 async for chunk in _generate_rows(export_db):
                     yield chunk
+            except BaseException:
+                # Preserve cancellation, but finish rollback/reset/close first.
+                with anyio.CancelScope(shield=True):
+                    await manager.__aexit__(*sys.exc_info())
+                raise
+            else:
+                with anyio.CancelScope(shield=True):
+                    await manager.__aexit__(None, None, None)
         finally:
             reset_current_tenant(*scope)
 

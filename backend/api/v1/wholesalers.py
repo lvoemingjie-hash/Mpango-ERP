@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
-from api.middleware.rbac import RequirePermission
+from api.middleware.rbac import RequirePermission, RequirePlatformAdmin
 from core.security import TokenPayload
 from crud.crud_wholesaler import wholesaler as wholesaler_crud
 from crud.wholesaler import get_wholesaler_by_id, get_wholesalers_paginated
@@ -27,6 +27,10 @@ from schemas.wholesaler import (
 )
 
 router = APIRouter()
+
+
+def _is_platform_identity(token: TokenPayload) -> bool:
+    return token.tenant_id is None and token.tenant_schema is None and token.is_super_admin
 
 
 def wholesaler_to_read(obj: Wholesaler) -> WholesalerRead:
@@ -60,11 +64,14 @@ async def list_wholesalers(
     effective_limit = size or limit
     effective_skip = (page - 1) * effective_limit if page else skip
 
-    wholesalers, total = await get_wholesalers_paginated(
-        db,
-        skip=effective_skip,
-        limit=effective_limit,
-    )
+    if _is_platform_identity(token):
+        wholesalers, total = await get_wholesalers_paginated(
+            db, skip=effective_skip, limit=effective_limit,
+        )
+    else:
+        own = await get_wholesaler_by_id(db, token.tenant_id)
+        total = int(own is not None)
+        wholesalers = [own] if own is not None and effective_skip == 0 else []
     computed_page = (effective_skip // effective_limit) + 1 if effective_limit > 0 else 1
     pages = ceil(total / effective_limit) if total > 0 else 0
 
@@ -86,7 +93,7 @@ async def list_wholesalers(
 @router.post("", response_model=WholesalerResponse, status_code=status.HTTP_201_CREATED)
 async def create_wholesaler(
     request: WholesalerCreate,
-    token: TokenPayload = Depends(RequirePermission("wholesalers:write")),
+    token: TokenPayload = Depends(RequirePlatformAdmin()),
     db: AsyncSession = Depends(get_db_session),
 ):
     """
@@ -132,6 +139,8 @@ async def get_wholesaler(
     """
     Get wholesaler by ID.
     """
+    if not _is_platform_identity(token) and wholesaler_id != token.tenant_id:
+        raise HTTPException(status_code=404, detail={"code": "WHOLESALER_NOT_FOUND", "message": "Wholesaler not found"})
     wholesaler = await get_wholesaler_by_id(db, wholesaler_id)
     if not wholesaler:
         raise HTTPException(
@@ -150,7 +159,7 @@ async def get_wholesaler(
 async def update_wholesaler(
     wholesaler_id: str,
     request: WholesalerUpdate,
-    token: TokenPayload = Depends(RequirePermission("wholesalers:write")),
+    token: TokenPayload = Depends(RequirePlatformAdmin()),
     db: AsyncSession = Depends(get_db_session),
 ):
     """
@@ -175,7 +184,7 @@ async def update_wholesaler(
 @router.delete("/{wholesaler_id}", response_model=MessageResponse, status_code=status.HTTP_200_OK)
 async def delete_wholesaler(
     wholesaler_id: str,
-    token: TokenPayload = Depends(RequirePermission("wholesalers:write")),
+    token: TokenPayload = Depends(RequirePlatformAdmin()),
     db: AsyncSession = Depends(get_db_session),
 ):
     """

@@ -161,6 +161,9 @@ async def export_report_worker(payload: dict) -> None:
 
     # Clamp limit to safety cap
     limit = min(job_payload.limit, MAX_EXPORT_ROWS)
+    if not job_payload.file_id:
+        raise ValueError("Export job has no persisted file identity; submit a new export")
+    file_id = _validate_file_id(job_payload.file_id)
 
     # --- Step 3: Build query via SemanticQueryBuilder ---
     #[Constraint Check] Rule #1: tenant_id flows from payload -> builder constructor
@@ -191,8 +194,6 @@ async def export_report_worker(payload: dict) -> None:
 
         # --- Step 5: Write to file in streaming batches ---
         export_dir = _ensure_export_dir()
-        file_id = str(uuid.uuid4())
-
         if job_payload.format == "xlsx":
             file_path = export_dir / f"{file_id}.xlsx"
             row_count = await _write_xlsx_streaming(
@@ -212,6 +213,7 @@ async def export_report_worker(payload: dict) -> None:
     # Update the job payload with result metadata.
     # We write a small metadata sidecar file that the status endpoint reads.
     _write_metadata(file_id, {
+        "file_id": file_id,
         "file_path": str(file_path),
         "file_name": file_path.name,
         "row_count": row_count,
@@ -353,8 +355,16 @@ def _write_metadata(file_id: str, metadata: dict) -> None:
     import json
 
     meta_path = _safe_meta_path(file_id)
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2)
+    temporary = meta_path.with_name(meta_path.name + "." + uuid.uuid4().hex + ".tmp")
+    try:
+        with temporary.open("x", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary, meta_path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def read_metadata(file_id: str) -> Optional[dict]:

@@ -78,7 +78,8 @@ def _check_identity_super_admin(request: Request) -> bool:
         auth_ctx = get_auth_context(request)
         token = auth_ctx.token
         # Must be super_admin AND identity-only (no tenant context)
-        return token.is_super_admin and token.is_identity_only
+        return (token.is_super_admin and token.tenant_id is None
+                and token.tenant_schema is None)
     except Exception:
         # No auth context or invalid -- not an error, just not authorized
         return False

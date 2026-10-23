@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Mapping
 
@@ -307,7 +307,7 @@ class PaymentRepository:
         created_by: uuid.UUID | None,
         receipt_number: str | None = None,
     ) -> Mapping[str, Any]:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cols = [
             "order_id", "retailer_id", "transaction_id",
             "idempotency_key", "amount", "method", "status",

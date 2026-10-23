@@ -148,6 +148,7 @@ class ReceivablesService:
                 OrderStatus.CONFIRMED,
                 OrderStatus.PARTIALLY_PAID,
                 OrderStatus.PAID,
+                OrderStatus.FULFILLED,
             ]))
             .order_by(Order.retailer_id, Order.created_at.desc())
         )
@@ -332,6 +333,7 @@ class ReceivablesService:
             OrderStatus.CONFIRMED,
             OrderStatus.PARTIALLY_PAID,
             OrderStatus.PAID,
+            OrderStatus.FULFILLED,
         ]
 
         # Build filters
@@ -529,6 +531,7 @@ class ReceivablesService:
                 "classification": order_classification,
                 "payment_method": payment_method,
                 "total_amount": float(order.total_amount),
+                "currency": order.currency_snapshot,
                 "cash_paid": float(cash_amt),
                 "credit_amount": float(credit_amt),
                 "balance_due": float(credit_balance if credit_amt > 0 else balance_due),

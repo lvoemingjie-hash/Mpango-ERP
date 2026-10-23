@@ -2,7 +2,11 @@
 
 100% read-only. All queries are raw ``text()`` SQL against the tenant session.
 
-Authoritative sources (binding accounting rules):
+Current statements use ``account_timeline``: attributable runtime holds and
+canonical accepted receipts, reconciled against the binding in one SQL snapshot.
+The ledger methods below remain for explicit legacy inspection, NOT current debt.
+
+Legacy ledger inspection sources:
   * movements[]      -> immutable receivable ledger entries (account_type='receivable',
                         reference_type IN ('order','refund')), scoped to the
                         (wholesaler_id, retailer_id) pair via a JOIN on orders.
@@ -144,12 +148,131 @@ def eat_date_range_to_utc_half_open(
     return start_utc, next_day_utc
 
 
+def _ledger_order_join(schema: str, *, orphan_check: bool = False) -> str:
+    """Keep legacy order/refund and payment-keyed receipts in one scope."""
+    join = 'LEFT JOIN' if orphan_check else 'JOIN'
+    return f'''
+        LEFT JOIN "{schema}".payments lp
+          ON le.reference_type = 'payment' AND lp.id = le.reference_id
+        {join} "{schema}".orders o
+          ON o.id = CASE WHEN le.reference_type = 'payment'
+                         THEN lp.order_id ELSE le.reference_id END
+         AND (le.reference_type != 'payment' OR lp.retailer_id = o.retailer_id)
+    '''
+
+
 class StatementRepository:
     """Read-only receivable-ledger + canonical-payment queries for Contract D.
 
     Every tenant-schema table is explicitly qualified with ``schema`` (a trusted
     server/token-derived tenant schema name, never client input).
     """
+
+    async def account_timeline(self, db, *, schema, wholesaler_id, retailer_id):
+        """Commitment/receipt facts, not the old unbalanced receivable ledger.
+
+        One SQL snapshot includes the hold, all payment statuses and the binding.
+        Runtime hold creation is an attributable confirmation event. Migration
+        snapshots and removed/returned history cannot establish an event period.
+        """
+        from fastapi import HTTPException
+
+        def refuse(code):
+            raise HTTPException(409, detail={"code": code, "message":
+                "This account history cannot support an authoritative period statement"})
+
+        rows = (await db.execute(text(f'''
+            SELECT o.id, o.total_amount, o.status::text AS status,
+                   o.is_deleted, o.currency_snapshot,
+                   h.id AS hold_id, h.amount, h.remaining_amount,
+                   h.status AS hold_status, h.created_by, h.created_at AS held_at,
+                   b.outstanding_balance AS cached,
+                   COALESCE((SELECT jsonb_agg(jsonb_build_object(
+                       'id',p.id,'amount',p.amount::text,'method',p.method,
+                       'status',p.status,'is_deleted',p.is_deleted,
+                       'retailer_id',p.retailer_id,'created_at',p.created_at)
+                       ORDER BY p.created_at,p.id)
+                       FROM "{schema}".payments p WHERE p.order_id=o.id),
+                       '[]'::jsonb) AS payments
+            FROM "{schema}".orders o
+            LEFT JOIN "{schema}".order_credit_holds h ON h.order_id=o.id
+            LEFT JOIN public.wholesaler_retailer_bindings b
+              ON b.wholesaler_id=o.wholesaler_id AND b.retailer_id=o.retailer_id
+             AND b.status='active' AND b.is_deleted IS FALSE
+            WHERE o.wholesaler_id=:wid AND o.retailer_id=:rid
+            ORDER BY o.id
+        '''), {'wid': wholesaler_id, 'rid': retailer_id})).mappings().all()
+        events, currencies = [], set()
+        due = Decimal('0')
+        now = datetime.now(timezone.utc)
+        for row in rows:
+            payments = row['payments']
+            if isinstance(payments, str):
+                import json
+                payments = json.loads(payments)
+            if row['is_deleted'] or row['status'] in ('returned', 'cancelled', 'voided'):
+                refuse('STATEMENT_HISTORY_UNSUPPORTED')
+            if row['status'] == 'draft':
+                if row['hold_id'] or payments:
+                    refuse('STATEMENT_INTERNAL_INCONSISTENT')
+                continue
+            currency = row['currency_snapshot']
+            if currency not in ('UGX', 'KES'):
+                refuse('STATEMENT_CURRENCY_UNVERIFIED')
+            currencies.add(currency)
+            if len(currencies) > 1:
+                refuse('STATEMENT_MIXED_CURRENCY_UNSUPPORTED')
+            if row['created_by'] is None or row['held_at'] is None:
+                refuse('STATEMENT_HISTORY_UNSUPPORTED')
+            amount = Decimal(str(row['amount']))
+            remaining = Decimal(str(row['remaining_amount']))
+            if not amount.is_finite() or amount <= 0 or amount != row['total_amount']:
+                refuse('STATEMENT_INTERNAL_INCONSISTENT')
+            held_at = row['held_at']
+            if held_at.tzinfo is None:
+                held_at = held_at.replace(tzinfo=timezone.utc)
+            if held_at > now:
+                refuse('STATEMENT_HISTORY_UNSUPPORTED')
+            events.append({'transaction_date': held_at, 'amount': amount,
+                'reference_type': 'order', 'reference_id': row['id'],
+                'description': 'Confirmed order commitment (not revenue)'})
+            cash, credit, credits = Decimal('0'), Decimal('0'), 0
+            for payment in payments:
+                value = Decimal(payment['amount'])
+                if (payment['is_deleted'] or not value.is_finite() or value <= 0
+                        or payment['retailer_id'] != str(retailer_id)
+                        or payment['method'] not in ('cash', 'transfer', 'credit')
+                        or payment['status'] not in ('pending', 'completed')):
+                    refuse('STATEMENT_HISTORY_UNSUPPORTED')
+                # Legacy direct-pay pending is an accepted settlement, not a
+                # customer declaration. The canonical writer already changed
+                # the hold/cache and ledger; final payment completes the batch.
+                if payment['method'] == 'credit':
+                    credit += value
+                    credits += 1
+                    continue
+                at = datetime.fromisoformat(payment['created_at'])
+                if at.tzinfo is None:
+                    at = at.replace(tzinfo=timezone.utc)
+                if at < held_at or at > now:
+                    refuse('STATEMENT_HISTORY_UNSUPPORTED')
+                cash += value
+                events.append({'transaction_date': at, 'amount': -value,
+                    'reference_type': 'payment', 'reference_id': payment['id'],
+                    'description': 'Canonical cash/transfer receipt'})
+            if credit:
+                valid = credits == 1 and credit == amount and remaining == 0 and row['hold_status'] == 'converted'
+            else:
+                valid = (remaining == amount-cash and
+                    ((remaining > 0 and row['hold_status'] == 'active') or
+                     (remaining == 0 and row['hold_status'] == 'settled')))
+            if not valid or cash > amount:
+                refuse('STATEMENT_INTERNAL_INCONSISTENT')
+            due += amount-cash
+        if rows and (rows[0]['cached'] is None or Decimal(str(rows[0]['cached'])) != due):
+            refuse('STATEMENT_RECONCILIATION_FAILED')
+        events.sort(key=lambda row: (row['transaction_date'], str(row['reference_id'])))
+        return events, next(iter(currencies), None), due
 
     # ------------------------------------------------------------------
     # Orphan precheck (rule 9) — run BEFORE computing balances.
@@ -177,9 +300,9 @@ class StatementRepository:
                     f"""
                     SELECT COUNT(*) AS n
                     FROM "{schema}".ledger_entries le
-                    LEFT JOIN "{schema}".orders o ON o.id = le.reference_id
+                    {_ledger_order_join(schema, orphan_check=True)}
                     WHERE le.account_type = 'receivable'
-                      AND le.reference_type IN ('order', 'refund')
+                      AND le.reference_type IN ('order', 'refund', 'payment')
                       AND o.id IS NULL
                     """
                 ),
@@ -205,9 +328,9 @@ class StatementRepository:
                     f"""
                     SELECT COALESCE(SUM(le.amount), 0) AS opening
                     FROM "{schema}".ledger_entries le
-                    JOIN "{schema}".orders o ON o.id = le.reference_id
+                    {_ledger_order_join(schema)}
                     WHERE le.account_type = 'receivable'
-                      AND le.reference_type IN ('order', 'refund')
+                      AND le.reference_type IN ('order', 'refund', 'payment')
                       AND o.wholesaler_id = :wid
                       AND o.retailer_id = :rid
                       AND le.transaction_date < :before
@@ -241,9 +364,9 @@ class StatementRepository:
                     SELECT le.id, le.transaction_date, le.amount,
                            le.reference_type, le.reference_id, le.description
                     FROM "{schema}".ledger_entries le
-                    JOIN "{schema}".orders o ON o.id = le.reference_id
+                    {_ledger_order_join(schema)}
                     WHERE le.account_type = 'receivable'
-                      AND le.reference_type IN ('order', 'refund')
+                      AND le.reference_type IN ('order', 'refund', 'payment')
                       AND o.wholesaler_id = :wid
                       AND o.retailer_id = :rid
                       AND le.transaction_date >= :start
@@ -284,9 +407,9 @@ class StatementRepository:
                     f"""
                     SELECT COALESCE(SUM(le.amount), 0) AS s
                     FROM "{schema}".ledger_entries le
-                    JOIN "{schema}".orders o ON o.id = le.reference_id
+                    {_ledger_order_join(schema)}
                     WHERE le.account_type = 'receivable'
-                      AND le.reference_type IN ('order', 'refund')
+                      AND le.reference_type IN ('order', 'refund', 'payment')
                       AND o.wholesaler_id = :wid
                       AND o.retailer_id = :rid
                       AND le.transaction_date >= :start
@@ -331,7 +454,8 @@ class StatementRepository:
                       AND o.retailer_id = :rid
                       AND o.wholesaler_id = :wid
                       AND p.is_deleted IS FALSE
-                      AND p.status = 'completed'
+                      AND p.status IN ('pending', 'completed')
+                      AND p.method IN ('cash', 'transfer')
                       AND p.created_at >= :start
                       AND p.created_at < :next_day
                     ORDER BY p.created_at ASC, p.id ASC
@@ -489,9 +613,9 @@ class StatementRepository:
                     f"""
                     SELECT COALESCE(SUM(le.amount), 0) AS total
                     FROM "{schema}".ledger_entries le
-                    JOIN "{schema}".orders o ON o.id = le.reference_id
+                    {_ledger_order_join(schema)}
                     WHERE le.account_type = 'receivable'
-                      AND le.reference_type IN ('order', 'refund')
+                      AND le.reference_type IN ('order', 'refund', 'payment')
                       AND o.wholesaler_id = :wid
                       AND o.retailer_id = :rid
                     """

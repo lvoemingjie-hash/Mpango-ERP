@@ -227,6 +227,8 @@ def decode_token(token: str) -> TokenPayload:
             settings.SECRET_KEY,
             algorithms=[settings.ALGORITHM]
         )
+        if payload.get("type") not in ("access", "refresh"):
+            raise InvalidTokenError("Token purpose is missing or invalid")
         return TokenPayload(**payload)
     except ExpiredSignatureError:
         raise ExpiredTokenError("Token has expired")

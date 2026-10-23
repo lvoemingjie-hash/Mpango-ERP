@@ -22,6 +22,7 @@ export interface InvoiceLedgerEntry {
 }
 
 export interface InvoiceData {
+    currency?: string | null;
     invoice_number: string;
     order_id: string;
     status: string;
@@ -58,6 +59,7 @@ export interface RetailerReceivablesSummary {
 }
 
 export interface CreditReceivableItem {
+    currency?: string | null;
     order_id: string;
     retailer_id: string;
     retailer_name: string;
@@ -82,9 +84,14 @@ export interface ReceivablesSummary {
 }
 
 export interface FinancialSummary {
-    total_revenue: number;
-    total_cash_received: number;
-    outstanding_receivables: number;
+    currency?: string | null;
+    currency_status?: 'verified_snapshot' | 'mixed' | 'unverified';
+    outstanding_by_currency?: Record<string, number>;
+    cash_received_by_currency?: Record<string, number>;
+    revenue_recognition_scope?: string;
+    total_revenue: number | null;
+    total_cash_received: number | null;
+    outstanding_receivables: number | null;
     overdue_receivables_count: number;
     order_counts: Record<string, number>;
     total_orders: number;

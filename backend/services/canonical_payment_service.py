@@ -601,7 +601,7 @@ class CanonicalPaymentService:
         prior_paid = await self._repo.get_order_paid_total(db, order_id=order.id)
         is_credit_collection = False
 
-        if current_state == OrderState.PAID:
+        if current_state in (OrderState.PAID, OrderState.FULFILLED):
             if method not in {"cash", "transfer"}:
                 raise _payment_error(
                     status.HTTP_409_CONFLICT,
@@ -742,6 +742,7 @@ class CanonicalPaymentService:
                 # the binding cache. Lock order: ledger -> binding.
                 await ledger_service_module.LedgerService(db).post_payment_received(
                     order_id=order.id,
+                    payment_id=uuid.UUID(str(payment_record["id"])),
                     amount=amount,
                     description=f"Credit collection for order {order.id} - Amount: {amount}",
                 )
@@ -786,6 +787,13 @@ class CanonicalPaymentService:
                     )
                 ).order
                 order_status = getattr(order.status, "value", order.status)
+                if method != "credit":
+                    await ledger_service_module.LedgerService(db).post_payment_received(
+                        order_id=order.id,
+                        payment_id=uuid.UUID(str(payment_record["id"])),
+                        amount=amount,
+                        description=f"Payment received for order {order.id} - Amount: {amount}",
+                    )
                 if not force_completed and order_status == OrderState.PAID.value:
                     await self._repo.update_cash_transfer_to_completed(db, order_id=order.id)
                 if method != "credit":

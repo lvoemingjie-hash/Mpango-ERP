@@ -17,11 +17,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from decimal import Decimal
-from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_tenant_db_session
@@ -34,7 +32,7 @@ from schemas.finance import (
     ReceivableOrdersResponse,
     ReceivablesSummaryResponse,
 )
-from services.receivables_service import ReceivablesService, calculate_age_days
+from services.receivables_service import ReceivablesService
 
 router = APIRouter()
 
@@ -102,17 +100,23 @@ async def get_order_invoice(
     # Fetch ledger entries related to this order
     ledger_result = await db.execute(
         select(LedgerEntry)
-        .where(LedgerEntry.reference_id == oid)
+        .where(or_(
+            and_(LedgerEntry.reference_type.in_(('order', 'refund')), LedgerEntry.reference_id == oid),
+            and_(LedgerEntry.reference_type == 'payment', LedgerEntry.reference_id.in_(
+                select(text('id')).select_from(text('payments')).where(text('order_id = :invoice_order_id'))
+            )),
+        ))
         .where(LedgerEntry.is_deleted.is_(False))
-        .order_by(LedgerEntry.transaction_date)
+        .order_by(LedgerEntry.transaction_date),
+        {"invoice_order_id": oid},
     )
     ledger_entries = ledger_result.scalars().all()
 
-    # Calculate total paid from CASH entries
-    total_paid = sum(
-        abs(e.amount) for e in ledger_entries
-        if e.account_type == AccountType.CASH and e.amount > 0
-    )
+    # Payment history is the shared settlement fact, including partial receipts.
+    from repositories.payment_repository import PaymentRepository
+    from services.payment_history_contract import assert_valid_payment_history
+    await assert_valid_payment_history(db, order_ids=[oid], context='Invoice')
+    total_paid = await PaymentRepository().get_order_paid_total(db, order_id=oid)
 
     invoice_data = {
         "invoice_number": f"INV-{str(order.id)[:8].upper()}",
@@ -134,6 +138,7 @@ async def get_order_invoice(
         ],
         "subtotal": float(order.total_amount),
         "total_amount": float(order.total_amount),
+        "currency": order.currency_snapshot,
         "total_paid": float(total_paid),
         "balance_due": float(order.total_amount - total_paid),
         "ledger_entries": [
@@ -177,66 +182,16 @@ async def list_receivables(
 
     Permission: finance:read
     """
-    receivable_statuses = [
-        OrderStatus.CONFIRMED,
-        OrderStatus.PARTIALLY_PAID,
-        OrderStatus.PAID,
-    ]
-
-    # Count
-    count_stmt = (
-        select(func.count(Order.id))
-        .where(Order.status.in_(receivable_statuses))
-        .where(Order.is_deleted.is_(False))
+    projection = await ReceivablesService().list_receivable_orders(
+        tenant_db=db, wholesaler_id=token.tenant_id, page=page, size=size,
     )
-    total = int((await db.execute(count_stmt)).scalar() or 0)
-    pages = ceil(total / size) if total > 0 else 0
-
-    # Paginated query
-    stmt = (
-        select(Order)
-        .where(Order.status.in_(receivable_statuses))
-        .where(Order.is_deleted.is_(False))
-        .order_by(Order.created_at.desc())
-        .offset((page - 1) * size)
-        .limit(size)
-    )
-    rows = (await db.execute(stmt)).scalars().all()
-
-    # For each order, compute paid amount from ledger CASH debits
-    items = []
-    for order in rows:
-        paid_result = await db.execute(
-            select(func.coalesce(func.sum(LedgerEntry.amount), 0))
-            .where(LedgerEntry.reference_id == order.id)
-            .where(LedgerEntry.account_type == AccountType.CASH)
-            .where(LedgerEntry.amount > 0)
-            .where(LedgerEntry.is_deleted.is_(False))
-        )
-        total_paid = Decimal(str(paid_result.scalar() or 0))
-        balance = order.total_amount - total_paid
-
-        items.append({
-            "order_id": str(order.id),
-            "retailer_id": str(order.retailer_id) if order.retailer_id else None,
-            "status": order.status.value,
-            "total_amount": float(order.total_amount),
-            "total_paid": float(total_paid),
-            "balance_due": float(balance),
-            "created_at": order.created_at.isoformat() if order.created_at else None,
-            "age_days": calculate_age_days(order.created_at),
-        })
+    items = [{**row, 'total_paid': row['cash_paid']} for row in projection['items']]
 
     return DataResponse(
         success=True,
         data={
             "items": items,
-            "pagination": {
-                "page": page,
-                "size": size,
-                "total": total,
-                "pages": pages,
-            },
+            "pagination": projection['pagination'],
         },
         timestamp=datetime.utcnow(),
     )
@@ -279,9 +234,11 @@ async def get_financial_summary(
     account_totals = {row.account_type: float(row.net or 0) for row in ledger_rows}
 
     # Revenue is stored as negative (credits), so abs() for display
-    total_revenue = abs(account_totals.get(AccountType.REVENUE, 0))
+    total_revenue = -account_totals.get(AccountType.REVENUE, 0)
     total_cash = account_totals.get(AccountType.CASH, 0)
-    total_receivable = account_totals.get(AccountType.RECEIVABLE, 0)
+    from services.finance_projection import current_finance_projection
+    projection = await current_finance_projection(db, token.tenant_id)
+    total_receivable = float(projection['outstanding'])
 
     # --- Order counts by status ---
     order_counts_stmt = select(
@@ -297,18 +254,17 @@ async def get_financial_summary(
     total_orders = sum(order_counts.values())
 
     # --- AR aging (number of unresolved receivables > 30 days) ---
-    overdue_stmt = (
-        select(func.count(Order.id))
-        .where(Order.status.in_([OrderStatus.CONFIRMED, OrderStatus.PARTIALLY_PAID]))
-        .where(Order.is_deleted.is_(False))
-        .where(Order.created_at < func.now() - text("interval '30 days'"))
-    )
-    overdue_count = int((await db.execute(overdue_stmt)).scalar() or 0)
+    overdue_count = projection['overdue_count']
 
     summary = {
-        "total_revenue": total_revenue,
-        "total_cash_received": total_cash,
-        "outstanding_receivables": total_receivable,
+        "total_revenue": None if projection['currency_status'] == 'mixed' else total_revenue,
+        "total_cash_received": None if projection['currency_status'] == 'mixed' else total_cash,
+        "outstanding_receivables": None if projection['currency_status'] == 'mixed' else total_receivable,
+        "currency": projection['currency'],
+        "currency_status": projection['currency_status'],
+        "outstanding_by_currency": projection['outstanding_by_currency'],
+        "cash_received_by_currency": projection['cash_received_by_currency'],
+        "revenue_recognition_scope": "EXISTING_LEDGER_ONLY__FULL_RECOGNITION_CONTRACT_PENDING",
         "overdue_receivables_count": overdue_count,
         "order_counts": order_counts,
         "total_orders": total_orders,

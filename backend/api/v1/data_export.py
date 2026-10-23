@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import csv
 import io
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import AsyncGenerator, Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
@@ -83,7 +85,7 @@ async def export_orders_csv(
     Uses batched DB fetches + generator to keep memory constant regardless
     of dataset size.
 
-    Columns: Order ID, Status, Total Amount (KES), Retailer ID,
+    Columns: Order ID, Status, Total Amount, Currency, Retailer ID,
              Notes, Item Count, Created At, Updated At
 
     Permission: exports:create
@@ -99,12 +101,13 @@ async def export_orders_csv(
             },
         )
 
-    async def _generate() -> AsyncGenerator[str, None]:
+    async def _generate_rows(export_db: AsyncSession) -> AsyncGenerator[str, None]:
         # Header row
         yield _csv_row([
             "Order ID",
             "Status",
-            "Total Amount (KES)",
+            "Total Amount",
+            "Currency",
             "Retailer ID",
             "Notes",
             "Item Count",
@@ -117,6 +120,7 @@ async def export_orders_csv(
             stmt = (
                 select(Order)
                 .where(Order.is_deleted.is_(False))
+                .where(Order.wholesaler_id == UUID(token.tenant_id))
                 .options(selectinload(Order.items))
                 .order_by(Order.created_at.desc())
                 .offset(offset)
@@ -129,7 +133,7 @@ async def export_orders_csv(
                 except ValueError:
                     pass  # ignore invalid filter; return all
 
-            result = await db.execute(stmt)
+            result = await export_db.execute(stmt)
             rows = result.scalars().all()
 
             if not rows:
@@ -139,7 +143,8 @@ async def export_orders_csv(
                 yield _csv_row([
                     str(order.id),
                     order.status.value,
-                    f"{order.total_amount:.2f}",
+                    f"{order.total_amount:f}",
+                    order.currency_snapshot or 'LEGACY_CURRENCY_UNVERIFIED',
                     str(order.retailer_id) if order.retailer_id else "",
                     (order.notes or "").replace("\n", " "),
                     str(len(order.items)),
@@ -152,6 +157,19 @@ async def export_orders_csv(
             # If we got fewer rows than the batch size, we're done
             if len(rows) < _BATCH_SIZE:
                 break
+
+    async def _generate() -> AsyncGenerator[str, None]:
+        # Response streaming outlives the request transaction. Never race its
+        # middleware commit/close using the same connection for batch reads.
+        from database.session import get_tenant_db
+        from db.tenant_filter import set_current_tenant, reset_current_tenant
+        scope = set_current_tenant(tenant_id=token.tenant_id, tenant_schema=token.tenant_schema)
+        try:
+            async with asynccontextmanager(get_tenant_db)(token.tenant_schema) as export_db:
+                async for chunk in _generate_rows(export_db):
+                    yield chunk
+        finally:
+            reset_current_tenant(*scope)
 
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     filename = f"orders_export_{timestamp}.csv"

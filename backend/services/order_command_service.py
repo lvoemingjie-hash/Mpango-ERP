@@ -814,18 +814,8 @@ class OrderCommandService:
             # former receivable/revenue posting.
             return "none"
 
-        if to_state == OrderState.PAID and payment_method != "credit":
-            from services.ledger_service import LedgerService
-
-            await LedgerService(self.db).post_payment_received(
-                order_id=order.id,
-                amount=order.total_amount,
-                description=(
-                    f"Payment received for order {order.id} - "
-                    f"Amount: {order.total_amount}"
-                ),
-            )
-            return "posted"
+        # The canonical payment writer posts EACH receipt, keyed by payment
+        # identity. A status transition cannot post the full order again.
 
         if to_state == OrderState.RETURNED:
             from services.ledger_service import LedgerService

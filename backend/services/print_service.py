@@ -464,23 +464,12 @@ async def build_statement_print(
     to the correct HTTP status. No partial document is ever returned after a
     fail-closed condition.
 
-    Accounting rules enforced:
-      * opening_balance = receivable ledger sum strictly before ``date_from``.
-      * movements[] = receivable ledger entries in inclusive [from, to] (EAT day
-        boundary -> UTC half-open).
-      * closing_balance = opening + net_movement; independently re-checked
-        against a DB period sum (STATEMENT_INTERNAL_INCONSISTENT on mismatch).
-      * charge_total / collection_total / net_movement derive ONLY from movements.
-      * settled_payments[] = canonical completed payments (independent list);
-        settled_total derives ONLY from settled_payments[].amount (R1).
-      * orphan receivable refs -> STATEMENT_LEDGER_SCOPE_INCOMPLETE (checked first).
-      * completed-payment ownership mismatch (payment retailer != order
-        retailer) -> STATEMENT_INTERNAL_INCONSISTENT (R1).
-      * zero-valued receivable movement -> STATEMENT_INTERNAL_INCONSISTENT (R1).
-      * credit-only binding -> ledger receivable sum must equal cached
-        outstanding_balance within a 0.01 tolerance
-        (STATEMENT_RECONCILIATION_FAILED on mismatch; R1).
-      * aggregate statement line cap (STATEMENT_LINE_CAP) -> STATEMENT_RANGE_TOO_LARGE (R1).
+    Balances derive from attributable runtime confirmation holds and completed
+    cash/transfer receipts. Credit conversion is not a receipt or a second charge.
+    Current-period closing must equal the current account facts and binding.
+    As-of historical periods, synthetic migration timestamps, removed/returned
+    histories and mixed currencies are explicitly unsupported, not guessed.
+    Existing ownership, line-cap and active-binding checks remain fail-closed.
     """
     repo = StatementRepository()
 
@@ -516,52 +505,29 @@ async def build_statement_print(
     ) > 0:
         return StatementResult(error=StatementInternalInconsistent())
 
-    # 4. Opening balance (strictly before the period start).
-    opening = await repo.sum_receivable_before(
-        db, schema=schema, wholesaler_id=wholesaler_id, retailer_id=retailer_id, before_utc=start_utc
-    )
-
-    # 5. Movements in [start, next_day) + DB period sum.
-    movement_rows, movements_period_sum = await repo.list_movements(
-        db,
-        schema=schema,
-        wholesaler_id=wholesaler_id,
-        retailer_id=retailer_id,
-        start_utc=start_utc,
-        next_day_utc=next_day_utc,
-    )
-
-    # 5b. R1-R1 rule 5 — the per-list cap MUST be checked immediately after the
-    #     read, BEFORE any sum / cross-check / assembly. Otherwise an over-cap
-    #     movement list would be compared against the full DB period sum and
-    #     surface STATEMENT_INTERNAL_INCONSISTENT instead of the required
-    #     STATEMENT_RANGE_TOO_LARGE. LIMIT cap+1 makes overflow detectable.
+    # Hold creation and canonical receipts supply the account, not a negative
+    # receivable-ledger leg with no corresponding confirmation charge.
+    from fastapi import HTTPException
+    today_eat = _to_eat(datetime.now(timezone.utc)).date()
+    if date_to < today_eat:
+        raise HTTPException(409, detail={"code": "STATEMENT_HISTORY_UNSUPPORTED",
+            "message": "Historical as-of statements require immutable lifecycle history"})
+    events, currency, current_due = await repo.account_timeline(
+        db, schema=schema, wholesaler_id=wholesaler_id, retailer_id=retailer_id)
+    opening = sum((row['amount'] for row in events
+                   if row['transaction_date'] < start_utc), Decimal('0'))
+    movement_rows = [row for row in events if start_utc <= row['transaction_date'] < next_day_utc]
     if len(movement_rows) > STATEMENT_LINE_CAP:
         return StatementResult(error=StatementRangeTooLarge())
-
-    # 6. Independent DB period sum (rule 12) — must equal the movements sum.
-    db_period_sum = await repo.sum_receivable_period(
-        db,
-        schema=schema,
-        wholesaler_id=wholesaler_id,
-        retailer_id=retailer_id,
-        start_utc=start_utc,
-        next_day_utc=next_day_utc,
-    )
-    if db_period_sum != movements_period_sum:
-        return StatementResult(error=StatementInternalInconsistent())
-
-    # 6b. Zero-valued receivable movement -> internal inconsistency (R1 rule 2).
-    if any(Decimal(r["amount"]) == 0 for r in movement_rows):
-        return StatementResult(error=StatementInternalInconsistent())
-
-    # 7. Derived totals from movements only.
+    movements_period_sum = sum((row['amount'] for row in movement_rows), Decimal('0'))
     charge_total = sum((Decimal(r["amount"]) for r in movement_rows if Decimal(r["amount"]) > 0), Decimal("0"))
     collection_total = abs(
         sum((Decimal(r["amount"]) for r in movement_rows if Decimal(r["amount"]) < 0), Decimal("0"))
     )
     net_movement = movements_period_sum
     closing = opening + net_movement
+    if closing != current_due:
+        return StatementResult(error=StatementInternalInconsistent())
 
     # 8. Settled payments (independent list; rule 5/6).
     settled_rows = await repo.list_settled_payments(
@@ -596,26 +562,6 @@ async def build_statement_print(
     combined_lines = len(movement_rows) + len(settled_rows) + len(pending_rows)
     if combined_lines > STATEMENT_LINE_CAP:
         return StatementResult(error=StatementRangeTooLarge())
-
-    # 9. Credit/mixed classification + reconciliation (rules 11/12), using the
-    #    relationship's FULL history of completed payments (not just the range).
-    has_non_credit = await repo.relationship_has_non_credit_payment(
-        db, schema=schema, wholesaler_id=wholesaler_id, retailer_id=retailer_id
-    )
-    if not has_non_credit:
-        # Credit-only binding: ledger receivable total must reconcile to the
-        # cached binding outstanding_balance within a 0.01 KES tolerance (R1
-        # rule 4) — floating dust from Decimal arithmetic is tolerated.
-        ledger_total = await repo.ledger_receivable_total(
-            db, schema=schema, wholesaler_id=wholesaler_id, retailer_id=retailer_id
-        )
-        cached = await repo.cached_binding_balance(
-            db, wholesaler_id=wholesaler_id, retailer_id=retailer_id
-        )
-        if cached is None or abs(ledger_total - cached) > Decimal("0.01"):
-            return StatementResult(error=StatementReconciliationFailed())
-    # Mixed relationships: print the ledger-derived balance; do NOT expose or
-    # reconcile binding.outstanding_balance in the public document (rule 12).
 
     # 10. Resolve names + assemble the view.
     supplier_name, retailer_name = await _resolve_business_names(
@@ -660,12 +606,8 @@ async def build_statement_print(
         for r in pending_rows
     ]
 
-    from repositories.client_finance_repository import ClientFinanceRepository
-    currency, currency_status = await ClientFinanceRepository.currency_projection(
-        db, wholesaler_id=wholesaler_id, retailer_id=retailer_id)
-
     view = StatementPrintView(
-        currency=currency, currency_status=currency_status,
+        currency=currency, currency_status='KNOWN' if currency else 'LEGACY_CURRENCY_UNVERIFIED',
         supplier_name=supplier_name,
         retailer_name=retailer_name,
         period_from=date_from,

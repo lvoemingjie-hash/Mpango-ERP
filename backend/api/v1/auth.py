@@ -586,8 +586,7 @@ async def refresh_token(
     subject and tenant are re-validated against the database — nonexistent,
     soft-deleted or deactivated subjects, and deleted/suspended tenants, are
     refused with 401 instead of receiving a fresh session. Identity-only
-    refresh has no tenant binding and remains claim-based (recorded as an
-    open boundary, not covered by this fix).
+    refresh revalidates the signed bindings and current roles too.
 
     Returns:
         LoginResponse with new access_token and refresh_token.
@@ -606,20 +605,19 @@ async def refresh_token(
             )
 
         if payload.is_identity_only:
-            # Identity refresh - re-issue identity tokens (preserve the signed
-            # tenant_id->user_id map so tenant selection still works after
-            # refresh; DC-3B-R1).
+            from services.identity_authority import current_identity
+            current = await current_identity(db, payload)
             access_token = create_identity_token(
                 user_id=payload.user_id,
-                roles=payload.roles,
+                roles=current.roles,
                 token_type="access",
-                tenant_user_map=payload.tmap,
+                tenant_user_map=current.tenant_user_map,
             )
             new_refresh = create_identity_token(
                 user_id=payload.user_id,
-                roles=payload.roles,
+                roles=current.roles,
                 token_type="refresh",
-                tenant_user_map=payload.tmap,
+                tenant_user_map=current.tenant_user_map,
             )
             # For identity-only refresh we still return LoginResponse
             # but with placeholder tenant fields - the frontend should
@@ -633,7 +631,7 @@ async def refresh_token(
                     refresh_token=new_refresh,
                     token_type="bearer",
                     user_id=payload.user_id,
-                    roles=payload.roles,
+                    roles=current.roles,
                     available_tenants=[],
                 ),
                 timestamp=datetime.utcnow(),

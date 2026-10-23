@@ -130,15 +130,13 @@ class ReceiptPrintView(BaseModel):
 
 
 class StatementMovementView(BaseModel):
-    """A single receivable ledger movement on the statement.
+    """An attributable account commitment or canonical receipt.
 
-    ``signed_amount`` is the verbatim ledger ``amount`` (positive = charge,
+    ``signed_amount`` is a hold charge or receipt amount (positive = charge,
     negative = collection); ``kind`` classifies it as ``charge``/``collection``
     and ``display_amount`` is the absolute value for rendering. No internal
-    ledger entry id is exposed (R1 rule 2 — the printable DOM shows only short
-    references). The ``reference_type``/``reference_id`` expose the ledger
-    reference (always an order_id for receivable rows); no payment id is ever
-    exposed or associated here.
+    ledger entry id is exposed. ``reference_type``/``reference_id`` bind the
+    actual order commitment or payment; no association is inferred by amount.
     """
 
     kind: Literal["charge", "collection"] = Field(..., description="Movement direction: charge|collection")
@@ -147,7 +145,7 @@ class StatementMovementView(BaseModel):
     signed_amount: Decimal = Field(..., description="Signed amount: +charge / -collection (currency snapshot; NULL is unknown)")
     display_amount: Decimal = Field(..., description="abs(signed_amount) (currency snapshot; NULL is unknown)")
     description: Optional[str] = Field(None, description="Ledger entry description (sanitized)")
-    reference_type: str = Field(..., description="Ledger reference type: order|refund")
+    reference_type: str = Field(..., description="Account fact reference: order|payment")
     reference_id: str = Field(..., description="Order identifier referenced by the movement")
 
     model_config = {"from_attributes": True}
@@ -192,8 +190,8 @@ class StatementPendingDeclarationView(BaseModel):
 class StatementPrintView(BaseModel):
     """Contract D — printable relationship account statement.
 
-    Ledger-derived, server-authoritative. ``opening_balance`` and
-    ``closing_balance`` are receivable ledger sums; ``charge_total``,
+    Hold/receipt-derived, server-authoritative. ``opening_balance`` and
+    ``closing_balance`` are account commitment sums; ``charge_total``,
     ``collection_total`` and ``net_movement`` derive ONLY from ``movements[]``;
     ``settled_payments[]`` is an independent canonical-completed-payment list.
     Money is ``Decimal`` end-to-end (Postgres/Python); the frontend renders the
@@ -202,12 +200,14 @@ class StatementPrintView(BaseModel):
 
     currency: Optional[str] = None
     currency_status: str = "LEGACY_CURRENCY_UNVERIFIED"
+    balance_basis: str = "RUNTIME_HOLD_AND_CANONICAL_RECEIPTS"
+    historical_as_of_supported: bool = False
     document_type: str = Field("statement", description="Document discriminator")
     supplier_name: str = Field(..., description="Wholesaler/supplier business name")
     retailer_name: str = Field(..., description="Retailer business name")
     period_from: date = Field(..., description="Inclusive period start (EAT calendar day)")
     period_to: date = Field(..., description="Inclusive period end (EAT calendar day)")
-    opening_balance: Decimal = Field(..., description="Receivable sum strictly before the period (currency snapshot; NULL is unknown)")
+    opening_balance: Decimal = Field(..., description="Attributable account facts strictly before the period")
     closing_balance: Decimal = Field(..., description="opening + net_movement (currency snapshot; NULL is unknown)")
     charge_total: Decimal = Field(..., description="Sum of positive movements (currency snapshot; NULL is unknown)")
     collection_total: Decimal = Field(..., description="Absolute sum of negative movements (currency snapshot; NULL is unknown)")

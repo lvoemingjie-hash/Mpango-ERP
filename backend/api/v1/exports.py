@@ -415,30 +415,32 @@ async def download_export(
 # ============================================================================
 
 def _find_job_metadata(job_id: str, payload: Optional[dict]) -> Optional[dict]:
-    """
-    Find the metadata sidecar for a completed export job.
+    """Resolve only the file identity persisted in this job's database row.
 
-    The worker writes a {file_id}.meta.json file. We scan the export
-    directory for metadata files that match this job's tenant_id.
-    For efficiency, we also check if the job payload contains a hint.
+    Legacy jobs without a mapping fail closed; a different same-tenant file
+    is never a substitute for a missing result.
     """
     from jobs.export_jobs import EXPORT_DIR, read_metadata
-    import json
-
-    if not EXPORT_DIR.exists():
+    if _parse_export_job_id(job_id) is None or not payload:
         return None
-
-    # Scan metadata files for one matching this job's tenant
-    tenant_id = (payload or {}).get("tenant_id")
-    for meta_file in EXPORT_DIR.glob("*.meta.json"):
-        try:
-            with open(meta_file, "r") as f:
-                meta = json.load(f)
-            if meta.get("tenant_id") == tenant_id:
-                # Verify the file still exists
-                if Path(meta.get("file_path", "")).exists():
-                    return meta
-        except (json.JSONDecodeError, OSError):
-            continue
-
+    file_id = payload.get("file_id")
+    if not isinstance(file_id, str) or not payload.get("tenant_id"):
+        return None
+    try:
+        meta = read_metadata(file_id)
+        if not isinstance(meta, dict):
+            return None
+        if meta.get("file_id") != file_id or meta.get("tenant_id") != payload["tenant_id"]:
+            return None
+        fmt = meta.get("format")
+        if fmt not in ("csv", "xlsx"):
+            return None
+        expected = EXPORT_DIR.resolve() / f"{file_id}.{fmt}"
+        if (expected.is_symlink() or not expected.is_file()
+                or Path(meta.get("file_path", "")).resolve() != expected
+                or meta.get("file_name") != expected.name):
+            return None
+        return meta
+    except (OSError, ValueError, TypeError):
+        return None
     return None

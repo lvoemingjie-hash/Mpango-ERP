@@ -28,20 +28,20 @@ logger = get_logger(__name__)
 class LedgerService:
     """
     Service for managing financial ledger entries.
-    
+
     All financial transactions are recorded as immutable ledger entries.
     Balances are calculated on-demand, never stored.
     """
-    
+
     def __init__(self, db: AsyncSession):
         """
         Initialize ledger service.
-        
+
         Args:
             db: Database session (tenant schema)
         """
         self.db = db
-    
+
     async def post_entry(
         self,
         account_type: AccountType,
@@ -53,9 +53,9 @@ class LedgerService:
     ) -> LedgerEntry:
         """
         Post a single ledger entry.
-        
+
         This is a low-level method. Use post_transaction() for balanced entries.
-        
+
         Args:
             account_type: Account type from Chart of Accounts
             amount: Amount (positive for debit, negative for credit)
@@ -63,7 +63,7 @@ class LedgerService:
             reference_id: UUID of referenced entity
             description: Human-readable description
             transaction_date: Date/time of transaction (defaults to now)
-        
+
         Returns:
             Created LedgerEntry
         """
@@ -75,11 +75,11 @@ class LedgerService:
             reference_id=reference_id,
             description=description
         )
-        
+
         self.db.add(entry)
         await self.db.flush()
         await self.db.refresh(entry)
-        
+
         logger.info(
             f"Posted ledger entry: {account_type.value} {amount}",
             extra={
@@ -90,9 +90,9 @@ class LedgerService:
                 "reference_id": str(reference_id),
             }
         )
-        
+
         return entry
-    
+
     async def post_transaction(
         self,
         entries: List[dict],
@@ -102,23 +102,23 @@ class LedgerService:
     ) -> List[LedgerEntry]:
         """
         Post a balanced transaction (multiple entries).
-        
+
         Validates that debits equal credits before posting.
-        
+
         S5.5-3: Enhanced integrity check - raises LedgerIntegrityError if unbalanced.
-        
+
         Args:
             entries: List of entry dicts with 'account_type', 'amount', 'description'
             reference_type: Type of reference ('order', 'payment', 'refund')
             reference_id: UUID of referenced entity
             transaction_date: Date/time of transaction (defaults to now)
-        
+
         Returns:
             List of created LedgerEntry objects
-        
+
         Raises:
             LedgerIntegrityError: If transaction is not balanced (debits != credits)
-        
+
         Example:
             await ledger_service.post_transaction(
                 entries=[
@@ -155,7 +155,7 @@ class LedgerService:
                 }
             )
             raise LedgerIntegrityError(error_msg)
-        
+
         # Post all entries
         posted_entries = []
         for entry_data in entries:
@@ -168,7 +168,7 @@ class LedgerService:
                 transaction_date=transaction_date
             )
             posted_entries.append(entry)
-        
+
         logger.info(
             f"Posted balanced transaction with {len(posted_entries)} entries",
             extra={
@@ -177,9 +177,9 @@ class LedgerService:
                 "entry_count": len(posted_entries),
             }
         )
-        
+
         return posted_entries
-    
+
     async def get_balance(
         self,
         account_type: AccountType,
@@ -187,16 +187,16 @@ class LedgerService:
     ) -> Decimal:
         """
         Calculate account balance by summing all ledger entries.
-        
+
         This is a READ MODEL - balance is calculated, not stored.
-        
+
         Args:
             account_type: Account type to calculate balance for
             as_of_date: Calculate balance as of this date (defaults to now)
-        
+
         Returns:
             Current balance for the account
-        
+
         Example:
             receivable_balance = await ledger_service.get_balance(AccountType.RECEIVABLE)
             # Returns sum of all RECEIVABLE entries (positive = customer owes us)
@@ -204,16 +204,16 @@ class LedgerService:
         query = select(func.coalesce(func.sum(LedgerEntry.amount), 0)).where(
             LedgerEntry.account_type == account_type
         )
-        
+
         if as_of_date:
             query = query.where(LedgerEntry.transaction_date <= as_of_date)
-        
+
         result = await self.db.execute(query)
         balance = result.scalar()
-        
+
         # Ensure we return a Decimal, not None
         return Decimal(str(balance)) if balance is not None else Decimal('0')
-    
+
     async def get_entries_for_reference(
         self,
         reference_type: str,
@@ -221,13 +221,13 @@ class LedgerService:
     ) -> List[LedgerEntry]:
         """
         Get all ledger entries for a specific reference.
-        
+
         Useful for auditing and debugging.
-        
+
         Args:
             reference_type: Type of reference ('order', 'payment', 'refund')
             reference_id: UUID of referenced entity
-        
+
         Returns:
             List of LedgerEntry objects
         """
@@ -237,9 +237,9 @@ class LedgerService:
             .where(LedgerEntry.reference_id == reference_id)
             .order_by(LedgerEntry.transaction_date)
         )
-        
+
         return list(result.scalars().all())
-    
+
     async def post_order_confirmation(
         self,
         order_id: UUID,
@@ -248,16 +248,16 @@ class LedgerService:
     ) -> List[LedgerEntry]:
         """
         Post ledger entries for order confirmation.
-        
+
         Double-entry:
         - Debit RECEIVABLE (Customer owes us)
         - Credit REVENUE (We earned revenue)
-        
+
         Args:
             order_id: Order UUID
             amount: Order total amount
             description: Optional description
-        
+
         Returns:
             List of posted entries
         """
@@ -277,25 +277,27 @@ class LedgerService:
             reference_type='order',
             reference_id=order_id
         )
-    
+
     async def post_payment_received(
         self,
         order_id: UUID,
         amount: Decimal,
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        *,
+        payment_id: Optional[UUID] = None,
     ) -> List[LedgerEntry]:
         """
         Post ledger entries for payment received.
-        
+
         Double-entry:
         - Debit CASH (We received money)
         - Credit RECEIVABLE (Customer no longer owes)
-        
+
         Args:
             order_id: Order UUID
             amount: Payment amount
             description: Optional description
-        
+
         Returns:
             List of posted entries
         """
@@ -312,8 +314,8 @@ class LedgerService:
                     'description': description or f'Payment applied to order {order_id}'
                 }
             ],
-            reference_type='order',
-            reference_id=order_id
+            reference_type='payment' if payment_id is not None else 'order',
+            reference_id=payment_id if payment_id is not None else order_id
         )
 
     async def post_order_return(
@@ -324,20 +326,20 @@ class LedgerService:
     ) -> List[LedgerEntry]:
         """
         Post ledger entries for a full order return.
-        
+
         Reverses the original confirmation + payment entries:
         - Debit REVENUE (reverse the original credit — we un-earn revenue)
         - Credit CASH (we refund money back to the customer)
-        
+
         Net effect:
         - REVENUE balance decreases by amount
         - CASH balance decreases by amount
-        
+
         Args:
             order_id: Order UUID
             amount: Order total being returned
             description: Optional description
-        
+
         Returns:
             List of posted entries
         """

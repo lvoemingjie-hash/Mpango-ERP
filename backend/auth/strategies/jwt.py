@@ -22,7 +22,16 @@ class JwtAuthStrategy(AuthStrategy):
         raw_token = extract_bearer_token(request)
         if not raw_token:
             return None
-        return resolve_auth_context(raw_token)
+        context = resolve_auth_context(raw_token)
+        if context.token.is_identity_only:
+            from database.session import AsyncSessionLocal
+            from services.identity_authority import current_identity
+            async with AsyncSessionLocal() as session:
+                current = await current_identity(session, context.token)
+            context.token = context.token.model_copy(update={
+                "roles": current.roles, "tmap": current.tenant_user_map,
+            })
+        return context
 
     async def resolve_tenant_context(self, auth_ctx: AuthContext):
         # H-Fix-01: Identity-only tokens have no tenant context.

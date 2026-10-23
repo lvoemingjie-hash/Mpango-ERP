@@ -69,6 +69,7 @@ class ReceivableOrderItem(BaseModel):
     classification: Literal["credit_receivable", "unpaid_order"] | None = Field(None, description="Classification: credit_receivable or unpaid_order")
     payment_method: Literal["credit", "cash", "unknown"] = Field(..., description="Primary payment method")
     total_amount: float = Field(..., ge=0, description="Order total amount")
+    currency: str | None = Field(None, description="Order currency snapshot; unknown is not KES")
     cash_paid: float = Field(..., ge=0, description="Cash/transfer amount paid")
     credit_amount: float = Field(..., ge=0, description="Credit amount charged")
     balance_due: float = Field(..., ge=0, description="Remaining balance (total_amount - cash_paid)")

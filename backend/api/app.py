@@ -136,6 +136,9 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     from api.v1 import stock_adjustments
     app.include_router(stock_adjustments.router,prefix='/api/v1/inventory',tags=['inventory-adjustments'])
     app.include_router(roles.router, prefix="/api/v1/roles", tags=["roles"])
+    # Static /orders/export must precede the string /orders/{order_id} route.
+    from api.v1.data_export import router as data_export_router
+    app.include_router(data_export_router, prefix="/api/v1", tags=["data-export"])
     app.include_router(orders.router, prefix="/api/v1/orders", tags=["orders"])
     from api.v1.order_negotiations import router as order_negotiations_router
     app.include_router(order_negotiations_router, prefix='/api/v1', tags=['order-negotiations'])
@@ -178,10 +181,6 @@ def configure_app(app: FastAPI, settings: Settings) -> None:
     # S6-4: Async Export Engine
     from api.v1.exports import exports_router
     app.include_router(exports_router, prefix="/api/v1/exports", tags=["exports"])
-
-    # Phase P-B: Streaming CSV Data Export
-    from api.v1.data_export import router as data_export_router
-    app.include_router(data_export_router, prefix="/api/v1", tags=["data-export"])
 
     # S7-4-T3: Tenant-Scoped BI Assets CRUD
     from api.v1.bi_assets import bi_assets_router

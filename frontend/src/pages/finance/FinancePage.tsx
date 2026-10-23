@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { financeService } from '@/services/financeService';
-import { eatMonthRange } from '@/utils/printFormat';
+import { eatMonthRange, formatMoney } from '@/utils/printFormat';
 import type { FinancialSummary, CreditReceivableItem, ReceivablesSummary } from '@/services/financeService';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -169,11 +169,10 @@ export function FinancePage() {
 
     useEffect(() => { load(); }, [load]);
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-KE', {
-            style: 'currency',
-            currency: 'KES',
-        }).format(amount);
+    const formatCurrency = (amount: number | null, currency?: string | null) => {
+        if (currency === undefined && summary?.currency_status === 'mixed') return 'See currency breakdown';
+        if (amount === null) return 'Not aggregated';
+        return formatMoney(amount, currency === undefined ? summary?.currency : currency);
     };
 
     const overdueCount = summary?.overdue_receivables_count ?? 0;
@@ -294,7 +293,7 @@ export function FinancePage() {
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-sm">
                         <p className="text-sm font-medium text-amber-700">Outstanding Receivables</p>
                         <p className="mt-2 text-2xl font-bold text-amber-800">
-                            {formatCurrency(receivablesSummary?.total_outstanding ?? summary.outstanding_receivables)}
+                            {formatCurrency(summary.outstanding_receivables)}
                         </p>
                         <p className="mt-1 text-xs text-amber-600">
                             across {receivablesSummary?.retailer_count ?? 0} retailer{(receivablesSummary?.retailer_count ?? 0) !== 1 ? 's' : ''}
@@ -325,12 +324,27 @@ export function FinancePage() {
                         </p>
                     </div>
                     <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-                        <p className="text-sm font-medium text-gray-500">Revenue</p>
+                        <p className="text-sm font-medium text-gray-500">Recorded Ledger Revenue</p>
                         <p className="mt-2 text-2xl font-bold text-gray-900">
                             {formatCurrency(summary.total_revenue)}
                         </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                            Existing ledger only. Not a complete sales revenue or refund statement.
+                        </p>
                     </div>
                 </div>
+            )}
+
+            {summary?.currency_status === 'mixed' && (
+                <section className="mt-4 rounded-lg border border-amber-200 p-4" aria-label="Receivables by currency">
+                    <h2 className="font-semibold">Receivables by currency</h2>
+                    <p className="text-sm text-gray-600">Different currencies are not added or converted.</p>
+                    <dl className="mt-2 flex flex-wrap gap-6">
+                        {Object.entries(summary.outstanding_by_currency ?? {}).map(([currency, amount]) => (
+                            <div key={currency}><dt>{currency}</dt><dd>{formatMoney(amount, currency)}</dd></div>
+                        ))}
+                    </dl>
+                </section>
             )}
 
             {!loading && receivables.length === 0 ? (
@@ -429,14 +443,14 @@ export function FinancePage() {
                                             <StatusBadge status={r.status} />
                                         </td>
                                         <td className="px-6 py-4 text-right text-gray-900">
-                                            {formatCurrency(r.total_amount)}
+                                            {formatCurrency(r.total_amount, r.currency ?? null)}
                                             <PaymentBar paid={r.cash_paid} total={r.total_amount} />
                                         </td>
                                         <td className="px-6 py-4 text-right text-green-600">
-                                            {formatCurrency(r.cash_paid)}
+                                            {formatCurrency(r.cash_paid, r.currency ?? null)}
                                         </td>
                                         <td className={`px-6 py-4 text-right font-medium ${hasBalance ? 'text-red-600' : 'text-green-600'}`}>
-                                            {hasBalance ? formatCurrency(r.balance_due) : 'Settled'}
+                                            {hasBalance ? formatCurrency(r.balance_due, r.currency ?? null) : 'Settled'}
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <span className={`text-xs font-medium ${agingStyle(r.age_days)}`}>

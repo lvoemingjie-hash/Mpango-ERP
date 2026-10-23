@@ -20,6 +20,7 @@ Security:
 from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Any, Optional
+from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -147,6 +148,7 @@ class ExportJobPayload(BaseModel):
     )
     format: str = Field(default="csv", description="csv or xlsx")
     limit: int = Field(default=50000)
+    file_id: Optional[str] = Field(default=None, description="Persisted export result identity")
 
     @field_validator("tenant_id")
     @classmethod
@@ -186,6 +188,7 @@ class ExportJobPayload(BaseModel):
         it alongside the query parameters.
         """
         return cls(
+            file_id=str(uuid4()),
             tenant_id=tenant_id,
             tenant_schema=tenant_schema,
             user_id=user_id,

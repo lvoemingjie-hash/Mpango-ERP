@@ -47,6 +47,9 @@ def resolve_auth_context(raw_token: str) -> AuthContext:
     except InvalidTokenError as exc:
         raise _http_exc("INVALID_TOKEN", "Invalid token") from exc
 
+    if payload.type != "access":
+        raise _http_exc("INVALID_TOKEN_TYPE", "Access token required")
+
     return AuthContext(token=payload, raw_token=raw_token)
 
 

@@ -12,14 +12,15 @@ from datetime import datetime
 from typing import Optional
 import uuid
 
-from sqlalchemy import String, Text, DateTime, ForeignKey, Index
+from sqlalchemy import String, Text, DateTime, ForeignKey, Index, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql import func
 
-from models.base import PublicBaseModel
+from models.base import Base
 
 
-class PlatformTenant(PublicBaseModel):
+class PlatformTenant(Base):
     """
     Platform tenant record — tracks provisioning lifecycle.
 
@@ -35,6 +36,18 @@ class PlatformTenant(PublicBaseModel):
     __table_args__ = (
         Index('ix_platform_tenants_wholesaler_id', 'wholesaler_id', unique=True),
         {"schema": "public"}
+    )
+
+    # Migration 018 defines a journal, not the soft-delete public base contract.
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
     )
 
     wholesaler_id: Mapped[uuid.UUID] = mapped_column(

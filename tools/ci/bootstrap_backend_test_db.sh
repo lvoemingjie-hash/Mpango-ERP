@@ -15,7 +15,7 @@
 #   phase 1c pgcrypto pre-install (admin, task DB, before/after catalog
 #            facts) — tests need it; app never gains public CREATE
 #   phase 2  migrate    (migration authority)    alembic through exactly
-#            042_order_negotiation_proposals + REPORTING_USER_PASSWORD (migration 011)
+#            044_inventory_adjustment_approval + REPORTING_USER_PASSWORD (migration 011)
 #   phase 3  grants     (migration authority)    provisioner --apply-grants
 #   phase 4  verify     (read-only)              provisioner --verify
 #   phase 4b read-only capability probe          operator attributes and
@@ -176,6 +176,7 @@ mkdir -p "$PROFILE_DIR" "$(dirname "$PLAN_FILE")"
 "$PY_RUNNER" - "$REPO_ROOT" "$PLAN_FILE" "$PROFILE_DIR" "$TEST_DB" "$ADMIN_USER" "$MIGRATE_USER" "$APP_USER" "$OPERATOR_USER" "$PG_CONTAINER_ID" "$REDIS_CONTAINER_ID" "$OWNER_LABEL" <<'PY'
 import ast
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -247,12 +248,25 @@ TOPOLOGY_KEYS = {
 # NOT register (verified: those files passed under runtime in R4).
 TOPOLOGY_MODULES = {"async_test_utils", "reporting_bootstrap_contract_helpers"}
 INVARIANTS_MODULES = {"mpango_invariants_r0_support"}
+NATIVE_JWT_MODULES = {
+    "tests.staff_approval_support",
+    "tests.test_inventory_manual_adjustment_safety",
+    "tests.test_inventory_manual_adjustment_http",
+    "tests.test_staff_credential_compatibility",
+    "tests.test_staff_permissions",
+    "tests.audit_fixes.support",
+}
 TASKMANAGED_MODULES = {"task_owned_pg_resources"}
 PROFILE_ORDER = ["task-managed-pg", "topology", "invariants-jwt", "runtime"]
 PROFILE_ENV = {
     "runtime": [],
     "topology": ["MPANGO_ALLOW_TEMP_DB_CREATE=1"],
-    "invariants-jwt": ["MPANGO_ENV=staging (real JwtAuthStrategy)"],
+    "invariants-jwt": ["MPANGO_ENV=staging (real JwtAuthStrategy)",
+                       "EMAIL_PROVIDER=EMAIL_DELIVERY_MODE=dev_sink",
+                       "AUDIT_FINITE_APP_URL=DATABASE_URL (same minimum-privilege app)",
+                       "AUDIT_FINITE_PRIVATE (0700 task evidence directory)",
+                       "STAFF_M1_PRIVATE_DIR (0700 task staff/migration evidence directory)",
+                       "EXPORT_DIR (task-owned output directory)"],
     "task-managed-pg": ["C91_R3_RESOURCE_ROOT (0700 private root)"],
 }
 
@@ -262,14 +276,16 @@ if not tests_root.is_dir():
     sys.exit(3)
 
 
-def classify(source):
+def classify(source, relative_path):
     """Structural classification: module-level imports plus module-level
     os.environ constant references (AST nodes — never substring matching)."""
     tree = ast.parse(source)
     imported = set()
+    qualified_imports = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module.split(".")[-1])
+            qualified_imports.add(node.module)
         elif isinstance(node, ast.Import):
             imported.update(a.name.split(".")[-1] for a in node.names)
     env_keys = set()
@@ -295,6 +311,8 @@ def classify(source):
         markers.append("topology")
     if imported & INVARIANTS_MODULES:
         markers.append("invariants-jwt")
+    if qualified_imports & NATIVE_JWT_MODULES or relative_path == "tests/test_inventory_manual_adjustment_http.py":
+        markers.append("invariants-jwt")
     if not markers:
         return "runtime", []
     for profile in PROFILE_ORDER[:-1]:
@@ -302,10 +320,19 @@ def classify(source):
             return profile, markers
 
 
+tracked = subprocess.run(["git", "ls-files", "-z", "--", "backend/tests"],
+                         cwd=repo, capture_output=True)
+if tracked.returncode:
+    print("REFUSED: GIT_TRACKED_TEST_UNIVERSE_UNAVAILABLE", file=sys.stderr)
+    sys.exit(3)
 all_files = sorted(
-    str(p.relative_to(repo / "backend")).replace("\\", "/")
-    for p in tests_root.rglob("test_*.py")
+    str(Path(name).relative_to("backend")).replace("\\", "/")
+    for name in tracked.stdout.decode("utf-8").split("\0")
+    if name and Path(name).name.startswith("test_") and name.endswith(".py")
 )
+if any(not (repo / "backend" / name).is_file() for name in all_files):
+    print("REFUSED: GIT_TRACKED_TEST_FILE_MISSING", file=sys.stderr)
+    sys.exit(3)
 selected = [f for f in all_files if f not in frozen_ignores]
 if not selected:
     print("REFUSED: empty selection (no test_*.py remain after the frozen ignores); refusing to emit a zero-test plan", file=sys.stderr)
@@ -333,7 +360,7 @@ mixed = {}
 for rel in ordinary_files:
     source = (repo / "backend" / rel).read_text(encoding="utf-8", errors="replace")
     try:
-        profile, markers = classify(source)
+        profile, markers = classify(source, rel)
     except SyntaxError:
         print(f"REFUSED: {rel} does not parse; profiles may not classify an unparseable selection", file=sys.stderr)
         sys.exit(3)
@@ -346,7 +373,7 @@ if sum(len(v) for v in partition.values()) != len(ordinary_files):
     sys.exit(3)
 
 plan = {
-    "authorization": "CTO-C91-CI-EXECUTABLE-CONTRACT-ZCODEW-R3-20261006",
+    "authorization": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
     "classifier": "AST module imports + module-level os.environ constant references (structural; no substring keyword matching)",
     "source_recipe": "backend/scripts/setup.sh + backend/tests/task_owned_pg_resources.py",
     "container_facts": {
@@ -359,7 +386,7 @@ plan = {
         {"phase": 1, "name": "provision", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--provision", "identity": "admin (maintenance DB)", "roles": [migrate_user, app_user]},
         {"phase": "1b", "name": "task operator supply", "tool": "psql via private stdin", "identity": "admin (maintenance DB)", "grants": ["LOGIN", "CREATEDB (task authorization)", "CREATEROLE (task authorization)", "SET-only membership of " + migrate_user + " (non-inheriting)"]},
         {"phase": "1c", "name": "pgcrypto pre-install", "tool": "psql admin on task DB", "identity": "admin", "evidence": "before/after pg_extension catalog facts"},
-        {"phase": 2, "name": "migrate", "tool": "alembic upgrade head", "head": "042_order_negotiation_proposals", "identity": "migration authority (database owner)"},
+        {"phase": 2, "name": "migrate", "tool": "alembic upgrade head", "head": "044_inventory_adjustment_approval", "identity": "migration authority (database owner)"},
         {"phase": 3, "name": "apply-grants", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--apply-grants", "identity": "migration authority"},
         {"phase": 4, "name": "verify", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--verify", "identity": "read-only"},
         {"phase": "4b", "name": "capability probe", "tool": "read-only catalog SELECTs", "checks": ["operator rolcreatedb/rolcreaterole true, rolsuper/rolinherit false", "SET-only membership (set_option true, inherit_option false)"]},
@@ -577,7 +604,7 @@ PGCRYPTO_AFTER="$(run_psql "$ADMIN_USER" "$ADMIN_PASSWORD" "$TEST_DB" "SELECT co
 [ "$PGCRYPTO_AFTER" = "1" ] || refuse "pgcrypto not present after install (before=${PGCRYPTO_BEFORE}, after=${PGCRYPTO_AFTER})"
 echo "[supply] pgcrypto catalog facts: before=${PGCRYPTO_BEFORE} after=${PGCRYPTO_AFTER}"
 
-# ---- phase 2: migrations through exactly 042 as the migration authority ----
+# ---- phase 2: migrations through exactly 044 as the migration authority ----
 echo "[supply] phase 2/5 migrate (migration authority; alembic upgrade head)"
 (
     cd "$REPO_ROOT/backend"
@@ -585,8 +612,8 @@ echo "[supply] phase 2/5 migrate (migration authority; alembic upgrade head)"
     poetry run alembic upgrade head 2>&1 | REDACTED_TOOL_PIPE
 )
 HEAD_ROW="$(run_psql "$MIGRATE_USER" "$MIGRATE_PASSWORD" "$TEST_DB" "SELECT version_num FROM public.alembic_version")"
-[ "$HEAD_ROW" = "042_order_negotiation_proposals" ] || refuse "alembic head is '$HEAD_ROW', expected exactly 042_order_negotiation_proposals"
-echo "[supply] alembic head verified: 042_order_negotiation_proposals"
+[ "$HEAD_ROW" = "044_inventory_adjustment_approval" ] || refuse "alembic head is '$HEAD_ROW', expected exactly 044_inventory_adjustment_approval"
+echo "[supply] alembic head verified: 044_inventory_adjustment_approval"
 
 # ---- phase 3: minimum runtime grants ----------------------------------------
 echo "[supply] phase 3/5 apply-grants (migration authority)"

@@ -363,7 +363,7 @@ class TestDeployWorkflowContract:
         # per-shard premise wiring: topology/task-managed opt-in, real JWT
         # staging env, private resource root
         assert "topology|task-managed-pg) export MPANGO_ALLOW_TEMP_DB_CREATE=1" in gate["run"]
-        assert "invariants-jwt) export MPANGO_ENV=staging" in gate["run"]
+        assert "export MPANGO_ENV=staging EMAIL_PROVIDER=dev_sink EMAIL_DELIVERY_MODE=dev_sink" in gate["run"]
         assert 'export C91_R3_RESOURCE_ROOT="$RUNNER_TEMP/c91-resource-root"' in gate["run"]
         assert "chmod 700" in gate["run"]
 
@@ -410,10 +410,10 @@ class TestDeployWorkflowContract:
         assert strategy["max-parallel"] == 2
         include = strategy["matrix"]["include"]
         expected = {
-            "runtime-a": (30, "18m", "93", "1655"),
-            "runtime-b": (30, "18m", "97", "1651"),
+            "runtime-a": (30, "18m", "94", "1667"),
+            "runtime-b": (30, "18m", "96", "1637"),
             "topology": (50, "38m", "39", "798"),
-            "invariants-jwt": (25, "13m", "3", "92"),
+            "invariants-jwt": (25, "13m", "17", "311"),
             "task-managed-pg": (25, "13m", "4", "92"),
         }
         assert {leg["shard"] for leg in include} == set(expected)
@@ -595,7 +595,7 @@ class TestBootstrapPreflight:
         plan = json.loads((self.tmp / "plan.json").read_text(encoding="utf-8"))
         assert [p["name"] for p in plan["phases"]][:3] == ["provision", "task operator supply", "pgcrypto pre-install"]
         migrate = next(p for p in plan["phases"] if p["name"] == "migrate")
-        assert migrate["head"] == "042_order_negotiation_proposals"
+        assert migrate["head"] == "044_inventory_adjustment_approval"
         identities = plan["identities"]
         assert identities["migration"]["user"] == "mpango_migrate"
         assert identities["app"]["user"] == "mpango_app"
@@ -628,9 +628,11 @@ class TestBootstrapPreflight:
         proc = self._run({}, plan=self.tmp / "profiles-plan.json")
         assert proc.returncode == 0, proc.stderr
         plan = json.loads((self.tmp / "profiles-plan.json").read_text(encoding="utf-8"))
+        tracked = subprocess.check_output(["git", "ls-files", "-z", "--", "backend/tests"], cwd=REPO_ROOT)
         expected = {
-            str(p.relative_to(REPO_ROOT / "backend")).replace("\\", "/")
-            for p in (REPO_ROOT / "backend" / "tests").rglob("test_*.py")
+            str(Path(p).relative_to("backend")).replace("\\", "/")
+            for p in tracked.decode().split("\0")
+            if p and Path(p).name.startswith("test_") and p.endswith(".py")
         } - FROZEN_IGNORES
         union: set[str] = set()
         for profile in PROFILE_ORDER:
@@ -692,7 +694,7 @@ cat > "$DIR/psql-$N.stdin"
 case "$*" in
   *"rolcreatedb, rolcreaterole"*) echo "t|t|f|f" ;;
   *"pg_auth_members"*) echo "mpango_migrate:1:0" ;;
-  *"alembic_version"*) echo 042_order_negotiation_proposals ;;
+  *"alembic_version"*) echo 044_inventory_adjustment_approval ;;
   *"CREATE EXTENSION"*) : > "$DIR/pgcrypto-installed" ;;
   *"pg_extension WHERE extname"*)
     if [ -f "$DIR/pgcrypto-installed" ]; then echo 1; else echo 0; fi ;;
@@ -1175,7 +1177,7 @@ class TestTopologyHelperClassification:
         assert self.TARGET not in plan["profiles"]["runtime"]["files"]
         assert plan["profiles"]["topology"]["count"] == 39
         assert plan["profiles"]["runtime"]["count"] == 190
-        assert plan["selection_counts"]["partition_total"] == 236
+        assert plan["selection_counts"]["partition_total"] == 250
         # pytest_plugins STRING references do not move a file (R4 evidence:
         # both files passed under the runtime profile)
         for non_importer in (
@@ -1265,21 +1267,17 @@ class TestR6ShardPlanControls:
         ).hexdigest()
 
     def test_canonical_constants_equal_cto_table(self):
-        """F-04 (R6R1): the tool's embedded canonical hashes must equal the
-        CTO-computed table, byte for byte."""
+        """RC4 native frozen selection is an author proposal, not a CTO table."""
         import importlib.util
         spec = importlib.util.spec_from_file_location("pte_r6r1", EVIDENCE_TOOL)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        selection = json.loads((REPO_ROOT / 'docs/releases/mvp-20261031/RC4-TEST-SELECTION.json').read_text())
         assert module.CANONICAL_NODEID_SHA256 == {
-            k: format(v, chr(120)) for k, v in {
-                "runtime-a": 31909149706389310500397118238844167744261060807324375977335756059803826548134,
-                "runtime-b": 57725012565857539176717571526097518784084886020524993529010191070552221256377,
-                "topology": 89431394580350489123950586879915797113004354348693083846620910588820036223488,
-                "invariants-jwt": 14225403732936862956787750016881398974573020047247214588285646003204590389255,
-                "task-managed-pg": 26202434481483022035822387896696908997049812747828017617325771995640059934965,
-            }.items()
+            shard: row['canonical_sha256'] for shard, row in selection['shards'].items()
         }
+        assert selection['source_ref'] == TestReuseValidityMachineCheck.APPROVED
+        assert selection['total_nodes'] == 4505 and selection['all_native_collect_rc_zero']
 
     def test_same_count_swapped_nodeid_is_red(self, tmp_path):
         """F-04 (R6R1): the exact node-set gate — a collect with the SAME
@@ -3735,7 +3733,7 @@ class TestR6R5HostedPreconditions:
     def test_e03_helper_and_backend_frozen(self):
         diff = self._git(
             "diff", "--name-only",
-            "82ad641d67baf3035c5e35fc449d701780a22b3a", "HEAD",
+            "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d", "HEAD",
             "--", "backend",
             cwd=REPO_ROOT,
         )
@@ -3785,8 +3783,8 @@ class TestDedicatedEvidencePartition:
         assert proc.returncode == 0, proc.stderr
         assert "registry exact (21 files)" in proc.stdout
         assert "unknown=0" in proc.stdout
-        assert plan["selection_counts"]["selected"] == 257
-        assert plan["selection_counts"]["ordinary"] == 236
+        assert plan["selection_counts"]["selected"] == 271
+        assert plan["selection_counts"]["ordinary"] == 250
         families = plan["dedicated_evidence"]["families"]
         assert {k: len(v) for k, v in families.items()} == {
             "s1_pricing_quote": 6, "s2_reorder": 4,
@@ -3867,7 +3865,7 @@ class TestDedicatedEvidencePartition:
 
 class TestWrapperWrongHeadRefusal:
     """The migrate-phase head contract is exact equality with
-    042_order_negotiation_proposals; a stale or divergent head answer must
+    044_inventory_adjustment_approval; a stale or divergent head answer must
     refuse the whole supply before pytest can start."""
 
     def _run_with_head_answer(self, tmp_path, head_answer):
@@ -3875,7 +3873,7 @@ class TestWrapperWrongHeadRefusal:
         bin_dir.mkdir()
         (tmp_path / "records").mkdir()
         fake_psql = FAKE_PSQL.replace(
-            "echo 042_order_negotiation_proposals", f"echo {head_answer}"
+            "echo 044_inventory_adjustment_approval", f"echo {head_answer}"
         )
         (bin_dir / "psql").write_text(fake_psql, encoding="utf-8", newline="\n")
         (bin_dir / "poetry").write_text(FAKE_POETRY_PASS, encoding="utf-8", newline="\n")
@@ -3903,11 +3901,11 @@ class TestWrapperWrongHeadRefusal:
             capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
         )
 
-    @pytest.mark.parametrize("head", ["039_order_credit_holds", "040_s1_pricing_quote_contract", "041_catalog_product_main_image", "043_unapproved_future"])
+    @pytest.mark.parametrize("head", ["039_order_credit_holds", "040_s1_pricing_quote_contract", "041_catalog_product_main_image", "042_order_negotiation_proposals", "043_staff_authority_and_credentials", "045_unapproved_future"])
     def test_stale_head_answer_refuses_before_bootstrap(self, tmp_path, head):
         proc = self._run_with_head_answer(tmp_path, head)
         assert proc.returncode != 0
-        assert "expected exactly 042_order_negotiation_proposals" in proc.stderr
+        assert "expected exactly 044_inventory_adjustment_approval" in proc.stderr
         argv_texts = [p.read_text(encoding="utf-8") for p in (tmp_path / "records").glob("*.argv")]
         assert any("alembic" in t for t in argv_texts)
         # the head refusal happens inside phase 2: no later phase may start
@@ -3918,7 +3916,7 @@ class TestWrapperWrongHeadRefusal:
 class TestReuseValidityMachineCheck:
     """Approved Git objects, complete metadata and real admission controls."""
 
-    APPROVED = "82ad641d67baf3035c5e35fc449d701780a22b3a"
+    APPROVED = "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d"
     HISTORICAL_COVERAGE_REF = "bac775df8257ea2fd626d6de425f3564748b37f2"
 
     def _coverage(self, tmp_path):
@@ -4024,6 +4022,77 @@ class TestReuseValidityMachineCheck:
         assert proc.returncode == 0 and result["all_valid"]
         assert not result["release_ready"] and not result["evidence_ready"]
 
+
+    # Finite RC4 controls; existing method ownership/nodeids stay unchanged.
+
+    def test_untracked_test_is_excluded_and_new_tracked_member_breaks_frozen_gate(self, tmp_path):
+        repo = TestReuseValidityMachineCheck()._clone(tmp_path)
+        future = repo / 'backend/tests/test_aa_rc4_untracked_control.py'
+        future.write_text('def test_future_control():\n    assert True\n')
+        env = dict(os.environ, CI_PG_HOST='127.0.0.1', CI_PG_PORT='55432', CI_PG_ADMIN_USER='postgres',
+                   CI_PG_ADMIN_PASSWORD=PREFLIGHT_CREDENTIAL, CI_TEST_DB='test_ci_mpango',
+                   CI_REDIS_URL='redis://127.0.0.1:55433/0', PYTHON_BIN=sys.executable)
+        plan = tmp_path / 'tracked-plan.json'
+
+        def prepare():
+            proc = subprocess.run([BASH, str(BOOTSTRAP), '--repo-root', str(repo), '--preflight-only',
+                '--plan-file', str(plan), '--profile-dir', str(tmp_path / 'profiles')],
+                env=env, capture_output=True, text=True)
+            assert proc.returncode == 0, proc.stderr
+            return json.loads(plan.read_text())
+
+        first = prepare()
+        assert first['selection_counts']['collected_test_files'] == 277
+        assert 'tests/test_aa_rc4_untracked_control.py' not in first['profiles']['runtime']['files']
+        subprocess.run(['git', 'add', str(future.relative_to(repo))], cwd=repo, check=True)
+        second = prepare()
+        assert second['selection_counts']['collected_test_files'] == 278
+        assert 'tests/test_aa_rc4_untracked_control.py' in second['profiles']['runtime']['files']
+        subprocess.run([sys.executable, str(EVIDENCE_TOOL), 'shard-plan', '--plan', str(plan),
+                        '--profile-dir', str(tmp_path / 'profiles')], check=True, capture_output=True)
+        proc = subprocess.run([sys.executable, str(EVIDENCE_TOOL), 'shard-verify', '--plan', str(plan),
+            '--shard', 'runtime-a', '--argfile', str(tmp_path / 'profiles/profile-runtime-a.tests'),
+            '--expected-files', '94'], capture_output=True, text=True)
+        assert proc.returncode == 3 and 'SHARD_FILE_COUNT_MISMATCH' in proc.stderr
+
+    def test_native_families_stay_ordinary_and_get_real_jwt_profile(self, tmp_path):
+        plan, _ = TestDedicatedEvidencePartition()._preflight_plan(tmp_path)
+        native = set(plan['profiles']['invariants-jwt']['files'])
+        required = {
+            'tests/test_staff_permissions.py', 'tests/test_staff_credential_compatibility.py',
+            'tests/test_inventory_manual_adjustment_http.py', 'tests/test_stock_adjustment_approval.py',
+            'tests/audit_fixes/test_order_export_exit_r01.py', 'tests/audit_fixes/test_http_regressions.py',
+        }
+        assert required <= native
+        assert required.isdisjoint(plan['dedicated_evidence']['files'])
+        assert plan['profiles']['invariants-jwt']['count'] == 17
+        assert plan['selection_counts']['ordinary'] == 250
+        assert len(plan['frozen_ignores']) == 6
+
+    def test_actual_native_shell_case_supplies_only_same_app_and_private_outputs(self, tmp_path):
+        steps = yaml.safe_load(DEPLOY_WF.read_text())['jobs']['test']['steps']
+        for step_name in ('Shard gate', 'Run shard test body'):
+            body = next(s['run'] for s in steps if step_name in s.get('name', ''))
+            block = body.split('case "${{ matrix.shard }}" in', 1)[1].split('esac', 1)[0]
+            snippet = 'case "invariants-jwt" in' + block + 'esac\n'
+            snippet += '''python - <<'PY'
+import json, os
+from pathlib import Path
+assert os.environ['MPANGO_ENV'] == 'staging'
+assert os.environ['EMAIL_PROVIDER'] == os.environ['EMAIL_DELIVERY_MODE'] == 'dev_sink'
+assert os.environ['AUDIT_FINITE_APP_URL'] == os.environ['DATABASE_URL']
+for key in ('AUDIT_FINITE_PRIVATE','STAFF_M1_PRIVATE_DIR','EXPORT_DIR'):
+    path=Path(os.environ[key])
+    assert path.is_dir() and path.stat().st_mode & 0o777 == 0o700
+print(json.dumps({'same_app': True, 'private_outputs': True, 'real_jwt_profile': True}))
+PY
+'''
+            proc = subprocess.run([BASH, '-c', snippet], capture_output=True, text=True,
+                env={'PATH': os.environ['PATH'], 'RUNNER_TEMP': str(tmp_path),
+                     'DATABASE_URL': 'synthetic-app-identity-no-credential'})
+            assert proc.returncode == 0, proc.stderr
+            assert json.loads(proc.stdout)['same_app']
+
     def test_external_comparison_call_mutation_is_detected(self, tmp_path):
         import ast
         import hashlib
@@ -4116,10 +4185,13 @@ class TestReuseValidityMachineCheck:
             assert current[key] == subprocess.check_output([
                 "git", "rev-parse", self.APPROVED + ":" + subtree
             ], cwd=REPO_ROOT, text=True).strip()
-        assert current["ordinary_definition"] == {
+        assert coverage["previous_rc3_source_intake"]["ordinary_definition"] == {
             "nodes": 4288, "files": 236, "dedicated_files": 21, "ignores": 6,
             "canonical_definition_changed": False,
         }
+        assert current["ordinary_definition"]["files"] == 250
+        assert current["ordinary_definition"]["canonical_definition_changed"] is True
+        assert current["authority_status"] == "SOURCE_CONTINUATION_PROPOSED__CTO_REVIEW_PENDING"
         assert current["historical_results_reexecuted"] is False
         assert current["hosted_ci_this_intake"] == "NOT_RUN"
         accepted = next(b for b in coverage["bindings"] if b["family"] == "s3_negotiation")
@@ -4413,10 +4485,10 @@ class TestRC3FiniteIntake:
         assert not data['release_ready'] and not data['evidence_ready']
         assert data['current_accepted_node_union'] == 166
         current = [b for b in data['bindings'] if b['id'] == 's3_minimum_negotiation_cto_independent_v3']
-        assert len(current) == 1 and current[0]['status'] == 'REUSED_S3_BACKEND_166__CURRENT_FRONTEND_GAP'
+        assert len(current) == 1 and current[0]['status'] == 'HISTORICAL_ACCEPTANCE_RETAINED__CURRENT_DEPENDENCY_REVALIDATION_GAP'
         ui = [b for b in data['bindings'] if b['id'] == 'rc3_payment_currency_pricing_ui_cto_bounded_acceptance']
-        assert len(ui) == 1 and ui[0]['status'] == 'CTO_ACCEPTED_UI_BOUNDED_SCOPE__NOT_CURRENT_CI'
-        assert all(b['status'] == 'HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS'
+        assert len(ui) == 1 and ui[0]['status'] == 'HISTORICAL_ACCEPTANCE_RETAINED__CURRENT_DEPENDENCY_REVALIDATION_GAP'
+        assert all(b['status'] == 'HISTORICAL_ACCEPTANCE_RETAINED__CURRENT_DEPENDENCY_REVALIDATION_GAP'
                    for b in data['bindings'] if b not in current and b not in ui)
         assert data['full_dedicated_node_coverage'] == 'GAP_RCJ_NODE_MAP_NOT_ESTABLISHED'
 
@@ -4462,7 +4534,7 @@ class TestRC3LocalIntegrationIntake:
         assert ui['evidence']['cto_normal_hook']['passed_hooks'] == 4
         assert not ui['files'], 'UI Vitest/browser observations are not backend pytest nodes'
         for rel, blob in ui['current_product_blobs'].items():
-            actual = subprocess.check_output(['git', 'rev-parse', probe.APPROVED + ':' + rel], cwd=REPO_ROOT, text=True).strip()
+            actual = subprocess.check_output(['git', 'rev-parse', coverage['previous_rc3_source_intake']['source_ref'] + ':' + rel], cwd=REPO_ROOT, text=True).strip()
             assert actual == blob
         proc, result = probe._check(REPO_ROOT, path)
         assert proc.returncode == 0 and result['all_valid']
@@ -4515,7 +4587,7 @@ class TestRC3FixtureSourceContinuity:
         ], cwd=REPO_ROOT, text=True))
         assert coverage['bindings'] == prior['bindings']
         assert coverage['recovered_native_node_maps'] == prior['recovered_native_node_maps']
-        assert coverage['current_dependency_assessments'] == prior['current_dependency_assessments']
+        assert coverage['previous_rc3_dependency_assessments'] == prior['current_dependency_assessments']
         assert coverage['previous_local_integration_source_intake'] == prior['current_source_intake']
         assert coverage['previous_local_integration_selection_binding'] == prior['selection_binding']
         assert coverage['previous_local_integration_attachment_deltas'] == prior['current_attachment_deltas']
@@ -4712,13 +4784,14 @@ class TestThreeFamilyFiniteCloseout:
         assert coverage["previous_fixture_source_intake"] == original["current_source_intake"]
         assert coverage["previous_fixture_selection_binding"] == original["selection_binding"]
         assert coverage["previous_fixture_attachment_deltas"] == original["current_attachment_deltas"]
-        for key in ("bindings", "recovered_native_node_maps", "current_dependency_assessments", "local_fixture_contract_closeout"):
+        for key in ("bindings", "recovered_native_node_maps", "local_fixture_contract_closeout"):
             assert coverage[key] == original[key]
+        assert coverage['previous_rc3_dependency_assessments'] == original['current_dependency_assessments']
         route = coverage["route_contract_closeout"]
         assert route["classification"] == "AUTHOR_ROUTE_CONTRACT_CANDIDATE_PENDING_CTO"
-        assert route["source_ref"] == probe.APPROVED
+        assert route["source_ref"] == coverage["previous_rc3_source_intake"]["source_ref"]
         assert not route["new_independent_v3"] and route["added_business_accepted_nodes"] == 0
-        assert coverage["intake_version"] == 8
+        assert coverage["intake_version"] == 9
         previous = coverage["previous_route_contract_closeout"]
         assert previous["source_ref"] == "9e2221393f0a8c3da493ea32d4a3d93e41f4fa33"
         assert coverage["previous_route_contract_source_intake"]["source_ref"] == previous["source_ref"]

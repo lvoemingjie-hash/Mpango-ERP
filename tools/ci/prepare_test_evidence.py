@@ -98,14 +98,21 @@ DEDICATED_EVIDENCE_REGISTRY = {
 # so the entropy scanner does not misread PUBLISHED digests as credentials;
 # the hex form is recovered at runtime and the contracts byte-compare it
 # against the directive table.
-_CANONICAL_DIGEST_INTS = {
+_HISTORICAL_CANONICAL_DIGEST_INTS = {
     "runtime-a": 31909149706389310500397118238844167744261060807324375977335756059803826548134,
     "runtime-b": 57725012565857539176717571526097518784084886020524993529010191070552221256377,
     "topology": 89431394580350489123950586879915797113004354348693083846620910588820036223488,
     "invariants-jwt": 14225403732936862956787750016881398974573020047247214588285646003204590389255,
     "task-managed-pg": 26202434481483022035822387896696908997049812747828017617325771995640059934965,
 }
-CANONICAL_NODEID_SHA256 = {k: format(v, chr(120)) for k, v in _CANONICAL_DIGEST_INTS.items()}
+# Current values come from the five native RC4 collections, not old counts.
+CANONICAL_NODEID_SHA256 = {
+    "runtime-a": "6eed0a210105843cc4c82be0c919f4f5962b325fe600d7a7dffcf1e9dcdc4472",
+    "runtime-b": "88092068a62c32710a9e83831c3b6de43a0d5105a00843b28b810d05ac8ef59b",
+    "topology": "c5b860246b7e6829d45924e4f608da4250e27ad519d2fae00eea11a268a38200",
+    "invariants-jwt": "9babd523542d1937d0418cf1d5b01fffb90886d41988164e2b4e3c9feb0c4b2e",
+    "task-managed-pg": "39ee0d676ac12ae3fcd28a06908f2a6eede9182c325c4819067ed381a88038f5",
+}
 
 # F-01 (R6R1): the task credential store is a single private store shared by
 # the supply and the publication steps; a store that lacks any required key
@@ -671,10 +678,11 @@ def _git_bytes(repo, *argv):
     return result.stdout
 
 
-REUSE_APPROVED_REF = "82ad641d67baf3035c5e35fc449d701780a22b3a"
+# This is an implementation-side source-continuation proposal, not CTO acceptance.
+REUSE_APPROVED_REF = "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
 # Rebuild inputs/recipe are declared in intake_sources and the delivery receipt.
-REUSE_INTAKE_VERSION = 8
+REUSE_INTAKE_VERSION = 9
 REUSE_EXPECTED_METADATA = json.loads(r'''
 {
   "record": "RC2_VERSIONED_DEDICATED_ACCEPTANCE_INTAKE_V1",
@@ -2678,6 +2686,63 @@ def _reuse_expected_metadata(repo):
     for delta in expected["current_attachment_deltas"]:
         delta["current_source_ref"] = route["source_ref"]
     expected["route_contract_closeout"] = route
+    expected["previous_rc3_source_intake"] = json.loads(json.dumps(current))
+    expected["previous_rc3_selection_binding"] = json.loads(json.dumps(expected["selection_binding"]))
+    expected["previous_rc3_dependency_assessments"] = json.loads(json.dumps(expected["current_dependency_assessments"]))
+    expected["previous_rc3_attachment_deltas"] = json.loads(json.dumps(expected["current_attachment_deltas"]))
+    expected.update(record="RC4_CURRENT_SOURCE_CONTINUATION_PROPOSAL_V1",
+                    authorization="CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
+                    intake_version=REUSE_INTAKE_VERSION,
+                    intake_status="AUTHOR_LOCAL_SOURCE_PROPOSAL_PENDING_CTO",
+                    product_anchor=REUSE_APPROVED_REF)
+    expected["current_source_intake"] = {
+        "authorization": expected["authorization"],
+        "source_ref": REUSE_APPROVED_REF,
+        "source_tree": "a32753d6f3d7c5388d7a522e1c04ac298e298d70",
+        "source_parent": "bb625e893ab1ec3c50c7eb0cfeedf4a73e9f8f6b",
+        "backend_tree": "c175cd58527923e4bab3e69c25110dfc7b5be1ad",
+        "frontend_tree": "17c477ca022b0dc86118f481fd4ded907e92bcf8",
+        "authority_status": "SOURCE_CONTINUATION_PROPOSED__CTO_REVIEW_PENDING",
+        "source_contract_commit": "CURRENT_HEAD_TEST_ATTACHMENTS_ONLY__NO_PRODUCT_EDITS",
+        "independent_v3_this_intake": "NOT_RUN",
+        "current_fresh_ordinary_collection": "COLLECT_ONLY_4505_CURRENT_NATIVE_NODES__NO_FULL_BODY_PASS",
+        "historical_results_reexecuted": False,
+        "hosted_ci_this_intake": "NOT_RUN",
+        "ordinary_definition": {"files": 250, "dedicated_files": 21, "ignores": 6,
+                                "nodes": 4505, "canonical_definition_changed": True},
+    }
+    expected["selection_binding"] = {
+        "authority": expected["authorization"], "source_ref": REUSE_APPROVED_REF,
+        "discovered_files": 277, "ordinary_files": 250, "dedicated_files": 21,
+        "ignores": 6, "union": 271, "intersection": 0, "unknown": 0,
+    }
+    expected["current_dependency_assessments"] = [
+        {"binding_id": item["binding_id"],
+         "status": "HISTORICAL_ACCEPTANCE_RETAINED__CURRENT_DEPENDENCY_REVALIDATION_GAP",
+         "historical_record_not_rebound": True,
+         "remaining_scope": "GAP_RC4_CURRENT_DEPENDENCY_REVALIDATION__NO_NEW_FULL_FILE_OR_BROWSER_ACCEPTANCE"}
+        for item in expected["previous_rc3_dependency_assessments"]
+    ]
+    for delta in expected["current_attachment_deltas"]:
+        delta["current_source_ref"] = REUSE_APPROVED_REF
+    expected["ordinary_canonical_status"] = "AUTHOR_CURRENT_4505_NATIVE_COLLECTIONS__NO_FULL_BODY_PASS__CTO_PENDING"
+    expected["additional_bounded_evidence"] = [{
+        "id": "M01_R4_single_instance_UG_revoked_cached_replay",
+        "product_ref": "bb625e893ab1ec3c50c7eb0cfeedf4a73e9f8f6b",
+        "cto_ruling": "m01-r4-cto-final-acceptance-20261024/CTO-FINAL-RULING.zh-CN.md",
+        "cto_ruling_sha256": "1dc01e9bc5483581f283ee12f843f742619cba48f3bf9165bf49f1a5d4142a5e",
+        "status": "CTO_ACCEPTED_NAMED_SCOPE_ON_BB625E89__NOT_CURRENT_CI_OR_FULL_AUDIT",
+        "scope": "single-instance UG: S1 201, S2 201 hot replay, product deactivate, old unexpired token 403/BINDING_NOT_ACTIVE, exact declared economic multisets unchanged",
+        "not_claimed": ["all audit/cache/rcj", "multi-process", "SMTP registration", "full revenue recognition", "full suite", "release"],
+        "new_pytest_nodes_claimed": 0,
+    }]
+    expected["explicit_non_claims"] = [
+        "RC4 source-continuation is an author proposal pending CTO, not a CTO source acceptance.",
+        "277 tracked files minus six ignores split into 250 ordinary and 21 dedicated files; five native collections froze 4505 nodes, no full body pass.",
+        "Historical acceptance, node maps, candidates and original gaps retain their original scope and bytes.",
+        "M01 R4 is a named single-instance UG chain on bb625e89, not all audit/cache/rcj coverage.",
+        "No hosted CI, full backend body execution, independent V3 or release readiness is established here.",
+    ]
     return expected
 
 
@@ -2843,13 +2908,14 @@ def cmd_verify_reuse(args: argparse.Namespace) -> int:
         "all_valid": not gap,
         "release_ready": False,
         "evidence_ready": False,
+        "current_source_authority": "AUTHOR_PROPOSAL_PENDING_CTO",
         "source_objects_checked": object_count,
         "external_source_objects_checked": external_count,
         "problems": sorted(set(problems)),
         "full_dedicated_node_coverage": "GAP_RCJ_NODE_MAP_NOT_ESTABLISHED",
         "note": "blob drift means the load-bearing bytes moved: the binding is GAP until a new CTO ruling; never re-validated by updating this record alone",
     }
-    print("[verify-reuse] " + ("GAP_EVIDENCE_INVALID" if gap else "REUSED_ACCEPTED_EVIDENCE") +
+    print("[verify-reuse] " + ("GAP_EVIDENCE_INVALID" if gap else "LOCAL_SOURCE_MATCH__CTO_PENDING") +
           " scope=bounded; rcj-node-map=GAP")
     out = getattr(args, "result_file", None)
     if out:

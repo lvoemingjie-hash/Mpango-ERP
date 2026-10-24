@@ -47,13 +47,13 @@ jobs:
           - shard: runtime-a
             job-timeout-minutes: 30
             pytest-timeout: 18m
-            expected-files: "93"
-            expected-nodes: "1655"
+            expected-files: "94"
+            expected-nodes: "1667"
           - shard: runtime-b
             job-timeout-minutes: 30
             pytest-timeout: 18m
-            expected-files: "97"
-            expected-nodes: "1651"
+            expected-files: "96"
+            expected-nodes: "1637"
           - shard: topology
             job-timeout-minutes: 50
             pytest-timeout: 38m
@@ -62,8 +62,8 @@ jobs:
           - shard: invariants-jwt
             job-timeout-minutes: 25
             pytest-timeout: 13m
-            expected-files: "3"
-            expected-nodes: "92"
+            expected-files: "17"
+            expected-nodes: "311"
           - shard: task-managed-pg
             job-timeout-minutes: 25
             pytest-timeout: 13m
@@ -237,7 +237,14 @@ jobs:
           set -a; . "$RUNNER_TEMP/c91-test-env.sh"; set +a
           case "${{ matrix.shard }}" in
             topology|task-managed-pg) export MPANGO_ALLOW_TEMP_DB_CREATE=1 ;;
-            invariants-jwt) export MPANGO_ENV=staging ;;
+            invariants-jwt)
+              export MPANGO_ENV=staging EMAIL_PROVIDER=dev_sink EMAIL_DELIVERY_MODE=dev_sink
+              export AUDIT_FINITE_APP_URL="$DATABASE_URL"
+              export AUDIT_FINITE_PRIVATE="$RUNNER_TEMP/rc4-audit-private" EXPORT_DIR="$RUNNER_TEMP/rc4-exports"
+              export STAFF_M1_PRIVATE_DIR="$RUNNER_TEMP/rc4-staff-private"
+              mkdir -p "$AUDIT_FINITE_PRIVATE/facts" "$EXPORT_DIR" "$STAFF_M1_PRIVATE_DIR"
+              chmod 700 "$AUDIT_FINITE_PRIVATE" "$AUDIT_FINITE_PRIVATE/facts" "$EXPORT_DIR" "$STAFF_M1_PRIVATE_DIR"
+              ;;
           esac
           case "${{ matrix.shard }}" in
             task-managed-pg) export C91_R3_RESOURCE_ROOT="$RUNNER_TEMP/c91-resource-root"; mkdir -p "$C91_R3_RESOURCE_ROOT"; chmod 700 "$C91_R3_RESOURCE_ROOT" ;;
@@ -269,7 +276,7 @@ jobs:
             echo "dedicated-verify REFUSED"
             exit 1
           fi
-          if ! python tools/ci/prepare_test_evidence.py verify-reuse --coverage docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json --repo-root . --approved-ref 82ad641d67baf3035c5e35fc449d701780a22b3a --result-file "$RUNNER_TEMP/reuse-result.json" > "$RUNNER_TEMP/reuse.log" 2>&1; then
+          if ! python tools/ci/prepare_test_evidence.py verify-reuse --coverage docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json --repo-root . --approved-ref cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d --result-file "$RUNNER_TEMP/reuse-result.json" > "$RUNNER_TEMP/reuse.log" 2>&1; then
             echo "verify-reuse REFUSED"
             exit 1
           fi
@@ -283,7 +290,14 @@ jobs:
           set -a; . "$RUNNER_TEMP/c91-test-env.sh"; set +a
           case "${{ matrix.shard }}" in
             topology|task-managed-pg) export MPANGO_ALLOW_TEMP_DB_CREATE=1 ;;
-            invariants-jwt) export MPANGO_ENV=staging ;;
+            invariants-jwt)
+              export MPANGO_ENV=staging EMAIL_PROVIDER=dev_sink EMAIL_DELIVERY_MODE=dev_sink
+              export AUDIT_FINITE_APP_URL="$DATABASE_URL"
+              export AUDIT_FINITE_PRIVATE="$RUNNER_TEMP/rc4-audit-private" EXPORT_DIR="$RUNNER_TEMP/rc4-exports"
+              export STAFF_M1_PRIVATE_DIR="$RUNNER_TEMP/rc4-staff-private"
+              mkdir -p "$AUDIT_FINITE_PRIVATE/facts" "$EXPORT_DIR" "$STAFF_M1_PRIVATE_DIR"
+              chmod 700 "$AUDIT_FINITE_PRIVATE" "$AUDIT_FINITE_PRIVATE/facts" "$EXPORT_DIR" "$STAFF_M1_PRIVATE_DIR"
+              ;;
           esac
           case "${{ matrix.shard }}" in
             task-managed-pg) export C91_R3_RESOURCE_ROOT="$RUNNER_TEMP/c91-resource-root"; mkdir -p "$C91_R3_RESOURCE_ROOT"; chmod 700 "$C91_R3_RESOURCE_ROOT" ;;

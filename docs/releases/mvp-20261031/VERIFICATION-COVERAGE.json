@@ -1,19 +1,19 @@
 {
-  "record": "RC3_ROUTE_CONTRACT_SOURCE_CONTINUITY_V1",
-  "authorization": "CTO-AUTH-RC3-CI-FIXTURE-SCOPE-CONTINUE-R1-20261021",
+  "record": "RC4_CURRENT_SOURCE_CONTINUATION_PROPOSAL_V1",
+  "authorization": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
   "ruling": {
     "path": "AI_REPORT_INBOX/rc1-finite-closure-cto-20261015/CTO-REVIEW.zh-CN.md",
     "sha256": "37fa77e5ff1889c884f58ab929fe9ed06a7489446c933e9ddb81832a4c31a20c",
     "route": "APPROVED_FINITE_HYBRID_ROUTE__IMPLEMENTATION_AND_LOCAL_VALIDATION_ONLY"
   },
   "selection_binding": {
-    "authority": "CTO-AUTH-RC3-CI-FIXTURE-SCOPE-CONTINUE-R1-20261021",
-    "source_ref": "82ad641d67baf3035c5e35fc449d701780a22b3a",
-    "discovered_files": 263,
-    "ordinary_files": 236,
+    "authority": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
+    "source_ref": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
+    "discovered_files": 277,
+    "ordinary_files": 250,
     "dedicated_files": 21,
     "ignores": 6,
-    "union": 257,
+    "union": 271,
     "intersection": 0,
     "unknown": 0
   },
@@ -643,16 +643,15 @@
     }
   ],
   "explicit_non_claims": [
-    "236 ordinary files / 4288 canonical nodes remain a finite selection; six frozen ignores are unchanged.",
-    "21 dedicated files are exactly registered; only the named evidence scopes are accepted, never automatically all file nodes.",
-    "S3 V3 A/B/C totals 166 disjoint nodes, including only 58 S1 nodes, not a full S1 directory pass.",
-    "RCJ full node coverage remains GAP. Historical S1/S2/images keep their acceptance, not current dependent-byte reexecution.",
-    "Current hosted CI and ordinary full body executions are NOT_RUN in this task.",
-    "Changing approved-ref cannot authorize a different product, missing evidence or an edited coverage-only provenance."
+    "RC4 source-continuation is an author proposal pending CTO, not a CTO source acceptance.",
+    "277 tracked files minus six ignores split into 250 ordinary and 21 dedicated files; five native collections froze 4505 nodes, no full body pass.",
+    "Historical acceptance, node maps, candidates and original gaps retain their original scope and bytes.",
+    "M01 R4 is a named single-instance UG chain on bb625e89, not all audit/cache/rcj coverage.",
+    "No hosted CI, full backend body execution, independent V3 or release readiness is established here."
   ],
-  "intake_version": 8,
-  "intake_status": "AUTHOR_ROUTE_CONTRACT_CANDIDATE_PENDING_CTO",
-  "product_anchor": "82ad641d67baf3035c5e35fc449d701780a22b3a",
+  "intake_version": 9,
+  "intake_status": "AUTHOR_LOCAL_SOURCE_PROPOSAL_PENDING_CTO",
+  "product_anchor": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
   "intake_sources": [
     {
       "relative_record": "mvp-rc2-post-images-cto-review-20261017/CTO-REVIEW.zh-CN.md",
@@ -681,7 +680,7 @@
       "sha256": "8dbcc00908bade6ffebbd5d5f5beeb04f9ea76476b891c1e54a82cb0287dac58"
     }
   ],
-  "ordinary_canonical_status": "FROZEN_ORDINARY_SELECTION_DEFINITION__CURRENT_FRESH_COLLECTION_NOT_ESTABLISHED",
+  "ordinary_canonical_status": "AUTHOR_CURRENT_4505_NATIVE_COLLECTIONS__NO_FULL_BODY_PASS__CTO_PENDING",
   "frozen_external_paths": [
     "docker-compose.yml",
     "nginx/gateway.conf",
@@ -696,253 +695,25 @@
     }
   ],
   "current_source_intake": {
-    "authorization": "CTO-AUTH-RC3-CI-FIXTURE-SCOPE-CONTINUE-R1-20261021",
-    "source_ref": "82ad641d67baf3035c5e35fc449d701780a22b3a",
-    "source_tree": "43d9051ab20e262e6096254eba465cc37c860075",
-    "source_parent": "9e2221393f0a8c3da493ea32d4a3d93e41f4fa33",
-    "backend_tree": "4efaa92c7b2189cee5ac876b174adf46c21829da",
-    "frontend_tree": "d3e3ca842bd6d4eb2caca6aa5d1b1c3137d83f34",
-    "authority_record": {
-      "path": "AI_REPORT_INBOX/rc3-ci-three-family-finite-supplement-cto-20261021/delivery/CODEXL-FINITE-CONTINUE.zh-CN.md",
-      "sha256": "c6533bcd1e1572dfb74a9f58a5217e1161adc9b9e46fd8e579a90d1966a02245"
-    },
-    "cto_ruling": {
-      "path": "AI_REPORT_INBOX/rc3-ci-three-family-finite-supplement-cto-20261021/delivery/CTO-REVIEW.zh-CN.md",
-      "sha256": "3da6e1dc798fcbbf698ffbfbc708aafde7d438063480d2c39929e293c7cbd6fe"
-    },
-    "independent_v3_this_intake": "AUTHOR_ROUTE_CONTRACT_CANDIDATE_PENDING_CTO",
+    "authorization": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
+    "source_ref": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
+    "source_tree": "a32753d6f3d7c5388d7a522e1c04ac298e298d70",
+    "source_parent": "bb625e893ab1ec3c50c7eb0cfeedf4a73e9f8f6b",
+    "backend_tree": "c175cd58527923e4bab3e69c25110dfc7b5be1ad",
+    "frontend_tree": "17c477ca022b0dc86118f481fd4ded907e92bcf8",
+    "authority_status": "SOURCE_CONTINUATION_PROPOSED__CTO_REVIEW_PENDING",
+    "source_contract_commit": "CURRENT_HEAD_TEST_ATTACHMENTS_ONLY__NO_PRODUCT_EDITS",
+    "independent_v3_this_intake": "NOT_RUN",
+    "current_fresh_ordinary_collection": "COLLECT_ONLY_4505_CURRENT_NATIVE_NODES__NO_FULL_BODY_PASS",
     "historical_results_reexecuted": false,
     "hosted_ci_this_intake": "NOT_RUN",
-    "current_fresh_ordinary_collection": "NOT_RUN_THIS_INTAKE__PRIOR_4288_DEFINITION_UNCHANGED",
     "ordinary_definition": {
-      "nodes": 4288,
-      "files": 236,
+      "files": 250,
       "dedicated_files": 21,
       "ignores": 6,
-      "canonical_definition_changed": false
-    },
-    "source_deltas": [
-      {
-        "path": "backend/alembic/versions/042_order_negotiation_proposals.py",
-        "current_blob": "77700889ffb92eddb49488ea2b265834b41e2697",
-        "current_sha256": "5e26d80dbb16cea1d12f351d374730d252024511f4a378dd5f8e0308f2bd6f2f"
-      },
-      {
-        "path": "backend/api/app.py",
-        "current_blob": "f247f1baa6ce248d074714148b88ffaab68d772b",
-        "current_sha256": "4d3a9b7de558b32e3302c9c92cd05b0dfbfcd6cae62b9e1dce1b360b06245bfd"
-      },
-      {
-        "path": "backend/api/middleware/idempotency.py",
-        "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
-        "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
-      },
-      {
-        "path": "backend/api/v1/order_negotiations.py",
-        "current_blob": "4484c0a5056c39a2618573a6dcc4a146e4716ebe",
-        "current_sha256": "0446356cf3dd6d9b67ac44ce12991a447da5935b69c1ac379a702e2e7dc92a44"
-      },
-      {
-        "path": "backend/models/__init__.py",
-        "current_blob": "9ac806be1065c80ee98c49c00b104c23f865e1e2",
-        "current_sha256": "adc0798a4a43aeca0d4c64f10e1bc56e09dacb36f5ec9f03470e18d9334a617f"
-      },
-      {
-        "path": "backend/models/order_negotiation.py",
-        "current_blob": "4be0609b69afd1297a0bc13041e5f0dc3f69c792",
-        "current_sha256": "5442752109103cb3f0a6444368ac3f0ad8e7a220e7ae95d722ab2768229f379f"
-      },
-      {
-        "path": "backend/schemas/order_negotiation.py",
-        "current_blob": "3af0bb3baf2ef5819ad6127f84c61f434b8e0386",
-        "current_sha256": "5cabf08e35921e69474474705f98d383815aba8514009e16ad7c1c8a52f1b868"
-      },
-      {
-        "path": "backend/scripts/bootstrap_tenant_schema.py",
-        "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
-        "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
-      },
-      {
-        "path": "backend/scripts/runtime_readiness_gate.py",
-        "current_blob": "52c9c44909dfc87c03ec6e6b8544fd02e7f744db",
-        "current_sha256": "8c5d99fa200bec9398719dc0ab31a366a61f875a1d6a756afeda3ff9c61d0e34"
-      },
-      {
-        "path": "backend/services/order_command_service.py",
-        "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
-        "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
-      },
-      {
-        "path": "backend/services/order_creation_service.py",
-        "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
-        "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
-      },
-      {
-        "path": "backend/services/order_negotiation_service.py",
-        "current_blob": "16a866b69fcb025500b8a73ff12304bbf20bfaa2",
-        "current_sha256": "7d6fca9ab8d693a4dcfd0d776e1bdce45dcbb31dddc81d1648d5345dff29dd3c"
-      },
-      {
-        "path": "backend/services/pricing_quote_service.py",
-        "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
-        "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
-      },
-      {
-        "path": "backend/tests/mpango_invariants_r0_support.py",
-        "current_blob": "433383e5247180561b77d593847be703a9b72cca",
-        "current_sha256": "187e6e1f0ae98b218f99e74738cccbf2bfb523385b4bd328f36d5c6800dcc60e"
-      },
-      {
-        "path": "backend/tests/rc2_current_contract_support.py",
-        "current_blob": "dcbba531e7bfc4f358fa6314a09329395eebec71",
-        "current_sha256": "7bc3c512eaf1ff6fddbfe302a6a67ce833c2f81c84b093651aba0aad812b5192"
-      },
-      {
-        "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
-        "current_blob": "9a289181c71e3a42a41089abbf11d52b27934540",
-        "current_sha256": "02427b495680855e97b5251640e990ee4712298a5c1cc74859d2e8fb8b9a150b"
-      },
-      {
-        "path": "backend/tests/s3_negotiation/__init__.py",
-        "current_blob": "ac9fd63217e0b3e63a4f4c85d26fb78c28ee802f",
-        "current_sha256": "786b1be6c91f69f6dad7e7dff9f74b1c09b3e28c0ffa1cff5aed3be9ee7742de"
-      },
-      {
-        "path": "backend/tests/s3_negotiation/conftest.py",
-        "current_blob": "de9dd188ea15bdd92fa9fecf3629634547f86954",
-        "current_sha256": "cc136f57dc8493aee5f26dd84be7c057633d0dfe9fba97c1bcbd178d4ce149cb"
-      },
-      {
-        "path": "backend/tests/s3_negotiation/test_atomicity_and_races.py",
-        "current_blob": "67b840dd63f2ddc3bc576823db43422feb89b3b8",
-        "current_sha256": "0924fa479b34ff169fc150c6c72ff55eaa863a22f1d14f9460182d48f0c9a0f3"
-      },
-      {
-        "path": "backend/tests/s3_negotiation/test_contract.py",
-        "current_blob": "c15541eb943cc40b3baddfc5470ba91b9e5de88d",
-        "current_sha256": "ffa43cb5de9cd74d0065e292a3dee1384ba676008d529c237cfeb1d8f8215cf1"
-      },
-      {
-        "path": "backend/tests/s3_negotiation/test_migration.py",
-        "current_blob": "bcfb5f9321467c15259ffff0846bfe4cb7cfcc66",
-        "current_sha256": "7a7eb4575fd688f3604b16b672eb6c5a2028134028356bb19f67bd71e1a2fa13"
-      },
-      {
-        "path": "backend/tests/s3_negotiation/test_provenance_and_safety.py",
-        "current_blob": "626447beb523f99197d1aa021d31c22a4989bfdf",
-        "current_sha256": "2257cc79571edd1524121bac16ac1cc7eea1b37cc8583dd94efd3f0a1aeee5cc"
-      },
-      {
-        "path": "backend/tests/s3_negotiation/test_safety_boundaries.py",
-        "current_blob": "66f71981878f6b1ac501b9a715a09f69978df51f",
-        "current_sha256": "ea19e8171268d9846ede10f849d4c0bc9917d7738bb9e5c90ef51d23888b014a"
-      },
-      {
-        "path": "backend/tests/task_owned_pg_resources.py",
-        "current_blob": "6fed2c5aeae93b09168b8af4fad6eaf689571fd0",
-        "current_sha256": "0fe1addb27ac17bdc0725678e18989f4ee31620620f7c2b3858b04f3828649f8"
-      },
-      {
-        "path": "backend/tests/test_combined_setup_authority_contract.py",
-        "current_blob": "229536520f8904f719016b9c6036da96af472943",
-        "current_sha256": "90854ed6b22b2460777dcfdc6a1b86fb8c0dbc3aa4f2cc8aa953bb447f71f2a4"
-      },
-      {
-        "path": "backend/tests/test_dc12r1_s3_s1_catalog_order_hardening.py",
-        "current_blob": "88e904a2a9dff7e2a291ff2379619a3a385db7f4",
-        "current_sha256": "e33c0ebc92ed358f4eea5a2dfc6aa5467805b5cf7fbbae8ef396a9d33d00009a"
-      },
-      {
-        "path": "backend/tests/test_dc12r1_s3_s2_read_only_retailer_finance.py",
-        "current_blob": "3d1e38bcec1ee4b99afb40a478db96bd6b5abcfa",
-        "current_sha256": "e2616c754e853aa0088861e36f4a6291408957cc85e3930a84806ad8d3e11965"
-      },
-      {
-        "path": "backend/tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py",
-        "current_blob": "59485795cc8f1a4df7513fc90d205b88cc1e176a",
-        "current_sha256": "913387debbf5d06d51e58a5d211f45eb71622e5e57b2a089b428aa3e5932e719"
-      },
-      {
-        "path": "backend/tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py",
-        "current_blob": "6a44074f290bf28f99d4f1145cf706e3e1945eeb",
-        "current_sha256": "aabf7f80bf218cf335b913911a85387ed766d1e989da991a40491aa999b96e3b"
-      },
-      {
-        "path": "backend/tests/test_g1_r2_lifecycle_and_public_prep_contract.py",
-        "current_blob": "8c2aca6b5519971c9296ebebed4faedf26fd2f85",
-        "current_sha256": "715eebffc638c85ef3f98c9052450b8e6f0df75850e9f65258d9981c578708d1"
-      },
-      {
-        "path": "backend/tests/test_route_authorization_policy.py",
-        "current_blob": "b3ffdd204ea71c76bec179845e26fd55dab58670",
-        "current_sha256": "78177b533677aa5324d8402c447d4620005ca56dce75d4f1174d3f555b66a848"
-      },
-      {
-        "path": "backend/tests/test_runtime_readiness_gate.py",
-        "current_blob": "849dc50f99983b8ea9109c79f46c691d7baa3942",
-        "current_sha256": "93851f5bc157a3386088f5c8bdd9eae6c138bb243311792d186c7ceadafd8db5"
-      },
-      {
-        "path": "backend/tests/test_sku_r1_client_catalog_contract.py",
-        "current_blob": "8c19a0ec4fcfa1b55f9374ff5aa5c2a74456e2ed",
-        "current_sha256": "f64ee8e4c03b34d7403a75b5401cba7311189e8834367eaa30ccc03dcb843f0d"
-      },
-      {
-        "path": "backend/tests/test_u6f_onboarding_auth_chain_closeout.py",
-        "current_blob": "f7c91ac217ce81e08595cfe7da4d581878a57a3e",
-        "current_sha256": "0c699d6f23bf7d566ff10962295ee86eccbd2e626c2edf0c7325f02add7bc9b5"
-      },
-      {
-        "path": "backend/tests/test_u6i1_owner_credential_setup_schema.py",
-        "current_blob": "105f37adc842305aff52a12dc157d97206b8cb1d",
-        "current_sha256": "cee1fa64fc0fb6b49efad260afdd3b4bedba580144ed4f735d985f762428e7f7"
-      },
-      {
-        "path": "frontend/src/components/orders/OrderNegotiationPanel.tsx",
-        "current_blob": "47974c7a162a6f2cfef10f23001e930f5dbdd2cb",
-        "current_sha256": "733be9968b12fac9742cade2257727bd42d90459f67055b69210037bd6dbd215"
-      },
-      {
-        "path": "frontend/src/components/ui/PaymentRecordModal.tsx",
-        "current_blob": "e946942622c2630eb83ef1b5471b214b726a0940",
-        "current_sha256": "0a2f55c8f164e7bc01d79d46e7ac08874fe4c162e508d4d56579fd16247a77d0"
-      },
-      {
-        "path": "frontend/src/pages/client/OrderDetailPage.tsx",
-        "current_blob": "06b4cfbba89a6aa8c27fde91b9efe86b82dfc81e",
-        "current_sha256": "3652e01cc41b56b84c76b1b83f7015a60a106d09fe5a8f2a2aa29b8dcb5a1f51"
-      },
-      {
-        "path": "frontend/src/pages/orders/OrderListPage.tsx",
-        "current_blob": "fd59647026b2545687c4aa864b0217be2e26fbf0",
-        "current_sha256": "e7a0f8c1e18cc472f03b96f652104e67753a83724db2b676ce72af18a9016528"
-      },
-      {
-        "path": "frontend/src/pages/pricing/RetailerPricingPage.tsx",
-        "current_blob": "3599b6f0866878847741fd8a86d6bf8082f3fc49",
-        "current_sha256": "990233118cc56978f82aa22b3207c90f37489d6e20d6f2eeb2dd26e8ea7d20dd"
-      },
-      {
-        "path": "frontend/src/services/orderNegotiationService.ts",
-        "current_blob": "518794b827f991a21bab29eb4b51720f7bc76e41",
-        "current_sha256": "421f9d5660d5ace0d26aea8fdc9cb72174b1a988ff7a9e1f79d7ff5c9795a746"
-      },
-      {
-        "path": "frontend/src/tests/PaymentCurrencyPricingUx.test.tsx",
-        "current_blob": "90a653b45fa8045da565d6e746df7dcb52d5339b",
-        "current_sha256": "b643652e23dff99de4aac7736fd8d1c6a6ed5d901b79d6fe4981f8bd70c02732"
-      },
-      {
-        "path": "frontend/src/tests/S3Negotiation.test.tsx",
-        "current_blob": "8eea1303649c5570e281021664a71dec7050aee7",
-        "current_sha256": "0245f537f867ce653e661eaec2b1d8937f14971b02b6abc991a01d430f118027"
-      },
-      {
-        "path": "frontend/src/tests/S5BRealUserSmoke.test.tsx",
-        "current_blob": "e34bb0cc02ae7f86885dc27f184594b5d034a0de",
-        "current_sha256": "7e0128ac459fb49560741dafdc942bba296b63c55d3f70c51dbb0584808d78c0"
-      }
-    ]
+      "nodes": 4505,
+      "canonical_definition_changed": true
+    }
   },
   "current_attachment_deltas": [
     {
@@ -950,7 +721,7 @@
       "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
       "historical_candidate": "88c7d8157ac5c46795d411ea6799112e017c9532",
       "historical_load_bearing_blob": "67b97b41518f8851b2d9b4b54eb7095ee66eaa40",
-      "current_source_ref": "82ad641d67baf3035c5e35fc449d701780a22b3a",
+      "current_source_ref": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
       "current_blob": "9a289181c71e3a42a41089abbf11d52b27934540",
       "current_content_sha256": "02427b495680855e97b5251640e990ee4712298a5c1cc74859d2e8fb8b9a150b",
       "classification": "PARTIAL_CURRENT_NODE_ACCEPTED__FULL_FILE_REEXECUTION_GAP",
@@ -967,7 +738,7 @@
       "path": "frontend/src/pages/client/ProductDetailPage.tsx",
       "historical_candidate": "97eb3d89daf3daca45d7289c6669f1cca18d5ef2",
       "historical_load_bearing_blob": "24d99bbd8f5fa004e08a73e78c807069c5f66678",
-      "current_source_ref": "82ad641d67baf3035c5e35fc449d701780a22b3a",
+      "current_source_ref": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
       "current_blob": "61788a64016c03af389e15bc9e287c2f65696af9",
       "current_content_sha256": "7be62e8c610a09d92956c92fd57e7c7a00546cab4651413cc4200b456df0c411",
       "classification": "GAP_CURRENT_ATTACHMENT_NOT_REEXECUTED",
@@ -1445,309 +1216,45 @@
   "current_dependency_assessments": [
     {
       "binding_id": "s1_pricing_quote_independent_v3",
-      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "status": "HISTORICAL_ACCEPTANCE_RETAINED__CURRENT_DEPENDENCY_REVALIDATION_GAP",
       "historical_record_not_rebound": true,
-      "current_dependency_changed_blobs": [
-        {
-          "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
-          "historical_blob": "67b97b41518f8851b2d9b4b54eb7095ee66eaa40",
-          "current_blob": "9a289181c71e3a42a41089abbf11d52b27934540"
-        }
-      ],
-      "shared_dependency_delta": [
-        {
-          "path": "backend/api/middleware/idempotency.py",
-          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
-          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
-        },
-        {
-          "path": "backend/scripts/bootstrap_tenant_schema.py",
-          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
-          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
-        },
-        {
-          "path": "backend/services/order_command_service.py",
-          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
-          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
-        },
-        {
-          "path": "backend/services/order_creation_service.py",
-          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
-          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
-        },
-        {
-          "path": "backend/services/pricing_quote_service.py",
-          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
-          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
-        }
-      ],
-      "current_accepted_exact_nodes": [
-        "tests/s1_pricing_quote/test_contract.py::test_confirmation_quote_refresh_preserves_joined_stock_lock_order",
-        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[None-override0-None-None-BASE_PRICE_REQUIRED]",
-        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base1-None-value1-BASE_PRICE-None]",
-        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base2-override2-value2-RETAILER_OVERRIDE-None]",
-        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base3-override3-None-None-PRICE_DATA_INTEGRITY_RED]",
-        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base4-override4-None-None-PRICE_DATA_INTEGRITY_RED]",
-        "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[90.000-UGX-90]",
-        "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[90.000-KES-90.00]",
-        "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[0-UGX-0]",
-        "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[9999999999.99-KES-9999999999.99]",
-        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[90.01-UGX-MONEY_PRECISION]",
-        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[90.001-KES-MONEY_PRECISION]",
-        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[NaN-KES-INVALID_MONEY]",
-        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[Infinity-KES-INVALID_MONEY]",
-        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[-1-KES-INVALID_MONEY]",
-        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[0-KES-INVALID_MONEY]",
-        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[10000000000-KES-INVALID_MONEY]",
-        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[1-XXX-TENANT_CURRENCY_UNRESOLVED]",
-        "tests/s1_pricing_quote/test_contract.py::test_price_change_requires_explicit_consent",
-        "tests/s1_pricing_quote/test_contract.py::test_same_total_opposing_lines_still_red",
-        "tests/s1_pricing_quote/test_contract.py::test_aba_revision_source_and_label_do_not_add_consent_click",
-        "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[retailer-another]",
-        "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[tenant-other]",
-        "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[actor-other]",
-        "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[currency-UGX]",
-        "tests/s1_pricing_quote/test_contract.py::test_quote_tamper_and_expiry",
-        "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[False-KE]",
-        "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[False-UG]",
-        "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[True-KE]",
-        "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[True-UG]",
-        "tests/s1_pricing_quote/test_http.py::test_reconsent_failure_does_not_consume_key",
-        "tests/s1_pricing_quote/test_http.py::test_missing_base_even_with_override",
-        "tests/s1_pricing_quote/test_http.py::test_versioned_override_retire_restore_same_row",
-        "tests/s1_pricing_quote/test_http.py::test_replay_rechecks_active_binding_and_conflicting_intent",
-        "tests/s1_pricing_quote/test_http.py::test_explicit_replacement_preserves_old_items",
-        "tests/s1_pricing_quote/test_http.py::test_confirm_uses_snapshot_and_one_quantity_contract[KE]",
-        "tests/s1_pricing_quote/test_http.py::test_confirm_uses_snapshot_and_one_quantity_contract[UG]",
-        "tests/s1_pricing_quote/test_http.py::test_used_unit_change_refuses_both_entries_label_preserves_history",
-        "tests/s1_pricing_quote/test_http.py::test_client_cannot_replace_merchant_or_confirmed_draft",
-        "tests/s1_pricing_quote/test_http.py::test_stale_confirm_does_not_reprice_or_start_economics",
-        "tests/s1_pricing_quote/test_http.py::test_quote_cannot_move_to_another_authorized_customer",
-        "tests/s1_pricing_quote/test_http.py::test_wrong_tenant_and_current_rbac_revoke_before_replay",
-        "tests/s1_pricing_quote/test_http.py::test_opposing_prices_same_total_requires_real_http_consent",
-        "tests/s1_pricing_quote/test_http.py::test_same_economics_aba_success_records_both_revisions",
-        "tests/s1_pricing_quote/test_http.py::test_old_fractional_ugx_price_remains_readable_but_not_orderable[UG]",
-        "tests/s1_pricing_quote/test_process_and_faults.py::test_two_processes_same_key_and_fresh_process_replay",
-        "tests/s1_pricing_quote/test_process_and_faults.py::test_create_fault_rolls_back_all_effects[second-item]",
-        "tests/s1_pricing_quote/test_process_and_faults.py::test_create_fault_rolls_back_all_effects[commit]",
-        "tests/s1_pricing_quote/test_process_and_faults.py::test_replacement_cancel_failure_restores_old_draft",
-        "tests/s1_pricing_quote/test_cache_integration.py::test_create_cache_and_binding_revocation[merchant]",
-        "tests/s1_pricing_quote/test_cache_integration.py::test_create_cache_and_binding_revocation[client]",
-        "tests/s1_pricing_quote/test_cache_integration.py::test_cached_create_rechecks_live_subject",
-        "tests/s1_pricing_quote/test_cache_integration.py::test_cached_create_preserves_intent_and_quote_ownership",
-        "tests/s1_pricing_quote/test_cache_integration.py::test_s1_commit_publication[barrier]",
-        "tests/s1_pricing_quote/test_cache_integration.py::test_s1_commit_publication[failure]",
-        "tests/s1_pricing_quote/test_cache_integration.py::test_same_process_create_waits_for_commit[merchant]",
-        "tests/s1_pricing_quote/test_cache_integration.py::test_same_process_create_waits_for_commit[client]",
-        "tests/s1_pricing_quote/test_review_r2.py::test_revision_contract_finite_consistency"
-      ],
-      "related_not_substitute_for_original_nodes": [],
-      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
-      "hosted_current_execution": "NOT_RUN"
+      "remaining_scope": "GAP_RC4_CURRENT_DEPENDENCY_REVALIDATION__NO_NEW_FULL_FILE_OR_BROWSER_ACCEPTANCE"
     },
     {
       "binding_id": "s2_reorder_independent_v3",
-      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "status": "HISTORICAL_ACCEPTANCE_RETAINED__CURRENT_DEPENDENCY_REVALIDATION_GAP",
       "historical_record_not_rebound": true,
-      "current_dependency_changed_blobs": [],
-      "shared_dependency_delta": [
-        {
-          "path": "backend/api/middleware/idempotency.py",
-          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
-          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
-        },
-        {
-          "path": "backend/scripts/bootstrap_tenant_schema.py",
-          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
-          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
-        },
-        {
-          "path": "backend/services/order_command_service.py",
-          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
-          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
-        },
-        {
-          "path": "backend/services/order_creation_service.py",
-          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
-          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
-        },
-        {
-          "path": "backend/services/pricing_quote_service.py",
-          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
-          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
-        }
-      ],
-      "current_accepted_exact_nodes": [],
-      "related_not_substitute_for_original_nodes": [
-        "tests/s3_negotiation/test_provenance_and_safety.py::test_negotiated_history_reorders_at_current_price"
-      ],
-      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
-      "hosted_current_execution": "NOT_RUN"
+      "remaining_scope": "GAP_RC4_CURRENT_DEPENDENCY_REVALIDATION__NO_NEW_FULL_FILE_OR_BROWSER_ACCEPTANCE"
     },
     {
       "binding_id": "s2_browser_supplement",
-      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "status": "HISTORICAL_ACCEPTANCE_RETAINED__CURRENT_DEPENDENCY_REVALIDATION_GAP",
       "historical_record_not_rebound": true,
-      "current_dependency_changed_blobs": [],
-      "shared_dependency_delta": [
-        {
-          "path": "backend/api/middleware/idempotency.py",
-          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
-          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
-        },
-        {
-          "path": "backend/scripts/bootstrap_tenant_schema.py",
-          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
-          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
-        },
-        {
-          "path": "backend/services/order_command_service.py",
-          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
-          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
-        },
-        {
-          "path": "backend/services/order_creation_service.py",
-          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
-          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
-        },
-        {
-          "path": "backend/services/pricing_quote_service.py",
-          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
-          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
-        }
-      ],
-      "current_accepted_exact_nodes": [],
-      "related_not_substitute_for_original_nodes": [
-        "tests/s3_negotiation/test_provenance_and_safety.py::test_negotiated_history_reorders_at_current_price"
-      ],
-      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
-      "hosted_current_execution": "NOT_RUN"
+      "remaining_scope": "GAP_RC4_CURRENT_DEPENDENCY_REVALIDATION__NO_NEW_FULL_FILE_OR_BROWSER_ACCEPTANCE"
     },
     {
       "binding_id": "release_critical_journeys_s1_line",
-      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "status": "HISTORICAL_ACCEPTANCE_RETAINED__CURRENT_DEPENDENCY_REVALIDATION_GAP",
       "historical_record_not_rebound": true,
-      "current_dependency_changed_blobs": [],
-      "shared_dependency_delta": [
-        {
-          "path": "backend/api/middleware/idempotency.py",
-          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
-          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
-        },
-        {
-          "path": "backend/scripts/bootstrap_tenant_schema.py",
-          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
-          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
-        },
-        {
-          "path": "backend/services/order_command_service.py",
-          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
-          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
-        },
-        {
-          "path": "backend/services/order_creation_service.py",
-          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
-          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
-        },
-        {
-          "path": "backend/services/pricing_quote_service.py",
-          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
-          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
-        }
-      ],
-      "current_accepted_exact_nodes": [],
-      "related_not_substitute_for_original_nodes": [],
-      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
-      "hosted_current_execution": "NOT_RUN"
+      "remaining_scope": "GAP_RC4_CURRENT_DEPENDENCY_REVALIDATION__NO_NEW_FULL_FILE_OR_BROWSER_ACCEPTANCE"
     },
     {
       "binding_id": "product_images_core_cto_bounded_acceptance",
-      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "status": "HISTORICAL_ACCEPTANCE_RETAINED__CURRENT_DEPENDENCY_REVALIDATION_GAP",
       "historical_record_not_rebound": true,
-      "current_dependency_changed_blobs": [
-        {
-          "path": "backend/models/__init__.py",
-          "historical_blob": "f4e5aabe838e32c650ffc4ba99a226fd65e0f0d0",
-          "current_blob": "9ac806be1065c80ee98c49c00b104c23f865e1e2"
-        },
-        {
-          "path": "backend/scripts/bootstrap_tenant_schema.py",
-          "historical_blob": "2a495e964e5be05646e9a5b7aee344ba50b5d59e",
-          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d"
-        },
-        {
-          "path": "backend/api/app.py",
-          "historical_blob": "48a0cc4e93063fc7052ad5b2fd33f9ffdfc0b1f4",
-          "current_blob": "f247f1baa6ce248d074714148b88ffaab68d772b"
-        },
-        {
-          "path": "backend/api/middleware/idempotency.py",
-          "historical_blob": "1c4420175858d41ea93b27789f1e2acc597caa17",
-          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c"
-        },
-        {
-          "path": "frontend/src/pages/client/ProductDetailPage.tsx",
-          "historical_blob": "24d99bbd8f5fa004e08a73e78c807069c5f66678",
-          "current_blob": "61788a64016c03af389e15bc9e287c2f65696af9"
-        }
-      ],
-      "shared_dependency_delta": [
-        {
-          "path": "backend/api/middleware/idempotency.py",
-          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
-          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
-        },
-        {
-          "path": "backend/scripts/bootstrap_tenant_schema.py",
-          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
-          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
-        },
-        {
-          "path": "backend/services/order_command_service.py",
-          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
-          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
-        },
-        {
-          "path": "backend/services/order_creation_service.py",
-          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
-          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
-        },
-        {
-          "path": "backend/services/pricing_quote_service.py",
-          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
-          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
-        }
-      ],
-      "current_accepted_exact_nodes": [],
-      "related_not_substitute_for_original_nodes": [],
-      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
-      "hosted_current_execution": "NOT_RUN"
+      "remaining_scope": "GAP_RC4_CURRENT_DEPENDENCY_REVALIDATION__NO_NEW_FULL_FILE_OR_BROWSER_ACCEPTANCE"
     },
     {
       "binding_id": "s3_minimum_negotiation_cto_independent_v3",
-      "status": "REUSED_S3_BACKEND_166__CURRENT_FRONTEND_GAP",
+      "status": "HISTORICAL_ACCEPTANCE_RETAINED__CURRENT_DEPENDENCY_REVALIDATION_GAP",
       "historical_record_not_rebound": true,
-      "current_dependency_changed_blobs": [
-        {
-          "path": "frontend/src/pages/orders/OrderListPage.tsx",
-          "historical_blob": "28e9824506cffa75e7c2365ecf837a5170b8148a",
-          "current_blob": "fd59647026b2545687c4aa864b0217be2e26fbf0"
-        }
-      ],
-      "backend_nodes_same_bytes_reused": 166,
-      "historical_browser_candidate": "c2fff20365b16254db2163504751fa5f84746e80",
-      "historical_browser_reexecuted": false,
-      "remaining_scope": "GAP_CURRENT_S3_BROWSER_NOT_REEXECUTED__NOT_FULL_NODE_COVERAGE"
+      "remaining_scope": "GAP_RC4_CURRENT_DEPENDENCY_REVALIDATION__NO_NEW_FULL_FILE_OR_BROWSER_ACCEPTANCE"
     },
     {
       "binding_id": "rc3_payment_currency_pricing_ui_cto_bounded_acceptance",
-      "status": "CTO_ACCEPTED_UI_BOUNDED_SCOPE__NOT_CURRENT_CI",
+      "status": "HISTORICAL_ACCEPTANCE_RETAINED__CURRENT_DEPENDENCY_REVALIDATION_GAP",
       "historical_record_not_rebound": true,
-      "vitest_count": 531,
-      "vitest_candidate": "b46b74130b582e8e4f42579148b209eca540f576",
-      "build_candidate": "bac775df8257ea2fd626d6de425f3564748b37f2",
-      "not_backend_pytest_nodes": true,
-      "remaining_scope": "GAP_CURRENT_INTEGRATED_HOSTED_CI_AND_FULL_BUSINESS_V3_NOT_RUN"
+      "remaining_scope": "GAP_RC4_CURRENT_DEPENDENCY_REVALIDATION__NO_NEW_FULL_FILE_OR_BROWSER_ACCEPTANCE"
     }
   ],
   "previous_s3_source_intake": {
@@ -2856,6 +2363,627 @@
     "added_business_accepted_nodes": 0,
     "hosted_ci": "NOT_RUN"
   },
+  "previous_rc3_source_intake": {
+    "authorization": "CTO-AUTH-RC3-CI-FIXTURE-SCOPE-CONTINUE-R1-20261021",
+    "source_ref": "82ad641d67baf3035c5e35fc449d701780a22b3a",
+    "source_tree": "43d9051ab20e262e6096254eba465cc37c860075",
+    "source_parent": "9e2221393f0a8c3da493ea32d4a3d93e41f4fa33",
+    "backend_tree": "4efaa92c7b2189cee5ac876b174adf46c21829da",
+    "frontend_tree": "d3e3ca842bd6d4eb2caca6aa5d1b1c3137d83f34",
+    "authority_record": {
+      "path": "AI_REPORT_INBOX/rc3-ci-three-family-finite-supplement-cto-20261021/delivery/CODEXL-FINITE-CONTINUE.zh-CN.md",
+      "sha256": "c6533bcd1e1572dfb74a9f58a5217e1161adc9b9e46fd8e579a90d1966a02245"
+    },
+    "cto_ruling": {
+      "path": "AI_REPORT_INBOX/rc3-ci-three-family-finite-supplement-cto-20261021/delivery/CTO-REVIEW.zh-CN.md",
+      "sha256": "3da6e1dc798fcbbf698ffbfbc708aafde7d438063480d2c39929e293c7cbd6fe"
+    },
+    "independent_v3_this_intake": "AUTHOR_ROUTE_CONTRACT_CANDIDATE_PENDING_CTO",
+    "historical_results_reexecuted": false,
+    "hosted_ci_this_intake": "NOT_RUN",
+    "current_fresh_ordinary_collection": "NOT_RUN_THIS_INTAKE__PRIOR_4288_DEFINITION_UNCHANGED",
+    "ordinary_definition": {
+      "nodes": 4288,
+      "files": 236,
+      "dedicated_files": 21,
+      "ignores": 6,
+      "canonical_definition_changed": false
+    },
+    "source_deltas": [
+      {
+        "path": "backend/alembic/versions/042_order_negotiation_proposals.py",
+        "current_blob": "77700889ffb92eddb49488ea2b265834b41e2697",
+        "current_sha256": "5e26d80dbb16cea1d12f351d374730d252024511f4a378dd5f8e0308f2bd6f2f"
+      },
+      {
+        "path": "backend/api/app.py",
+        "current_blob": "f247f1baa6ce248d074714148b88ffaab68d772b",
+        "current_sha256": "4d3a9b7de558b32e3302c9c92cd05b0dfbfcd6cae62b9e1dce1b360b06245bfd"
+      },
+      {
+        "path": "backend/api/middleware/idempotency.py",
+        "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+        "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
+      },
+      {
+        "path": "backend/api/v1/order_negotiations.py",
+        "current_blob": "4484c0a5056c39a2618573a6dcc4a146e4716ebe",
+        "current_sha256": "0446356cf3dd6d9b67ac44ce12991a447da5935b69c1ac379a702e2e7dc92a44"
+      },
+      {
+        "path": "backend/models/__init__.py",
+        "current_blob": "9ac806be1065c80ee98c49c00b104c23f865e1e2",
+        "current_sha256": "adc0798a4a43aeca0d4c64f10e1bc56e09dacb36f5ec9f03470e18d9334a617f"
+      },
+      {
+        "path": "backend/models/order_negotiation.py",
+        "current_blob": "4be0609b69afd1297a0bc13041e5f0dc3f69c792",
+        "current_sha256": "5442752109103cb3f0a6444368ac3f0ad8e7a220e7ae95d722ab2768229f379f"
+      },
+      {
+        "path": "backend/schemas/order_negotiation.py",
+        "current_blob": "3af0bb3baf2ef5819ad6127f84c61f434b8e0386",
+        "current_sha256": "5cabf08e35921e69474474705f98d383815aba8514009e16ad7c1c8a52f1b868"
+      },
+      {
+        "path": "backend/scripts/bootstrap_tenant_schema.py",
+        "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
+        "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
+      },
+      {
+        "path": "backend/scripts/runtime_readiness_gate.py",
+        "current_blob": "52c9c44909dfc87c03ec6e6b8544fd02e7f744db",
+        "current_sha256": "8c5d99fa200bec9398719dc0ab31a366a61f875a1d6a756afeda3ff9c61d0e34"
+      },
+      {
+        "path": "backend/services/order_command_service.py",
+        "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+        "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
+      },
+      {
+        "path": "backend/services/order_creation_service.py",
+        "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+        "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
+      },
+      {
+        "path": "backend/services/order_negotiation_service.py",
+        "current_blob": "16a866b69fcb025500b8a73ff12304bbf20bfaa2",
+        "current_sha256": "7d6fca9ab8d693a4dcfd0d776e1bdce45dcbb31dddc81d1648d5345dff29dd3c"
+      },
+      {
+        "path": "backend/services/pricing_quote_service.py",
+        "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
+        "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
+      },
+      {
+        "path": "backend/tests/mpango_invariants_r0_support.py",
+        "current_blob": "433383e5247180561b77d593847be703a9b72cca",
+        "current_sha256": "187e6e1f0ae98b218f99e74738cccbf2bfb523385b4bd328f36d5c6800dcc60e"
+      },
+      {
+        "path": "backend/tests/rc2_current_contract_support.py",
+        "current_blob": "dcbba531e7bfc4f358fa6314a09329395eebec71",
+        "current_sha256": "7bc3c512eaf1ff6fddbfe302a6a67ce833c2f81c84b093651aba0aad812b5192"
+      },
+      {
+        "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
+        "current_blob": "9a289181c71e3a42a41089abbf11d52b27934540",
+        "current_sha256": "02427b495680855e97b5251640e990ee4712298a5c1cc74859d2e8fb8b9a150b"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/__init__.py",
+        "current_blob": "ac9fd63217e0b3e63a4f4c85d26fb78c28ee802f",
+        "current_sha256": "786b1be6c91f69f6dad7e7dff9f74b1c09b3e28c0ffa1cff5aed3be9ee7742de"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/conftest.py",
+        "current_blob": "de9dd188ea15bdd92fa9fecf3629634547f86954",
+        "current_sha256": "cc136f57dc8493aee5f26dd84be7c057633d0dfe9fba97c1bcbd178d4ce149cb"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_atomicity_and_races.py",
+        "current_blob": "67b840dd63f2ddc3bc576823db43422feb89b3b8",
+        "current_sha256": "0924fa479b34ff169fc150c6c72ff55eaa863a22f1d14f9460182d48f0c9a0f3"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_contract.py",
+        "current_blob": "c15541eb943cc40b3baddfc5470ba91b9e5de88d",
+        "current_sha256": "ffa43cb5de9cd74d0065e292a3dee1384ba676008d529c237cfeb1d8f8215cf1"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_migration.py",
+        "current_blob": "bcfb5f9321467c15259ffff0846bfe4cb7cfcc66",
+        "current_sha256": "7a7eb4575fd688f3604b16b672eb6c5a2028134028356bb19f67bd71e1a2fa13"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_provenance_and_safety.py",
+        "current_blob": "626447beb523f99197d1aa021d31c22a4989bfdf",
+        "current_sha256": "2257cc79571edd1524121bac16ac1cc7eea1b37cc8583dd94efd3f0a1aeee5cc"
+      },
+      {
+        "path": "backend/tests/s3_negotiation/test_safety_boundaries.py",
+        "current_blob": "66f71981878f6b1ac501b9a715a09f69978df51f",
+        "current_sha256": "ea19e8171268d9846ede10f849d4c0bc9917d7738bb9e5c90ef51d23888b014a"
+      },
+      {
+        "path": "backend/tests/task_owned_pg_resources.py",
+        "current_blob": "6fed2c5aeae93b09168b8af4fad6eaf689571fd0",
+        "current_sha256": "0fe1addb27ac17bdc0725678e18989f4ee31620620f7c2b3858b04f3828649f8"
+      },
+      {
+        "path": "backend/tests/test_combined_setup_authority_contract.py",
+        "current_blob": "229536520f8904f719016b9c6036da96af472943",
+        "current_sha256": "90854ed6b22b2460777dcfdc6a1b86fb8c0dbc3aa4f2cc8aa953bb447f71f2a4"
+      },
+      {
+        "path": "backend/tests/test_dc12r1_s3_s1_catalog_order_hardening.py",
+        "current_blob": "88e904a2a9dff7e2a291ff2379619a3a385db7f4",
+        "current_sha256": "e33c0ebc92ed358f4eea5a2dfc6aa5467805b5cf7fbbae8ef396a9d33d00009a"
+      },
+      {
+        "path": "backend/tests/test_dc12r1_s3_s2_read_only_retailer_finance.py",
+        "current_blob": "3d1e38bcec1ee4b99afb40a478db96bd6b5abcfa",
+        "current_sha256": "e2616c754e853aa0088861e36f4a6291408957cc85e3930a84806ad8d3e11965"
+      },
+      {
+        "path": "backend/tests/test_dc12r1_s3_s2b_i1_financial_schema_foundation.py",
+        "current_blob": "59485795cc8f1a4df7513fc90d205b88cc1e176a",
+        "current_sha256": "913387debbf5d06d51e58a5d211f45eb71622e5e57b2a089b428aa3e5932e719"
+      },
+      {
+        "path": "backend/tests/test_dc12r1_s3_s2b_i1_r4_r1_real_alembic_upgrade.py",
+        "current_blob": "6a44074f290bf28f99d4f1145cf706e3e1945eeb",
+        "current_sha256": "aabf7f80bf218cf335b913911a85387ed766d1e989da991a40491aa999b96e3b"
+      },
+      {
+        "path": "backend/tests/test_g1_r2_lifecycle_and_public_prep_contract.py",
+        "current_blob": "8c2aca6b5519971c9296ebebed4faedf26fd2f85",
+        "current_sha256": "715eebffc638c85ef3f98c9052450b8e6f0df75850e9f65258d9981c578708d1"
+      },
+      {
+        "path": "backend/tests/test_route_authorization_policy.py",
+        "current_blob": "b3ffdd204ea71c76bec179845e26fd55dab58670",
+        "current_sha256": "78177b533677aa5324d8402c447d4620005ca56dce75d4f1174d3f555b66a848"
+      },
+      {
+        "path": "backend/tests/test_runtime_readiness_gate.py",
+        "current_blob": "849dc50f99983b8ea9109c79f46c691d7baa3942",
+        "current_sha256": "93851f5bc157a3386088f5c8bdd9eae6c138bb243311792d186c7ceadafd8db5"
+      },
+      {
+        "path": "backend/tests/test_sku_r1_client_catalog_contract.py",
+        "current_blob": "8c19a0ec4fcfa1b55f9374ff5aa5c2a74456e2ed",
+        "current_sha256": "f64ee8e4c03b34d7403a75b5401cba7311189e8834367eaa30ccc03dcb843f0d"
+      },
+      {
+        "path": "backend/tests/test_u6f_onboarding_auth_chain_closeout.py",
+        "current_blob": "f7c91ac217ce81e08595cfe7da4d581878a57a3e",
+        "current_sha256": "0c699d6f23bf7d566ff10962295ee86eccbd2e626c2edf0c7325f02add7bc9b5"
+      },
+      {
+        "path": "backend/tests/test_u6i1_owner_credential_setup_schema.py",
+        "current_blob": "105f37adc842305aff52a12dc157d97206b8cb1d",
+        "current_sha256": "cee1fa64fc0fb6b49efad260afdd3b4bedba580144ed4f735d985f762428e7f7"
+      },
+      {
+        "path": "frontend/src/components/orders/OrderNegotiationPanel.tsx",
+        "current_blob": "47974c7a162a6f2cfef10f23001e930f5dbdd2cb",
+        "current_sha256": "733be9968b12fac9742cade2257727bd42d90459f67055b69210037bd6dbd215"
+      },
+      {
+        "path": "frontend/src/components/ui/PaymentRecordModal.tsx",
+        "current_blob": "e946942622c2630eb83ef1b5471b214b726a0940",
+        "current_sha256": "0a2f55c8f164e7bc01d79d46e7ac08874fe4c162e508d4d56579fd16247a77d0"
+      },
+      {
+        "path": "frontend/src/pages/client/OrderDetailPage.tsx",
+        "current_blob": "06b4cfbba89a6aa8c27fde91b9efe86b82dfc81e",
+        "current_sha256": "3652e01cc41b56b84c76b1b83f7015a60a106d09fe5a8f2a2aa29b8dcb5a1f51"
+      },
+      {
+        "path": "frontend/src/pages/orders/OrderListPage.tsx",
+        "current_blob": "fd59647026b2545687c4aa864b0217be2e26fbf0",
+        "current_sha256": "e7a0f8c1e18cc472f03b96f652104e67753a83724db2b676ce72af18a9016528"
+      },
+      {
+        "path": "frontend/src/pages/pricing/RetailerPricingPage.tsx",
+        "current_blob": "3599b6f0866878847741fd8a86d6bf8082f3fc49",
+        "current_sha256": "990233118cc56978f82aa22b3207c90f37489d6e20d6f2eeb2dd26e8ea7d20dd"
+      },
+      {
+        "path": "frontend/src/services/orderNegotiationService.ts",
+        "current_blob": "518794b827f991a21bab29eb4b51720f7bc76e41",
+        "current_sha256": "421f9d5660d5ace0d26aea8fdc9cb72174b1a988ff7a9e1f79d7ff5c9795a746"
+      },
+      {
+        "path": "frontend/src/tests/PaymentCurrencyPricingUx.test.tsx",
+        "current_blob": "90a653b45fa8045da565d6e746df7dcb52d5339b",
+        "current_sha256": "b643652e23dff99de4aac7736fd8d1c6a6ed5d901b79d6fe4981f8bd70c02732"
+      },
+      {
+        "path": "frontend/src/tests/S3Negotiation.test.tsx",
+        "current_blob": "8eea1303649c5570e281021664a71dec7050aee7",
+        "current_sha256": "0245f537f867ce653e661eaec2b1d8937f14971b02b6abc991a01d430f118027"
+      },
+      {
+        "path": "frontend/src/tests/S5BRealUserSmoke.test.tsx",
+        "current_blob": "e34bb0cc02ae7f86885dc27f184594b5d034a0de",
+        "current_sha256": "7e0128ac459fb49560741dafdc942bba296b63c55d3f70c51dbb0584808d78c0"
+      }
+    ]
+  },
+  "previous_rc3_selection_binding": {
+    "authority": "CTO-AUTH-RC3-CI-FIXTURE-SCOPE-CONTINUE-R1-20261021",
+    "source_ref": "82ad641d67baf3035c5e35fc449d701780a22b3a",
+    "discovered_files": 263,
+    "ordinary_files": 236,
+    "dedicated_files": 21,
+    "ignores": 6,
+    "union": 257,
+    "intersection": 0,
+    "unknown": 0
+  },
+  "previous_rc3_dependency_assessments": [
+    {
+      "binding_id": "s1_pricing_quote_independent_v3",
+      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "historical_record_not_rebound": true,
+      "current_dependency_changed_blobs": [
+        {
+          "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
+          "historical_blob": "67b97b41518f8851b2d9b4b54eb7095ee66eaa40",
+          "current_blob": "9a289181c71e3a42a41089abbf11d52b27934540"
+        }
+      ],
+      "shared_dependency_delta": [
+        {
+          "path": "backend/api/middleware/idempotency.py",
+          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
+        },
+        {
+          "path": "backend/scripts/bootstrap_tenant_schema.py",
+          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
+          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
+        },
+        {
+          "path": "backend/services/order_command_service.py",
+          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
+        },
+        {
+          "path": "backend/services/order_creation_service.py",
+          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
+        },
+        {
+          "path": "backend/services/pricing_quote_service.py",
+          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
+          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
+        }
+      ],
+      "current_accepted_exact_nodes": [
+        "tests/s1_pricing_quote/test_contract.py::test_confirmation_quote_refresh_preserves_joined_stock_lock_order",
+        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[None-override0-None-None-BASE_PRICE_REQUIRED]",
+        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base1-None-value1-BASE_PRICE-None]",
+        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base2-override2-value2-RETAILER_OVERRIDE-None]",
+        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base3-override3-None-None-PRICE_DATA_INTEGRITY_RED]",
+        "tests/s1_pricing_quote/test_contract.py::test_common_effective_price[base4-override4-None-None-PRICE_DATA_INTEGRITY_RED]",
+        "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[90.000-UGX-90]",
+        "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[90.000-KES-90.00]",
+        "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[0-UGX-0]",
+        "tests/s1_pricing_quote/test_contract.py::test_exact_string_amount[9999999999.99-KES-9999999999.99]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[90.01-UGX-MONEY_PRECISION]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[90.001-KES-MONEY_PRECISION]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[NaN-KES-INVALID_MONEY]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[Infinity-KES-INVALID_MONEY]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[-1-KES-INVALID_MONEY]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[0-KES-INVALID_MONEY]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[10000000000-KES-INVALID_MONEY]",
+        "tests/s1_pricing_quote/test_contract.py::test_money_refusals[1-XXX-TENANT_CURRENCY_UNRESOLVED]",
+        "tests/s1_pricing_quote/test_contract.py::test_price_change_requires_explicit_consent",
+        "tests/s1_pricing_quote/test_contract.py::test_same_total_opposing_lines_still_red",
+        "tests/s1_pricing_quote/test_contract.py::test_aba_revision_source_and_label_do_not_add_consent_click",
+        "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[retailer-another]",
+        "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[tenant-other]",
+        "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[actor-other]",
+        "tests/s1_pricing_quote/test_contract.py::test_cross_context_rejected[currency-UGX]",
+        "tests/s1_pricing_quote/test_contract.py::test_quote_tamper_and_expiry",
+        "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[False-KE]",
+        "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[False-UG]",
+        "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[True-KE]",
+        "tests/s1_pricing_quote/test_http.py::test_two_countries_two_creation_entries[True-UG]",
+        "tests/s1_pricing_quote/test_http.py::test_reconsent_failure_does_not_consume_key",
+        "tests/s1_pricing_quote/test_http.py::test_missing_base_even_with_override",
+        "tests/s1_pricing_quote/test_http.py::test_versioned_override_retire_restore_same_row",
+        "tests/s1_pricing_quote/test_http.py::test_replay_rechecks_active_binding_and_conflicting_intent",
+        "tests/s1_pricing_quote/test_http.py::test_explicit_replacement_preserves_old_items",
+        "tests/s1_pricing_quote/test_http.py::test_confirm_uses_snapshot_and_one_quantity_contract[KE]",
+        "tests/s1_pricing_quote/test_http.py::test_confirm_uses_snapshot_and_one_quantity_contract[UG]",
+        "tests/s1_pricing_quote/test_http.py::test_used_unit_change_refuses_both_entries_label_preserves_history",
+        "tests/s1_pricing_quote/test_http.py::test_client_cannot_replace_merchant_or_confirmed_draft",
+        "tests/s1_pricing_quote/test_http.py::test_stale_confirm_does_not_reprice_or_start_economics",
+        "tests/s1_pricing_quote/test_http.py::test_quote_cannot_move_to_another_authorized_customer",
+        "tests/s1_pricing_quote/test_http.py::test_wrong_tenant_and_current_rbac_revoke_before_replay",
+        "tests/s1_pricing_quote/test_http.py::test_opposing_prices_same_total_requires_real_http_consent",
+        "tests/s1_pricing_quote/test_http.py::test_same_economics_aba_success_records_both_revisions",
+        "tests/s1_pricing_quote/test_http.py::test_old_fractional_ugx_price_remains_readable_but_not_orderable[UG]",
+        "tests/s1_pricing_quote/test_process_and_faults.py::test_two_processes_same_key_and_fresh_process_replay",
+        "tests/s1_pricing_quote/test_process_and_faults.py::test_create_fault_rolls_back_all_effects[second-item]",
+        "tests/s1_pricing_quote/test_process_and_faults.py::test_create_fault_rolls_back_all_effects[commit]",
+        "tests/s1_pricing_quote/test_process_and_faults.py::test_replacement_cancel_failure_restores_old_draft",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_create_cache_and_binding_revocation[merchant]",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_create_cache_and_binding_revocation[client]",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_cached_create_rechecks_live_subject",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_cached_create_preserves_intent_and_quote_ownership",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_s1_commit_publication[barrier]",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_s1_commit_publication[failure]",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_same_process_create_waits_for_commit[merchant]",
+        "tests/s1_pricing_quote/test_cache_integration.py::test_same_process_create_waits_for_commit[client]",
+        "tests/s1_pricing_quote/test_review_r2.py::test_revision_contract_finite_consistency"
+      ],
+      "related_not_substitute_for_original_nodes": [],
+      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
+      "hosted_current_execution": "NOT_RUN"
+    },
+    {
+      "binding_id": "s2_reorder_independent_v3",
+      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "historical_record_not_rebound": true,
+      "current_dependency_changed_blobs": [],
+      "shared_dependency_delta": [
+        {
+          "path": "backend/api/middleware/idempotency.py",
+          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
+        },
+        {
+          "path": "backend/scripts/bootstrap_tenant_schema.py",
+          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
+          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
+        },
+        {
+          "path": "backend/services/order_command_service.py",
+          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
+        },
+        {
+          "path": "backend/services/order_creation_service.py",
+          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
+        },
+        {
+          "path": "backend/services/pricing_quote_service.py",
+          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
+          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
+        }
+      ],
+      "current_accepted_exact_nodes": [],
+      "related_not_substitute_for_original_nodes": [
+        "tests/s3_negotiation/test_provenance_and_safety.py::test_negotiated_history_reorders_at_current_price"
+      ],
+      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
+      "hosted_current_execution": "NOT_RUN"
+    },
+    {
+      "binding_id": "s2_browser_supplement",
+      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "historical_record_not_rebound": true,
+      "current_dependency_changed_blobs": [],
+      "shared_dependency_delta": [
+        {
+          "path": "backend/api/middleware/idempotency.py",
+          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
+        },
+        {
+          "path": "backend/scripts/bootstrap_tenant_schema.py",
+          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
+          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
+        },
+        {
+          "path": "backend/services/order_command_service.py",
+          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
+        },
+        {
+          "path": "backend/services/order_creation_service.py",
+          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
+        },
+        {
+          "path": "backend/services/pricing_quote_service.py",
+          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
+          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
+        }
+      ],
+      "current_accepted_exact_nodes": [],
+      "related_not_substitute_for_original_nodes": [
+        "tests/s3_negotiation/test_provenance_and_safety.py::test_negotiated_history_reorders_at_current_price"
+      ],
+      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
+      "hosted_current_execution": "NOT_RUN"
+    },
+    {
+      "binding_id": "release_critical_journeys_s1_line",
+      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "historical_record_not_rebound": true,
+      "current_dependency_changed_blobs": [],
+      "shared_dependency_delta": [
+        {
+          "path": "backend/api/middleware/idempotency.py",
+          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
+        },
+        {
+          "path": "backend/scripts/bootstrap_tenant_schema.py",
+          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
+          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
+        },
+        {
+          "path": "backend/services/order_command_service.py",
+          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
+        },
+        {
+          "path": "backend/services/order_creation_service.py",
+          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
+        },
+        {
+          "path": "backend/services/pricing_quote_service.py",
+          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
+          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
+        }
+      ],
+      "current_accepted_exact_nodes": [],
+      "related_not_substitute_for_original_nodes": [],
+      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
+      "hosted_current_execution": "NOT_RUN"
+    },
+    {
+      "binding_id": "product_images_core_cto_bounded_acceptance",
+      "status": "HISTORICAL_ACCEPTANCE__CURRENT_DEPENDENCY_GAPS",
+      "historical_record_not_rebound": true,
+      "current_dependency_changed_blobs": [
+        {
+          "path": "backend/models/__init__.py",
+          "historical_blob": "f4e5aabe838e32c650ffc4ba99a226fd65e0f0d0",
+          "current_blob": "9ac806be1065c80ee98c49c00b104c23f865e1e2"
+        },
+        {
+          "path": "backend/scripts/bootstrap_tenant_schema.py",
+          "historical_blob": "2a495e964e5be05646e9a5b7aee344ba50b5d59e",
+          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d"
+        },
+        {
+          "path": "backend/api/app.py",
+          "historical_blob": "48a0cc4e93063fc7052ad5b2fd33f9ffdfc0b1f4",
+          "current_blob": "f247f1baa6ce248d074714148b88ffaab68d772b"
+        },
+        {
+          "path": "backend/api/middleware/idempotency.py",
+          "historical_blob": "1c4420175858d41ea93b27789f1e2acc597caa17",
+          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c"
+        },
+        {
+          "path": "frontend/src/pages/client/ProductDetailPage.tsx",
+          "historical_blob": "24d99bbd8f5fa004e08a73e78c807069c5f66678",
+          "current_blob": "61788a64016c03af389e15bc9e287c2f65696af9"
+        }
+      ],
+      "shared_dependency_delta": [
+        {
+          "path": "backend/api/middleware/idempotency.py",
+          "current_blob": "89f4d3ae78e2fd4a6377d6a0b497956a1ae8179c",
+          "current_sha256": "15c85e33c30b2fdecf170b28e3e59f43a75e79acea4cfc547dbb7c3fdf5c1fa5"
+        },
+        {
+          "path": "backend/scripts/bootstrap_tenant_schema.py",
+          "current_blob": "4ea5b190188d2db676635b601689d0b9428ff33d",
+          "current_sha256": "badbbee64e64c91a43264d0903c43c5c38bcef34d3ddae96e669e397fbe8e925"
+        },
+        {
+          "path": "backend/services/order_command_service.py",
+          "current_blob": "d21e48de3df0d21981a0896a28e8c1a890df21e3",
+          "current_sha256": "b6d217028a83f75aec5710c7e0a545ee0248b154561e4ce297574f574d29ead8"
+        },
+        {
+          "path": "backend/services/order_creation_service.py",
+          "current_blob": "4979cc64e3d3c7d8104f7b864899f9133c00afc0",
+          "current_sha256": "c383213ea1a2db0d51db6e645b7a945d728553bf25c7eaeab093a22b2ac3ec4a"
+        },
+        {
+          "path": "backend/services/pricing_quote_service.py",
+          "current_blob": "2eddc45b8d69cc4880241334f5227f0094efc852",
+          "current_sha256": "a5d7739d6cbb4a137c62a055372aa8e9667543d0580530572defb522054d9c80"
+        }
+      ],
+      "current_accepted_exact_nodes": [],
+      "related_not_substitute_for_original_nodes": [],
+      "remaining_scope": "GAP_NON_REEXECUTED_HISTORICAL_NODES_AND_JOURNEYS",
+      "hosted_current_execution": "NOT_RUN"
+    },
+    {
+      "binding_id": "s3_minimum_negotiation_cto_independent_v3",
+      "status": "REUSED_S3_BACKEND_166__CURRENT_FRONTEND_GAP",
+      "historical_record_not_rebound": true,
+      "current_dependency_changed_blobs": [
+        {
+          "path": "frontend/src/pages/orders/OrderListPage.tsx",
+          "historical_blob": "28e9824506cffa75e7c2365ecf837a5170b8148a",
+          "current_blob": "fd59647026b2545687c4aa864b0217be2e26fbf0"
+        }
+      ],
+      "backend_nodes_same_bytes_reused": 166,
+      "historical_browser_candidate": "c2fff20365b16254db2163504751fa5f84746e80",
+      "historical_browser_reexecuted": false,
+      "remaining_scope": "GAP_CURRENT_S3_BROWSER_NOT_REEXECUTED__NOT_FULL_NODE_COVERAGE"
+    },
+    {
+      "binding_id": "rc3_payment_currency_pricing_ui_cto_bounded_acceptance",
+      "status": "CTO_ACCEPTED_UI_BOUNDED_SCOPE__NOT_CURRENT_CI",
+      "historical_record_not_rebound": true,
+      "vitest_count": 531,
+      "vitest_candidate": "b46b74130b582e8e4f42579148b209eca540f576",
+      "build_candidate": "bac775df8257ea2fd626d6de425f3564748b37f2",
+      "not_backend_pytest_nodes": true,
+      "remaining_scope": "GAP_CURRENT_INTEGRATED_HOSTED_CI_AND_FULL_BUSINESS_V3_NOT_RUN"
+    }
+  ],
+  "previous_rc3_attachment_deltas": [
+    {
+      "binding_id": "s1_pricing_quote_independent_v3",
+      "path": "backend/tests/s1_pricing_quote/test_review_r2.py",
+      "historical_candidate": "88c7d8157ac5c46795d411ea6799112e017c9532",
+      "historical_load_bearing_blob": "67b97b41518f8851b2d9b4b54eb7095ee66eaa40",
+      "current_source_ref": "82ad641d67baf3035c5e35fc449d701780a22b3a",
+      "current_blob": "9a289181c71e3a42a41089abbf11d52b27934540",
+      "current_content_sha256": "02427b495680855e97b5251640e990ee4712298a5c1cc74859d2e8fb8b9a150b",
+      "classification": "PARTIAL_CURRENT_NODE_ACCEPTED__FULL_FILE_REEXECUTION_GAP",
+      "current_file_same_as_historical": false,
+      "current_file_reexecuted_this_intake": false,
+      "change": "Current revision-consistency node accepted at head042; historical 77-node evidence remains on its original blob, not rebound.",
+      "historical_evidence_rebound": false,
+      "current_accepted_exact_nodes": [
+        "tests/s1_pricing_quote/test_review_r2.py::test_revision_contract_finite_consistency"
+      ]
+    },
+    {
+      "binding_id": "product_images_core_cto_bounded_acceptance",
+      "path": "frontend/src/pages/client/ProductDetailPage.tsx",
+      "historical_candidate": "97eb3d89daf3daca45d7289c6669f1cca18d5ef2",
+      "historical_load_bearing_blob": "24d99bbd8f5fa004e08a73e78c807069c5f66678",
+      "current_source_ref": "82ad641d67baf3035c5e35fc449d701780a22b3a",
+      "current_blob": "61788a64016c03af389e15bc9e287c2f65696af9",
+      "current_content_sha256": "7be62e8c610a09d92956c92fd57e7c7a00546cab4651413cc4200b456df0c411",
+      "classification": "GAP_CURRENT_ATTACHMENT_NOT_REEXECUTED",
+      "current_file_same_as_historical": false,
+      "current_file_reexecuted_this_intake": false,
+      "change": "Mobile UX product-detail layout is changed; prior image/S2 browser scope is not a current frontend reexecution.",
+      "historical_evidence_rebound": false,
+      "current_accepted_exact_nodes": []
+    }
+  ],
+  "additional_bounded_evidence": [
+    {
+      "id": "M01_R4_single_instance_UG_revoked_cached_replay",
+      "product_ref": "bb625e893ab1ec3c50c7eb0cfeedf4a73e9f8f6b",
+      "cto_ruling": "m01-r4-cto-final-acceptance-20261024/CTO-FINAL-RULING.zh-CN.md",
+      "cto_ruling_sha256": "1dc01e9bc5483581f283ee12f843f742619cba48f3bf9165bf49f1a5d4142a5e",
+      "status": "CTO_ACCEPTED_NAMED_SCOPE_ON_BB625E89__NOT_CURRENT_CI_OR_FULL_AUDIT",
+      "scope": "single-instance UG: S1 201, S2 201 hot replay, product deactivate, old unexpired token 403/BINDING_NOT_ACTIVE, exact declared economic multisets unchanged",
+      "not_claimed": [
+        "all audit/cache/rcj",
+        "multi-process",
+        "SMTP registration",
+        "full revenue recognition",
+        "full suite",
+        "release"
+      ],
+      "new_pytest_nodes_claimed": 0
+    }
+  ],
   "recovered_native_node_maps": {
     "record": "CTO_RECOVERED_ACCEPTED_NODE_MAPS",
     "candidate": "88c7d8157ac5c46795d411ea6799112e017c9532",

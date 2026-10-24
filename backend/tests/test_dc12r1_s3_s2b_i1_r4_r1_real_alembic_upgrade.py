@@ -51,7 +51,7 @@ REV_036 = "036_retailer_mvp_identity"
 REV_037 = "037_payment_declarations_schema"
 REV_038 = "038_catalog_identity_vertical_slice"
 REV_HEAD = "039_order_credit_holds"  # Frozen historical target, not current metadata head
-CURRENT_HEAD = "042_order_negotiation_proposals"
+CURRENT_HEAD = "044_inventory_adjustment_approval"
 
 DECL = "payment_declarations"
 RECEIPT = "receipt_sequences"

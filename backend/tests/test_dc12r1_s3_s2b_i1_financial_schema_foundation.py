@@ -485,7 +485,7 @@ class TestConcurrency:
 
 
 class TestMigrationHead:
-    """The current profile has exactly the frozen 042 head; node names remain historical."""
+    """The current profile has exactly the frozen 044 head; node names remain historical."""
 
     async def test_head_is_038(self):
         async with AsyncSessionLocal() as db:
@@ -493,7 +493,7 @@ class TestMigrationHead:
                 "SELECT version_num FROM public.alembic_version"
             ))).first()
             assert row is not None
-            assert row[0] == "042_order_negotiation_proposals"
+            assert row[0] == "044_inventory_adjustment_approval"
 
     async def test_sole_head(self):
         async with AsyncSessionLocal() as db:

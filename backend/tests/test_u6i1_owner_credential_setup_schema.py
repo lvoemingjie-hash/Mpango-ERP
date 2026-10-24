@@ -169,7 +169,7 @@ def test_alembic_head_includes_owner_credential_setup_tokens():
     config = Config(str(ALEMBIC_INI_PATH))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_heads() == ["042_order_negotiation_proposals"]
+    assert script.get_heads() == ["044_inventory_adjustment_approval"]
 
 
 def test_owner_credential_schema_foundation_artifacts_remain_present():

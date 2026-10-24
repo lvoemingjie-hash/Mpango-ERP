@@ -1129,11 +1129,11 @@ def _canonical_two_role_lifecycle(server, resource_root):
                             "'038_catalog_identity_vertical_slice'")
             with pytest.raises(RuntimeError) as excinfo:
                 run_coroutine(_boot_refuses())
-            assert "042_order_negotiation_proposals" in str(excinfo.value)
+            assert "044_inventory_adjustment_approval" in str(excinfo.value)
             assert _tenant_schema_count(admin) == 0
             with admin.cursor() as cur:
                 cur.execute("UPDATE alembic_version SET version_num = "
-                            "'042_order_negotiation_proposals'")
+                            "'044_inventory_adjustment_approval'")
 
             guard0 = _guard_snapshot(admin)
 

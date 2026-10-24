@@ -238,7 +238,7 @@ def test_gate_refuses_database_without_completed_setup():
                     cur.execute("SELECT version_num FROM public.alembic_version ORDER BY version_num")
                     before = cur.fetchall()
                 reasons = helper.evaluate_contract(server.admin_db_url(db))
-                assert any("requires exactly '042_order_negotiation_proposals'" in r for r in reasons), (
+                assert any("requires exactly '044_inventory_adjustment_approval'" in r for r in reasons), (
                     "RC2_READINESS_HEAD_MUST_REFUSE", versions, reasons)
                 with probe.cursor() as cur:
                     cur.execute("SELECT version_num FROM public.alembic_version ORDER BY version_num")

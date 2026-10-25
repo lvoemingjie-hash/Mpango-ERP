@@ -191,6 +191,28 @@ def _entrypoint_invokes_gate_helper(entrypoint_text: str) -> None:
 def test_entrypoint_delegates_to_the_gate_helper():
     text = ENTRYPOINT.read_text(encoding="utf-8")
     _entrypoint_invokes_gate_helper(text)
+    import ast
+
+    revisions = set()
+    parents = set()
+    for path in (BACKEND_DIR / "alembic" / "versions").glob("*.py"):
+        for node in ast.parse(path.read_bytes()).body:
+            targets = node.targets if isinstance(node, ast.Assign) else (
+                [node.target] if isinstance(node, ast.AnnAssign) else [])
+            for target in targets:
+                if not isinstance(target, ast.Name) or target.id not in {
+                    "revision", "down_revision"
+                }:
+                    continue
+                value = ast.literal_eval(node.value)
+                if target.id == "revision":
+                    revisions.add(value)
+                elif isinstance(value, (tuple, list)):
+                    parents.update(value)
+                elif value is not None:
+                    parents.add(value)
+    assert revisions - parents == {_load_helper().REQUIRED_REVISION}, \
+        "READINESS_REVISION_MUST_EQUAL_UNIQUE_ALEMBIC_LEAF"
 
 
 @_requires_temp_db
@@ -227,6 +249,8 @@ def test_gate_refuses_database_without_completed_setup():
             probe.close()
         for versions in ([], ["039_order_credit_holds"], ["040_s1_pricing_quote_contract"],
                          ["041_catalog_product_main_image"],
+                         ["042_order_negotiation_proposals"],
+                         ["043_staff_authority_and_credentials"],
                          ["041_catalog_product_main_image", "042_order_negotiation_proposals"],
                          ["999_unapproved_future"]):
             probe = _admin_connect(server.admin_db_url(db))
@@ -1113,9 +1137,24 @@ def test_readiness_probes_are_behaviorally_read_only(
             before = cur.fetchall()
     finally:
         admin.close()
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    observed = []
+
+    def observe_sql(connection, cursor, statement, parameters, context, executemany):
+        observed.append(statement)
+
     helper = _load_helper()
-    assert helper.evaluate_contract(five_stage_database["app_url"],
-                                    "t_dev") == []
+    event.listen(Engine, "before_cursor_execute", observe_sql)
+    try:
+        assert helper.evaluate_contract(five_stage_database["app_url"],
+                                        "t_dev") == []
+    finally:
+        event.remove(Engine, "before_cursor_execute", observe_sql)
+    assert observed and all(sql.split(None, 1)[0].upper() in {"SELECT", "SHOW"}
+                            for sql in observed), \
+        "READINESS_EXECUTED_NON_READ_ONLY_SQL"
     admin = _admin_connect(five_stage_database["server"]
                            .admin_db_url(five_stage_database["db"]))
     try:

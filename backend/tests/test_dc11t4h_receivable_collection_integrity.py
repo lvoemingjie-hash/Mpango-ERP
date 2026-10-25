@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 import os
 import uuid
 from decimal import Decimal
@@ -27,6 +28,8 @@ from tests.test_dc11d_payment_replay_concurrency_integrity import (
     _seed_confirmed_order,
     _set_search_path,
     _snapshot,
+    _snapshot_public_tenant,
+    _restore_public_tenant,
     _tenant_id,
     _tenant_schema,
 )
@@ -38,6 +41,94 @@ MIGRATION_035 = BACKEND_DIR / "alembic" / "versions" / "035_receivable_collectio
 CANONICAL_BINDING_CHECK = (
     "ck_wrb_outstanding_balance_non_negative"
 )
+
+
+def _collection_fixture_evidence(label, value):
+    directory = os.environ.get("RC4_RAW_ECONOMIC_EVIDENCE_DIR") or os.environ.get("TMPDIR")
+    if directory:
+        path = Path(directory) / f"collection-{label}-{uuid.uuid4().hex}.json"
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as evidence:
+            json.dump(value, evidence, default=str)
+
+
+@pytest.fixture
+async def _collection_public_guard(async_session, request):
+    """Reuse DC11D exact restoration, including protected retailer handling."""
+    wholesaler = str(_tenant_id(async_session))
+    async with AsyncSessionLocal() as before_session:
+        before = await _snapshot_public_tenant(before_session, wholesaler_id=wholesaler)
+    _collection_fixture_evidence("shared-before", {"node": request.node.nodeid, "snapshot": before})
+    try:
+        yield
+    finally:
+        await async_session.rollback()
+        async with AsyncSessionLocal() as cleanup:
+            await _restore_public_tenant(cleanup, wholesaler_id=wholesaler, snap=before)
+            await cleanup.commit()
+        async with AsyncSessionLocal() as proof:
+            after = await _snapshot_public_tenant(proof, wholesaler_id=wholesaler)
+        _collection_fixture_evidence("shared-restored", {
+            "node": request.node.nodeid, "before": before, "after": after,
+        })
+        assert after == before, "DC11T4H_SHARED_PUBLIC_SNAPSHOT_NOT_RESTORED"
+
+
+@pytest.fixture
+async def _owned_second_collection_tenant(async_session, _collection_public_guard):
+    """A named creation lease in this task-exclusive cluster, never a diff lease."""
+    schema = "t_33333333333333333333333333333333"
+    wholesaler = "33333333-3333-3333-3333-333333333333"
+    async with AsyncSessionLocal() as admission:
+        before = await _snapshot_public_tenant(admission, wholesaler_id=wholesaler)
+        namespace = await admission.scalar(text(
+            "SELECT oid FROM pg_namespace WHERE nspname=:s"
+        ), {"s": schema})
+    empty = {"wholesaler": None, "bindings": [], "retailers": []}
+    assert before == empty and namespace is None, "DC11T4H_SECOND_TENANT_ALREADY_EXISTS_NOT_OWNED"
+    owned = {"schema": schema, "wholesaler": wholesaler, "schema_oid": None,
+             "retailer_id": None, "creation_intent_registered": True}
+    _collection_fixture_evidence("second-creation-intent", {"before": before, **owned})
+    try:
+        yield owned
+    finally:
+        await async_session.rollback()
+        async with AsyncSessionLocal() as cleanup:
+            current_oid = await cleanup.scalar(text(
+                "SELECT oid FROM pg_namespace WHERE nspname=:s"
+            ), {"s": schema})
+            assert current_oid == owned["schema_oid"], "DC11T4H_SECOND_SCHEMA_IDENTITY_CHANGED"
+            current = await _snapshot_public_tenant(cleanup, wholesaler_id=wholesaler)
+            assert all(str(b["retailer_id"]) == owned["retailer_id"] for b in current["bindings"]), (
+                "DC11T4H_UNREGISTERED_SECOND_BINDING_NOT_OWNED"
+            )
+            protected_retailer = False
+            if owned["retailer_id"] is not None:
+                protected_retailer = await cleanup.scalar(text(
+                    "SELECT EXISTS(SELECT 1 FROM public.wholesaler_retailer_bindings "
+                    "WHERE retailer_id=:r AND wholesaler_id<>:w)"
+                ), {"r": owned["retailer_id"], "w": wholesaler})
+            await _restore_public_tenant(cleanup, wholesaler_id=wholesaler, snap=before)
+            if owned["schema_oid"] is not None:
+                await cleanup.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+            await cleanup.commit()
+        async with AsyncSessionLocal() as proof:
+            after = await _snapshot_public_tenant(proof, wholesaler_id=wholesaler)
+            namespace_after = await proof.scalar(text(
+                "SELECT oid FROM pg_namespace WHERE nspname=:s"
+            ), {"s": schema})
+            retailer_remains = False
+            if owned["retailer_id"] is not None:
+                retailer_remains = await proof.scalar(text(
+                    "SELECT EXISTS(SELECT 1 FROM public.retailers WHERE id=:r)"
+                ), {"r": owned["retailer_id"]})
+        _collection_fixture_evidence("second-closed", {
+            "owned": owned, "before": before, "after": after, "namespace_after": namespace_after,
+            "protected_retailer": protected_retailer, "retailer_remains": retailer_remains,
+        })
+        assert after == before and namespace_after is None, "DC11T4H_OWNED_SECOND_TENANT_REMAINS"
+        assert retailer_remains == protected_retailer, "DC11T4H_SECOND_RETAILER_OWNERSHIP_VIOLATION"
 
 
 @pytest.fixture
@@ -110,7 +201,7 @@ async def _clear_current_tenant_public_balances(session) -> None:
 
 
 @pytest.mark.asyncio
-async def test_ordinary_cash_and_transfer_from_zero_binding_remain_zero(async_session):
+async def test_ordinary_cash_and_transfer_from_zero_binding_remain_zero(async_session, _collection_public_guard):
     await _clear_current_tenant_public_balances(async_session)
     tenant_id = _tenant_id(async_session)
 
@@ -157,7 +248,7 @@ async def test_ordinary_cash_and_transfer_from_zero_binding_remain_zero(async_se
 
 
 @pytest.mark.asyncio
-async def test_credit_sale_partial_final_collection_and_finance_summary(async_session):
+async def test_credit_sale_partial_final_collection_and_finance_summary(async_session, _collection_public_guard):
     await _clear_current_tenant_public_balances(async_session)
     tenant_id = _tenant_id(async_session)
     order_id, retailer_id, token = await _seed_confirmed_order(
@@ -232,7 +323,7 @@ async def test_credit_sale_partial_final_collection_and_finance_summary(async_se
 
 
 @pytest.mark.asyncio
-async def test_over_collection_is_rejected_without_side_effects(async_session):
+async def test_over_collection_is_rejected_without_side_effects(async_session, _collection_public_guard):
     await _clear_current_tenant_public_balances(async_session)
     tenant_id = _tenant_id(async_session)
     order_id, retailer_id, token = await _seed_confirmed_order(
@@ -277,7 +368,7 @@ async def test_over_collection_is_rejected_without_side_effects(async_session):
 
 
 @pytest.mark.asyncio
-async def test_credit_collection_idempotent_replay_has_no_duplicate_ledger(async_session):
+async def test_credit_collection_idempotent_replay_has_no_duplicate_ledger(async_session, _collection_public_guard):
     await _clear_current_tenant_public_balances(async_session)
     tenant_id = _tenant_id(async_session)
     order_id, retailer_id, token = await _seed_confirmed_order(
@@ -319,7 +410,7 @@ async def test_credit_collection_idempotent_replay_has_no_duplicate_ledger(async
 
 
 @pytest.mark.asyncio
-async def test_concurrent_credit_collection_cannot_over_collect(async_session):
+async def test_concurrent_credit_collection_cannot_over_collect(async_session, _collection_public_guard):
     await _clear_current_tenant_public_balances(async_session)
     schema = _tenant_schema(async_session)
     tenant_id = _tenant_id(async_session)
@@ -372,7 +463,7 @@ async def test_concurrent_credit_collection_cannot_over_collect(async_session):
 
 
 @pytest.mark.asyncio
-async def test_extra_payment_against_ordinary_paid_order_remains_rejected(async_session):
+async def test_extra_payment_against_ordinary_paid_order_remains_rejected(async_session, _collection_public_guard):
     await _clear_current_tenant_public_balances(async_session)
     tenant_id = _tenant_id(async_session)
     order_id, retailer_id, token = await _seed_confirmed_order(
@@ -409,12 +500,13 @@ async def test_extra_payment_against_ordinary_paid_order_remains_rejected(async_
 
 
 @pytest.mark.asyncio
-async def test_credit_collections_are_isolated_across_tenants(async_session):
+async def test_credit_collections_are_isolated_across_tenants(async_session, _collection_public_guard, _owned_second_collection_tenant):
     await _clear_current_tenant_public_balances(async_session)
     first_schema = _tenant_schema(async_session)
     first_tenant_id = _tenant_id(async_session)
-    second_schema = "t_33333333333333333333333333333333"
-    second_tenant_id = uuid.UUID("33333333-3333-3333-3333-333333333333")
+    owned = _owned_second_collection_tenant
+    second_schema = owned["schema"]
+    second_tenant_id = uuid.UUID(owned["wholesaler"])
 
     first_order_id, first_retailer_id, first_token = await _seed_confirmed_order(
         async_session, tenant_id=first_tenant_id, total=Decimal("100.00")
@@ -431,27 +523,27 @@ async def test_credit_collections_are_isolated_across_tenants(async_session):
     async with AsyncSessionLocal() as setup_session:
         setup_session.info["tenant_schema"] = second_schema
         setup_session.info["tenant_id"] = str(second_tenant_id)
-        await _bootstrap_minimal_tenant_schema(setup_session, second_schema)
-        await setup_session.execute(
-            text(
-                "DELETE FROM public.wholesaler_retailer_bindings "
-                "WHERE wholesaler_id = :tenant_id"
-            ),
-            {"tenant_id": second_tenant_id},
-        )
-        await setup_session.execute(
-            text(
-                f'TRUNCATE TABLE "{second_schema}".order_items, '
-                f'"{second_schema}".payments, '
-                f'"{second_schema}".ledger_entries, '
-                f'"{second_schema}".orders '
-                "RESTART IDENTITY CASCADE"
-            )
-        )
+        try:
+            await _bootstrap_minimal_tenant_schema(setup_session, second_schema)
+        finally:
+            # The exact absent name was leased before this explicit create
+            # attempt. Register its catalog identity even on partial setup.
+            async with AsyncSessionLocal() as creation_proof:
+                owned["schema_oid"] = await creation_proof.scalar(text(
+                    "SELECT oid FROM pg_namespace WHERE nspname=:s"
+                ), {"s": second_schema})
+            _collection_fixture_evidence("second-schema-created", owned)
+        assert owned["schema_oid"] is not None
+        for table in ("orders", "payments", "ledger_entries"):
+            assert await setup_session.scalar(text(
+                f'SELECT count(*) FROM "{second_schema}"."{table}"'
+            )) == 0, "DC11T4H_NEW_SECOND_SCHEMA_NOT_EMPTY"
         await _set_search_path(setup_session, second_schema)
         second_order_id, second_retailer_id, second_token = await _seed_confirmed_order(
             setup_session, tenant_id=second_tenant_id, total=Decimal("100.00")
         )
+        owned["retailer_id"] = str(second_retailer_id)
+        _collection_fixture_evidence("second-public-created-before-commit", owned)
         await _pay(
             setup_session,
             order_id=second_order_id,

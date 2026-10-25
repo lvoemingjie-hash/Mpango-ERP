@@ -13,7 +13,7 @@ Coverage (binding accounting rules + R1 truth closure):
   * orphan ledger + arithmetic/reconciliation fail-closed (409) cases;
   * completed-payment ownership-integrity precheck (payment retailer != order
     retailer -> 409 STATEMENT_INTERNAL_INCONSISTENT, zero partial document);
-  * zero-valued movement -> 409 STATEMENT_INTERNAL_INCONSISTENT;
+  * zero-valued current receipt -> 409 STATEMENT_HISTORY_UNSUPPORTED;
   * settled_total derived ONLY from settled_payments[].amount;
   * movement kind (charge|collection) + display_amount=abs(signed_amount);
   * no movement_id/payment_id in serialized responses (R1 redaction);
@@ -28,11 +28,14 @@ fingerprint snapshots taken before and after each exercised route.
 """
 from __future__ import annotations
 
+import json
+import os
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from http import HTTPStatus
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -191,6 +194,38 @@ async def _stmt_period_yesterday_today() -> tuple[str, str]:
     frm = (today_eat - timedelta(days=2)).isoformat()
     to = today_eat.isoformat()
     return frm, to
+
+
+async def _statement_economic_projection(db, tenant):
+    """Full row values, not just counts or balances, for the owned tenant."""
+    schema = tenant["schema"]
+    projection = {}
+    for table in (
+        "orders", "order_items", "payments", "payment_declarations",
+        "ledger_entries", "order_credit_holds", "receipt_sequences",
+        "inventory_stocks", "inventory_movements",
+    ):
+        projection[table] = await db.scalar(text(
+            "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), "
+            f"'[]'::jsonb)::text FROM \"{schema}\".\"{table}\" t"
+        ))
+    projection["binding"] = (await db.execute(text(
+        "SELECT to_jsonb(b)::text FROM public.wholesaler_retailer_bindings b "
+        "WHERE wholesaler_id=:w AND retailer_id=:r ORDER BY id"
+    ), {"w": tenant["ws_id"], "r": tenant["ret_id"]})).scalars().all()
+    return projection
+
+
+async def _assert_statement_read_only(db, tenant, before, label):
+    after = await _statement_economic_projection(db, tenant)
+    directory = os.environ.get("RC4_RAW_ECONOMIC_EVIDENCE_DIR") or os.environ.get("TMPDIR")
+    if directory:
+        path = Path(directory) / f"statement-{label}-{uuid.uuid4().hex}.json"
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as evidence:
+            json.dump({"before": before, "after": after}, evidence)
+    assert after == before, "STATEMENT_READ_CHANGED_FULL_ECONOMIC_PROJECTION"
 
 
 async def _seed_confirmed_order(db, schema, ws_id, ret_id, total="100.00"):
@@ -1370,14 +1405,32 @@ class TestIndependentLists:
         self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
         db, reg = s2_clean_db
-        info = await _submit_and_confirm_disposable(i2b_client, db, contractd_disposable_tenant, reg)
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
+        payment = (await db.execute(text(
+            f'SELECT id, order_id, retailer_id, amount, method, receipt_number '
+            f'FROM "{info["schema"]}".payments WHERE order_id=:o '
+            "AND is_deleted IS FALSE"
+        ), {"o": info["oid"]})).mappings().one()
+        assert str(payment["order_id"]) == info["oid"]
+        assert str(payment["retailer_id"]) == str(tenant["ret_id"])
+        assert payment["amount"] == Decimal("100.00")
+        before = await _statement_economic_projection(db, tenant)
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
+        await _assert_statement_read_only(db, tenant, before, "independent-lists")
+        assert r.status_code == HTTPStatus.OK, r.text
         data = r.json()["data"]
-        # movements carry ledger reference_type (order/refund) + R1 kind/
-        # display_amount; no internal ledger id.
+        assert {
+            (m["reference_type"], m["reference_id"], m["kind"],
+             Decimal(m["signed_amount"]), Decimal(m["display_amount"]))
+            for m in data["movements"]
+        } == {
+            ("order", info["oid"], "charge", Decimal("100.00"), Decimal("100.00")),
+            ("payment", str(payment["id"]), "collection", Decimal("-100.00"), Decimal("100.00")),
+        }
+        assert len(data["movements"]) == 2
         for m in data["movements"]:
-            assert m["reference_type"] in ("order", "refund")
             assert m["kind"] in ("charge", "collection")
             assert "movement_id" not in m
         # settled payments carry receipt_number/method — no ledger reference
@@ -1386,8 +1439,14 @@ class TestIndependentLists:
             assert "reference_type" not in p
             assert "signed_amount" not in p
             assert "payment_id" not in p
+            assert p["order_id"] == info["oid"]
+            assert p["receipt_number"] == payment["receipt_number"]
+            assert p["method"] == payment["method"] == "cash"
+            assert Decimal(p["amount"]) == payment["amount"]
+        assert len(data["settled_payments"]) == 1
         # settled_total is a top-level field, never per-line.
         assert "settled_total" in data
+        assert Decimal(data["settled_total"]) == Decimal("100.00")
         for p in data["settled_payments"]:
             assert "settled_total" not in p
 
@@ -1490,23 +1549,47 @@ class TestFailClosed:
     async def test_zero_value_movement_returns_409_internal_inconsistent(
         self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
     ):
-        """R1 rule 2 — a zero-valued receivable movement is an internal
-        inconsistency and must fail closed (409 STATEMENT_INTERNAL_INCONSISTENT).
+        """Keep the historical nodeid, exercise the current receipt reader.
 
-        RED: on the pre-R1 implementation a zero-valued movement rendered
-        silently (no kind classification existed); this assertion fails there.
-        GREEN: the R1 zero-value check returns the 409.
-
-        The zero-valued row (and the whole disposable tenant) is discarded by
-        the teardown DROP SCHEMA — never by deleting immutable rows.
+        Corrupt one real canonical receipt, not an ignored legacy ledger row.
+        This is fixture fault injection, not a claim that a writer accepts zero.
+        The current named refusal is STATEMENT_HISTORY_UNSUPPORTED. Constraints
+        remain enabled; any database refusal surfaces at its actual layer.
         """
         db, reg = s2_clean_db
-        info = await _submit_and_confirm_disposable(i2b_client, db, contractd_disposable_tenant, reg)
-        await _post_receivable_charge(db, info["schema"], uuid.UUID(info["oid"]), "0.00")
+        tenant = contractd_disposable_tenant
+        info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
+        frm, to = await _stmt_period_yesterday_today()
+        healthy_before = await _statement_economic_projection(db, tenant)
+        healthy = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
+        await _assert_statement_read_only(db, tenant, healthy_before, "zero-receipt-positive-control")
+        assert healthy.status_code == HTTPStatus.OK, healthy.text
+        payment_id = (await db.execute(text(
+            f'SELECT id FROM "{info["schema"]}".payments WHERE order_id=:o '
+            "AND retailer_id=:r AND is_deleted IS FALSE"
+        ), {"o": info["oid"], "r": tenant["ret_id"]})).scalar_one()
+        changed = await db.execute(text(
+            f'UPDATE "{info["schema"]}".payments SET amount=0 WHERE id=:p '
+            "AND order_id=:o AND retailer_id=:r"
+        ), {"p": payment_id, "o": info["oid"], "r": tenant["ret_id"]})
+        assert changed.rowcount == 1
+        await db.commit()
+        from database.session import AsyncSessionLocal
+        async with AsyncSessionLocal() as observer:
+            fault = (await observer.execute(text(
+                f'SELECT id, order_id, retailer_id, amount, method, status, is_deleted '
+                f'FROM "{info["schema"]}".payments WHERE id=:p'
+            ), {"p": payment_id})).mappings().one()
+        assert fault["id"] == payment_id and str(fault["order_id"]) == info["oid"]
+        assert str(fault["retailer_id"]) == str(tenant["ret_id"])
+        assert fault["amount"] == Decimal("0.00") and fault["method"] == "cash"
+        assert fault["status"] == "completed" and fault["is_deleted"] is False
+        before = await _statement_economic_projection(db, tenant)
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
+        await _assert_statement_read_only(db, tenant, before, "zero-current-receipt")
         assert r.status_code == HTTPStatus.CONFLICT
-        assert r.json()["code"] == "STATEMENT_INTERNAL_INCONSISTENT"
+        assert r.json()["code"] == "STATEMENT_HISTORY_UNSUPPORTED"
         # Zero partial document.
         assert "data" not in r.json()
 
@@ -1790,30 +1873,42 @@ class TestSettledTotal:
         info = await _submit_and_confirm_disposable(
             i2b_client, db, tenant, reg, amount="250.00"
         )
-        # A second completed payment in the same period (independent row).
-        pay_id = await _insert_payment_row(
-            db, info["schema"], uuid.UUID(info["oid"]), uuid.UUID(tenant["ret_id"]), amount="75.00"
+        second = await _submit_and_confirm_disposable(
+            i2b_client, db, tenant, reg, amount="75.00"
         )
-        try:
-            frm, to = await _stmt_period_yesterday_today()
-            r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
-            assert r.status_code == HTTPStatus.OK, r.text
-            data = r.json()["data"]
-            settled_sum = sum((Decimal(p["amount"]) for p in data["settled_payments"]), Decimal("0"))
-            assert Decimal(data["settled_total"]) == settled_sum
-            assert Decimal(data["settled_total"]) == Decimal("325.00")
-            # settled_total never reflects movements or pending declarations.
-            assert "settled_total" not in data["settled_payments"][0]
-        finally:
-            from database.session import AsyncSessionLocal
-
-            async with AsyncSessionLocal() as cleanup_db:
-                result = await cleanup_db.execute(
-                    text(f'DELETE FROM "{tenant["schema"]}".payments WHERE id = :pid'),
-                    {"pid": pay_id},
-                )
-                assert result.rowcount == 1
-                await cleanup_db.commit()
+        assert info["oid"] != second["oid"]
+        receipts = (await db.execute(text(
+            f'SELECT p.id, p.order_id, p.retailer_id, p.amount, p.receipt_number, '
+            f'p.status, h.status AS hold_status, h.remaining_amount, h.amount AS hold_amount '
+            f'FROM "{tenant["schema"]}".payments p '
+            f'JOIN "{tenant["schema"]}".order_credit_holds h ON h.order_id=p.order_id '
+            "WHERE p.order_id IN (:a,:b) AND p.is_deleted IS FALSE ORDER BY p.order_id"
+        ), {"a": info["oid"], "b": second["oid"]})).mappings().all()
+        amounts = {info["oid"]: Decimal("250.00"), second["oid"]: Decimal("75.00")}
+        assert len(receipts) == 2 and len({p["id"] for p in receipts}) == 2
+        assert len({p["receipt_number"] for p in receipts}) == 2
+        for p in receipts:
+            assert str(p["retailer_id"]) == str(tenant["ret_id"])
+            assert p["amount"] == p["hold_amount"] == amounts[str(p["order_id"])]
+            assert p["status"] == "completed" and p["hold_status"] == "settled"
+            assert p["remaining_amount"] == Decimal("0.00")
+        assert await _binding_fingerprint(db, tenant["ws_id"], tenant["ret_id"]) == Decimal("0.00")
+        before = await _statement_economic_projection(db, tenant)
+        frm, to = await _stmt_period_yesterday_today()
+        r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
+        await _assert_statement_read_only(db, tenant, before, "two-legal-settlements")
+        assert r.status_code == HTTPStatus.OK, r.text
+        data = r.json()["data"]
+        assert len(data["settled_payments"]) == 2
+        assert {
+            (p["order_id"], p["receipt_number"], Decimal(p["amount"]))
+            for p in data["settled_payments"]
+        } == {
+            (str(p["order_id"]), p["receipt_number"], p["amount"]) for p in receipts
+        }
+        settled_sum = sum((Decimal(p["amount"]) for p in data["settled_payments"]), Decimal("0"))
+        assert Decimal(data["settled_total"]) == settled_sum == Decimal("325.00")
+        assert all("settled_total" not in p for p in data["settled_payments"])
 
 
 # ===========================================================================

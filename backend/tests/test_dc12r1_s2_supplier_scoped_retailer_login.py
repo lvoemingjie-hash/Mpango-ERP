@@ -282,6 +282,44 @@ class _OwnedIds:
         self.retailer_ids: list[str] = []
         self.binding_ids: list[str] = []
         self.tenant_schemas: list[str] = []
+        self.retained_audit_anchors: dict[str, list[dict]] = {}
+
+
+async def _retire_owned_wholesalers(db: AsyncSession, ids: list[str]) -> dict[str, list[dict]]:
+    """Remove only owned identities, retaining immutable audit FK anchors."""
+    if not ids:
+        return {}
+    assert len(ids) == len(set(ids))
+    for value in ids:
+        uuid.UUID(str(value))
+    events = [dict(row) for row in (await db.execute(text(
+        "SELECT * FROM public.staff_stock_audit_events WHERE tenant_id = ANY(:ids) ORDER BY id"
+    ), {"ids": ids})).mappings().all()]
+    retained = {str(row["tenant_id"]): [] for row in events}
+    for row in events:
+        retained[str(row["tenant_id"])].append(row)
+    if retained:
+        await db.execute(text("UPDATE public.wholesalers SET is_deleted=TRUE WHERE id = ANY(:ids)"),
+                         {"ids": list(retained)})
+    removable = [value for value in ids if str(value) not in retained]
+    if removable:
+        await db.execute(text("DELETE FROM public.wholesalers WHERE id = ANY(:ids)"), {"ids": removable})
+    return retained
+
+
+async def _assert_retired_audit_anchors(db: AsyncSession, retained: dict[str, list[dict]]) -> None:
+    if not retained:
+        return
+    rows = (await db.execute(text(
+        "SELECT id, is_deleted FROM public.wholesalers WHERE id = ANY(:ids)"
+    ), {"ids": list(retained)})).mappings().all()
+    assert {str(r["id"]) for r in rows} == set(retained)
+    assert all(r["is_deleted"] is True for r in rows), "CLEANUP-RETAINED-ANCHOR-MUST-NOT-BE-LIVE"
+    for tenant_id, before in retained.items():
+        after = [dict(r) for r in (await db.execute(text(
+            "SELECT * FROM public.staff_stock_audit_events WHERE tenant_id=:id ORDER BY id"
+        ), {"id": tenant_id})).mappings().all()]
+        assert before == after, "CLEANUP-MUST-PRESERVE-IMMUTABLE-AUDIT-ROWS"
 
 
 class _TenantPool:
@@ -356,7 +394,7 @@ class _TenantPool:
             return str(ws_row.id), reg_row.tenant_schema, str(reg_id), code
 
     async def teardown_target(self):
-        """Delete all target A/B rows and schemas in FK-safe order."""
+        """Retire owned schemas; preserve immutable audits and their exact anchors."""
         await self._teardown_owned(self.target)
 
     async def teardown_protected(self):
@@ -385,18 +423,15 @@ class _TenantPool:
                     {"ids": owned.registration_ids},
                 )
                 await session.commit()
-        if owned.wholesaler_ids:
-            async with AsyncSessionLocal() as session:
-                await session.execute(
-                    text("DELETE FROM public.wholesalers WHERE id = ANY(:ids)"),
-                    {"ids": owned.wholesaler_ids},
-                )
-                await session.commit()
         for schema in owned.tenant_schemas:
             if schema and self._validate_schema_ownership(schema, owned):
                 async with AsyncSessionLocal() as session:
                     await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
                     await session.commit()
+        if owned.wholesaler_ids:
+            async with AsyncSessionLocal() as session:
+                owned.retained_audit_anchors = await _retire_owned_wholesalers(session, owned.wholesaler_ids)
+                await session.commit()
 
     def _validate_schema_ownership(self, schema: str, owned: _OwnedIds) -> bool:
         for ws_id in owned.wholesaler_ids:
@@ -407,7 +442,7 @@ class _TenantPool:
         return False
 
     async def assert_zero_residue(self, owned: _OwnedIds):
-        """Assert no owned rows or schemas remain."""
+        """Assert no live owned data; immutable audit anchors stay disclosed."""
         async with AsyncSessionLocal() as session:
             for table, id_field, id_list in [
                 ("public.wholesaler_retailer_bindings", "id", owned.binding_ids),
@@ -416,6 +451,10 @@ class _TenantPool:
                 ("public.wholesalers", "id", owned.wholesaler_ids),
             ]:
                 if id_list:
+                    if table == "public.wholesalers":
+                        id_list = [i for i in id_list if i not in owned.retained_audit_anchors]
+                    if not id_list:
+                        continue
                     count = (await session.execute(
                         text(f"SELECT COUNT(*) FROM {table} WHERE {id_field} = ANY(:ids)"),
                         {"ids": id_list},
@@ -428,6 +467,7 @@ class _TenantPool:
                         {"s": schema},
                     )).scalar()
                     assert count == 0, f"Schema {schema} still exists"
+            await _assert_retired_audit_anchors(session, owned.retained_audit_anchors)
 
     async def verify_sentinel_unchanged(self):
         """Assert sentinel tenant still has its original schema and active status."""
@@ -460,7 +500,7 @@ class _OwnershipRegistry:
     """Per-test ownership registry.
 
     Every ID is generated and registered BEFORE the INSERT (never after commit).
-    Cleanup deletes in FK-safe order; zero-residue assert proves every tracked
+    Cleanup retires owned resources; residue checks prove every tracked
     ID is gone.  Mutation journal records field-level changes to pool-owned rows
     and restores them in ``restore_mutations``.
     """
@@ -473,6 +513,7 @@ class _OwnershipRegistry:
         self.tenant_user_ids: dict[str, list[str]] = {}
         self.tenant_schemas: list[tuple[str, str]] = []
         self.mutation_journal: list[dict[str, Any]] = []
+        self.retained_audit_anchors: dict[str, list[dict]] = {}
 
     # -- Register methods (pre-commit) ----------------------------------------
 
@@ -556,13 +597,9 @@ class _OwnershipRegistry:
                 text("DELETE FROM public.tenant_registrations WHERE id = ANY(:ids)"),
                 {"ids": self.registration_ids},
             )
-        if self.wholesaler_ids:
-            await db.execute(
-                text("DELETE FROM public.wholesalers WHERE id = ANY(:ids)"),
-                {"ids": self.wholesaler_ids},
-            )
         for _ws_id, schema in self.tenant_schemas:
             await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        self.retained_audit_anchors = await _retire_owned_wholesalers(db, self.wholesaler_ids)
         await db.commit()
 
     # -- Zero-residue assertions -----------------------------------------------
@@ -590,6 +627,8 @@ class _OwnershipRegistry:
             ("public.tenant_registrations", "id", self.registration_ids),
             ("public.wholesalers", "id", self.wholesaler_ids),
         ]:
+            if table == "public.wholesalers":
+                id_list = [i for i in id_list if i not in self.retained_audit_anchors]
             if not id_list:
                 continue
             cnt = (await db.execute(
@@ -605,6 +644,7 @@ class _OwnershipRegistry:
             )).scalar()
             if cnt:
                 errors.append(f"schema {schema} exists")
+        await _assert_retired_audit_anchors(db, self.retained_audit_anchors)
         assert not errors, f"Residue: {', '.join(errors)}"
 
 
@@ -743,7 +783,9 @@ async def s2_clean_db(provisioned_pool):
 
         async with AsyncSessionLocal() as verify_db:
             await registry.assert_zero_residue(verify_db)
-            await _assert_public_counts(verify_db, before_counts, "post-cleanup")
+            expected_counts = dict(before_counts)
+            expected_counts["wholesalers"] += len(registry.retained_audit_anchors)
+            await _assert_public_counts(verify_db, expected_counts, "post-cleanup-with-exact-audit-anchors")
             await _assert_sentinel_fingerprint(verify_db, provisioned_pool, before_sentinel)
 
 

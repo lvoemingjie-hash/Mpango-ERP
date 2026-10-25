@@ -410,7 +410,12 @@ async def make_tenant_cashier(db, registry, tenant: dict) -> dict:
     consume = await svc.consume_setup_token(issue.raw_token, _CASHIER_PW)
     result = await svc.create_first_admin_rbac(consume)
     await db.commit()
-    registry.register_tenant_user(tenant["schema"], str(result.user_id))
+    # The native Owner and its authority/approval references belong to the pool.
+    # End only this function's setup-token lifecycle, not the Owner row.
+    await db.execute(text(
+        "DELETE FROM public.owner_credential_setup_tokens WHERE registration_id=:r"
+    ), {"r": reg_id})
+    await db.commit()
     return {
         "email": result.owner_email,
         "password": _CASHIER_PW,

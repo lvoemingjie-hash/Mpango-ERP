@@ -301,6 +301,7 @@ def test_non_live_registry_refused_named():
         pytest.skip("set MPANGO_ALLOW_TEMP_DB_CREATE=1 for migration tests")
     import importlib.util
     import os
+    from unittest.mock import patch
 
     from alembic import command
     from alembic.config import Config
@@ -316,7 +317,12 @@ def test_non_live_registry_refused_named():
     )
 
     source = os.environ["TEST_DATABASE_URL"]
-    with temporary_database_url(source, "r2reg1") as db_url:
+    # Only this disposable migration preparation needs the helper's test profile.
+    # The surrounding HTTP suite must retain its staging authentication contract.
+    with (
+        patch.dict(os.environ, {"MPANGO_ENV": "test"}),
+        temporary_database_url(source, "r2reg1") as db_url,
+    ):
         engine = _engine(db_url)
         cfg = Config("alembic.ini")
         cfg.set_main_option("script_location", "alembic")

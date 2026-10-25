@@ -24,7 +24,7 @@ from fastapi import HTTPException
 from starlette.requests import Request as StarletteRequest
 
 from api.context.auth import AuthContext, attach_auth_context
-from api.context.tenant import TenantContext, attach_tenant_context
+from api.context.tenant import TenantContext, attach_tenant_context, get_tenant_context
 from api.middleware.rbac import RequirePermission
 from api.schemas.jobs import (
     ExportRequest,
@@ -32,7 +32,13 @@ from api.schemas.jobs import (
     ExportFormat,
     ExportStatusData,
 )
-from core.security import TokenPayload
+from core.security import TokenPayload, decode_token
+from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (  # noqa: F401
+    provisioned_pool, s2_clean_db,
+)
+from tests.test_dc12r1_s3_s2b_i2b_payment_declarations import (  # noqa: F401
+    _cashier_token, cashier_identity, i2b_client, test_client_ip,
+)
 from services.reporting.semantic_layer import (
     ViewScope,
     ReportMetric,
@@ -49,28 +55,28 @@ def _response_json(response):
     return json.loads(response.body.decode("utf-8"))
 
 
-def _request_with_context() -> StarletteRequest:
+@pytest_asyncio.fixture
+async def export_request(i2b_client, cashier_identity):
+    """Real login and current SQL authority for the handler-boundary controls."""
+    from api.context.tenant import create_tenant_session
+    from models.user import User
+
+    raw_token = await _cashier_token(i2b_client, cashier_identity)
+    token = decode_token(raw_token)
+    session = await create_tenant_session(token.tenant_schema)
     request = StarletteRequest({"type": "http", "headers": []})
-    permission = SimpleNamespace(code="exports:create")
-    role = SimpleNamespace(permissions=[permission])
-    user = SimpleNamespace(id="user-123", roles=[role])
-    token = TokenPayload(
-        user_id="user-123",
-        tenant_id=TEST_TENANT_ID,
-        tenant_schema=TEST_TENANT_SCHEMA,
-        roles=["admin"],
-    )
-    attach_auth_context(request, AuthContext(token=token, raw_token="redacted-test-token"))
-    attach_tenant_context(
-        request,
-        TenantContext(
-            tenant_id=TEST_TENANT_ID,
-            tenant_schema=TEST_TENANT_SCHEMA,
-            session=SimpleNamespace(),
-            user=user,
-        ),
-    )
-    return request
+    try:
+        user = await session.get(User, uuid.UUID(token.user_id))
+        assert user is not None and user.is_active and not user.is_deleted
+        attach_auth_context(request, AuthContext(token=token, raw_token=raw_token))
+        attach_tenant_context(request, TenantContext(
+            tenant_id=token.tenant_id, tenant_schema=token.tenant_schema,
+            session=session, user=user,
+        ))
+        yield request
+    finally:
+        await session.rollback()
+        await session.close()
 
 
 async def _exports_create_token(request: StarletteRequest) -> TokenPayload:
@@ -602,10 +608,10 @@ class TestExportApiFailClosed:
     """Test export API security behavior at handler boundaries."""
 
     @pytest.mark.asyncio
-    async def test_status_malformed_job_id_returns_controlled_error(self):
+    async def test_status_malformed_job_id_returns_controlled_error(self, export_request):
         from api.v1.exports import get_export_status
 
-        request = _request_with_context()
+        request = export_request
         token = await _exports_create_token(request)
 
         response = await get_export_status(request, "not-a-uuid", token)
@@ -618,10 +624,10 @@ class TestExportApiFailClosed:
         assert "ValueError" not in json.dumps(body)
 
     @pytest.mark.asyncio
-    async def test_download_malformed_job_id_returns_controlled_error(self):
+    async def test_download_malformed_job_id_returns_controlled_error(self, export_request):
         from api.v1.exports import download_export
 
-        request = _request_with_context()
+        request = export_request
         token = await _exports_create_token(request)
 
         response = await download_export(request, "not-a-uuid", token)
@@ -643,10 +649,10 @@ class TestExportApiFailClosed:
         assert exc.value.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_wrong_tenant_status_job_id_remains_hidden(self, monkeypatch):
+    async def test_wrong_tenant_status_job_id_remains_hidden(self, monkeypatch, export_request):
         from api.v1.exports import get_export_status
 
-        request = _request_with_context()
+        request = export_request
         token = await _exports_create_token(request)
         _patch_job_lookup(monkeypatch, _job(tenant_id=OTHER_TENANT_ID))
 
@@ -657,12 +663,15 @@ class TestExportApiFailClosed:
         assert body["error"]["code"] == "EXPORT_NOT_FOUND"
 
     @pytest.mark.asyncio
-    async def test_pending_job_download_remains_conflict(self, monkeypatch):
+    async def test_pending_job_download_remains_conflict(self, monkeypatch, export_request):
         from api.v1.exports import download_export
 
-        request = _request_with_context()
+        request = export_request
         token = await _exports_create_token(request)
-        _patch_job_lookup(monkeypatch, _job(status="pending"))
+        _patch_job_lookup(monkeypatch, _job(
+            tenant_id=get_tenant_context(request).tenant_id,
+            status="pending",
+        ))
 
         response = await download_export(request, str(uuid.uuid4()), token)
         body = _response_json(response)

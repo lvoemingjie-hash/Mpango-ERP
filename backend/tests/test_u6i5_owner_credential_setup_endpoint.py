@@ -153,69 +153,6 @@ async def _setup_provisioned_tenant() -> tuple[str, str]:
     schema_name = 't_'+wholesaler_id.hex
     owner_email = f"u6i5_{uuid.uuid4().hex}@example.com"
 
-    async with async_engine.begin() as connection:
-        await connection.execute(text(f'CREATE SCHEMA "{schema_name}"'))
-        await connection.execute(
-            text(
-                f'CREATE TABLE "{schema_name}".users ('
-                "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-                "email VARCHAR(255) NOT NULL UNIQUE,"
-                "password_hash VARCHAR(255) NOT NULL,"
-                "full_name TEXT,"
-                "is_active BOOLEAN NOT NULL DEFAULT true,"
-                "created_at TIMESTAMPTZ DEFAULT now(),"
-                "updated_at TIMESTAMPTZ DEFAULT now(),"
-                "is_deleted BOOLEAN DEFAULT false,"
-                "deleted_at TIMESTAMPTZ,"
-                "created_by UUID,"
-                "updated_by UUID)"
-            )
-        )
-        await connection.execute(
-            text(
-                f'CREATE TABLE "{schema_name}".roles ('
-                "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-                "name VARCHAR(100) NOT NULL UNIQUE,"
-                "description TEXT,"
-                "created_at TIMESTAMPTZ DEFAULT now(),"
-                "updated_at TIMESTAMPTZ DEFAULT now(),"
-                "is_deleted BOOLEAN DEFAULT false,"
-                "deleted_at TIMESTAMPTZ,"
-                "created_by UUID,"
-                "updated_by UUID)"
-            )
-        )
-        await connection.execute(
-            text(
-                f'CREATE TABLE "{schema_name}".permissions ('
-                "id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-                "code VARCHAR(100) NOT NULL UNIQUE,"
-                "description TEXT,"
-                "created_at TIMESTAMPTZ DEFAULT now(),"
-                "updated_at TIMESTAMPTZ DEFAULT now(),"
-                "is_deleted BOOLEAN DEFAULT false,"
-                "deleted_at TIMESTAMPTZ,"
-                "created_by UUID,"
-                "updated_by UUID)"
-            )
-        )
-        await connection.execute(
-            text(
-                f'CREATE TABLE "{schema_name}".user_roles ('
-                f'user_id UUID NOT NULL REFERENCES "{schema_name}".users(id) ON DELETE CASCADE,'
-                f'role_id UUID NOT NULL REFERENCES "{schema_name}".roles(id) ON DELETE CASCADE,'
-                "PRIMARY KEY (user_id, role_id))"
-            )
-        )
-        await connection.execute(
-            text(
-                f'CREATE TABLE "{schema_name}".role_permissions ('
-                f'role_id UUID NOT NULL REFERENCES "{schema_name}".roles(id) ON DELETE CASCADE,'
-                f'permission_id UUID NOT NULL REFERENCES "{schema_name}".permissions(id) ON DELETE CASCADE,'
-                "PRIMARY KEY (role_id, permission_id))"
-            )
-        )
-
     async with AsyncSessionLocal() as session:
         await session.execute(text("SET search_path TO public"))
         wholesaler = Wholesaler(
@@ -245,9 +182,9 @@ async def _setup_provisioned_tenant() -> tuple[str, str]:
         setattr(registration, "password_" "hash_cleanup_reason", "provisioned")
         session.add(registration)
         await session.commit()
-        from scripts.bootstrap_tenant_schema import _reconcile_staff_authority
-        async with async_engine.begin() as connection:
-            await _reconcile_staff_authority(connection,schema_name)
+        from core.config import get_settings
+        from scripts.bootstrap_tenant_schema import bootstrap
+        await bootstrap(schema_name, get_settings().DATABASE_URL)
         return owner_email, schema_name
 
 
@@ -334,11 +271,63 @@ async def _admin_exists(schema: str, owner_email: str) -> bool:
         return count == 1
 
 
-async def _other_schema_empty(schema: str) -> bool:
-    for table in ("users", "roles", "permissions", "user_roles", "role_permissions"):
-        if await _table_count(schema, table) != 0:
-            return False
-    return True
+async def _tenant_raw_vector(schema: str) -> dict:
+    import json
+    import os
+
+    assert U6I5_SCHEMA_RE.fullmatch(schema)
+    vector = {}
+    async with AsyncSessionLocal() as db:
+        for table in ("users", "roles", "permissions", "user_roles", "role_permissions",
+                      "staff_authority", "staff_role_templates", "staff_memberships",
+                      "inventory_adjustment_approvers"):
+            rows = [dict(row) for row in (await db.execute(
+                text(f'SELECT * FROM "{schema}"."{table}"')
+            )).mappings().all()]
+            vector[table] = sorted(rows, key=lambda row: json.dumps(row, default=str, sort_keys=True))
+        tenant_id = uuid.UUID(schema[2:])
+        for name, sql in (
+            ("wholesaler", "SELECT * FROM public.wholesalers WHERE id=:t"),
+            ("registration", "SELECT * FROM public.tenant_registrations WHERE wholesaler_id=:t ORDER BY id"),
+            ("audit", "SELECT * FROM public.staff_stock_audit_events WHERE tenant_id=:t ORDER BY id"),
+            ("setup_tokens", "SELECT tok.* FROM public.owner_credential_setup_tokens tok JOIN "
+             "public.tenant_registrations reg ON reg.id=tok.registration_id WHERE reg.wholesaler_id=:t ORDER BY tok.id"),
+        ):
+            vector[name] = [dict(row) for row in (await db.execute(text(sql), {"t": tenant_id})).mappings().all()]
+    if os.environ.get("RC4_RAW_ECONOMIC_EVIDENCE_DIR"):
+        root = Path(os.environ["RC4_RAW_ECONOMIC_EVIDENCE_DIR"])
+        assert root.is_absolute() and root.is_dir()
+        with (root / ("owner-vector-"+uuid.uuid4().hex+".json")).open("x") as out:
+            os.fchmod(out.fileno(), 0o600)
+            json.dump({"schema": schema, "vector": vector}, out, default=str)
+    return vector
+
+
+async def _assert_native_owner_roles(schema: str, owner_email: str) -> None:
+    from core.permission_registry import ADMIN_PERMISSION_CODES, STAFF_DEFAULT_PERMISSION_CODES
+
+    async with AsyncSessionLocal() as db:
+        roles = (await db.execute(text(f'SELECT id,name FROM "{schema}".roles'))).all()
+        templates = (await db.execute(text(
+            f'SELECT template_key,role_id FROM "{schema}".staff_role_templates'
+        ))).all()
+        assert len(roles) == 5
+        assert {row.template_key for row in templates} == set(STAFF_DEFAULT_PERMISSION_CODES)
+        template_ids = {row.role_id for row in templates}
+        assert len(template_ids) == 3 and template_ids <= {row.id for row in roles}
+        assert {row.name for row in roles if row.id not in template_ids} == {"admin", "retailer_operator"}
+        admin_id = next(row.id for row in roles if row.name == "admin")
+        user_id = await db.scalar(text(f'SELECT id FROM "{schema}".users WHERE email=:e'), {"e": owner_email})
+        bindings = (await db.execute(text(f'SELECT user_id,role_id FROM "{schema}".user_roles'))).all()
+        assert bindings == [(user_id, admin_id)]
+        for role_id, expected in [(admin_id, ADMIN_PERMISSION_CODES), *(
+            (row.role_id, STAFF_DEFAULT_PERMISSION_CODES[row.template_key]) for row in templates
+        )]:
+            codes = (await db.execute(text(
+                f'SELECT p.code FROM "{schema}".permissions p JOIN "{schema}".role_permissions rp '
+                'ON rp.permission_id=p.id WHERE rp.role_id=:r'
+            ), {"r": role_id})).scalars().all()
+            assert set(codes) == set(expected) and len(codes) == len(expected)
 
 
 async def _user_password_hash(schema: str, owner_email: str) -> str | None:
@@ -443,7 +432,7 @@ async def test_duplicate_setup_is_idempotent():
     assert response_1.status_code == 200
     assert response_2.status_code == 401
     assert await _table_count(schema, "users") == 1
-    assert await _table_count(schema, "roles") == 4  # One admin plus three native M1 job templates.
+    await _assert_native_owner_roles(schema, owner_email)
 
 
 async def test_replay_with_different_password_does_not_change_password_hash():
@@ -470,7 +459,7 @@ async def test_replay_with_different_password_does_not_change_password_hash():
     pw_hash_after_replay = await _user_password_hash(schema, owner_email)
     assert pw_hash_after_replay == pw_hash_after_first
     assert await _table_count(schema, "users") == 1
-    assert await _table_count(schema, "roles") == 4
+    await _assert_native_owner_roles(schema, owner_email)
     assert await _table_count(schema, "permissions") > 0
     assert await _table_count(schema, "user_roles") == 1
     assert await _table_count(schema, "role_permissions") > 0
@@ -479,16 +468,20 @@ async def test_replay_with_different_password_does_not_change_password_hash():
 async def test_tenant_isolation_only_writes_requested_schema():
     owner_email_1, target_schema = await _setup_provisioned_tenant()
     owner_email_2, other_schema = await _setup_provisioned_tenant()
+    other_before = await _tenant_raw_vector(other_schema)
     setup_token = await _issue_setup_token(owner_email_1)
 
     async with await _client() as client:
-        await client.post(
+        response = await client.post(
             SETUP_CREDENTIAL_URL,
             json={"setup_token": setup_token, "password": TEST_SETUP_PW},
         )
 
+    assert response.status_code == 200, response.text
     assert await _table_count(target_schema, "users") == 1
-    assert await _other_schema_empty(other_schema)
+    assert await _admin_exists(target_schema, owner_email_1)
+    await _assert_native_owner_roles(target_schema, owner_email_1)
+    assert await _tenant_raw_vector(other_schema) == other_before
 
 
 async def test_response_never_exposes_sensitive_data():

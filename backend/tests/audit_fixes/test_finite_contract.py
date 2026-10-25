@@ -320,7 +320,11 @@ async def test_persisted_jobs_distinct_worker_processes_and_restart():
             denied = await w.client.get('/api/v1/exports/'+str(jobs[0]['id'])+'/download')
             assert denied.status_code == 404, 'FINITE-LEGACY-JOB-NO-FALLBACK'
             other = jobs[1]['payload']['file_id']
-            (private / 'exports' / (other+'.csv')).unlink()
+            from jobs.export_jobs import EXPORT_DIR
+            export_root = EXPORT_DIR.resolve()
+            missing_file = export_root / (other+'.csv')
+            assert missing_file.parent == export_root and missing_file.is_file()
+            missing_file.unlink()
             denied = await w.client.get('/api/v1/exports/'+str(jobs[1]['id'])+'/download')
             assert denied.status_code == 404, 'FINITE-MISSING-FILE-NO-FALLBACK'
         finally:

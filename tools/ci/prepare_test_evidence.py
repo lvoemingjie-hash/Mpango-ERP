@@ -419,6 +419,12 @@ def cmd_reconcile_junit(args: argparse.Namespace) -> int:
     except ET.ParseError as exc:
         raise Refused(f"JUNIT_NOT_WELL_FORMED (truncated?): {exc}", 3)
 
+    suites = list(root.iter("testsuite"))
+    if len(suites) != 1 or any(
+        suites[0].get(key) is None for key in ("tests", "failures", "errors", "skipped")
+    ):
+        raise Refused("JUNIT_SINGLE_SUITE_COUNTERS_REQUIRED", 3)
+
     nodeids = _collect_nodeids(args.collect)
     if not nodeids:
         raise Refused("COLLECT_LIST_EMPTY: reconciliation needs the frozen collect list", 3)
@@ -436,6 +442,7 @@ def cmd_reconcile_junit(args: argparse.Namespace) -> int:
     )
     rank = {"error": 4, "failure": 3, "xfail": 2, "skipped": 1, "passed": 0}
     phases: dict = {}
+    teardown_only = set()
     entries = 0
     unknown = []
     ambiguous = []
@@ -463,6 +470,11 @@ def cmd_reconcile_junit(args: argparse.Namespace) -> int:
             unknown.append(f"{classname}|{name}")
             continue
         phases.setdefault(matched, []).append(_junit_outcome(tc))
+        error = tc.find("error")
+        if (error is not None and len(tc.findall("error")) == 1
+                and tc.find("failure") is None and tc.find("skipped") is None
+                and error.get("message", "").startswith('failed on teardown with "')):
+            teardown_only.add(matched)
 
     if ambiguous:
         _refuse_with_diagnostics(
@@ -503,6 +515,10 @@ def cmd_reconcile_junit(args: argparse.Namespace) -> int:
     unique_outcomes = {
         nid: max(outs, key=lambda o: rank[o]) for nid, outs in phases.items()
     }
+    # pytest 8.4.2 increments append_pass during the call, then appends an
+    # error on teardown without reopening that testcase. Only its native
+    # teardown-only shape contributes this otherwise invisible passed call.
+    passed_then_teardown = sorted(nid for nid in teardown_only if phases[nid] == ["error"])
     phase_counts = {}
     for outs in phases.values():
         for o in outs:
@@ -517,13 +533,13 @@ def cmd_reconcile_junit(args: argparse.Namespace) -> int:
     # RAW phase counts. Raw phase statistics are checked independently of the
     # unique worst-outcome accounting — one never substitutes for the other.
     counted = {
-        "tests": entries - len(double_phase_nodes),
+        "tests": entries - len(double_phase_nodes) + len(passed_then_teardown),
         "failures": phase_counts.get("failure", 0),
         "errors": phase_counts.get("error", 0),
         "skipped": phase_counts.get("skipped", 0) + phase_counts.get("xfail", 0),
     }
     contradictions = []
-    for ts in root.iter("testsuite"):
+    for ts in suites:
         declared = {k: ts.get(k) for k in ("tests", "failures", "errors", "skipped")
                     if ts.get(k) is not None}
         if any(int(declared[k]) != counted[k] for k in declared):
@@ -566,12 +582,17 @@ def cmd_reconcile_junit(args: argparse.Namespace) -> int:
         "junit_entries": entries,
         "unique_reported": len(unique_outcomes),
         "phase_outcome_counts": phase_counts,
+        "pytest_generator_phase_counts": {
+            **phase_counts,
+            "passed": phase_counts.get("passed", 0) + len(passed_then_teardown),
+        },
+        "passed_call_then_teardown_error_nodes": passed_then_teardown,
         "unique_outcome_counts": unique_counts,
         "double_phase_nodes": double_phase_nodes,
         "outcome_counts": unique_counts,
         "not_run": not_run,
         "pytest_rc": pytest_rc,
-        "counter_check": "ok (pytest 8.4.2 native single-suite semantics: tests=phases-double_fail)",
+        "counter_check": "ok (pytest 8.4.2: tests=XML_entries-double_fail+passed_call_teardown_error)",
         "note": "reconcile success never converts a non-zero body rc into a green leg; the final gate keeps the recorded rc authoritative; xfail/skip stay raw statuses and are never counted as business passes",
     }
     Path(args.receipt).write_text(

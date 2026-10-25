@@ -4808,3 +4808,143 @@ class TestThreeFamilyFiniteCloseout:
         proc, result = probe._check(REPO_ROOT, probe._coverage(tmp_path))
         assert proc.returncode == 0 and result["all_valid"]
         assert not result["release_ready"] and not result["evidence_ready"]
+
+
+class TestNative842TeardownCounts:
+    """Native generator evidence, never an arbitrary suite-count tolerance."""
+
+    @staticmethod
+    def _recorded_run(argv, cwd, evidence, label, *, generator=False):
+        import hashlib
+        from datetime import datetime, timezone
+        import time
+
+        evidence.mkdir(parents=True, exist_ok=True, mode=0o700)
+        env = dict(os.environ)
+        env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+        env.pop("PYTEST_ADDOPTS", None)
+        start = time.monotonic()
+        began = datetime.now(timezone.utc).isoformat()
+        child = subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            start_ticks = Path(f"/proc/{child.pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+        except FileNotFoundError:
+            start_ticks = None
+        timed_out = False
+        try:
+            out, err = child.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            out, err = child.communicate()
+            timed_out = True
+        for suffix, data in (("stdout", out), ("stderr", err)):
+            path = evidence / (label + "." + suffix)
+            path.write_bytes(data)
+            path.chmod(0o600)
+        row = {"argv": [str(a) for a in argv], "cwd": str(cwd), "pid": child.pid,
+               "start_ticks": start_ticks, "rc": child.returncode,
+               "generator": generator, "timed_out": timed_out,
+               "started_at": began, "finished_at": datetime.now(timezone.utc).isoformat(),
+               "seconds": time.monotonic() - start,
+               "stdout_sha256": hashlib.sha256(out).hexdigest(),
+               "stderr_sha256": hashlib.sha256(err).hexdigest()}
+        path = evidence / (label + ".json")
+        path.write_text(json.dumps(row, indent=2) + "\n", encoding="utf-8")
+        path.chmod(0o600)
+        return subprocess.CompletedProcess(argv, child.returncode, out.decode(), err.decode())
+
+    @pytest.fixture(scope="class")
+    def native(self, tmp_path_factory):
+        import importlib.metadata
+        assert importlib.metadata.version("pytest") == "8.4.2"
+        box = tmp_path_factory.mktemp("native842")
+        (box / "tests").mkdir()
+        (box / "pytest.ini").write_text("[pytest]\naddopts =\n", encoding="utf-8")
+        (box / "tests/test_probe.py").write_text(
+            "import pytest\n"
+            "@pytest.fixture\n"
+            "def broken_teardown():\n"
+            "    yield\n"
+            "    raise RuntimeError('NATIVE_TEARDOWN_SENTINEL')\n"
+            "def test_ok():\n"
+            "    assert True\n"
+            "def test_pass_error(broken_teardown):\n"
+            "    assert True\n"
+            "def test_fail_error(broken_teardown):\n"
+            "    assert False, 'NATIVE_CALL_SENTINEL'\n", encoding="utf-8")
+        logs = box / "generator-evidence"
+        prefix = [sys.executable, "-B", "-m", "pytest", "-c", str(box / "pytest.ini"),
+                  "--noconftest", "-p", "no:cacheprovider"]
+        collected = self._recorded_run(
+            prefix + ["--collect-only", "--verbosity=-1", "tests/test_probe.py"], box, logs,
+            "collect", generator=True)
+        assert collected.returncode == 0
+        nodes = [s for s in collected.stdout.splitlines() if s.startswith("tests/") and "::" in s]
+        assert len(nodes) == len(set(nodes)) == 3
+        passed = self._recorded_run(prefix + ["-q", "--tb=short", "--junitxml=pass.xml",
+            "tests/test_probe.py::test_ok"], box, logs, "passing-body", generator=True)
+        assert passed.returncode == 0
+        red = self._recorded_run(prefix + ["-q", "--tb=short", "--junitxml=red.xml",
+            "tests/test_probe.py"], box, logs, "red-body", generator=True)
+        assert red.returncode == 1
+        return box, nodes
+
+    def _consume(self, tmp_path, xml, nodes, rc):
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        junit = tmp_path / "junit.xml"
+        junit.write_bytes(xml)
+        collect = tmp_path / "collect.txt"
+        collect.write_text("\n".join(nodes) + "\n", encoding="utf-8")
+        receipt = tmp_path / "receipt.json"
+        proc = self._recorded_run([sys.executable, "-B", str(EVIDENCE_TOOL), "reconcile-junit",
+            "--junit", str(junit), "--collect", str(collect), "--shard", "native-control",
+            "--pytest-rc", str(rc), "--receipt", str(receipt)], REPO_ROOT,
+            tmp_path / "consumer-evidence", "consume")
+        return proc, receipt
+
+    def test_real_pass_and_both_teardown_shapes(self, native, tmp_path):
+        box, nodes = native
+        passed, _ = self._consume(tmp_path / "passing", (box / "pass.xml").read_bytes(),
+                                   ["tests/test_probe.py::test_ok"], 0)
+        assert passed.returncode == 0, passed.stderr
+        red, receipt = self._consume(tmp_path, (box / "red.xml").read_bytes(), nodes, 1)
+        assert red.returncode == 0, "NATIVE-PASSED-TEARDOWN-COUNTS: " + red.stderr
+        data = json.loads(receipt.read_text())
+        assert data["unique_outcome_counts"] == {"passed": 1, "error": 2}
+        assert data["pytest_generator_phase_counts"] == {"passed": 2, "failure": 1, "error": 2}
+        assert data["passed_call_then_teardown_error_nodes"] == ["tests/test_probe.py::test_pass_error"]
+        assert data["double_phase_nodes"] == ["tests/test_probe.py::test_fail_error"]
+        assert data["pytest_rc"] == 1 and data["not_run"] == []
+
+    @pytest.mark.parametrize("corruption", ["truncated", "missing", "duplicate", "counter", "rc0"])
+    def test_real_generated_adversaries(self, native, tmp_path, corruption):
+        import copy
+        import xml.etree.ElementTree as ET
+        box, nodes = native
+        raw = (box / "red.xml").read_bytes()
+        root = ET.fromstring(raw)
+        suite = root.find("testsuite")
+        if corruption == "truncated":
+            raw = raw[:-12]
+        elif corruption == "missing":
+            suite.remove(next(c for c in suite if c.get("name") == "test_ok"))
+            suite.set("tests", str(int(suite.get("tests")) - 1))
+            raw = ET.tostring(root)
+        elif corruption == "duplicate":
+            suite.append(copy.deepcopy(next(c for c in suite if c.get("name") == "test_ok")))
+            suite.set("tests", str(int(suite.get("tests")) + 1))
+            raw = ET.tostring(root)
+        elif corruption == "counter":
+            suite.set("tests", str(int(suite.get("tests")) + 1))
+            raw = ET.tostring(root)
+        proc, receipt = self._consume(tmp_path, raw, nodes, 0 if corruption == "rc0" else 1)
+        if corruption == "missing":
+            assert proc.returncode == 0, proc.stderr
+            data = json.loads(receipt.read_text())
+            assert data["not_run"] == ["tests/test_probe.py::test_ok"] and data["pytest_rc"] == 1
+        else:
+            assert proc.returncode == 3 and not receipt.exists()
+            expected = {"truncated": "JUNIT_NOT_WELL_FORMED", "duplicate": "DUPLICATE_JUNIT_NODEIDS_UNPROVEN",
+                        "counter": "SUITE_COUNTER_CONTRADICTION", "rc0": "GREEN_RC_WITH_RED_OUTCOMES"}
+            assert expected[corruption] in proc.stderr

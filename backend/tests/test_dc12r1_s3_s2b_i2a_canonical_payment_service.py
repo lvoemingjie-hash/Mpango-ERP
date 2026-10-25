@@ -22,6 +22,7 @@ from services.payment_service import PaymentService
 from tests.test_dc11d_payment_replay_concurrency_integrity import (
     _Token,
     _bootstrap_minimal_tenant_schema,
+    _economic_snapshot,
     _pay_in_new_session,
     _restore_public_tenant,
     _seed_confirmed_order,
@@ -285,7 +286,12 @@ async def test_service_cash_partial_and_final_matches_route_outcomes(async_sessi
     service_snapshot = await _snapshot(
         async_session, order_id=svc_order, tenant_id=tenant_id, retailer_id=svc_retailer
     )
-    assert service_snapshot == route_snapshot
+    expected = [("cash", "completed", Decimal("40")), ("cash", "completed", Decimal("60"))]
+    assert _economic_snapshot(service_snapshot, order_id=svc_order, retailer_id=svc_retailer,
+        expected_payments=expected, expected_hold=("settled", Decimal("100"), Decimal("0")),
+        expected_balance=Decimal("0")) == _economic_snapshot(route_snapshot,
+        order_id=route_order, retailer_id=route_retailer, expected_payments=expected,
+        expected_hold=("settled", Decimal("100"), Decimal("0")), expected_balance=Decimal("0"))
 
 
 @pytest.mark.asyncio
@@ -343,7 +349,12 @@ async def test_service_transfer_pending_then_completed_matches_route_outcomes(as
     service_snapshot = await _snapshot(
         async_session, order_id=svc_order, tenant_id=tenant_id, retailer_id=svc_retailer
     )
-    assert service_snapshot == route_snapshot
+    expected = [("transfer", "completed", Decimal("40")), ("transfer", "completed", Decimal("60"))]
+    assert _economic_snapshot(service_snapshot, order_id=svc_order, retailer_id=svc_retailer,
+        expected_payments=expected, expected_hold=("settled", Decimal("100"), Decimal("0")),
+        expected_balance=Decimal("0")) == _economic_snapshot(route_snapshot,
+        order_id=route_order, retailer_id=route_retailer, expected_payments=expected,
+        expected_hold=("settled", Decimal("100"), Decimal("0")), expected_balance=Decimal("0"))
 
 
 @pytest.mark.asyncio
@@ -397,7 +408,12 @@ async def test_service_credit_collection_reduces_outstanding_balance_like_route(
     service_snapshot = await _snapshot(
         async_session, order_id=svc_order, tenant_id=tenant_id, retailer_id=svc_retailer
     )
-    assert service_snapshot == route_snapshot
+    expected = [("credit", "pending", Decimal("100")), ("cash", "completed", Decimal("40"))]
+    assert _economic_snapshot(service_snapshot, order_id=svc_order, retailer_id=svc_retailer,
+        expected_payments=expected, expected_hold=("converted", Decimal("100"), Decimal("0")),
+        expected_balance=Decimal("60")) == _economic_snapshot(route_snapshot,
+        order_id=route_order, retailer_id=route_retailer, expected_payments=expected,
+        expected_hold=("converted", Decimal("100"), Decimal("0")), expected_balance=Decimal("60"))
 
 
 @pytest.mark.asyncio

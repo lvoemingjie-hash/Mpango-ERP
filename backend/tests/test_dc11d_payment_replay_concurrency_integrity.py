@@ -50,65 +50,22 @@ def _migration_identity_prep_url() -> str:
 
 
 def _ensure_public_tables(_session=None) -> None:
-    """Create the public counterpart tables under the migration identity.
-
-    Byte-identical DDL to the historical fixture body; executed on a short
-    psycopg2 connection as the migration authority so the runtime session
-    never issues public DDL. Idempotent, matching the original semantics.
-    """
+    """Read-only admission: the native five-stage supply owns public DDL."""
     import psycopg2
+    from core.config import get_settings
 
-    identity = migration_prep_identity()
-    conn = psycopg2.connect(identity.url.replace(
-        "postgresql+asyncpg://", "postgresql://", 1), connect_timeout=10)
-    conn.autocommit = True
+    url = get_settings().DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://", 1)
+    conn = psycopg2.connect(url, connect_timeout=10)
+    conn.set_session(readonly=True)
     try:
-        assert_migration_public_connection(conn, identity, (
-            "wholesalers", "retailers", "wholesaler_retailer_bindings"))
-        cur = conn.cursor()
-        cur.execute("SELECT 1 FROM pg_extension WHERE extname='pgcrypto'")
-        if not cur.fetchone():
-            cur.execute("CREATE EXTENSION pgcrypto")
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS public.wholesalers (
-                id UUID PRIMARY KEY,
-                code VARCHAR(64) UNIQUE NOT NULL,
-                name TEXT NOT NULL,
-                status VARCHAR(32) NOT NULL DEFAULT 'active',
-                is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-            )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS public.retailers (
-                id UUID PRIMARY KEY,
-                phone VARCHAR(64) UNIQUE NOT NULL,
-                name TEXT NOT NULL,
-                is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-            )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS public.wholesaler_retailer_bindings (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                wholesaler_id UUID NOT NULL,
-                retailer_id UUID NOT NULL,
-                status VARCHAR(32) NOT NULL DEFAULT 'active',
-                outstanding_balance NUMERIC(12, 2) NOT NULL DEFAULT 0,
-                is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                CONSTRAINT ck_wrb_outstanding_balance_non_negative
-                    CHECK (outstanding_balance >= 0),
-                UNIQUE (wholesaler_id, retailer_id)
-            )
-            """
-        )
-        cur.close()
+        with conn.cursor() as cur:
+            cur.execute("SELECT version_num FROM public.alembic_version")
+            assert cur.fetchall() == [("044_inventory_adjustment_approval",)]
+            cur.execute("SELECT current_user, has_schema_privilege(current_user,'public','CREATE')")
+            assert cur.fetchone() == ("mpango_app", False)
+            for name in ("wholesalers", "retailers", "wholesaler_retailer_bindings", "staff_stock_audit_events"):
+                cur.execute("SELECT to_regclass(%s)", ("public." + name,))
+                assert cur.fetchone()[0] is not None, "DC11D_CURRENT_PUBLIC_SUPPLY_REQUIRED"
     finally:
         conn.close()
 
@@ -144,198 +101,13 @@ async def _ensure_public_tables_refused_for_runtime_identity(session) -> None:
 
 
 async def _bootstrap_minimal_tenant_schema(session, schema: str) -> None:
+    """Reuse complete current bootstrap, never hand-build a partial schema."""
+    from core.config import get_settings
+    from scripts.bootstrap_tenant_schema import bootstrap
+
     _ensure_public_tables()
-    await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+    await bootstrap(schema, get_settings().DATABASE_URL)
     await _set_search_path(session, schema)
-    await session.execute(
-        text(
-            """
-            DO $$ BEGIN
-                CREATE TYPE order_status AS ENUM (
-                    'draft', 'confirmed', 'partially_paid', 'paid',
-                    'fulfilled', 'cancelled', 'voided', 'returned'
-                );
-            EXCEPTION WHEN duplicate_object THEN null;
-            END $$;
-            """
-        )
-    )
-    await session.execute(
-        text(
-            """
-            DO $$ BEGIN
-                CREATE TYPE account_type AS ENUM ('receivable', 'revenue', 'cash', 'liability');
-            EXCEPTION WHEN duplicate_object THEN null;
-            END $$;
-            """
-        )
-    )
-    await session.execute(
-        text(
-            f"""
-            CREATE TABLE IF NOT EXISTS "{schema}".orders (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                wholesaler_id UUID NOT NULL,
-                retailer_id UUID NOT NULL,
-                status order_status NOT NULL DEFAULT 'draft',
-                total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-                notes TEXT,
-                country_snapshot VARCHAR(2),
-                currency_snapshot VARCHAR(3),
-                registration_snapshot_id UUID,
-                creation_operation VARCHAR(32),
-                creation_key_digest VARCHAR(64),
-                creation_fingerprint VARCHAR(64),
-                quote_seen JSONB,
-                quote_resolved JSONB,
-                replaces_order_id UUID REFERENCES "{schema}".orders(id) ON DELETE RESTRICT,
-                is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                deleted_at TIMESTAMP WITH TIME ZONE,
-                created_by UUID,
-                updated_by UUID,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-            )
-            """
-        )
-    )
-    await session.execute(
-        text(
-            f"""
-            CREATE TABLE IF NOT EXISTS "{schema}".order_items (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                order_id UUID NOT NULL REFERENCES "{schema}".orders(id) ON DELETE CASCADE,
-                product_name TEXT NOT NULL,
-                sku_code VARCHAR(64) NOT NULL,
-                quantity INTEGER NOT NULL,
-                unit_price NUMERIC(12, 2) NOT NULL,
-                subtotal NUMERIC(12, 2) NOT NULL,
-                sellable_unit_id UUID,
-                identity_status VARCHAR(32) NOT NULL DEFAULT 'legacy',
-                unit_snapshot VARCHAR(32),
-                package_quantity_snapshot NUMERIC(12,3),
-                display_label_snapshot VARCHAR(32),
-                is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                deleted_at TIMESTAMP WITH TIME ZONE,
-                created_by UUID,
-                updated_by UUID,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-            )
-            """
-        )
-    )
-    await session.execute(
-        text(
-            f"""
-            ALTER TABLE "{schema}".order_items
-                DROP CONSTRAINT IF EXISTS ck_order_items_identity_shape_minimal
-            """
-        )
-    )
-    await session.execute(
-        text(
-            f"""
-            ALTER TABLE "{schema}".order_items
-                ADD CONSTRAINT ck_order_items_identity_shape_minimal CHECK (
-                    (identity_status = 'legacy' AND sellable_unit_id IS NULL) OR
-                    (identity_status = 'linked_legacy' AND sellable_unit_id IS NOT NULL) OR
-                    (identity_status = 'stable' AND sellable_unit_id IS NOT NULL AND unit_snapshot IS NOT NULL)
-                )
-            """
-        )
-    )
-    await session.execute(
-        text(
-            f"""
-            CREATE TABLE IF NOT EXISTS "{schema}".payments (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                order_id UUID NOT NULL REFERENCES "{schema}".orders(id) ON DELETE CASCADE,
-                retailer_id UUID NOT NULL,
-                transaction_id VARCHAR(64),
-                amount NUMERIC(12, 2) NOT NULL,
-                method VARCHAR(32) NOT NULL,
-                status VARCHAR(32) NOT NULL,
-                idempotency_key VARCHAR(64) UNIQUE,
-                is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                deleted_at TIMESTAMP WITH TIME ZONE,
-                created_by UUID,
-                updated_by UUID,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-            )
-            """
-        )
-    )
-    await session.execute(
-        text(
-            f"""
-            CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_transaction_id
-            ON "{schema}".payments(transaction_id)
-            WHERE transaction_id IS NOT NULL
-            """
-        )
-    )
-    await session.execute(
-        text(
-            f"""
-            CREATE TABLE IF NOT EXISTS "{schema}".order_credit_holds (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                order_id UUID NOT NULL UNIQUE
-                    REFERENCES "{schema}".orders(id) ON DELETE RESTRICT,
-                amount NUMERIC(12, 2) NOT NULL,
-                remaining_amount NUMERIC(12, 2) NOT NULL,
-                status VARCHAR(16) NOT NULL DEFAULT 'active',
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                created_by UUID,
-                updated_by UUID,
-                CONSTRAINT ck_order_credit_holds_status CHECK (
-                    status IN ('active', 'released', 'settled', 'converted')),
-                CONSTRAINT ck_order_credit_holds_amount_positive CHECK (
-                    amount > 0),
-                CONSTRAINT ck_order_credit_holds_remaining_cap CHECK (
-                    remaining_amount <= amount),
-                CONSTRAINT ck_order_credit_holds_lifecycle_shape CHECK (
-                    (status = 'active' AND remaining_amount > 0)
-                    OR (status IN ('released', 'settled', 'converted')
-                        AND remaining_amount = 0))
-            )
-            """
-        )
-    )
-    await session.execute(
-        text(
-            f"""
-            CREATE INDEX IF NOT EXISTS ix_order_credit_holds_active
-            ON "{schema}".order_credit_holds (order_id)
-            WHERE status = 'active'
-            """
-        )
-    )
-    await session.execute(
-        text(
-            f"""
-            CREATE TABLE IF NOT EXISTS "{schema}".ledger_entries (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                transaction_date TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                account_type account_type NOT NULL,
-                amount NUMERIC(20, 4) NOT NULL,
-                reference_type VARCHAR(50) NOT NULL,
-                reference_id UUID NOT NULL,
-                description TEXT,
-                entry_version INTEGER NOT NULL DEFAULT 1,
-                hash VARCHAR(64),
-                is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-                deleted_at TIMESTAMP WITH TIME ZONE,
-                created_by UUID,
-                updated_by UUID,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
-            )
-            """
-        )
-    )
 
 
 async def _seed_confirmed_order(
@@ -416,6 +188,11 @@ async def _seed_confirmed_order(
 
 
 async def _snapshot(session, *, order_id: uuid.UUID, tenant_id: uuid.UUID, retailer_id: uuid.UUID):
+    order_owner = (await session.execute(text(
+        "SELECT wholesaler_id,retailer_id FROM orders WHERE id=:o"
+    ), {"o": order_id})).mappings().one()
+    assert str(order_owner["wholesaler_id"]) == str(tenant_id)
+    assert str(order_owner["retailer_id"]) == str(retailer_id)
     result = await session.execute(
         text(
             """
@@ -425,14 +202,83 @@ async def _snapshot(session, *, order_id: uuid.UUID, tenant_id: uuid.UUID, retai
                 (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE order_id = :order_id AND is_deleted IS FALSE) AS payment_total,
                 (SELECT COUNT(*) FROM payments WHERE order_id = :order_id AND status = 'completed' AND is_deleted IS FALSE) AS completed_count,
                 (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE order_id = :order_id AND status = 'completed' AND is_deleted IS FALSE) AS completed_total,
-                (SELECT COUNT(*) FROM ledger_entries WHERE reference_type = 'order' AND reference_id = :order_id) AS ledger_count,
-                (SELECT COALESCE(SUM(amount), 0) FROM ledger_entries WHERE reference_type = 'order' AND reference_id = :order_id) AS ledger_sum,
+                (SELECT COUNT(*) FROM ledger_entries WHERE
+                    (reference_type = 'order' AND reference_id = :order_id) OR
+                    (reference_type = 'payment' AND reference_id IN
+                        (SELECT id FROM payments WHERE order_id = :order_id AND is_deleted IS FALSE))) AS ledger_count,
+                (SELECT COALESCE(SUM(amount), 0) FROM ledger_entries WHERE
+                    (reference_type = 'order' AND reference_id = :order_id) OR
+                    (reference_type = 'payment' AND reference_id IN
+                        (SELECT id FROM payments WHERE order_id = :order_id AND is_deleted IS FALSE))) AS ledger_sum,
                 (SELECT outstanding_balance FROM public.wholesaler_retailer_bindings WHERE wholesaler_id = :tenant_id AND retailer_id = :retailer_id) AS outstanding_balance
             """
         ),
         {"order_id": order_id, "tenant_id": tenant_id, "retailer_id": retailer_id},
     )
-    return dict(result.mappings().one())
+    snapshot = dict(result.mappings().one())
+    snapshot["payment_rows"] = [dict(r) for r in (await session.execute(text(
+        "SELECT * FROM payments WHERE order_id = :oid AND is_deleted IS FALSE ORDER BY id"
+    ), {"oid": order_id})).mappings().all()]
+    assert all(str(r["order_id"]) == str(order_id) and str(r["retailer_id"]) == str(retailer_id)
+               for r in snapshot["payment_rows"]), "DC11D-PAYMENT-ORDER-CUSTOMER-ATTRIBUTION"
+    snapshot["ledger_rows"] = [dict(r) for r in (await session.execute(text(
+        "SELECT * FROM ledger_entries WHERE (reference_type = 'order' AND reference_id = :oid) "
+        "OR (reference_type = 'payment' AND reference_id IN "
+        "(SELECT id FROM payments WHERE order_id = :oid AND is_deleted IS FALSE)) ORDER BY id"
+    ), {"oid": order_id})).mappings().all()]
+    snapshot["hold_rows"] = [dict(r) for r in (await session.execute(text(
+        "SELECT * FROM order_credit_holds WHERE order_id = :oid ORDER BY id"
+    ), {"oid": order_id})).mappings().all()]
+    if os.environ.get("RC4_RAW_ECONOMIC_EVIDENCE_DIR"):
+        import json
+        from pathlib import Path
+        root = Path(os.environ["RC4_RAW_ECONOMIC_EVIDENCE_DIR"])
+        assert root.is_absolute() and root.is_dir()
+        with (root / ("payment-" + uuid.uuid4().hex + ".json")).open("x") as out:
+            os.fchmod(out.fileno(), 0o600)
+            json.dump({"order_id": str(order_id), "retailer_id": str(retailer_id),
+                       "tenant_id": str(tenant_id), "snapshot": snapshot}, out, default=str)
+    return snapshot
+
+
+def _economic_snapshot(snapshot, *, order_id, retailer_id, expected_payments,
+                       expected_hold, expected_balance):
+    """Validate each order's raw facts before erasing cross-order identities."""
+    payments, ledger, holds = (snapshot[k] for k in ("payment_rows", "ledger_rows", "hold_rows"))
+    assert len({str(p["id"]) for p in payments}) == len(payments), "PARITY_DUPLICATE_PAYMENT"
+    assert len({str(e["id"]) for e in ledger}) == len(ledger), "PARITY_DUPLICATE_LEDGER"
+    assert all(str(p["order_id"]) == str(order_id) and str(p["retailer_id"]) == str(retailer_id)
+               for p in payments), "PARITY_PAYMENT_ATTRIBUTION"
+    actual_payments = sorted((p["method"], p["status"], Decimal(str(p["amount"]))) for p in payments)
+    assert actual_payments == sorted(expected_payments), "PARITY_EXACT_PAYMENT_SHAPE"
+    assert all(amount.is_finite() and amount > 0 for _, _, amount in actual_payments)
+    assert snapshot["payment_count"] == len(payments)
+    assert Decimal(str(snapshot["payment_total"])) == sum((p[2] for p in actual_payments), Decimal(0))
+    completed = [p for p in actual_payments if p[1] == "completed"]
+    assert snapshot["completed_count"] == len(completed)
+    assert Decimal(str(snapshot["completed_total"])) == sum((p[2] for p in completed), Decimal(0))
+    monetary = {str(p["id"]): p for p in payments if p["method"] != "credit"}
+    assert all(e["reference_type"] == "payment" and str(e["reference_id"]) in monetary
+               for e in ledger), "PARITY_LEDGER_ATTRIBUTION"
+    assert len(ledger) == 2 * len(monetary) == snapshot["ledger_count"], "PARITY_LEDGER_EFFECT_COUNT"
+    for pid, payment in monetary.items():
+        amount = Decimal(str(payment["amount"]))
+        pair = sorted((e["account_type"], Decimal(str(e["amount"]))) for e in ledger
+                      if str(e["reference_id"]) == pid)
+        assert pair == [("cash", amount), ("receivable", -amount)], "PARITY_LEDGER_EXACT_AMOUNT"
+    assert Decimal(str(snapshot["ledger_sum"])) == sum(
+        (Decimal(str(e["amount"])) for e in ledger), Decimal(0)) == 0
+    assert len(holds) == 1 and str(holds[0]["order_id"]) == str(order_id), "PARITY_HOLD_ATTRIBUTION"
+    hold = (holds[0]["status"], Decimal(str(holds[0]["amount"])), Decimal(str(holds[0]["remaining_amount"])))
+    assert hold == expected_hold, "PARITY_HOLD_SHAPE"
+    assert snapshot["order_status"] == "paid"
+    assert Decimal(str(snapshot["outstanding_balance"])) == expected_balance, "PARITY_BINDING_BALANCE"
+    return {
+        **{k: v for k, v in snapshot.items() if k not in ("payment_rows", "ledger_rows", "hold_rows")},
+        "payment_economics": actual_payments,
+        "ledger_economics": sorted((e["account_type"], Decimal(str(e["amount"]))) for e in ledger),
+        "hold_economics": hold,
+    }
 
 
 async def _pay_in_new_session(
@@ -478,6 +324,16 @@ def _assert_single_full_settlement(snapshot) -> None:
     assert snapshot["ledger_count"] == 2
     assert Decimal(str(snapshot["ledger_sum"])) == Decimal("0.0000")
     assert Decimal(str(snapshot["outstanding_balance"])) == Decimal("0.00")
+    payment = snapshot["payment_rows"]
+    assert len(payment) == 1
+    assert sorted((r["account_type"], Decimal(str(r["amount"]))) for r in snapshot["ledger_rows"]) == [
+        ("cash", Decimal("100")), ("receivable", Decimal("-100"))]
+    assert all(r["reference_type"] == "payment" and r["reference_id"] == payment[0]["id"]
+               for r in snapshot["ledger_rows"]), "DC11D-EXACT-PAYMENT-LEDGER-LINK"
+    assert len(snapshot["hold_rows"]) == 1
+    hold = snapshot["hold_rows"][0]
+    assert hold["status"] == "settled" and Decimal(str(hold["remaining_amount"])) == 0
+    assert Decimal(str(hold["amount"])) == Decimal("100")
 
 
 # ---------------------------------------------------------------------------
@@ -583,13 +439,18 @@ async def _restore_public_tenant(session, *, wholesaler_id: str, snap: dict) -> 
             await session.execute(
                 text("DELETE FROM public.retailers WHERE id = :r"), {"r": retailer_id}
             )
-    await session.execute(
-        text("DELETE FROM public.wholesalers WHERE id = :w"), {"w": wholesaler_id}
-    )
     if snap["wholesaler"] is not None:
+        # Restore this shared row in place: deleting it would violate native
+        # append-only audit references even when the pre-state is unchanged.
+        columns = [column for column in snap["wholesaler"] if column != "id"]
         await session.execute(
-            text(_insert_sql("public.wholesalers", snap["wholesaler"])),
+            text("UPDATE public.wholesalers SET " + ", ".join(
+                f"{column} = :v_{column}" for column in columns) + " WHERE id = :v_id"),
             _flatten(snap["wholesaler"]),
+        )
+    else:
+        await session.execute(
+            text("DELETE FROM public.wholesalers WHERE id = :w"), {"w": wholesaler_id}
         )
     for retailer in snap["retailers"]:
         assignments = ", ".join(
@@ -610,11 +471,13 @@ async def _restore_public_tenant(session, *, wholesaler_id: str, snap: dict) -> 
 
 
 @pytest.fixture(autouse=True)
-async def _ensure_hold_contract():
-    """Keep the harness-owned t_test schema at the deployed (post-039)
-    contract: the per-order credit-hold table must exist before any payment
-    path runs. Additive only (IF NOT EXISTS); no rows are ever written or
-    rewritten here."""
+async def _ensure_hold_contract(async_session):
+    """Check current bootstrap after the shared fixture has retired prior S5 rows.
+
+    The dependency is deliberate: reconciling retained legacy t_test history
+    before its owning fixture's isolation step is not a valid bootstrap input.
+    No new registration is invented for this noncanonical test schema.
+    """
     async with AsyncSessionLocal() as session:
         await _bootstrap_minimal_tenant_schema(session, "t_test")
         await session.commit()

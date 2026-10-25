@@ -185,9 +185,9 @@ async def cashier_identity(s2_clean_db, provisioned_pool) -> dict:
     complete canonical set including ``payments:create`` and
     ``payments:confirm_declaration``.
 
-    Cleanup: explicitly deletes the cashier ``user_roles`` and ``users``
-    rows in the fixture teardown.  The canonical permission / role /
-    role_permissions catalog is left intact (idempotent across tests).
+    The canonical owner belongs to the module-scoped provisioned tenant,
+    not this function. Its authority/approval references must survive until
+    that tenant's schema is retired; only this function's setup tokens end here.
     """
     from core.permission_registry import ADMIN_PERMISSION_CODES
     from database.session import AsyncSessionLocal
@@ -225,8 +225,7 @@ async def cashier_identity(s2_clean_db, provisioned_pool) -> dict:
     cashier_uid = result.user_id
     cashier_email = result.owner_email
 
-    # Register for ownership-registry backup cleanup (user_roles + users)
-    reg.register_tenant_user(schema_a, str(cashier_uid))
+    # This is the pool tenant's canonical owner, not a per-test retailer user.
 
     # 3. Fail-closed assertions on the canonical permission set
     assert result.permission_count == len(ADMIN_PERMISSION_CODES), (
@@ -259,16 +258,8 @@ async def cashier_identity(s2_clean_db, provisioned_pool) -> dict:
             "ws_id": ws_a,
         }
     finally:
-        # 4. Explicit cleanup — user_roles + users + setup token
+        # The pool owns the owner row and its native authority references.
         async with AsyncSessionLocal() as cleanup_db:
-            await cleanup_db.execute(
-                text(f'DELETE FROM "{schema_a}".user_roles WHERE user_id = :uid'),
-                {"uid": cashier_uid},
-            )
-            await cleanup_db.execute(
-                text(f'DELETE FROM "{schema_a}".users WHERE id = :uid'),
-                {"uid": cashier_uid},
-            )
             await cleanup_db.execute(
                 text(
                     "DELETE FROM public.owner_credential_setup_tokens "

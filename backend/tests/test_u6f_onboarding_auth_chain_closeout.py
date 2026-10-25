@@ -42,6 +42,7 @@ LIVE_STATUSES = {
     "failed",
 }
 EXPECTED_PUBLIC_ALLOWLIST = {
+    "/api/v1/auth/staff/setup-credential",
     "/api/v1/auth/login",
     "/api/v1/auth/signup",
     "/api/v1/auth/verify-email",

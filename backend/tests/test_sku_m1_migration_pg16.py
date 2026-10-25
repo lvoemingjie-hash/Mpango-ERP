@@ -770,15 +770,29 @@ def test_real_pg16_demo_seeder_uses_canonical_catalog_identity() -> None:
             _grant_product_minimum(grant_engine)
         finally:
             grant_engine.dispose()
-        result = subprocess.run(
-            [sys.executable, "scripts/seed_demo_data.py"],
-            cwd=BACKEND_DIR,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=180,
-            check=False,
-        )
+        import json
+        import tempfile
+        from urllib.parse import urlsplit
+        from tests.mpango_invariants_r0_support import verify_task_database_ownership_sync
+        verify_task_database_ownership_sync()
+        cid = os.environ["MPANGO_INVARIANTS_R0_PG_CONTAINER"]
+        resource = json.loads(subprocess.check_output(["docker", "inspect", cid]))[0]
+        assert resource["State"]["Running"]
+        labels = resource["Config"]["Labels"]
+        with tempfile.NamedTemporaryFile(mode="w", dir=os.environ["TMPDIR"], suffix=".json") as manifest:
+            json.dump({"container_id": resource["Id"], "task": labels["mpango.task"],
+                "owner": labels["mpango.owner"], "database": urlsplit(env["DATABASE_URL"]).path[1:]}, manifest)
+            manifest.flush()
+            env["MPANGO_FRESH_DEMO_TASK_MANIFEST"] = manifest.name
+            result = subprocess.run(
+                [sys.executable, "scripts/seed_demo_data.py"],
+                cwd=BACKEND_DIR,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=180,
+                check=False,
+            )
         assert result.returncode == 0, (
             "demo seeder failed in the throwaway database\n"
             f"returncode={result.returncode}\n"

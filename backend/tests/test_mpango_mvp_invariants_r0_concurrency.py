@@ -46,6 +46,7 @@ from api.v1 import orders as order_routes
 from crud.order import get_order_by_id
 from repositories.inventory_repository import InventoryRepository
 from schemas.order import PayOrderRequest, WholesalerOrderCreateRequest
+from tests.rc2_current_contract_support import current_adjustment, prepare_adjustment_owner
 from services.inventory_service import InventoryService
 
 from tests.mpango_invariants_r0_support import (
@@ -272,9 +273,10 @@ async def test_r0_control_single_adjustment_and_failed_adjustment_rollback():
     try:
         async with tenant_session(identity.schema, identity.wholesaler_id) as db:
             await seed_sku_with_stock(db, sku_code="R0-CTL", quantity_on_hand=Decimal("10"))
+            await prepare_adjustment_owner(db)
 
         async with tenant_session(identity.schema, identity.wholesaler_id) as db:
-            stock, movement = await InventoryService().adjust_stock(
+            stock, movement = await current_adjustment(
                 db, sku_code="R0-CTL", quantity=Decimal("7"), reason="r0 control +7"
             )
             assert Decimal(str(movement.quantity_before)) == Decimal("10")
@@ -287,13 +289,13 @@ async def test_r0_control_single_adjustment_and_failed_adjustment_rollback():
             assert Decimal(movement_row["qty"]) == Decimal("7")
 
         # Failing adjustment: full rollback of value and journal entry.
-        async with tenant_session(identity.schema, identity.wholesaler_id) as db:
-            with pytest.raises(HTTPException) as excinfo:
-                await InventoryService().adjust_stock(
+        with pytest.raises(HTTPException) as excinfo:
+            async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+                await current_adjustment(
                     db, sku_code="R0-CTL", quantity=Decimal("-50"), reason="r0 control -50"
                 )
-            assert excinfo.value.status_code == 409
-            assert excinfo.value.detail["code"] == "NEGATIVE_STOCK"
+        assert excinfo.value.status_code == 409
+        assert excinfo.value.detail["code"] == "NEGATIVE_STOCK"
         async with tenant_session(identity.schema, identity.wholesaler_id) as db:
             assert await stock_on_hand(db, sku_code="R0-CTL") == Decimal("17.00")
             assert len(await adjustment_movements(db, sku_code="R0-CTL")) == 1
@@ -323,6 +325,7 @@ async def test_r0_harness_control_barrier_timeout_cancels_and_rolls_back():
     try:
         async with tenant_session(identity.schema, identity.wholesaler_id) as db:
             await seed_sku_with_stock(db, sku_code="R0-WEDGE", quantity_on_hand=Decimal("10"))
+            await prepare_adjustment_owner(db)
 
         never = asyncio.Event()
 
@@ -334,8 +337,8 @@ async def test_r0_harness_control_barrier_timeout_cancels_and_rolls_back():
 
         async def wedged_adjustment():
             async with tenant_session(identity.schema, identity.wholesaler_id) as db_w:
-                await InventoryService(WedgedRepository()).adjust_stock(
-                    db_w, sku_code="R0-WEDGE", quantity=Decimal("5"), reason="r0 wedged"
+                await current_adjustment(
+                    db_w, repository=WedgedRepository(), sku_code="R0-WEDGE", quantity=Decimal("5"), reason="r0 wedged"
                 )
 
         with pytest.raises(AssertionError, match="GUARD_HARNESS_TIMEOUT"):
@@ -350,7 +353,7 @@ async def test_r0_harness_control_barrier_timeout_cancels_and_rolls_back():
 
         # No lingering locks: a normal adjustment still works afterwards.
         async with tenant_session(identity.schema, identity.wholesaler_id) as db:
-            await InventoryService().adjust_stock(
+            await current_adjustment(
                 db, sku_code="R0-WEDGE", quantity=Decimal("1"), reason="r0 after-wedge"
             )
         async with tenant_session(identity.schema, identity.wholesaler_id) as db:
@@ -376,6 +379,7 @@ async def test_r0_harness_control_task_exception_rolls_back_and_cleans():
     try:
         async with tenant_session(identity.schema, identity.wholesaler_id) as db:
             await seed_sku_with_stock(db, sku_code="R0-RAISE", quantity_on_hand=Decimal("10"))
+            await prepare_adjustment_owner(db)
 
         first_read = asyncio.Event()
         resume = asyncio.Event()
@@ -389,8 +393,8 @@ async def test_r0_harness_control_task_exception_rolls_back_and_cleans():
 
         async def failing_adjustment():
             async with tenant_session(identity.schema, identity.wholesaler_id) as db_f:
-                await InventoryService(PausingRepository()).adjust_stock(
-                    db_f, sku_code="R0-RAISE", quantity=Decimal("-50"), reason="r0 raises"
+                await current_adjustment(
+                    db_f, repository=PausingRepository(), sku_code="R0-RAISE", quantity=Decimal("-50"), reason="r0 raises"
                 )
 
         task = asyncio.ensure_future(failing_adjustment())
@@ -626,6 +630,7 @@ async def test_r0_red_concurrent_stock_adjustments_no_lost_update():
     try:
         async with tenant_session(identity.schema, identity.wholesaler_id) as db:
             await seed_sku_with_stock(db, sku_code="R0-RACE", quantity_on_hand=Decimal("10"))
+            await prepare_adjustment_owner(db)
 
         first_read = asyncio.Event()
         resume = asyncio.Event()
@@ -640,8 +645,8 @@ async def test_r0_red_concurrent_stock_adjustments_no_lost_update():
 
         async def adjustment_a():
             async with tenant_session(identity.schema, identity.wholesaler_id) as db_a:
-                await InventoryService(PausingRepository()).adjust_stock(
-                    db_a, sku_code="R0-RACE", quantity=Decimal("5"), reason=REASON_A
+                await current_adjustment(
+                    db_a, repository=PausingRepository(), sku_code="R0-RACE", quantity=Decimal("5"), reason=REASON_A
                 )
 
         task_a = asyncio.ensure_future(adjustment_a())
@@ -650,7 +655,7 @@ async def test_r0_red_concurrent_stock_adjustments_no_lost_update():
             # B runs to completion on its own connection while A is parked.
             async def adjustment_b():
                 async with tenant_session(identity.schema, identity.wholesaler_id) as db_b:
-                    await InventoryService().adjust_stock(
+                    await current_adjustment(
                         db_b, sku_code="R0-RACE", quantity=Decimal("7"), reason=REASON_B
                     )
 
@@ -905,9 +910,10 @@ async def test_r1_control_adjustment_read_helper_preserves_duplicate_rows():
             sku_id = await seed_sku_with_stock(
                 db, sku_code="R1-PRESERVE", quantity_on_hand=Decimal("10")
             )
+            await prepare_adjustment_owner(db)
 
         async with tenant_session(identity.schema, identity.wholesaler_id) as db:
-            await InventoryService().adjust_stock(
+            await current_adjustment(
                 db, sku_code="R1-PRESERVE", quantity=Decimal("5"),
                 reason=_R1_PRESERVE_REASON,
             )

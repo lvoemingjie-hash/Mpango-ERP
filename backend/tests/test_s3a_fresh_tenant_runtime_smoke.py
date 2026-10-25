@@ -121,6 +121,12 @@ def _make_mock_session(*, tenant_id=None, tenant_schema=None):
     """Empty business data with one explicit valid binding/currency context."""
     session = MagicMock()
     async def execute(statement, params=None, **kwargs):
+        from tests.rc2_current_contract_support import current_rbac_sql
+        from core.permission_registry import ADMIN_PERMISSION_CODES
+        authority = current_rbac_sql(statement, params, schema=tenant_schema,
+            user_id=FRESH_ADMIN_USER_ID, permissions=ADMIN_PERMISSION_CODES, roles=["super_admin"])
+        if authority is not None:
+            return authority
         result = _empty_db_result()
         result.mappings.return_value.all.return_value = []
         sql = str(statement)

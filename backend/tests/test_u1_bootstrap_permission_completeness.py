@@ -114,6 +114,12 @@ class TestOnboardTenantPermissionCompleteness:
         # roles:create/update/delete are bootstrap-only (admin seed, not yet in API decorators)
         # skus:import is a U3 import-contract permission; endpoints land in a later slice.
         known_valid_extras = {
+            "users:read", "users:create", "users:update", "users:delete",
+            # Owner-only routers retain legacy admin codes for compatibility;
+            # actual stock/staff consumers use the explicit current capabilities.
+            "users:deactivate", "roles:read", "roles:assign", "wholesalers:write",
+            "inventory:update", "inventory:adjustments:read",
+            "inventory:adjustments:request", "inventory:adjustments:approve",
             "inventory:write",       # legacy alias
             "orders:confirm",        # bootstrap-only
             "orders:ship",           # bootstrap-only

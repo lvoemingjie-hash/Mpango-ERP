@@ -32,10 +32,22 @@ class TestPlatformGuardContract:
     def test_guard_checks_is_identity_only(self):
         """The guard source code checks token.is_identity_only."""
         mod = importlib.import_module("api.v1.platform.p10.guard")
-        source = inspect.getsource(mod)
-        assert "is_identity_only" in source, (
-            "guard must check token.is_identity_only to reject contextual tokens"
-        )
+        from api.context.auth import AuthContext, attach_auth_context
+        from core.security import TokenPayload
+        from starlette.requests import Request
+        for roles, tenant_id, tenant_schema, expected in (
+            (["super_admin"], None, None, True),
+            (["admin"], None, None, False),
+            (["super_admin"], "tenant-a", None, False),
+            (["super_admin"], None, "t_tenant_a", False),
+            (["super_admin"], "tenant-a", "t_tenant_a", False),
+        ):
+            request = Request({"type": "http", "headers": []})
+            attach_auth_context(request, AuthContext(token=TokenPayload(
+                user_id="operator", roles=roles, tenant_id=tenant_id,
+                tenant_schema=tenant_schema), raw_token="synthetic"))
+            assert mod._check_identity_super_admin(request) is expected
+
 
     def test_guard_checks_is_super_admin(self):
         """The guard source code checks token.is_super_admin."""

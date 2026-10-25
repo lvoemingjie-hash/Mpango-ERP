@@ -213,6 +213,7 @@ def _make_mock_order(order_status="confirmed", order_total=Decimal("5000")):
 
 def _make_mock_db():
     mock_db = AsyncMock()
+    mock_db.add = MagicMock()
     mock_db.flush = AsyncMock()
     mock_db.refresh = AsyncMock()
 
@@ -250,7 +251,7 @@ async def test_api_full_cash_settles_payment_to_completed():
 
     mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
     mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-1", "amount": Decimal("5000"), "method": "cash"}
+    payment_dict = {"id": uuid.UUID(int=1), "amount": Decimal("5000"), "method": "cash"}
     pay_req = PayOrderRequest(amount=5000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
@@ -295,7 +296,7 @@ async def test_api_proposed_paid_but_returned_non_paid_does_not_settle():
 
     mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
     mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-1", "amount": Decimal("5000"), "method": "cash"}
+    payment_dict = {"id": uuid.UUID(int=1), "amount": Decimal("5000"), "method": "cash"}
     pay_req = PayOrderRequest(amount=5000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
@@ -343,7 +344,7 @@ async def test_api_partial_cash_does_not_settle():
 
     mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
     mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-1", "amount": Decimal("2000"), "method": "cash"}
+    payment_dict = {"id": uuid.UUID(int=1), "amount": Decimal("2000"), "method": "cash"}
     pay_req = PayOrderRequest(amount=2000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
@@ -390,7 +391,7 @@ async def test_api_second_partial_completes_and_settles():
 
     mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
     mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-2", "amount": Decimal("3000"), "method": "cash"}
+    payment_dict = {"id": uuid.UUID(int=2), "amount": Decimal("3000"), "method": "cash"}
     pay_req = PayOrderRequest(amount=3000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
@@ -438,7 +439,7 @@ async def test_api_transfer_full_payment_settle_called():
 
     mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
     mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-1", "amount": Decimal("5000"), "method": "transfer"}
+    payment_dict = {"id": uuid.UUID(int=1), "amount": Decimal("5000"), "method": "transfer"}
     pay_req = PayOrderRequest(amount=5000, method="transfer", transaction_id="TXN-001")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
@@ -485,7 +486,7 @@ async def test_api_credit_paid_settle_targets_cash_transfer_only():
 
     mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
     mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-1", "amount": Decimal("5000"), "method": "credit"}
+    payment_dict = {"id": uuid.UUID(int=1), "amount": Decimal("5000"), "method": "credit"}
     pay_req = PayOrderRequest(amount=5000, method="credit")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
@@ -538,7 +539,7 @@ async def test_api_failed_transition_no_settle():
 
     mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
     mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-1", "amount": Decimal("5000"), "method": "cash"}
+    payment_dict = {"id": uuid.UUID(int=1), "amount": Decimal("5000"), "method": "cash"}
     pay_req = PayOrderRequest(amount=5000, method="cash")
 
     with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \

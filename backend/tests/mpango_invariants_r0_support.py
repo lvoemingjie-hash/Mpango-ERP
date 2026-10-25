@@ -1621,6 +1621,17 @@ async def drop_tenant(schema: str, *, wholesaler_id: uuid.UUID, retailer_id: uui
     transaction can re-create rows after the drop.
     """
     async with AsyncSessionLocal() as db:
+        audited = await db.scalar(text(
+            'SELECT EXISTS(SELECT 1 FROM public.staff_stock_audit_events WHERE tenant_id=:w)'),
+            {'w': wholesaler_id})
+        if audited:
+            assert schema == 't_' + wholesaler_id.hex
+            assert await db.scalar(text('SELECT to_regclass(:s)'), {'s': schema + '.inventory_adjustment_requests'})
+            assert await db.scalar(text(
+                'SELECT EXISTS(SELECT 1 FROM public.tenant_registrations WHERE wholesaler_id=:w AND tenant_schema=:s)'),
+                {'w': wholesaler_id, 's': schema})
+            print('R0_AUDITED_TENANT_RETAINED_UNTIL_TASK_DB_DESTRUCTION', str(wholesaler_id), schema)
+            return
         await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
         await db.execute(
             text("DELETE FROM public.wholesaler_retailer_bindings WHERE wholesaler_id = :w"),

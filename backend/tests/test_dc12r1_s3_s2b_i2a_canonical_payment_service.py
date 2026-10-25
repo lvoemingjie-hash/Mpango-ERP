@@ -150,6 +150,19 @@ async def test_service_does_not_commit_or_rollback_calls(
     monkeypatch.setattr(CanonicalPaymentService, "_reduce_hold", _AsyncMock())
 
     class _DB:
+        def __init__(self):
+            self.ledger_entries = []
+
+        def add(self, entry):
+            from models.ledger import LedgerEntry
+            assert isinstance(entry, LedgerEntry)
+            assert entry.reference_type == "payment" and entry.amount != 0
+            self.ledger_entries.append(entry)
+
+        async def flush(self):
+            for entry in self.ledger_entries:
+                entry.id = entry.id or uuid.uuid4()
+
         async def commit(self):
             raise AssertionError("service must not call commit")
 

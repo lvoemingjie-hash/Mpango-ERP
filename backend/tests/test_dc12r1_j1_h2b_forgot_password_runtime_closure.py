@@ -91,41 +91,25 @@ EVENT_CLASSES = (
     "PASSWORD_RESET_SCAN_PARTIAL",
     "PASSWORD_RESET_APPLY_FAILED",
 )
+_FIXTURE_SCOPE = None
 
 
 @pytest.fixture(autouse=True)
 async def _h2b_setup():
     _prepare_tables()
-    await _reset_wholesaler_state()
+    from tests.rc2_current_contract_support import TenantFixtureScope
+    global _FIXTURE_SCOPE
+    scope = await TenantFixtureScope.begin(AsyncSessionLocal)
+    _FIXTURE_SCOPE = scope
     clear_dev_email_deliveries()
-    async with AsyncSessionLocal() as db:
-        await db.execute(text("DELETE FROM public.password_reset_tokens"))
-        await db.commit()
     try:
         yield
     finally:
         app.dependency_overrides.pop(get_db_session, None)
-
-
-async def _reset_wholesaler_state() -> None:
-    """Deterministic scan isolation: this task's DB is single-suite, so remove
-    every wholesaler + derived tenant schema (including leftover renamed
-    evidence tables from earlier runs) before each test. Without this, a
-    tenant left broken by a previous test makes every later request emit
-    partial/incomplete-scan events and breaks zero-event assertions."""
-    async with AsyncSessionLocal() as db:
-        ids = (
-            await db.execute(text("SELECT id FROM public.wholesalers"))
-        ).scalars().all()
-        for wid in ids:
-            schema = f"t_{str(wid).replace('-', '')}"
-            await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
-        if ids:
-            await db.execute(
-                text("DELETE FROM public.tenant_registrations")
-            )
-        await db.execute(text("DELETE FROM public.wholesalers"))
-        await db.commit()
+        try:
+            await scope.retire()
+        finally:
+            _FIXTURE_SCOPE = None
 
 
 def _prepare_tables() -> None:
@@ -189,6 +173,7 @@ async def _seed_wholesaler_with_user(
 ) -> tuple[str, str]:
     ws_id = uuid.uuid4()
     schema = f"t_{str(ws_id).replace('-', '')}"
+    _FIXTURE_SCOPE.expect_wholesaler(ws_id, schema_created=True)
     await db.execute(
         text(
             "INSERT INTO public.wholesalers (id, code, name, status, is_deleted) "
@@ -262,7 +247,8 @@ def _client(db) -> AsyncClient:
             await db.commit()
 
     app.dependency_overrides[get_db_session] = _override
-    return AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver")
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver",
+                       event_hooks=_FIXTURE_SCOPE.http_hooks())
 
 
 def _real_client() -> AsyncClient:
@@ -279,7 +265,8 @@ def _real_client() -> AsyncClient:
                 raise
 
     app.dependency_overrides[get_db_session] = _override
-    return AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver")
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver",
+                       event_hooks=_FIXTURE_SCOPE.http_hooks())
 
 
 async def _token_count() -> int:

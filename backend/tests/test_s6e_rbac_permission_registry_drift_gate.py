@@ -325,6 +325,11 @@ def _collect_all_dependencies(route: APIRoute) -> list[Any]:
 
 
 def _route_dependency_permissions(dep: Any) -> set[str]:
+    from api.middleware.rbac import RequireOwner
+    if isinstance(dep, RequireOwner):
+        assert dep.permission == "owner:manage"
+        # This metadata labels a non-grantable authority, not a permission row.
+        return set()
     permissions: set[str] = set()
 
     permission = getattr(dep, "permission", None)
@@ -415,6 +420,11 @@ def extract_frontend_permissions() -> set[str]:
                 permissions.add(token)
 
     assert permissions, "No frontend permission constants or UI gates extracted"
+    if "owner:manage" in permissions:
+        owner_guard = (FRONTEND_SRC / "utils" / "permissions.ts").read_text()
+        assert "return user.is_owner === true" in owner_guard
+        assert "'owner:manage'" in owner_guard
+        permissions.remove("owner:manage")
     return permissions
 
 

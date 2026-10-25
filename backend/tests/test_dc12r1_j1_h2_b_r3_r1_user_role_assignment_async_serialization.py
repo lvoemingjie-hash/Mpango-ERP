@@ -214,47 +214,8 @@ async def _tenant_residue_snapshot() -> dict[str, set[str]]:
     }
 
 
-async def _cleanup_tenant_state_fail_closed() -> None:
-    """Wipe ALL tenant state on a FRESH session and fail closed.
-
-    Drops every wholesaler-derived tenant schema plus any orphaned
-    uuid-named tenant schema, deletes registrations + wholesalers, commits,
-    then re-reads the residue dimensions on another fresh session: any
-    exception or any surviving row/schema raises. Called before AND after
-    every node so residue can never cross node boundaries.
-    """
-    async with AsyncSessionLocal() as db:
-        try:
-            ids = (
-                await db.execute(text("SELECT id FROM public.wholesalers"))
-            ).scalars().all()
-            for wid in ids:
-                schema = f"t_{str(wid).replace('-', '')}"
-                await db.execute(
-                    text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
-                )
-            orphans = (
-                await db.execute(
-                    text(
-                        "SELECT nspname FROM pg_namespace "
-                        "WHERE nspname ~ '^t_[0-9a-f]{32}$'"
-                    )
-                )
-            ).scalars().all()
-            for schema in orphans:
-                await db.execute(
-                    text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
-                )
-            await db.execute(text("DELETE FROM public.tenant_registrations"))
-            await db.execute(text("DELETE FROM public.wholesalers"))
-            await db.commit()
-        except BaseException:
-            await db.rollback()
-            raise
-
-    snapshot = await _tenant_residue_snapshot()
-    if any(snapshot.values()):
-        raise AssertionError(f"tenant residue survived cleanup: {snapshot}")
+_RETAINED = {"wholesalers": set(), "registrations": set(), "schemas": set()}
+_FIXTURE_SCOPE = None
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -286,23 +247,22 @@ async def _r3r2_module_guard():
 
 @pytest.fixture(autouse=True)
 async def _r3r1_isolation(request):
-    """Bracket every node with fail-closed fresh-session tenant cleanup.
-
-    BEFORE: wipe (except for the residue-proof node, which must observe
-    what earlier nodes actually left behind). AFTER: wipe again so no
-    residue crosses node boundaries. The after-wipe runs in teardown: a
-    cleanup failure surfaces as its own teardown ERROR and pytest keeps
-    the original test-body failure independently recorded — a cleanup
-    failure can therefore never erase or disguise a body failure.
-    """
-    if request.node.name != _RESIDUE_PROOF_NODE:
-        await _cleanup_tenant_state_fail_closed()
+    """Retain complete immutable-audit tenants, reject unaccounted residue."""
+    from tests.rc2_current_contract_support import TenantFixtureScope
+    global _FIXTURE_SCOPE
+    scope = await TenantFixtureScope.begin(AsyncSessionLocal)
+    _FIXTURE_SCOPE = scope
     clear_dev_email_deliveries()
     try:
         yield
     finally:
-        await _cleanup_tenant_state_fail_closed()
-        clear_dev_email_deliveries()
+        try:
+            retained = await scope.retire()
+            for key in _RETAINED:
+                _RETAINED[key].update(retained[key])
+        finally:
+            _FIXTURE_SCOPE = None
+            clear_dev_email_deliveries()
 
 
 def _client() -> AsyncClient:
@@ -313,6 +273,7 @@ def _client() -> AsyncClient:
     return AsyncClient(
         transport=ASGITransport(app=app, raise_app_exceptions=False),
         base_url="http://testserver",
+        event_hooks=_FIXTURE_SCOPE.http_hooks(),
     )
 
 
@@ -413,19 +374,37 @@ async def _tenant_admin_role_id(schema: str) -> str:
 
 
 async def _create_tenant_user(ctx: dict, email: str) -> str:
-    """Real users:create permission chain (the browser journey M1 path)."""
+    """Native versioned staff create -> mailbox invitation -> credential join."""
+    from services.email_delivery import get_dev_staff_email_deliveries
     async with _client() as client:
-        r = await client.post(
-            USERS_URL,
-            json={
-                "email": email,
-                "password": MEMBER_PW,
-                "full_name": "R3 R1 Member",
-            },
-            headers=_auth(ctx),
-        )
+        r = await client.post("/api/v1/staff", json={"email": email,
+            "full_name": "R3 R1 Member", "template_key": "warehouse"},
+            headers={**_auth(ctx), "Idempotency-Key": uuid.uuid4().hex})
         assert r.status_code == 201, r.text
-        return r.json()["data"]["id"]
+        member = r.json()["data"]
+        invited = await client.post("/api/v1/staff/" + member["id"] + "/credential-setup",
+            json={"expected_version": member["version"], "owner_password": ctx["password"]}, headers=_auth(ctx))
+        assert invited.status_code == 201, invited.text
+        mail = get_dev_staff_email_deliveries(email)[-1]
+        joined = await client.post("/api/v1/auth/staff/setup-credential",
+            json={"setup_token": mail.token, "password": MEMBER_PW})
+        assert joined.status_code == 200, joined.text
+        return member["id"]
+
+
+async def _staff_role_id(schema, key="finance"):
+    async with AsyncSessionLocal() as db:
+        return str(await db.scalar(text(f'SELECT role_id FROM "{schema}".staff_role_templates WHERE template_key=:k'), {'k': key}))
+
+
+async def _assign_staff_role(client, ctx, user_id, key="finance"):
+    current = await client.get("/api/v1/staff/" + user_id, headers=_auth(ctx))
+    assert current.status_code == 200, current.text
+    row = current.json()["data"]
+    result = await client.put("/api/v1/staff/" + user_id + "/role",
+        json={"expected_version": row["version"], "template_key": key}, headers=_auth(ctx))
+    assert result.status_code == 200, result.text
+    return row, result
 
 
 async def _user_role_binding_count(schema: str, user_id: str) -> int:
@@ -461,34 +440,21 @@ async def _user_role_binding_count_for_role(
 # ---------------------------------------------------------------------------
 
 async def test_t1_put_roles_200_full_scalars_and_admin_role():
+    """Historical node: current staff role edit plus full legacy read DTO."""
     ctx = await _official_tenant()
-    member_email = f"t1_{uuid.uuid4().hex}@example.com"
-    target_id = await _create_tenant_user(ctx, member_email)
-    admin_role_id = await _tenant_admin_role_id(ctx["tenant_schema"])
-
+    email = f"t1_{uuid.uuid4().hex}@example.com"
+    uid = await _create_tenant_user(ctx, email)
+    rid = await _staff_role_id(ctx["tenant_schema"])
     async with _client() as client:
-        r = await client.put(
-            f"{USERS_URL}/{target_id}/roles",
-            json={"role_ids": [admin_role_id]},
-            headers=_auth(ctx),
-        )
-
-    # Old code: 500 (MissingGreenlet during user_to_read). Closure: 200.
-    assert r.status_code == 200, r.text
-    data = r.json()["data"]
-    assert data["id"] == target_id
-    assert data["email"] == member_email
-    assert data["is_active"] is True
-    assert data["full_name"] == "R3 R1 Member"
-    # The expired-scalar contract: both timestamps must serialize (old code
-    # died exactly on updated_at). Presence only — wall-clock ORDER across
-    # two requests is not a contract: PG now() is transaction-START time and
-    # a pooled connection can carry a transaction opened before the other
-    # request's transaction, legitimately inverting the observed order.
-    assert data["created_at"], data
-    assert data["updated_at"], data
-    assert [role["name"] for role in data["roles"]] == ["admin"]
-    assert data["roles"][0]["id"] == admin_role_id
+        await _assign_staff_role(client, ctx, uid)
+        result = await client.get(f"{USERS_URL}/{uid}", headers=_auth(ctx))
+    assert result.status_code == 200, result.text
+    data = result.json()["data"]
+    assert data["id"] == uid and data["email"] == email
+    assert data["is_active"] is True and data["full_name"] == "R3 R1 Member"
+    assert data["created_at"] and data["updated_at"]
+    assert len(data["roles"]) == 1 and data["roles"][0]["id"] == rid
+    assert data["roles"][0]["name"].startswith("staff_finance_")
 
 
 # ---------------------------------------------------------------------------
@@ -549,35 +515,17 @@ async def test_t2_serialization_zero_implicit_sql_no_missing_greenlet():
 # ---------------------------------------------------------------------------
 
 async def test_t3_fresh_session_binding_persisted_exactly_once():
+    """Exactly one current role, and stale version replay cannot write."""
     ctx = await _official_tenant()
-    schema = ctx["tenant_schema"]
-    member_email = f"t3_{uuid.uuid4().hex}@example.com"
-    target_id = await _create_tenant_user(ctx, member_email)
-    admin_role_id = await _tenant_admin_role_id(schema)
-
+    uid = await _create_tenant_user(ctx, f"t3_{uuid.uuid4().hex}@example.com")
+    rid = await _staff_role_id(ctx["tenant_schema"])
     async with _client() as client:
-        r = await client.put(
-            f"{USERS_URL}/{target_id}/roles",
-            json={"role_ids": [admin_role_id]},
-            headers=_auth(ctx),
-        )
-        assert r.status_code == 200, r.text
-
-    # Fresh session: committed, exactly one binding to exactly that role.
-    assert await _user_role_binding_count(schema, target_id) == 1
-    assert (
-        await _user_role_binding_count_for_role(schema, target_id, admin_role_id) == 1
-    )
-
-    # Replace semantics: identical second PUT must not duplicate the binding.
-    async with _client() as client:
-        r2 = await client.put(
-            f"{USERS_URL}/{target_id}/roles",
-            json={"role_ids": [admin_role_id]},
-            headers=_auth(ctx),
-        )
-        assert r2.status_code == 200, r2.text
-    assert await _user_role_binding_count(schema, target_id) == 1
+        before, _ = await _assign_staff_role(client, ctx, uid)
+        replay = await client.put("/api/v1/staff/" + uid + "/role",
+            json={"expected_version": before["version"], "template_key": "finance"}, headers=_auth(ctx))
+    assert replay.status_code == 409 and replay.json()["detail"]["code"] == "STALE_STAFF_VERSION"
+    assert await _user_role_binding_count(ctx["tenant_schema"], uid) == 1
+    assert await _user_role_binding_count_for_role(ctx["tenant_schema"], uid, rid) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -585,27 +533,21 @@ async def test_t3_fresh_session_binding_persisted_exactly_once():
 # ---------------------------------------------------------------------------
 
 async def test_t4_invalid_role_exact_400_and_zero_partial_binding():
+    """Retired unversioned UUID writes and unknown current templates cannot grant."""
     ctx = await _official_tenant()
-    schema = ctx["tenant_schema"]
-    target_id = await _create_tenant_user(ctx, f"t4_{uuid.uuid4().hex}@example.com")
-    admin_role_id = await _tenant_admin_role_id(schema)
-
+    uid = await _create_tenant_user(ctx, f"t4_{uuid.uuid4().hex}@example.com")
+    original = await _staff_role_id(ctx["tenant_schema"], "warehouse")
     async with _client() as client:
-        for bad_payload in (
-            {"role_ids": ["not-a-uuid"]},
-            {"role_ids": [str(uuid.uuid4())]},
-            # One valid + one unknown: the whole request must fail, no partials.
-            {"role_ids": [admin_role_id, str(uuid.uuid4())]},
-        ):
-            r = await client.put(
-                f"{USERS_URL}/{target_id}/roles",
-                json=bad_payload,
-                headers=_auth(ctx),
-            )
-            assert r.status_code == 400, r.text
-            assert r.json()["detail"]["code"] == "INVALID_ROLE", r.text
-
-    assert await _user_role_binding_count(schema, target_id) == 0
+        for roles in (["not-a-uuid"], [str(uuid.uuid4())],
+                      [await _tenant_admin_role_id(ctx["tenant_schema"]), str(uuid.uuid4())]):
+            retired = await client.put(f"{USERS_URL}/{uid}/roles", json={"role_ids": roles}, headers=_auth(ctx))
+            assert retired.status_code == 409 and retired.json()["detail"]["code"] == "STAFF_MANAGEMENT_REQUIRED"
+        current = await client.get("/api/v1/staff/" + uid, headers=_auth(ctx))
+        invalid = await client.put("/api/v1/staff/" + uid + "/role",
+            json={"expected_version": current.json()["data"]["version"], "template_key": "admin"}, headers=_auth(ctx))
+        assert invalid.status_code == 422
+    assert await _user_role_binding_count(ctx["tenant_schema"], uid) == 1
+    assert await _user_role_binding_count_for_role(ctx["tenant_schema"], uid, original) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -614,17 +556,10 @@ async def test_t4_invalid_role_exact_400_and_zero_partial_binding():
 
 async def test_t5_unknown_user_exact_404_user_not_found():
     ctx = await _official_tenant()
-    admin_role_id = await _tenant_admin_role_id(ctx["tenant_schema"])
-
     async with _client() as client:
-        r = await client.put(
-            f"{USERS_URL}/{str(uuid.uuid4())}/roles",
-            json={"role_ids": [admin_role_id]},
-            headers=_auth(ctx),
-        )
-
-    assert r.status_code == 404, r.text
-    assert r.json()["detail"]["code"] == "USER_NOT_FOUND", r.text
+        response = await client.get(f"{USERS_URL}/{uuid.uuid4()}", headers=_auth(ctx))
+    assert response.status_code == 404, response.text
+    assert response.json()["detail"]["code"] == "STAFF_NOT_FOUND"
 
 
 # ---------------------------------------------------------------------------
@@ -640,19 +575,17 @@ async def test_t6_dual_tenant_same_email_isolated_role_assignment():
     user_b = await _create_tenant_user(ctx_b, shared_email)
     assert user_a != user_b
 
-    role_a = await _tenant_admin_role_id(ctx_a["tenant_schema"])
-    role_b = await _tenant_admin_role_id(ctx_b["tenant_schema"])
+    role_a = await _staff_role_id(ctx_a["tenant_schema"])
+    role_b = await _staff_role_id(ctx_b["tenant_schema"])
     assert role_a != role_b  # per-tenant role rows, never shared
 
     for ctx, target, role in ((ctx_a, user_a, role_a), (ctx_b, user_b, role_b)):
         async with _client() as client:
-            r = await client.put(
-                f"{USERS_URL}/{target}/roles",
-                json={"role_ids": [role]},
-                headers=_auth(ctx),
-            )
+            await _assign_staff_role(client, ctx, target)
+            r = await client.get(f"{USERS_URL}/{target}", headers=_auth(ctx))
             assert r.status_code == 200, r.text
-            assert [ro["name"] for ro in r.json()["data"]["roles"]] == ["admin"]
+            assert r.json()["data"]["roles"][0]["id"] == role
+
 
     # Each tenant's copy carries exactly its own tenant's binding — the
     # other tenant's role never appears.
@@ -727,24 +660,19 @@ async def test_t7_real_permission_chain_and_denial():
         assert sel.status_code == 200, sel.text
         member_token = sel.json()["data"]["access_token"]
 
-        denied = await client.put(
-            f"{USERS_URL}/{member_id}/roles",
-            json={"role_ids": [admin_role_id]},
-            headers={"Authorization": f"Bearer {member_token}"},
-        )
+        denied = await client.put("/api/v1/staff/" + member_id + "/role",
+            json={"template_key": "finance", "expected_version": 1},
+            headers={"Authorization": f"Bearer {member_token}"})
         assert denied.status_code == 403, denied.text
-        assert denied.json()["detail"]["code"] == "PERMISSION_DENIED", denied.text
+        assert denied.json()["detail"]["code"] == "OWNER_REQUIRED", denied.text
 
-    assert await _user_role_binding_count(schema, member_id) == 0
+    assert await _user_role_binding_count(schema, member_id) == 1
 
     # The SAME request under the owner's real roles:assign permission passes.
     async with _client() as client:
-        allowed = await client.put(
-            f"{USERS_URL}/{member_id}/roles",
-            json={"role_ids": [admin_role_id]},
-            headers=_auth(ctx),
-        )
-        assert allowed.status_code == 200, allowed.text
+        await _assign_staff_role(client, ctx, member_id)
+    admin_role_id = await _staff_role_id(schema)
+
 
     assert (
         await _user_role_binding_count_for_role(schema, member_id, admin_role_id) == 1
@@ -788,44 +716,10 @@ async def test_t8_rollback_leaves_zero_user_roles_residue():
 # ---------------------------------------------------------------------------
 
 async def test_t9_final_residue_zero():
-    """R3-R2 residue proof: after the final provisioning node this module
-    leaves ZERO public.wholesalers, ZERO public.tenant_registrations, and
-    ZERO task-derived (uuid-named) pg_namespace schemas — read on a FRESH
-    session, with the pre-node wipe intentionally skipped so the node
-    observes what earlier nodes actually left behind.
-
-    In a full-suite context where earlier FILES left pre-existing tenant
-    state, the module-entry baseline is non-empty; the proof then asserts
-    the current state never EXCEEDS that baseline (this module adds
-    nothing). On a clean baseline (focused runs / fresh stacks) the
-    assertion is absolute zero. Either way, any tenant that survives an
-    earlier node's after-cleanup contract turns this node RED.
-    """
+    """No unexpected residue; audited tenant anchors are explicitly retained."""
     assert _MODULE_BASELINE is not None, "module baseline not captured"
     snapshot = await _tenant_residue_snapshot()
-
-    new_wholesalers = snapshot["wholesalers"] - _MODULE_BASELINE["wholesalers"]
-    new_registrations = (
-        snapshot["registrations"] - _MODULE_BASELINE["registrations"]
-    )
-    new_schemas = snapshot["schemas"] - _MODULE_BASELINE["schemas"]
-    assert not new_wholesalers, f"new wholesaler residue: {new_wholesalers}"
-    assert not new_registrations, (
-        f"new tenant_registration residue: {new_registrations}"
-    )
-    assert not new_schemas, f"new task-derived schema residue: {new_schemas}"
-
-    baseline_was_clean = not any(_MODULE_BASELINE.values())
-    if baseline_was_clean:
-        assert not snapshot["wholesalers"], (
-            f"public.wholesalers not zero after final test: "
-            f"{snapshot['wholesalers']}"
-        )
-        assert not snapshot["registrations"], (
-            f"public.tenant_registrations not zero after final test: "
-            f"{snapshot['registrations']}"
-        )
-        assert not snapshot["schemas"], (
-            f"task-derived pg_namespace schemas not zero after final test: "
-            f"{snapshot['schemas']}"
+    for key in ("wholesalers", "registrations", "schemas"):
+        assert snapshot[key] == _MODULE_BASELINE[key] | _RETAINED[key], (
+            f"unexpected {key} residue or loss of pre-existing state"
         )

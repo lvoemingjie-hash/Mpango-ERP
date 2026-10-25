@@ -61,7 +61,6 @@ from tests.test_dc12r1_s3_s2b_i2b_payment_declarations import (  # noqa: E402
     _login_retailer,
     _pool_a,
     _resolve_binding_retailer,
-    _seed_confirmed_order,
     cashier_identity,  # noqa: F401 (fixture)
     i2b_client,  # noqa: F401 (fixture)
     test_client_ip,  # noqa: F401 (autouse fixture)
@@ -78,7 +77,6 @@ from tests.test_dc12r1_s2_supplier_scoped_retailer_login import (  # noqa: E402
     _unique_email,
 )
 from tests.test_dc12r1_s3_s2b_i2c_i1_printable_records import (  # noqa: E402
-    _seed_order_with_item,
     _submit_and_confirm,
     _table_fingerprint,
     _binding_fingerprint,
@@ -195,6 +193,43 @@ async def _stmt_period_yesterday_today() -> tuple[str, str]:
     return frm, to
 
 
+async def _seed_confirmed_order(db, schema, ws_id, ret_id, total="100.00"):
+    """Current quote/consent and confirmation create attributable hold events."""
+    from tests.rc2_current_contract_support import create_verified_draft
+    from services.order_command_service import OrderCommandService
+    before = dict(db.info)
+    try:
+        db.info.update(tenant_id=str(ws_id), tenant_schema=schema)
+        await db.execute(text(f'SET search_path TO "{schema}", public'))
+        product = await db.scalar(text("INSERT INTO catalog_products (name,is_active) VALUES ('Statement fixture',true) RETURNING id"))
+        code = 'STMT-' + uuid.uuid4().hex
+        sku = await db.scalar(text("INSERT INTO skus (sku_code,name,unit,catalog_product_id,package_quantity,is_active,base_price) "
+            "VALUES (:c,'Statement','piece',:p,1,true,:price) RETURNING id"),
+            {'c': code, 'p': product, 'price': Decimal(total)})
+        await db.execute(text("INSERT INTO inventory_stocks (sku_id,quantity_on_hand,quantity_reserved) VALUES (:s,10000,0)"), {'s': sku})
+        actor = str(uuid.uuid4())
+        order = await create_verified_draft(db, retailer_id=ret_id, items=[(code, 1, Decimal(total))], actor_id=actor)
+        order = (await OrderCommandService(db).confirm_order(order.id, updated_by=actor)).order
+        await db.commit()
+        return order.id
+    finally:
+        for key in ("tenant_id", "tenant_schema"):
+            if key in before:
+                db.info[key] = before[key]
+            else:
+                db.info.pop(key, None)
+
+
+async def _seed_order_with_item(db, schema, ws_id, ret_id, total="100.00"):
+    return await _seed_confirmed_order(db, schema, ws_id, ret_id, total)
+
+
+async def _assert_runtime_commitment(db, schema, order_id, amount):
+    row = (await db.execute(text(f'SELECT amount,created_by FROM "{schema}".order_credit_holds WHERE order_id=:o'),
+                            {'o': order_id})).one()
+    assert row.amount == Decimal(amount) and row.created_by is not None
+
+
 async def _post_receivable_charge(db: AsyncSession, schema: str, order_id: uuid.UUID, amount: str = "100.00") -> uuid.UUID:
     """Insert a +RECEIVABLE charge ledger entry for an order (mirrors
     ``LedgerService.post_order_confirmation``). ``_seed_confirmed_order`` seeds
@@ -239,6 +274,74 @@ async def _get_supplier_statement(client, token: str, retailer_id: str, frm: str
         params={"retailer_id": retailer_id, "from": frm, "to": to},
         headers=_headers(token),
     )
+
+
+async def _statement_economic_vector(db, schema, ws_id, ret_id):
+    """Raw economic rows, including hold, stock and immutable ledger bytes."""
+    result = {}
+    for table in ('orders', 'order_items', 'payments', 'payment_declarations',
+                  'ledger_entries', 'order_credit_holds', 'inventory_stocks',
+                  'inventory_movements', 'receipt_sequences'):
+        result[table] = await db.scalar(text(
+            f'SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY to_jsonb(r)::text), '
+            f"'[]'::jsonb) FROM \"{schema}\".{table} r"
+        ))
+    result['binding'] = await db.scalar(text(
+        'SELECT COALESCE(jsonb_agg(to_jsonb(b) ORDER BY to_jsonb(b)::text), '
+        "'[]'::jsonb) FROM public.wholesaler_retailer_bindings b "
+        'WHERE wholesaler_id=:w AND retailer_id=:r'
+    ), {'w': uuid.UUID(str(ws_id)), 'r': uuid.UUID(str(ret_id))})
+    return result
+
+
+async def _assert_currency_refusal(db, tenant, order_id, currency, code, fetch):
+    """Explicit corrupt-history fixture; restore exact row in every exit path."""
+    from database.session import AsyncSessionLocal
+
+    schema = tenant['schema']
+    oid = uuid.UUID(str(order_id))
+    original = (await db.execute(text(
+        f'SELECT currency_snapshot,creation_key_digest,creation_fingerprint,creation_operation '
+        f'FROM "{schema}".orders WHERE id=:o'
+    ), {'o': oid})).mappings().one()
+    original = dict(original)
+    assert original['currency_snapshot'] == 'KES', 'LEGAL_KE_CURRENCY_REQUIRED'
+    initial = await _statement_economic_vector(db, schema, tenant['ws_id'], tenant['ret_id'])
+    try:
+        # NULL currency needs the explicitly legacy-shaped creation tuple to
+        # obey ck_orders_creation_intent. No constraint is disabled; all four
+        # original non-economic identity fields are restored below.
+        changed = await db.execute(text(
+            f'UPDATE "{schema}".orders SET currency_snapshot=:currency, '
+            'creation_key_digest=:key,creation_fingerprint=:fingerprint,creation_operation=:operation WHERE id=:o'
+        ), {'o': oid, 'currency': currency,
+            'key': original['creation_key_digest'] if currency else None,
+            'fingerprint': original['creation_fingerprint'] if currency else None,
+            'operation': original['creation_operation'] if currency else None})
+        assert changed.rowcount == 1, 'CURRENCY_NEGATIVE_FIXTURE_TARGET'
+        await db.commit()
+        before_get = await _statement_economic_vector(db, schema, tenant['ws_id'], tenant['ret_id'])
+        await db.rollback()
+        response = await fetch()
+        assert response.status_code == HTTPStatus.CONFLICT, response.text
+        assert response.json()['code'] == code, response.text
+        assert 'data' not in response.json(), 'CURRENCY_REFUSAL_RETURNED_BUSINESS_DATA'
+        after_get = await _statement_economic_vector(db, schema, tenant['ws_id'], tenant['ret_id'])
+        assert after_get == before_get, 'CURRENCY_REFUSAL_ECONOMIC_WRITE'
+    finally:
+        await db.rollback()
+        async with AsyncSessionLocal() as restore:
+            changed = await restore.execute(text(
+                f'UPDATE "{schema}".orders SET currency_snapshot=:currency_snapshot, '
+                'creation_key_digest=:creation_key_digest,creation_fingerprint=:creation_fingerprint, '
+                'creation_operation=:creation_operation WHERE id=:o'
+            ), {'o': oid, **original})
+            assert changed.rowcount == 1, 'CURRENCY_RESTORE_TARGET'
+            await restore.commit()
+        assert await _statement_economic_vector(db, schema, tenant['ws_id'], tenant['ret_id']) == initial, 'CURRENCY_RESTORE_DRIFT'
+        await db.rollback()
+    restored = await fetch()
+    assert restored.status_code == HTTPStatus.OK, restored.text
 
 
 # ===========================================================================
@@ -303,7 +406,7 @@ async def _provision_disposable_tenant(
                 "INSERT INTO public.tenant_registrations "
                 "(id, company_name, tenant_code, country, owner_email, status, "
                 " expires_at, created_at, updated_at) "
-                "VALUES (:id, :company, :code, 'TZ', :email, 'email_verified', "
+                "VALUES (:id, :company, :code, 'KE', :email, 'email_verified', "
                 " now() + interval '365 days', now(), now())"
             ),
             {
@@ -668,68 +771,35 @@ async def _insert_payment_row(
 async def _bulk_orders_with_charges(
     db: AsyncSession, schema: str, ws_id, ret_id, n: int, amount: str = "1.00"
 ) -> list[uuid.UUID]:
-    """Seed ``n`` confirmed orders, each with a distinct non-zero +RECEIVABLE
-    charge ledger row (=> ``n`` movements). Orders are left in place (the
-    harness never deletes orders), so the charges never become orphans and
-    never trip the schema-level orphan precheck for other tests.
-    """
-    oids = [uuid.uuid4() for _ in range(n)]
-    await db.execute(
-        text(
-            f'INSERT INTO "{schema}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
-            "VALUES (:id, :ws, :ret, 'confirmed', :total, false)"
-        ),
-        [{"id": o, "ws": ws_id, "ret": ret_id, "total": Decimal(amount)} for o in oids],
-    )
-    await db.execute(
-        text(
-            f'INSERT INTO "{schema}".ledger_entries '
-            "(id, transaction_date, account_type, amount, reference_type, reference_id, "
-            "description, entry_version, is_deleted, created_at, updated_at) "
-            "VALUES (:id, now(), 'receivable', :amt, 'order', :ref, :desc, 1, false, now(), now())"
-        ),
-        [
-            {"id": uuid.uuid4(), "amt": Decimal(amount), "ref": o, "desc": f"charge {o}"}
-            for o in oids
-        ],
-    )
-    await db.commit()
-    return oids
+    """Attributable current commitment events, not synthetic ledger charges."""
+    return [await _seed_confirmed_order(db, schema, str(ws_id), str(ret_id), amount) for _ in range(n)]
 
 
 async def _bulk_payments(
     db: AsyncSession, schema: str, order_id, ret_id, n: int, amount: str = "1.00"
 ) -> list[uuid.UUID]:
-    """Seed ``n`` completed payments on one order (same retailer).
-
-    All IDs are PRE-GENERATED and returned so the caller can clean up ONLY
-    those exact IDs via ``WHERE id = ANY(:owned_ids)`` (R1-R1-R1 Blocker 3).
-    """
-    pay_ids = [uuid.uuid4() for _ in range(n)]
-    rows = [
-        {
-            "id": pay_ids[i],
-            "oid": order_id,
-            "ret": ret_id,
-            "txid": f"tx-{pay_ids[i].hex[:12]}",
-            "idem": f"pay-{pay_ids[i].hex}",
-            "amt": Decimal(amount),
-            "rno": f"RCT-20260804-{(i % 900000) + 100000:06d}",
-        }
-        for i in range(n)
-    ]
-    await db.execute(
-        text(
-            f'INSERT INTO "{schema}".payments '
-            "(id, order_id, retailer_id, transaction_id, idempotency_key, amount, "
-            "method, status, receipt_number, created_at, updated_at, is_deleted) "
-            "VALUES (:id, :oid, :ret, :txid, :idem, :amt, 'cash', 'completed', "
-            ":rno, now(), now(), false)"
-        ),
-        rows,
-    )
-    await db.commit()
-    return pay_ids
+    """Each receipt belongs to its own real, confirmed commitment."""
+    from services.canonical_payment_service import CanonicalPaymentService
+    ws = await db.scalar(text(f'SELECT wholesaler_id FROM "{schema}".orders WHERE id=:o'), {'o': order_id})
+    ids = []
+    old_info = dict(db.info)
+    try:
+        for _ in range(n):
+            oid = await _seed_confirmed_order(db, schema, str(ws), str(ret_id), amount)
+            db.info.update(tenant_id=str(ws), tenant_schema=schema)
+            await db.execute(text(f'SET search_path TO "{schema}", public'))
+            result = await CanonicalPaymentService().confirm_payment(db=db, order_id=str(oid),
+                amount=Decimal(amount), method="cash", idempotency_key="stmt-" + uuid.uuid4().hex,
+                created_by=str(uuid.uuid4()), transaction_id=None, force_completed=True, allocate_receipt=True)
+            ids.append(uuid.UUID(str(result.payment_record["id"])))
+            await db.commit()
+    finally:
+        for key in ("tenant_id", "tenant_schema"):
+            if key in old_info:
+                db.info[key] = old_info[key]
+            else:
+                db.info.pop(key, None)
+    return ids
 
 
 async def _bulk_pending_declarations(
@@ -920,7 +990,7 @@ class TestStatementHappyPath:
         )
         # _seed_order_with_item seeds via raw SQL (no service path), so post the
         # +RECEIVABLE charge that the order-confirmation service path would have.
-        await _post_receivable_charge(db, info["schema"], uuid.UUID(info["oid"]), "100.00")
+        await _assert_runtime_commitment(db, info["schema"], uuid.UUID(info["oid"]), "100.00")
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
         assert r.status_code == HTTPStatus.OK, r.text
@@ -946,6 +1016,10 @@ class TestStatementHappyPath:
         # R1: no internal ids in the serialized response.
         assert "movement_id" not in r.text
         assert "payment_id" not in r.text
+        await _assert_currency_refusal(
+            db, tenant, info['oid'], None, 'STATEMENT_CURRENCY_UNVERIFIED',
+            lambda: _get_retailer_statement(i2b_client, info['token_ret'], frm, to),
+        )
 
     async def test_supplier_statement_happy_path(
         self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
@@ -955,7 +1029,7 @@ class TestStatementHappyPath:
         info = await _submit_and_confirm_disposable(
             i2b_client, db, tenant, reg, amount="250.00"
         )
-        await _post_receivable_charge(db, info["schema"], uuid.UUID(info["oid"]), "250.00")
+        await _assert_runtime_commitment(db, info["schema"], uuid.UUID(info["oid"]), "250.00")
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_supplier_statement(i2b_client, info["token_admin"], info["ret_id"], frm, to)
         assert r.status_code == HTTPStatus.OK, r.text
@@ -967,6 +1041,14 @@ class TestStatementHappyPath:
         net = Decimal(data["net_movement"])
         closing = Decimal(data["closing_balance"])
         assert closing == opening + net
+        second = await _seed_confirmed_order(db, tenant['schema'], tenant['ws_id'], tenant['ret_id'], '40.00')
+        legal = await _get_supplier_statement(i2b_client, info['token_admin'], info['ret_id'], frm, to)
+        assert legal.status_code == HTTPStatus.OK, legal.text
+        assert Decimal(legal.json()['data']['charge_total']) == Decimal('290.00')
+        await _assert_currency_refusal(
+            db, tenant, second, 'UGX', 'STATEMENT_MIXED_CURRENCY_UNSUPPORTED',
+            lambda: _get_supplier_statement(i2b_client, info['token_admin'], info['ret_id'], frm, to),
+        )
 
     async def test_opening_closing_arithmetic_invariant(
         self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
@@ -977,7 +1059,7 @@ class TestStatementHappyPath:
         info = await _submit_and_confirm_disposable(
             i2b_client, db, tenant, reg, amount="100.00"
         )
-        await _post_receivable_charge(db, info["schema"], uuid.UUID(info["oid"]), "100.00")
+        await _assert_runtime_commitment(db, info["schema"], uuid.UUID(info["oid"]), "100.00")
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
         data = r.json()["data"]
@@ -1752,36 +1834,16 @@ class TestReconciliationTolerance:
     """
 
     async def _credit_only_setup(self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity, delta: str):
-        """Convert the relationship to credit-only and force a ledger/cache
-        difference of exactly ``delta`` KES.
+        """Observed numeric(12,2) cache versus real commitment/receipt facts.
 
-        The cached binding balance column is numeric(12,2), so a >0.01 delta
-        cannot be expressed there (0.0101 would be rounded to 0.01). The delta
-        is therefore introduced as a high-precision receivable LEDGER row, and
-        the cached balance is pinned to exactly 0 (exactly representable):
-        ledger_total = 0 + delta, cached = 0 -> diff = delta.
+        No legacy ledger top-up: .001 stores as zero; any stored nonzero
+        difference fails the current exact account-timeline reconciliation.
         """
         db, reg = s2_clean_db
         info = await _submit_and_confirm_disposable(i2b_client, db, contractd_disposable_tenant, reg)
-        schema = info["schema"]
-        # +100 charge (order confirmation receivable) — the confirm flow posts
-        # the -100 collection, so the relationship ledger total is 0.00.
-        await _post_receivable_charge(db, schema, uuid.UUID(info["oid"]), "100.00")
-        # Make the relationship credit-only (no cash/transfer completed payment).
-        await db.execute(
-            text(f'UPDATE "{schema}".payments SET method = \'credit\' WHERE order_id = :oid'),
-            {"oid": uuid.UUID(info["oid"])},
-        )
-        # Pin the cached binding balance to exactly 0 (numeric(12,2)-safe).
-        await db.execute(
-            text(
-                "UPDATE public.wholesaler_retailer_bindings SET outstanding_balance = 0 "
-                "WHERE wholesaler_id = :ws AND retailer_id = :rid AND is_deleted IS FALSE"
-            ),
-            {"ws": uuid.UUID(contractd_disposable_tenant["ws_id"]), "rid": uuid.UUID(contractd_disposable_tenant["ret_id"])},
-        )
-        # Introduce the exact delta via a high-precision receivable row.
-        await _post_receivable_charge(db, schema, uuid.UUID(info["oid"]), delta)
+        await db.execute(text("UPDATE public.wholesaler_retailer_bindings SET outstanding_balance=:delta "
+            "WHERE wholesaler_id=:w AND retailer_id=:r"),
+            {'delta': Decimal(delta), 'w': uuid.UUID(info['ws_id']), 'r': uuid.UUID(info['ret_id'])})
         await db.commit()
         return info
 
@@ -1803,7 +1865,9 @@ class TestReconciliationTolerance:
         )
         frm, to = await _stmt_period_yesterday_today()
         r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
-        assert r.status_code == HTTPStatus.OK, r.text
+        assert r.status_code == HTTPStatus.CONFLICT, r.text
+        assert r.json()["code"] == "STATEMENT_RECONCILIATION_FAILED"
+        assert "data" not in r.json()
 
     async def test_00101_difference_is_rejected(
         self, i2b_client, contractd_disposable_tenant, s2_clean_db, cashier_identity
@@ -2005,8 +2069,8 @@ class TestRangeCap:
         tenant = contractd_disposable_tenant
         info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
         oid = uuid.UUID(info["oid"])
-        # 600 movements + 1 settled + 400 pending = 1001 combined.
-        await _bulk_orders_with_charges(db, info["schema"], tenant["ws_id"], tenant["ret_id"], n=600)
+        # 598 commitments + 2 initial events + 1 settled + 400 pending = 1001 combined.
+        await _bulk_orders_with_charges(db, info["schema"], tenant["ws_id"], tenant["ret_id"], n=598)
         decl_ids = await _bulk_pending_declarations(
             db, info["schema"], tenant["ws_id"], tenant["ret_id"], oid, n=400
         )
@@ -2035,15 +2099,15 @@ class TestRangeCap:
         tenant = contractd_disposable_tenant
         info = await _submit_and_confirm_disposable(i2b_client, db, tenant, reg)
         oid = uuid.UUID(info["oid"])
-        # 998 pending + 1 settled payment + 1 movement = 1000 == cap.
+        # 997 pending + 1 settled payment + 2 movements = 1000 == cap.
         decl_ids = await _bulk_pending_declarations(
-            db, info["schema"], tenant["ws_id"], tenant["ret_id"], oid, n=998
+            db, info["schema"], tenant["ws_id"], tenant["ret_id"], oid, n=997
         )
         try:
             frm, to = await _stmt_period_yesterday_today()
             r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to, include_pending=True)
             assert r.status_code == HTTPStatus.OK, r.text
-            assert len(r.json()["data"]["pending_declarations"]) == 998
+            assert len(r.json()["data"]["pending_declarations"]) == 997
         finally:
             from database.session import AsyncSessionLocal
 
@@ -2052,7 +2116,7 @@ class TestRangeCap:
                     text(f'DELETE FROM "{tenant["schema"]}".payment_declarations WHERE id = ANY(:ids)'),
                     {"ids": decl_ids},
                 )
-                assert result.rowcount == 998, "expected exactly 998 owned declarations deleted"
+                assert result.rowcount == 997, "expected exactly 997 owned declarations deleted"
                 await cleanup_db.commit()
 
     async def test_sentinel_payment_survives_exact_cleanup(
@@ -2073,8 +2137,20 @@ class TestRangeCap:
         # Owned payment (deletable by exact id).
         owned_ids = await _bulk_payments(db, schema, oid, ret, n=2)
         # Sentinel: text also starts with pay-; NOT owned by this test.
-        sentinel_id = uuid.uuid4()
-        await _insert_payment_row(db, schema, oid, ret, amount="9.99", pay_id=sentinel_id)
+        sentinel_order = await _seed_confirmed_order(db, schema, tenant["ws_id"], tenant["ret_id"], "9.99")
+        from services.canonical_payment_service import CanonicalPaymentService
+        old_info = dict(db.info)
+        db.info.update(tenant_id=tenant["ws_id"], tenant_schema=schema)
+        await db.execute(text(f'SET search_path TO "{schema}", public'))
+        sentinel = await CanonicalPaymentService().confirm_payment(db=db, order_id=str(sentinel_order),
+            amount=Decimal("9.99"), method="cash", idempotency_key="sentinel-" + uuid.uuid4().hex,
+            created_by=str(uuid.uuid4()), transaction_id=None, force_completed=True, allocate_receipt=True)
+        sentinel_id = uuid.UUID(str(sentinel.payment_record["id"]))
+        for key in ("tenant_id", "tenant_schema"):
+            if key in old_info:
+                db.info[key] = old_info[key]
+            else:
+                db.info.pop(key, None)
         # Make the sentinel's transaction/idempotency text start with pay- too.
         await db.execute(
             text(
@@ -2788,11 +2864,9 @@ class TestDateBoundaries:
         # A future period with no movements: opening may be non-zero (all-time
         # before), but the period movements list is empty.
         r = await _get_retailer_statement(i2b_client, info["token_ret"], "2099-01-01", "2099-01-02")
-        assert r.status_code == HTTPStatus.OK, r.text
-        data = r.json()["data"]
-        assert data["movements"] == []
-        assert Decimal(data["charge_total"]) == Decimal("0")
-        assert Decimal(data["collection_total"]) == Decimal("0")
+        assert r.status_code == HTTPStatus.CONFLICT, r.text
+        assert r.json()["code"] == "STATEMENT_HISTORY_UNSUPPORTED"
+        assert "data" not in r.json()
 
 
 class TestSoftDeletedOrderRetention:
@@ -2834,10 +2908,9 @@ class TestSoftDeletedOrderRetention:
         try:
             frm, to = await _stmt_period_yesterday_today()
             r = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
-            assert r.status_code == HTTPStatus.OK, r.text
-            data = r.json()["data"]
-            # The receivable movement for the soft-deleted order is still present.
-            assert any(m["reference_id"] == str(oid) for m in data["movements"])
+            assert r.status_code == HTTPStatus.CONFLICT, r.text
+            assert r.json()["code"] == "STATEMENT_HISTORY_UNSUPPORTED"
+            assert "data" not in r.json()
         finally:
             # Restore in a FRESH session; require exactly one row updated and
             # exact reread equality with the pre-mutation snapshot.
@@ -2864,7 +2937,7 @@ class TestSoftDeletedOrderRetention:
         info = await _submit_and_confirm_disposable(i2b_client, db, contractd_disposable_tenant, reg)
         sch_a = info["schema"]
         oid = uuid.UUID(info["oid"])
-        await _post_receivable_charge(db, sch_a, oid, "100.00")
+        await _assert_runtime_commitment(db, sch_a, oid, "100.00")
         frm, to = await _stmt_period_yesterday_today()
 
         # Active state totals (baseline).
@@ -2894,13 +2967,9 @@ class TestSoftDeletedOrderRetention:
         await db.commit()
         try:
             r_deleted = await _get_retailer_statement(i2b_client, info["token_ret"], frm, to)
-            assert r_deleted.status_code == HTTPStatus.OK, r_deleted.text
-            deleted = r_deleted.json()["data"]
-            for key in total_keys:
-                assert Decimal(deleted[key]) == Decimal(active[key]), (
-                    f"totals differ after soft-delete for {key}: "
-                    f"{active[key]} vs {deleted[key]}"
-                )
+            assert r_deleted.status_code == HTTPStatus.CONFLICT, r_deleted.text
+            assert r_deleted.json()["code"] == "STATEMENT_HISTORY_UNSUPPORTED"
+            assert "data" not in r_deleted.json()
         finally:
             async with AsyncSessionLocal() as restore_db:
                 result = await restore_db.execute(

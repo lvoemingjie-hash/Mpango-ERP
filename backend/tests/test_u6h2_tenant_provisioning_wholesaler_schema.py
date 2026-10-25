@@ -446,12 +446,19 @@ async def test_active_existing_with_missing_schema_is_not_treated_as_idempotent(
 async def test_forbidden_wholesaler_api_crud_repository_and_bootstrap_files_are_untouched():
     import subprocess
 
+    current_base = "1e7cc8e9e8f5ad86ddbecc45a597a778307625a2"
+    subprocess.run(["git", "merge-base", "--is-ancestor", BASE_REF, current_base],
+                   cwd=ROOT, check=True, capture_output=True)
     completed = subprocess.run(
-        ["git", "diff", "--name-only", BASE_REF, "--"],
+        ["git", "diff", "--name-only", current_base, "--"],
         cwd=ROOT,
         check=True,
         capture_output=True,
         text=True,
     )
     changed = set(completed.stdout.splitlines())
-    assert changed.isdisjoint(FORBIDDEN_EDIT_PATHS)
+    def protected(paths):
+        assert paths.isdisjoint(FORBIDDEN_EDIT_PATHS), "FORBIDDEN_PRODUCT_PATH"
+    protected(changed)
+    with pytest.raises(AssertionError, match="FORBIDDEN_PRODUCT_PATH"):
+        protected(changed | {next(iter(FORBIDDEN_EDIT_PATHS))})

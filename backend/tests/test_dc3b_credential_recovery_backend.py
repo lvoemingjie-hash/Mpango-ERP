@@ -46,12 +46,16 @@ RESET_URL = "/api/v1/auth/reset-password"
 LOGIN_URL = "/api/v1/auth/login"
 TEST_NEW_PW = "Dc3bReset_NewPw_01!"  # pragma: allowlist secret
 TEST_OLD_PW = "Dc3bOldPw_01!!"  # pragma: allowlist secret
+_FIXTURE_SCOPE = None
 
 
 @pytest.fixture(autouse=True)
 async def _dc3b_setup():
     await _ensure_tables()
-    await _clear_dc3b_rows()
+    from tests.rc2_current_contract_support import TenantFixtureScope
+    global _FIXTURE_SCOPE
+    scope = await TenantFixtureScope.begin(AsyncSessionLocal)
+    _FIXTURE_SCOPE = scope
     clear_dev_email_deliveries()
     try:
         yield
@@ -59,8 +63,11 @@ async def _dc3b_setup():
         app.dependency_overrides.pop(get_db_session, None)
         from api.dependencies import get_current_user_context
         app.dependency_overrides.pop(get_current_user_context, None)
-        await _clear_dc3b_rows()
-        clear_dev_email_deliveries()
+        try:
+            await scope.retire()
+        finally:
+            _FIXTURE_SCOPE = None
+            clear_dev_email_deliveries()
 
 
 async def _ensure_tables() -> None:
@@ -68,38 +75,6 @@ async def _ensure_tables() -> None:
         await connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
         await connection.run_sync(Wholesaler.__table__.create, checkfirst=True)
         await connection.run_sync(PasswordResetToken.__table__.create, checkfirst=True)
-
-
-async def _clear_dc3b_rows() -> None:
-    async with AsyncSessionLocal() as session:
-        await session.execute(text("SET search_path TO public"))
-        # find dc3b wholesalers + their registrations/schemas (registration email
-        # may differ from the shared owner email, so resolve via wholesaler code).
-        ws_ids = (
-            await session.execute(
-                text("SELECT id FROM public.wholesalers WHERE code LIKE 'DC3B%'")
-            )
-        ).scalars().all()
-        schemas = (
-            await session.execute(
-                text(
-                    "SELECT tenant_schema FROM public.tenant_registrations "
-                    "WHERE wholesaler_id = ANY(:ws_ids)"
-                ),
-                {"ws_ids": ws_ids},
-            )
-        ).scalars().all()
-        for schema_name in schemas:
-            if schema_name:
-                await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE'))
-        await session.execute(text("DELETE FROM public.password_reset_tokens"))
-        if ws_ids:
-            await session.execute(
-                text("DELETE FROM public.tenant_registrations WHERE wholesaler_id = ANY(:ws_ids)"),
-                {"ws_ids": ws_ids},
-            )
-        await session.execute(text("UPDATE public.wholesalers SET is_deleted=TRUE WHERE code LIKE 'DC3B%'"))
-        await session.commit()
 
 
 async def _client() -> AsyncClient:
@@ -114,7 +89,8 @@ async def _client() -> AsyncClient:
 
     app.dependency_overrides[get_db_session] = _override_public_db
     transport = ASGITransport(app=app, raise_app_exceptions=False)
-    return AsyncClient(transport=transport, base_url="http://testserver")
+    return AsyncClient(transport=transport, base_url="http://testserver",
+                       event_hooks=_FIXTURE_SCOPE.http_hooks())
 
 
 def _real_token_dependency(request: "Request"):
@@ -162,7 +138,8 @@ async def _client_with_real_auth() -> AsyncClient:
     app.dependency_overrides[get_db_session] = _override_public_db
     app.dependency_overrides[get_current_user_context] = _real_token_dependency
     transport = ASGITransport(app=app, raise_app_exceptions=False)
-    return AsyncClient(transport=transport, base_url="http://testserver")
+    return AsyncClient(transport=transport, base_url="http://testserver",
+                       event_hooks=_FIXTURE_SCOPE.http_hooks())
 
 
 _TENANT_AUTH_DDL = """
@@ -225,29 +202,27 @@ async def _make_tenant(
     async with AsyncSessionLocal() as session:
         await session.execute(text("SET search_path TO public"))
         ws = Wholesaler(
+            id=uuid.uuid4(),
             code=code,
             name=f"DC3B Wholesaler {code}",
             contact=owner_email,
             status="active",
             provisioned_at=now,
         )
+        _FIXTURE_SCOPE.expect_wholesaler(ws.id, schema_created=True)
         session.add(ws)
         await session.flush()
         schema_name = ws.get_tenant_schema()
         registration=_registration_row(ws.id, schema_name, owner_email, now)
+        _FIXTURE_SCOPE.expect_registration(registration.id, owner_email)
         session.add(registration)
         await session.commit()
         registration_id=registration.id
         wholesaler_id=ws.id
 
+    from scripts.bootstrap_tenant_schema import bootstrap
+    await bootstrap(schema_name, str(async_engine.url.render_as_string(hide_password=False)))
     async with async_engine.begin() as connection:
-        await connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"'))
-        for stmt in _TENANT_AUTH_DDL.format(s=schema_name).strip().split(";\n"):
-            stmt = stmt.strip()
-            if stmt:
-                await connection.execute(text(stmt + ";"))
-        from scripts.bootstrap_tenant_schema import _reconcile_staff_authority
-        await _reconcile_staff_authority(connection,schema_name)
         user_id=await connection.scalar(
             text(
                 f'INSERT INTO "{schema_name}".users (email, password_hash, full_name, is_active) '
@@ -270,12 +245,14 @@ async def _make_broken_tenant_anchor() -> str:
     async with AsyncSessionLocal() as session:
         await session.execute(text("SET search_path TO public"))
         ws = Wholesaler(
+            id=uuid.uuid4(),
             code=f"DC3BBROKEN{uuid.uuid4().hex[:6].upper()}",
             name="DC3B Broken Tenant Anchor",
             contact="broken-anchor@example.com",
             status="active",
             provisioned_at=datetime.now(timezone.utc),
         )
+        _FIXTURE_SCOPE.expect_wholesaler(ws.id, schema_created=False)
         session.add(ws)
         await session.flush()
         schema_name = ws.get_tenant_schema()
@@ -319,6 +296,7 @@ def _registration_row(ws_id, schema_name, owner_email, now):
     from models.tenant_onboarding import TenantRegistration
 
     reg = TenantRegistration(
+        id=uuid.uuid4(),
         company_name=f"DC3B Company {uuid.uuid4().hex[:8]}",
         country="KE",
         owner_email=owner_email,

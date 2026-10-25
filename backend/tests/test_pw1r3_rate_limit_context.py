@@ -77,113 +77,30 @@ def _make_test_ip(suffix: int) -> str:
 # ---------------------------------------------------------------------------
 @pytest_asyncio.fixture(scope="module")
 async def rl_auth_schema():
-    """Synthetic real-PG auth schema: direct DDL + one active user.
-
-    resolve_tenant_context() performs a real DB lookup (get_user_with_permissions),
-    so the contextual-JWT path is exercised end-to-end: verification, tenant
-    resolution, request.state attachment, and rate-limit keying. This is NOT a
-    formal-lifecycle provisioned tenant — it is a synthetic schema created by
-    the test itself for the precise purpose of the middleware contract.
-
-    Tables are created with explicit DDL (NOT Base.metadata.create_all): the
-    User/Role/Permission models each declare their unique email/name/code index
-    TWICE (column index=True + an explicit same-named Index in __table_args__),
-    which makes create_all fail with DuplicateTableError. The DDL below mirrors
-    the model columns exactly.
-    """
-    audit = (
-        "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
-        "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
-        "is_deleted BOOLEAN NOT NULL DEFAULT false, "
-        "deleted_at TIMESTAMPTZ, "
-        "created_by UUID, "
-        "updated_by UUID"
-    )
-    ddl = [
-        f'CREATE TABLE "{RL_SCHEMA}".users ('
-        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "
-        "email VARCHAR(255) NOT NULL UNIQUE, "
-        "password_hash VARCHAR(255) NOT NULL, "
-        "full_name TEXT, "
-        f"is_active BOOLEAN NOT NULL DEFAULT true, {audit})",
-        f'CREATE TABLE "{RL_SCHEMA}".roles ('
-        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "
-        "name VARCHAR(100) NOT NULL UNIQUE, "
-        f"description VARCHAR(255), {audit})",
-        f'CREATE TABLE "{RL_SCHEMA}".permissions ('
-        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "
-        "code VARCHAR(100) NOT NULL UNIQUE, "
-        f"description VARCHAR(255), {audit})",
-        f'CREATE TABLE "{RL_SCHEMA}".user_roles ('
-        "user_id UUID NOT NULL REFERENCES \"" + RL_SCHEMA + "\".users(id) ON DELETE CASCADE, "
-        "role_id UUID NOT NULL REFERENCES \"" + RL_SCHEMA + "\".roles(id) ON DELETE CASCADE, "
-        "PRIMARY KEY (user_id, role_id))",
-        f'CREATE TABLE "{RL_SCHEMA}".role_permissions ('
-        "role_id UUID NOT NULL REFERENCES \"" + RL_SCHEMA + "\".roles(id) ON DELETE CASCADE, "
-        "permission_id UUID NOT NULL REFERENCES \"" + RL_SCHEMA + "\".permissions(id) ON DELETE CASCADE, "
-        "PRIMARY KEY (role_id, permission_id))",
-    ]
-
-    async with AsyncSessionLocal() as session:
-        await session.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{RL_SCHEMA}"'))
-        for stmt in ddl:
-            await session.execute(text(stmt))
-        await session.commit()
-
-    yield RL_SCHEMA
-
-    # Cleanup of THIS test's own schema only (explicit name, no wildcards).
-    async with AsyncSessionLocal() as session:
-        await session.execute(text(f'DROP SCHEMA IF EXISTS "{RL_SCHEMA}" CASCADE'))
-        await session.commit()
+    """Current fully provisioned schema; audited Owner retained to task teardown."""
+    from tests.staff_approval_support import StaffWorld
+    world = await StaffWorld().initialize()
+    try:
+        yield world
+    finally:
+        await world.engine.dispose()
 
 
 @pytest_asyncio.fixture
 async def rl_tenant(rl_auth_schema):
-    """Function-scoped synthetic tenant identity: fresh task-owned UUIDs.
-
-    Every test starts with a deterministic, untouched tenant bucket
-    (`rate_limit:tenant:{tenant_id}:{user_id}`) and a fresh active user row.
-
-    R1 auth-stock fix alignment (2026-09-08): resolve_tenant_context now also
-    requires an existing, non-deleted, ACTIVE public.wholesalers row for the
-    token's tenant (platform-registry liveness — a tenant outside the registry
-    must fail closed). This fixture therefore also provisions one exact,
-    task-owned wholesalers row (status='active') and removes it by exact id on
-    teardown; the rate-limit contract under test is otherwise unchanged.
-    """
-    tenant_id = str(uuid.uuid4())
-    user_id = str(uuid.uuid4())
-    async with AsyncSessionLocal() as session:
-        await session.execute(
-            text(
-                f'INSERT INTO "{RL_SCHEMA}".users (id, email, password_hash, full_name, is_active) '
-                "VALUES (:id, :email, :pw, :name, true)"
-            ),
-            {"id": user_id, "email": f"pw1r3-rl-{uuid.uuid4().hex[:6]}@test.dev",
-             "pw": hash_password("pw1r3-not-a-real-credential"), "name": "PW1R3 RL User"},
-        )
-        await session.execute(
-            text(
-                "INSERT INTO public.wholesalers (id, code, name, status, is_deleted) "
-                "VALUES (:wid, :code, :name, 'active', FALSE)"
-            ),
-            {
-                "wid": tenant_id,
-                "code": f"PW1R3RL{uuid.uuid4().hex[:10].upper()}",
-                "name": "PW1-R3 synthetic rate-limit tenant",
-            },
-        )
-        await session.commit()
-    try:
-        yield {"schema": RL_SCHEMA, "tenant_id": tenant_id, "user_id": user_id}
-    finally:
-        async with AsyncSessionLocal() as session:
-            await session.execute(
-                text("DELETE FROM public.wholesalers WHERE id = :wid"),
-                {"wid": tenant_id},
-            )
-            await session.commit()
+    """Fresh ordinary admin user per bucket, not an Owner-authority bypass."""
+    world = rl_auth_schema
+    user_id = uuid.uuid4()
+    async with world.session() as session:
+        await session.execute(text('INSERT INTO users (id,email,password_hash,is_active) VALUES (:id,:e,:p,true)'),
+            {'id': user_id, 'e': uuid.uuid4().hex + '@example.com',
+             'p': hash_password(uuid.uuid4().hex)})
+        await session.execute(text("INSERT INTO user_roles (user_id,role_id) SELECT :u,id FROM roles WHERE name='admin'"),
+                              {'u': user_id})
+    yield {"schema": world.schema, "tenant_id": str(world.wid), "user_id": str(user_id)}
+    async with world.session() as session:
+        await session.execute(text('DELETE FROM user_roles WHERE user_id=:u'), {'u': user_id})
+        await session.execute(text('DELETE FROM users WHERE id=:u'), {'u': user_id})
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -348,8 +265,9 @@ async def test_contextual_burst_stays_admitted_well_past_ip_limit(rl_tenant):
         assert statuses == {200}
 
 
-async def test_identity_only_jwt_uses_ip_limit_100():
-    token = create_identity_token(user_id=str(uuid.uuid4()), roles=["admin"], token_type="access")
+async def test_identity_only_jwt_uses_ip_limit_100(rl_tenant):
+    token = create_identity_token(user_id=rl_tenant["user_id"], roles=["admin"], token_type="access",
+        tenant_user_map={rl_tenant["tenant_id"]: rl_tenant["user_id"]})
     async with make_client(_make_test_ip(14)) as client:
         resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
         # Identity-only me is handled (H-Fix-01); it must stay on the IP limit.

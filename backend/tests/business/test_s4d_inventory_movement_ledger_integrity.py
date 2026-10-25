@@ -30,6 +30,7 @@ from models.order import Order, OrderItem, OrderStatus
 from models.sku import SKU
 from tests.catalog_identity_helpers import create_sku_with_catalog, stable_order_items
 from schemas.inventory import InventoryAdjustRequest
+from tests.rc2_current_contract_support import current_trading_session as async_session, current_adjustment, prepare_adjustment_owner
 from tests.order_state_r2.contract_helpers import ensure_binding as _r2_ensure_binding
 
 
@@ -326,28 +327,16 @@ async def test_manual_adjustment_movements_use_manual_reference_and_math(async_s
         async_session, sku_code="S4D-ADJUST", on_hand=Decimal("10.00")
     )
 
-    await adjust_inventory(
-        InventoryAdjustRequest(
-            sku_code="S4D-ADJUST", quantity=Decimal("5.00"), reason="stocktake gain"
-        ),
-        request=_request(async_session),
-        token=_token(async_session),
-        db=async_session,
-    )
-    await adjust_inventory(
-        InventoryAdjustRequest(
-            sku_code="S4D-ADJUST", quantity=Decimal("-2.00"), reason="damage writeoff"
-        ),
-        request=_request(async_session),
-        token=_token(async_session),
-        db=async_session,
-    )
+    await prepare_adjustment_owner(async_session)
+    await current_adjustment(async_session, sku_code="S4D-ADJUST", quantity=Decimal("5.00"), reason="stocktake gain")
+    await prepare_adjustment_owner(async_session)
+    await current_adjustment(async_session, sku_code="S4D-ADJUST", quantity=Decimal("-2.00"), reason="damage writeoff")
     await async_session.commit()
 
     stock = await _stock_for(async_session, sku.id)
     movements = await _movements_for_sku(async_session, sku.id)
     movement_by_quantity = {movement.quantity: movement for movement in movements}
-    assert stock.quantity_on_hand == Decimal("13.00")
+    assert stock.quantity_on_hand == Decimal("13.00"), "CURRENT_ADJUSTMENT_ECONOMIC_EFFECT_MISSING"
     assert len(movements) == 2
     _assert_movement_math(
         movement_by_quantity[Decimal("5.00")],
@@ -356,7 +345,7 @@ async def test_manual_adjustment_movements_use_manual_reference_and_math(async_s
         before=Decimal("10.00"),
         after=Decimal("15.00"),
         reference_type="manual",
-        reference_id=None,
+        reference_id=movement_by_quantity[Decimal("5.00")].manual_adjustment_id,
     )
     _assert_movement_math(
         movement_by_quantity[Decimal("-2.00")],
@@ -365,7 +354,7 @@ async def test_manual_adjustment_movements_use_manual_reference_and_math(async_s
         before=Decimal("15.00"),
         after=Decimal("13.00"),
         reference_type="manual",
-        reference_id=None,
+        reference_id=movement_by_quantity[Decimal("-2.00")].manual_adjustment_id,
     )
 
 
@@ -588,14 +577,8 @@ async def test_movement_list_endpoint_matches_database(async_session):
     sku = await _create_sku_with_stock(
         async_session, sku_code="S4D-LIST", on_hand=Decimal("10.00")
     )
-    await adjust_inventory(
-        InventoryAdjustRequest(
-            sku_code="S4D-LIST", quantity=Decimal("5.00"), reason="list endpoint audit"
-        ),
-        request=_request(async_session),
-        token=_token(async_session),
-        db=async_session,
-    )
+    await prepare_adjustment_owner(async_session)
+    await current_adjustment(async_session, sku_code="S4D-LIST", quantity=Decimal("5.00"), reason="list endpoint audit")
     await async_session.commit()
 
     db_movement = (await _movements_for_sku(async_session, sku.id))[0]
@@ -620,4 +603,4 @@ async def test_movement_list_endpoint_matches_database(async_session):
     assert item.quantity_before == db_movement.quantity_before
     assert item.quantity_after == db_movement.quantity_after
     assert item.reference_type == db_movement.reference_type
-    assert item.reference_id is None
+    assert item.reference_id == str(db_movement.manual_adjustment_id)

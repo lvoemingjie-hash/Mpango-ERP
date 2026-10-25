@@ -422,7 +422,8 @@ class TestTokenFailClosed:
         resp = await s3_client.get("/api/v1/client/products",
             headers={"Authorization": f"Bearer {tok}"})
         _assert_controlled_envelope(resp)
-        assert resp.status_code == HTTPStatus.FORBIDDEN
+        assert resp.status_code == HTTPStatus.UNAUTHORIZED
+        assert resp.json()["code"] == "IDENTITY_BINDING_REQUIRED"
 
     async def test_missing_token_denied(self, s3_client):
         resp = await s3_client.get("/api/v1/client/products")

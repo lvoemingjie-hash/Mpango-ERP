@@ -45,21 +45,28 @@ OWNER_PASSWORD = "U6LOwnerSetupCred_01!"  # pragma: allowlist secret
 SMTP_PASSWORD_VALUE = "smtp-provider-app-password"  # pragma: allowlist secret
 TEST_SECRET_KEY = "Z9vLk8mN4pQ7rS2tU5wX8yB3cD6fG0hJ"  # pragma: allowlist secret
 CANONICAL_ADMIN_PERMISSION_CODES = {code for code, _description in OWNER_ADMIN_PERMISSION_REGISTRY}
+_FIXTURE_SCOPE = None
 
 
 @pytest.fixture(autouse=True)
 async def _u6l_public_schema():
     await _ensure_onboarding_tables()
-    await _clear_u6l_rows_and_schemas()
+    from tests.rc2_current_contract_support import TenantFixtureScope
+    global _FIXTURE_SCOPE
+    scope = await TenantFixtureScope.begin(AsyncSessionLocal)
+    _FIXTURE_SCOPE = scope
     clear_dev_email_deliveries()
     FakeSMTP.reset()
     try:
         yield
     finally:
         app.dependency_overrides.pop(get_db_session, None)
-        await _clear_u6l_rows_and_schemas()
-        clear_dev_email_deliveries()
-        FakeSMTP.reset()
+        try:
+            await scope.retire()
+        finally:
+            _FIXTURE_SCOPE = None
+            clear_dev_email_deliveries()
+            FakeSMTP.reset()
 
 
 @pytest.fixture(autouse=True)
@@ -88,39 +95,6 @@ async def _ensure_onboarding_tables() -> None:
         await connection.run_sync(OwnerCredentialSetupToken.__table__.create, checkfirst=True)
 
 
-async def _clear_u6l_rows_and_schemas() -> None:
-    async with AsyncSessionLocal() as session:
-        await session.execute(text("SET search_path TO public"))
-        rows = (
-            await session.execute(
-                text(
-                    "SELECT wholesaler_id, tenant_schema FROM public.tenant_registrations "
-                    "WHERE owner_email LIKE 'u6l_%@example.com'"
-                )
-            )
-        ).mappings().all()
-        wholesaler_ids = [row["wholesaler_id"] for row in rows if row["wholesaler_id"] is not None]
-        for schema in {row["tenant_schema"] for row in rows if row["tenant_schema"] is not None}:
-            if schema.startswith("t_") and schema.replace("_", "").isalnum():
-                await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
-        await session.execute(
-            text(
-                "DELETE FROM public.owner_credential_setup_tokens WHERE registration_id IN ("
-                "SELECT id FROM public.tenant_registrations "
-                "WHERE owner_email LIKE 'u6l_%@example.com')"
-            )
-        )
-        await session.execute(
-            text("DELETE FROM public.tenant_registrations WHERE owner_email LIKE 'u6l_%@example.com'")
-        )
-        if wholesaler_ids:
-            await session.execute(
-                text("DELETE FROM public.wholesalers WHERE id = ANY(:wholesaler_ids)"),
-                {"wholesaler_ids": wholesaler_ids},
-            )
-        await session.commit()
-
-
 async def _client() -> AsyncClient:
     async def _override_public_db():
         async with AsyncSessionLocal() as session:
@@ -134,7 +108,8 @@ async def _client() -> AsyncClient:
 
     app.dependency_overrides[get_db_session] = _override_public_db
     transport = ASGITransport(app=app, raise_app_exceptions=False)
-    return AsyncClient(transport=transport, base_url="http://testserver")
+    return AsyncClient(transport=transport, base_url="http://testserver",
+                       event_hooks=_FIXTURE_SCOPE.http_hooks())
 
 
 class FakeSMTP:
@@ -416,7 +391,9 @@ async def test_emailed_setup_token_can_create_first_admin_rbac_and_status_is_pub
     assert setup_response.status_code == 200, setup_response.text
     _assert_public_response_safe(setup_response, forbidden_values=(setup_token, registration["tenant_schema"]))
     assert await _table_count(registration["tenant_schema"], "users") == 1
-    assert await _table_count(registration["tenant_schema"], "roles") == 2
+    async with AsyncSessionLocal() as roles_db:
+        from tests.rc2_current_contract_support import assert_current_owner_roles
+        await assert_current_owner_roles(roles_db, registration["tenant_schema"])
     assert await _owner_role_count(registration["tenant_schema"], email) == 1
     assert await _admin_permission_codes(registration["tenant_schema"]) == CANONICAL_ADMIN_PERMISSION_CODES
     assert await _role_permission_codes(registration["tenant_schema"], RETAILER_OPERATOR_ROLE) == set(
@@ -454,7 +431,9 @@ async def test_repeated_internal_orchestration_does_not_duplicate_tenant_token_o
     assert first_setup.status_code == 200, first_setup.text
     assert replay_setup.status_code == 401, replay_setup.text
     assert await _table_count(registration["tenant_schema"], "users") == 1
-    assert await _table_count(registration["tenant_schema"], "roles") == 2
+    async with AsyncSessionLocal() as roles_db:
+        from tests.rc2_current_contract_support import assert_current_owner_roles
+        await assert_current_owner_roles(roles_db, registration["tenant_schema"])
     assert await _owner_role_count(registration["tenant_schema"], email) == 1
 
 
@@ -602,11 +581,13 @@ class FakeProvisioningService:
     async def provision_wholesaler_and_schema(self, registration_id):
         registration = await self.db.get(TenantRegistration, registration_id)
         wholesaler = Wholesaler(
+            id=uuid.uuid4(),
             code=f"U6L{uuid.uuid4().hex[:8].upper()}",
             name="U6L Fake Provisioning Wholesaler",
             status="active",
             provisioned_at=datetime.now(timezone.utc),
         )
+        _FIXTURE_SCOPE.expect_wholesaler(wholesaler.id, schema_created=False)
         self.db.add(wholesaler)
         await self.db.flush()
         tenant_schema = wholesaler.get_tenant_schema()

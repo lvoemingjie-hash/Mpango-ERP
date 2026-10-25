@@ -466,12 +466,13 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
             )
             await session.commit()
 
-            await InventoryService().adjust_stock(
+            from tests.rc2_current_contract_support import prepare_adjustment_owner, current_adjustment
+            await prepare_adjustment_owner(session, admin_id)
+            await current_adjustment(
                 session,
                 sku_code="S5A-SKU-001",
                 quantity=Decimal("10.00"),
                 reason="S5-A opening stock",
-                adjusted_by=str(admin_id),
             )
             await session.commit()
             assert await _stock_snapshot(session, "S5A-SKU-001") == (
@@ -653,14 +654,16 @@ async def test_s5a_fresh_tenant_real_user_journey_gate():
     finally:
         async with AsyncSessionLocal() as cleanup:
             await cleanup.execute(text(f'DROP SCHEMA IF EXISTS "{isolation_schema}" CASCADE'))
-            await cleanup.execute(text(f'DROP SCHEMA IF EXISTS "{tenant_schema}" CASCADE'))
-            await cleanup.execute(
-                text("DELETE FROM public.wholesaler_retailer_bindings WHERE wholesaler_id = :tenant_id"),
-                {"tenant_id": tenant_id},
-            )
-            await cleanup.execute(text("DELETE FROM public.retailers WHERE id = :retailer_id"), {"retailer_id": retailer_id})
-            await cleanup.execute(text("DELETE FROM public.tenant_registrations WHERE wholesaler_id=:id"), {"id": tenant_id})
-            await cleanup.execute(text("DELETE FROM public.wholesalers WHERE id = :tenant_id"), {"tenant_id": tenant_id})
+            audited = await cleanup.scalar(text('SELECT EXISTS(SELECT 1 FROM public.staff_stock_audit_events WHERE tenant_id=:t)'), {'t': tenant_id})
+            if not audited:
+                await cleanup.execute(text(f'DROP SCHEMA IF EXISTS "{tenant_schema}" CASCADE'))
+                await cleanup.execute(
+                    text("DELETE FROM public.wholesaler_retailer_bindings WHERE wholesaler_id = :tenant_id"),
+                    {"tenant_id": tenant_id},
+                )
+                await cleanup.execute(text("DELETE FROM public.retailers WHERE id = :retailer_id"), {"retailer_id": retailer_id})
+                await cleanup.execute(text("DELETE FROM public.tenant_registrations WHERE wholesaler_id=:id"), {"id": tenant_id})
+                await cleanup.execute(text("DELETE FROM public.wholesalers WHERE id = :tenant_id"), {"tenant_id": tenant_id})
             await cleanup.execute(text("DELETE FROM public.wholesaler_retailer_bindings WHERE wholesaler_id=:id"), {"id": isolation_tenant_id})
             await cleanup.execute(text("DELETE FROM public.tenant_registrations WHERE wholesaler_id=:id"), {"id": isolation_tenant_id})
             await cleanup.execute(text("DELETE FROM public.wholesalers WHERE id=:id"), {"id": isolation_tenant_id})

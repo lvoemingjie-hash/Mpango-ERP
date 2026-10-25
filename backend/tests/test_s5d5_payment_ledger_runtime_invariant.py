@@ -90,13 +90,16 @@ async def _seed_confirmed_order(async_session, *, total: Decimal):
 
 
 async def _pay(async_session, *, order_id: uuid.UUID, token: _Token, amount: Decimal, method: str):
-    return await pay_order(
+    result = await pay_order(
         order_id=str(order_id),
         token=token,
         db=async_session,
         payment_input=PayOrderRequest(amount=amount, method=method),
         x_idempotency_key=f"s5d5-{uuid.uuid4()}",
     )
+    from tests.rc2_current_contract_support import assert_payment_ledger
+    await assert_payment_ledger(async_session, order_id)
+    return result
 
 
 async def _payment_ledger_snapshot(async_session, *, order_id: uuid.UUID):
@@ -128,8 +131,9 @@ async def _payment_ledger_snapshot(async_session, *, order_id: uuid.UUID):
                 COALESCE(SUM(CASE WHEN account_type::text IN ('cash', 'receivable') THEN amount ELSE 0 END), 0) AS settlement_sum,
                 COUNT(*) FILTER (WHERE account_type::text IN ('cash', 'receivable')) AS settlement_entry_count
             FROM ledger_entries
-            WHERE reference_type = 'order'
-              AND reference_id = :order_id
+            WHERE (reference_type = 'order' AND reference_id = :order_id)
+               OR (reference_type = 'payment' AND reference_id IN (
+                   SELECT id FROM payments WHERE order_id=:order_id AND is_deleted IS FALSE))
             """
         ),
         {"order_id": order_id},
@@ -140,10 +144,10 @@ async def _payment_ledger_snapshot(async_session, *, order_id: uuid.UUID):
 def _assert_completed_payment_ledger_covered(snapshot) -> None:
     completed_total = Decimal(str(snapshot["completed_total"]))
     assert snapshot["completed_count"] > 0
-    assert Decimal(str(snapshot["cash_debit"])) == completed_total
+    assert Decimal(str(snapshot["cash_debit"])) == completed_total, "PAYMENT_PROJECTION_OMITS_RECEIPT"
     assert Decimal(str(snapshot["receivable_credit"])) == completed_total
     assert Decimal(str(snapshot["settlement_sum"])) == Decimal("0.0000")
-    assert snapshot["settlement_entry_count"] == 2
+    assert snapshot["settlement_entry_count"] == 2 * snapshot["completed_count"]
 
 
 @pytest.mark.asyncio
@@ -193,8 +197,8 @@ async def test_partial_cash_payment_only_gets_completed_ledger_coverage_on_final
     assert first.data["status"] == "partially_paid"
     assert after_first["completed_count"] == 0
     assert after_first["pending_cash_transfer_count"] == 1
-    assert Decimal(str(after_first["cash_debit"])) == Decimal("0")
-    assert Decimal(str(after_first["receivable_credit"])) == Decimal("0")
+    assert Decimal(str(after_first["cash_debit"])) == Decimal("40.00")
+    assert Decimal(str(after_first["receivable_credit"])) == Decimal("40.00")
 
     final = await _pay(
         async_session,
@@ -226,8 +230,8 @@ async def test_partial_transfer_payment_does_not_complete_without_ledger_coverag
     assert first.data["status"] == "partially_paid"
     assert after_first["completed_count"] == 0
     assert after_first["pending_cash_transfer_count"] == 1
-    assert Decimal(str(after_first["cash_debit"])) == Decimal("0")
-    assert Decimal(str(after_first["receivable_credit"])) == Decimal("0")
+    assert Decimal(str(after_first["cash_debit"])) == Decimal("40.00")
+    assert Decimal(str(after_first["receivable_credit"])) == Decimal("40.00")
 
     final = await _pay(
         async_session,

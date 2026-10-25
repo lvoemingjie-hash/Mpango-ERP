@@ -187,7 +187,8 @@ async def _movements_for_order(
 async def _ledger_entries_for_order(
     async_session: AsyncSession, order_id: uuid.UUID
 ) -> list[LedgerEntry]:
-    return await _ledger_entries_for(async_session, reference_type="order", reference_id=order_id)
+    from tests.rc2_current_contract_support import current_order_ledger
+    return await current_order_ledger(async_session, order_id)
 
 
 async def _ledger_entries_for(

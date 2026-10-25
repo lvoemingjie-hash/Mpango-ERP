@@ -10,6 +10,409 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 
+class TenantFixtureScope:
+    """Exact created-ID scope for serial fixtures; immutable audit is retained.
+
+    Complete audited tenants remain usable until the enclosing task DB is
+    destroyed. Unrelated pre-existing rows, schemas and audit bytes are checked,
+    never treated as cleanup targets. Deliberately broken, unaudited fixtures
+    are removed only after their negative assertions have run.
+    """
+
+    def __init__(self, factory, before):
+        self.factory = factory
+        self.before = before
+        self.owned = {key: set() for key in ('wholesalers', 'registrations', 'schemas', 'reset_tokens')}
+        self.registration_emails = {}
+        self.tenant_schemas = {}
+
+    def expect_wholesaler(self, wholesaler_id, *, schema_created):
+        """Declare a fixture-generated ID before writing, never adopt a diff."""
+        raw = str(uuid.UUID(str(wholesaler_id)))
+        assert raw not in self.before['wholesalers'], 'FIXTURE_ID_PREEXISTS'
+        schema = 't_' + uuid.UUID(raw).hex if schema_created else None
+        assert raw not in self.tenant_schemas or self.tenant_schemas[raw] == schema, 'FIXTURE_INTENT_CONFLICT'
+        self.tenant_schemas[raw] = schema
+        self.owned['wholesalers'].add(raw)
+        if schema:
+            assert schema not in self.before['schemas'], 'FIXTURE_SCHEMA_PREEXISTS'
+            self.owned['schemas'].add(schema)
+
+    def expect_registration(self, registration_id, email):
+        raw = str(uuid.UUID(str(registration_id)))
+        assert raw not in self.before['registrations'], 'FIXTURE_REGISTRATION_PREEXISTS'
+        assert raw not in self.registration_emails or self.registration_emails[raw] == email, 'FIXTURE_REQUEST_CONFLICT'
+        self.registration_emails[raw] = email
+        self.owned['registrations'].add(raw)
+
+    def expect_reset_token(self, token_id):
+        raw = str(uuid.UUID(str(token_id)))
+        assert raw not in self.before['reset_tokens'], 'FIXTURE_RESET_TOKEN_PREEXISTS'
+        self.owned['reset_tokens'].add(raw)
+
+    async def request_started(self, request):
+        """Bind mailbox evidence to this concrete HTTP reset request."""
+        if request.method == 'POST' and request.url.path == '/api/v1/auth/forgot-password':
+            import json
+            from services.email_delivery import get_dev_reset_email_deliveries
+            email = json.loads(request.content)['email']
+            request.extensions['fixture_reset_before'] = {
+                delivery.token for delivery in get_dev_reset_email_deliveries(email)
+            }
+
+    async def response_received(self, response):
+        import json
+        request = response.request
+        if request.method != 'POST':
+            return
+        if request.url.path == '/api/v1/auth/signup' and response.status_code == 202:
+            email = json.loads(request.content)['email']
+            async with self.factory() as db:
+                rows = (await db.execute(text(
+                    'SELECT id::text FROM public.tenant_registrations WHERE owner_email=:email'
+                ), {'email': email})).scalars().all()
+            assert len(rows) == 1, 'FIXTURE_SIGNUP_REQUEST_CARDINALITY'
+            self.expect_registration(rows[0], email)
+        if request.url.path == '/api/v1/auth/forgot-password' and response.status_code == 200:
+            from services.email_delivery import get_dev_reset_email_deliveries
+            from services.onboarding_service import hash_token
+            from services.password_reset_service import _email_hash
+            email = json.loads(request.content)['email']
+            before = request.extensions['fixture_reset_before']
+            deliveries = [d for d in get_dev_reset_email_deliveries(email) if d.token not in before]
+            assert len(deliveries) <= 1, 'FIXTURE_RESET_REQUEST_CARDINALITY'
+            async with self.factory() as db:
+                for delivery in deliveries:
+                    rows = (await db.execute(text(
+                        'SELECT id::text FROM public.password_reset_tokens '
+                        'WHERE token_hash=:token_hash AND user_email_hash=:email_hash '
+                        "AND purpose='password_reset'"
+                    ), {'token_hash': hash_token(delivery.token), 'email_hash': _email_hash(email)})).scalars().all()
+                    assert len(rows) == 1 and rows[0] not in self.before['reset_tokens'], 'FIXTURE_RESET_LINK_MISMATCH'
+                    self.expect_reset_token(rows[0])
+
+    def http_hooks(self):
+        return {'request': [self.request_started], 'response': [self.response_received]}
+
+    async def _resolve_registration_links(self, db):
+        for registration_id, email in self.registration_emails.items():
+            rows = (await db.execute(text(
+                'SELECT owner_email,wholesaler_id,tenant_schema FROM public.tenant_registrations WHERE id=:r'
+            ), {'r': uuid.UUID(registration_id)})).all()
+            assert len(rows) == 1 and rows[0].owner_email == email, 'FIXTURE_REGISTRATION_LINK_MISMATCH'
+            row = rows[0]
+            if row.wholesaler_id is None:
+                assert row.tenant_schema is None, 'FIXTURE_REGISTRATION_SCHEMA_WITHOUT_OWNER'
+                continue
+            wid = str(row.wholesaler_id)
+            assert row.tenant_schema == 't_' + uuid.UUID(wid).hex, 'FIXTURE_REGISTRATION_SCHEMA_MISMATCH'
+            if wid not in self.owned['wholesalers']:
+                # Exactly one tenant linked to the independently registered
+                # signup, not all rows observed since the fixture began.
+                self.expect_wholesaler(wid, schema_created=True)
+
+    def _check_ownership(self, current):
+        for key in self.owned:
+            assert self.before[key] <= current[key], f'PREEXISTING_FIXTURE_LOST:{key}'
+            added = current[key] - self.before[key]
+            assert not (added - self.owned[key]), f'UNKNOWN_FIXTURE_ADDITION:{key}'
+            assert added == self.owned[key], f'REGISTERED_FIXTURE_MISSING:{key}'
+        assert self.before['audit'].items() <= current['audit'].items(), 'AUDIT_HISTORY_CHANGED'
+
+    @staticmethod
+    async def snapshot(factory):
+        async with factory() as db:
+            result = {}
+            for key, table in (
+                ('wholesalers', 'wholesalers'),
+                ('registrations', 'tenant_registrations'),
+                ('reset_tokens', 'password_reset_tokens'),
+            ):
+                result[key] = set((await db.execute(text(
+                    f'SELECT id::text FROM public.{table}'
+                ))).scalars())
+            result['schemas'] = set((await db.execute(text(
+                "SELECT nspname FROM pg_namespace WHERE nspname ~ '^t_[0-9a-f]{32}$'"
+            ))).scalars())
+            result['audit'] = dict((await db.execute(text(
+                'SELECT id::text, to_jsonb(a)::text FROM public.staff_stock_audit_events a'
+            ))).all())
+            return result
+
+    @classmethod
+    async def begin(cls, factory):
+        return cls(factory, await cls.snapshot(factory))
+
+    async def retire(self):
+        current = await self.snapshot(self.factory)
+        retained = {'wholesalers': set(), 'registrations': set(), 'schemas': set()}
+        async with self.factory() as db:
+            await self._resolve_registration_links(db)
+            self._check_ownership(current)
+            new_wids = self.owned['wholesalers']
+            new_regs = self.owned['registrations']
+            new_tokens = self.owned['reset_tokens']
+            for raw in sorted(new_wids):
+                wid = uuid.UUID(raw)
+                schema = 't_' + wid.hex
+                audited = await db.scalar(text(
+                    'SELECT EXISTS (SELECT 1 FROM public.staff_stock_audit_events WHERE tenant_id=:w)'
+                ), {'w': wid})
+                if audited:
+                    regs = (await db.execute(text(
+                        'SELECT id::text FROM public.tenant_registrations '
+                        'WHERE wholesaler_id=:w AND tenant_schema=:s '
+                        "AND status IN ('active','completed','provisioned')"
+                    ), {'w': wid, 's': schema})).scalars().all()
+                    assert len(regs) == 1 and regs[0] in new_regs, 'AUDITED_FIXTURE_ANCHOR_MISSING'
+                    assert await db.scalar(text('SELECT to_regclass(:t)'),
+                                           {'t': schema + '.inventory_adjustment_approvers'}), 'AUDITED_FIXTURE_044_MISSING'
+                    retained['wholesalers'].add(raw)
+                    retained['registrations'].update(regs)
+                    retained['schemas'].add(schema)
+            # All ownership and audit-retention checks above finish before
+            # the first destructive statement, including for later tenants.
+            for schema in sorted(self.owned['schemas'] - retained['schemas']):
+                await db.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+            removable_regs = new_regs - retained['registrations']
+            if new_tokens:
+                await db.execute(text('DELETE FROM public.password_reset_tokens WHERE id=ANY(:ids)'),
+                                 {'ids': [uuid.UUID(v) for v in new_tokens]})
+            if removable_regs:
+                await db.execute(text('DELETE FROM public.owner_credential_setup_tokens WHERE registration_id=ANY(:ids)'),
+                                 {'ids': [uuid.UUID(v) for v in removable_regs]})
+                await db.execute(text('DELETE FROM public.tenant_registrations WHERE id=ANY(:ids)'),
+                                 {'ids': [uuid.UUID(v) for v in removable_regs]})
+            removable_wids = new_wids - retained['wholesalers']
+            if removable_wids:
+                await db.execute(text('DELETE FROM public.wholesalers WHERE id=ANY(:ids)'),
+                                 {'ids': [uuid.UUID(v) for v in removable_wids]})
+            await db.commit()
+        after = await self.snapshot(self.factory)
+        for key in ('wholesalers', 'registrations', 'schemas'):
+            assert after[key] == self.before[key] | retained[key], f'UNEXPECTED_FIXTURE_RESIDUE:{key}'
+        assert after['reset_tokens'] == self.before['reset_tokens'], 'RESET_TOKEN_RESIDUE'
+        assert after['audit'] == current['audit'], 'AUDIT_HISTORY_CHANGED_DURING_RETIREMENT'
+        return retained
+
+
+async def assert_current_owner_roles(db, schema):
+    """Verify seeded roles and exact staff template grants, not a new hard count."""
+    from core.permission_registry import STAFF_DEFAULT_PERMISSION_CODES
+
+    rows = (await db.execute(text(
+        f'SELECT template_key,role_id FROM "{schema}".staff_role_templates'
+    ))).all()
+    assert {r.template_key for r in rows} == set(STAFF_DEFAULT_PERMISSION_CODES)
+    role_names = set((await db.execute(text(f'SELECT name FROM "{schema}".roles'))).scalars())
+    template_names = set()
+    for code, role_id in rows:
+        name = await db.scalar(text(f'SELECT name FROM "{schema}".roles WHERE id=:r'), {'r': role_id})
+        template_names.add(name)
+        actual = set((await db.execute(text(
+            f'SELECT p.code FROM "{schema}".permissions p JOIN "{schema}".role_permissions rp '
+            'ON rp.permission_id=p.id WHERE rp.role_id=:r'
+        ), {'r': role_id})).scalars())
+        assert actual == set(STAFF_DEFAULT_PERMISSION_CODES[code])
+        assert 'owner:manage' not in actual
+    assert role_names - template_names == {'admin', 'retailer_operator'}
+    assert await db.scalar(text(f'SELECT state FROM "{schema}".staff_authority')) == 'verified'
+
+
+class SQLReadResult:
+    def __init__(self, rows=()):
+        self.rows = list(rows)
+
+    def mappings(self):
+        return self
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self.rows
+
+    def __iter__(self):
+        return iter(self.rows)
+
+    def one_or_none(self):
+        assert len(self.rows) <= 1
+        return self.rows[0] if self.rows else None
+
+    def first(self):
+        return self.rows[0] if self.rows else None
+
+
+def current_rbac_sql(statement, params, *, schema, user_id, permissions, roles):
+    """Concrete current-authority SQL fixture, not an authorization override."""
+    from types import SimpleNamespace
+    sql = str(statement)
+    if not schema or f'"{schema}".' not in sql:
+        return None
+    if sql.startswith(f'SELECT * FROM "{schema}".staff_authority WHERE singleton=1'):
+        return SQLReadResult([{'state': 'unmapped', 'owner_user_id': None, 'authz_revision': 1}])
+    if sql.startswith(f'SELECT email,full_name,is_active,is_deleted FROM "{schema}".users WHERE id=:u'):
+        assert str(params['u']) == str(user_id)
+        return SQLReadResult([SimpleNamespace(email='fixture@example.com', full_name='Fixture',
+                                              is_active=True, is_deleted=False)])
+    if sql.startswith(f'SELECT * FROM "{schema}".staff_memberships WHERE user_id=:u'):
+        assert str(params['u']) == str(user_id)
+        return SQLReadResult()
+    if sql.startswith(f'SELECT r.id,r.name FROM "{schema}".roles r JOIN'):
+        assert str(params['u']) == str(user_id)
+        return SQLReadResult([SimpleNamespace(id=uuid.uuid5(uuid.NAMESPACE_URL, r), name=r) for r in roles])
+    if sql.startswith(f'SELECT p.code FROM "{schema}".permissions p JOIN'):
+        assert str(params['u']) == str(user_id)
+        return SQLReadResult(sorted(permissions))
+    return None
+
+
+class BoundIdentitySQL:
+    """Only the two live-binding reads consumed by current_identity."""
+    def __init__(self, tenant_id, user_id, roles):
+        self.tenant_id, self.user_id, self.roles = tenant_id, user_id, roles
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc):
+        return False
+
+    def begin_nested(self):
+        return self
+
+    async def execute(self, statement, params):
+        from types import SimpleNamespace
+        sql = str(statement)
+        if sql.startswith('SELECT id FROM public.wholesalers WHERE id=:tid '):
+            assert str(params['tid']) == self.tenant_id
+            return SQLReadResult([SimpleNamespace(id=uuid.UUID(self.tenant_id))])
+        expected = f'SELECT u.id, r.name FROM "t_{uuid.UUID(self.tenant_id).hex}".users u '
+        assert sql.startswith(expected), 'UNMODELED_IDENTITY_SQL'
+        assert str(params['uid']) == self.user_id
+        return SQLReadResult([SimpleNamespace(id=uuid.UUID(self.user_id), name=r) for r in self.roles])
+
+
+async def current_order_ledger(db, order_id):
+    """Retain legacy order references AND each persisted payment's references."""
+    from sqlalchemy import select
+    from models.ledger import LedgerEntry
+
+    result = await db.execute(select(LedgerEntry).where(text(
+        "(reference_type='order' AND reference_id=:oid) OR "
+        "(reference_type='payment' AND reference_id IN "
+        "(SELECT id FROM payments WHERE order_id=:oid AND is_deleted IS FALSE))"
+    )).params(oid=order_id).order_by(LedgerEntry.created_at, LedgerEntry.id))
+    return list(result.scalars())
+
+
+async def canonical_cash(db, order):
+    from services.canonical_payment_service import CanonicalPaymentService
+
+    result = await CanonicalPaymentService().confirm_payment(
+        db=db, order_id=str(order.id), amount=order.total_amount, method='cash',
+        idempotency_key='fixture-cash-' + uuid.uuid4().hex, created_by=str(uuid.uuid4()), transaction_id=None,
+    )
+    assert not result.replayed
+    assert uuid.UUID(str(result.payment_record['id']))
+    return result.order
+
+
+async def assert_payment_ledger(db, order_id, *, expected_receipts=0):
+    """Every real receipt owns exactly its nonzero balanced pair, even partials."""
+    rows = (await db.execute(text(
+        "SELECT p.id,p.amount,p.method,p.receipt_number,count(le.id) AS legs,"
+        "COALESCE(sum(le.amount) FILTER(WHERE le.account_type='cash'),0) AS cash,"
+        "COALESCE(sum(le.amount) FILTER(WHERE le.account_type='receivable'),0) AS receivable "
+        "FROM payments p LEFT JOIN ledger_entries le ON le.reference_type='payment' AND le.reference_id=p.id "
+        "WHERE p.order_id=:o AND p.is_deleted IS FALSE GROUP BY p.id ORDER BY p.id"
+    ), {'o': order_id})).all()
+    assert rows, 'PAYMENT_RECEIPT_MISSING'
+    # Direct /orders/pay does not allocate a printed receipt; cashier
+    # declaration confirmation opts in explicitly. Do not invent that option.
+    assert sum(row.receipt_number is not None for row in rows) == expected_receipts
+    for row in rows:
+        assert row.amount > 0
+        expected = (0, Decimal(0), Decimal(0)) if row.method == 'credit' else (2, row.amount, -row.amount)
+        assert (row.legs, row.cash, row.receivable) == expected, 'PAYMENT_UUID_LEDGER_PAIR_MISSING_OR_DUPLICATED'
+
+
+async def prepare_adjustment_owner(db, actor_id=None):
+    """One explicitly mapped synthetic Owner, through the product binding API."""
+    import hashlib
+    import secrets
+    from core.security import hash_password
+    from services.staff_management_service import StaffManagementService
+    from services.inventory_adjustment_service import InventoryAdjustmentService
+
+    wid, schema = uuid.UUID(str(db.info['tenant_id'])), db.info['tenant_schema']
+    assert schema == 't_' + wid.hex
+    row = (await db.execute(text(f'SELECT state,owner_user_id FROM "{schema}".staff_authority'))).one()
+    if row.state == 'verified':
+        actor = row.owner_user_id
+    else:
+        assert row.state == 'unmapped'
+        reg = await db.scalar(text(
+            "SELECT id FROM public.tenant_registrations WHERE wholesaler_id=:w AND tenant_schema=:s AND status='active'"
+        ), {'w': wid, 's': schema})
+        assert reg is not None
+        actor = actor_id
+        if actor is None:
+            actor = await db.scalar(text(
+                f'INSERT INTO "{schema}".users (email,password_hash,is_active) VALUES (:e,:p,true) RETURNING id'
+            ), {'e': uuid.uuid4().hex + '@example.invalid', 'p': hash_password(secrets.token_urlsafe(32))})
+        await StaffManagementService(db, wid, schema).bind_owner(
+            registration_id=reg, user_id=actor, source='approved_mapping',
+            evidence_digest=hashlib.sha256(('RC4 synthetic fixture ' + str(actor)).encode()).hexdigest(), dry_run=False)
+    db.info['_staff_stock_actor'] = str(actor)
+    service = InventoryAdjustmentService(db, wid, schema)
+    policy = await service.policy(actor)
+    if not policy['owner_direct_enabled']:
+        await service.set_policy(actor, approver_ids=[actor], owner_direct_enabled=True,
+                                 expected_policy_version=policy['policy_version'])
+    return actor
+
+
+async def current_adjustment(db, *, sku_code, quantity, reason, repository=None):
+    """Real audited Owner-direct command; optional repository only parks a read.
+
+    The timing hook executes inside the actual stock snapshot call, before the
+    normal locked-fresh kernel. It never substitutes a stock value or approval.
+    """
+    from services.inventory_adjustment_service import InventoryAdjustmentService
+    from sqlalchemy import select
+    from models.inventory_stock import InventoryStock
+    from models.inventory_movement import InventoryMovement
+
+    schema = db.info['tenant_schema']
+    actor = await db.scalar(text(f'SELECT owner_user_id FROM "{schema}".staff_authority'))
+    assert actor is not None, 'CURRENT_ADJUSTMENT_OWNER_NOT_PREPARED'
+    db.info['_staff_stock_actor'] = str(actor)
+    sku_id = await db.scalar(text('SELECT id FROM skus WHERE sku_code=:c'), {'c': sku_code})
+    service = InventoryAdjustmentService(db, db.info['tenant_id'], schema)
+    if repository is not None:
+        original = service._stock
+        first = True
+        async def observed(sid):
+            nonlocal first
+            if first:
+                first = False
+                await repository.get_stock_by_sku_code(db, sku_code=sku_code)
+            return await original(sid)
+        service._stock = observed
+    snapshot = await service.snapshot(actor, sku_id)
+    request = await service.submit(actor, key=uuid.uuid4().hex, sellable_unit_id=sku_id,
+        quantity_delta=quantity, reason_kind='correction', reason=reason, direct=True,
+        expected_policy_version=snapshot['policy_version'], expected_stock_revision=snapshot['stock_revision'])
+    assert request['status'] == 'applied_direct' and request['decision_actor_id'] == str(actor)
+    movement = (await db.execute(select(InventoryMovement).where(
+        InventoryMovement.manual_adjustment_id == uuid.UUID(request['id'])))).scalar_one()
+    stock = (await db.execute(select(InventoryStock).where(InventoryStock.sku_id == sku_id)
+                             .execution_options(populate_existing=True))).scalar_one()
+    assert movement.reference_id == movement.manual_adjustment_id == uuid.UUID(request['id'])
+    return stock, movement
+
+
 @asynccontextmanager
 async def trading_session():
     """Each economic case owns a real completed KE registration and tenant."""

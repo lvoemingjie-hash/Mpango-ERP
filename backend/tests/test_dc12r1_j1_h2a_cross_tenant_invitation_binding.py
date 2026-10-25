@@ -241,6 +241,8 @@ async def test_invitation_binds_only_to_its_inviting_wholesaler(async_session):
         get_dev_retailer_email_deliveries,
     )
 
+    # The HTTP endpoint commits a successful registration before another request.
+    await async_session.commit()
     clear_dev_email_deliveries()
     # Re-run the register path against a fresh invitation to capture the email
     # delivery (the earlier acceptance already consumed this invitation).

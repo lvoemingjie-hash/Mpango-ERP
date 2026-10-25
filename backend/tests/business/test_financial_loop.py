@@ -3,15 +3,15 @@ v0.2.0 QA — Financial Closed-Loop Integration Test (A项)
 
 Scenario:
     1. Create a DRAFT order for $100
-    2. Transition DRAFT → CONFIRMED  (Ledger: +100 RECEIVABLE, -100 REVENUE)
-    3. Transition CONFIRMED → PAID   (Ledger: +100 CASH, -100 RECEIVABLE)
+    2. Confirm creates inventory reservation and a per-order credit commitment; no ledger.
+    3. Canonical payment records CASH +100 / RECEIVABLE -100 under the payment UUID.
     4. Transition PAID → FULFILLED
 
 Assertions:
-    - After CONFIRMED: RECEIVABLE balance = +100, REVENUE balance = -100
-    - After PAID: CASH balance = +100, RECEIVABLE balance = 0 (net)
+    - After CONFIRMED: zero receivable/revenue ledger; reservation and hold exist.
+    - After PAID: CASH +100, RECEIVABLE -100 (existing-ledger-only scope).
     - After FULFILLED: Order status is FULFILLED (terminal)
-    - Inventory deduction is NOT yet implemented (documented gap)
+    - Fulfillment consumes reserved inventory exactly once.
 """
 import uuid
 from decimal import Decimal
@@ -24,6 +24,7 @@ from models.order import Order, OrderStatus
 from services.ledger_service import LedgerService
 from services.order_command_service import OrderCommandService
 from services.order_service import OrderService
+from tests.rc2_current_contract_support import canonical_cash, current_order_ledger
 from tests.order_state_r2.contract_helpers import ensure_binding as _r2_ensure_binding
 from tests.rc2_current_contract_support import current_trading_session as async_session, verified_from_template
 
@@ -117,7 +118,7 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
     )
 
     # ── Step 2: CONFIRMED → PAID ──────────────────────────────────
-    order = (await OrderCommandService(async_session).apply_payment_transition(order.id, OrderState.PAID)).order
+    order = await canonical_cash(async_session, order)
     await async_session.commit()
 
     assert order.status == OrderStatus.PAID
@@ -143,7 +144,7 @@ async def test_order_confirm_pay_fulfill_ledger_entries(async_session):
     assert order.status == OrderStatus.FULFILLED
 
     # ── Step 4: Verify all ledger entries ─────────────────────────
-    entries = await ledger_svc.get_entries_for_reference("order", order.id)
+    entries = await current_order_ledger(async_session, order.id)
     assert len(entries) == 2, (
         f"Expected 2 ledger entries (payment-settlement only under the R1 "
         f"frozen decision), got {len(entries)}"
@@ -221,12 +222,7 @@ async def test_ledger_entries_are_immutable(async_session):
 
 @pytest.mark.asyncio
 async def test_inventory_deduction_gap_documented(async_session):
-    """
-    Document that inventory deduction on FULFILLED is NOT yet implemented.
-
-    The OrderService._emit_state_changed_event is a TODO stub.
-    This test explicitly verifies the gap exists so it can be tracked.
-    """
+    """Historical node ID retained; fulfillment now has a real stock effect."""
     tenant_id = async_session.info["tenant_id"]
     retailer_id = str(uuid.uuid4())
 
@@ -258,7 +254,7 @@ async def test_inventory_deduction_gap_documented(async_session):
     await OrderCommandService(async_session).confirm_order(order.id, updated_by=str(uuid.uuid4()))
 
     await async_session.commit()
-    (await OrderCommandService(async_session).apply_payment_transition(order.id, OrderState.PAID)).order
+    await canonical_cash(async_session, order)
     await async_session.commit()
     order = (await OrderCommandService(async_session).fulfill_order(order.id)).order
 
@@ -266,12 +262,17 @@ async def test_inventory_deduction_gap_documented(async_session):
 
     assert order.status == OrderStatus.FULFILLED
 
-    # Verify: No inventory deduction logic exists in OrderService.transition
-    # The _emit_state_changed_event method is a pass-through stub
-    # This test passes to document the gap — when inventory deduction is
-    # implemented, this test should be updated to assert stock changes.
+    from sqlalchemy import text
+    stock = (await async_session.execute(text(
+        'SELECT quantity_on_hand,quantity_reserved FROM inventory_stocks WHERE sku_id=:s'
+    ), {'s': uuid.UUID(_sku)})).one()
+    assert tuple(stock) == (Decimal("999"), Decimal("0"))
+    movements = (await async_session.execute(text(
+        "SELECT quantity FROM inventory_movements WHERE reference_type='order' AND reference_id=:o"
+    ), {'o': order.id})).scalars().all()
+    assert movements == [Decimal("-1")]
     ledger_svc = LedgerService(async_session)
-    entries = await ledger_svc.get_entries_for_reference("order", order.id)
+    entries = await current_order_ledger(async_session, order.id)
 
     # Only 2 entries (pay settlement), no confirmation or inventory entries
     assert len(entries) == 2, (

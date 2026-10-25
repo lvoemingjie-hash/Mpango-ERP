@@ -58,19 +58,26 @@ FORBIDDEN_PUBLIC_FIELD_NAMES = (
     "permission_id",
     "permission_ids",
 )
+_FIXTURE_SCOPE = None
 
 
 @pytest.fixture(autouse=True)
 async def _u6i6_backend_gate():
     await _ensure_tables()
-    await _clear_u6i6_rows_and_schemas()
+    from tests.rc2_current_contract_support import TenantFixtureScope
+    global _FIXTURE_SCOPE
+    scope = await TenantFixtureScope.begin(AsyncSessionLocal)
+    _FIXTURE_SCOPE = scope
     clear_dev_email_deliveries()
     try:
         yield
     finally:
         app.dependency_overrides.pop(get_db_session, None)
-        await _clear_u6i6_rows_and_schemas()
-        clear_dev_email_deliveries()
+        try:
+            await scope.retire()
+        finally:
+            _FIXTURE_SCOPE = None
+            clear_dev_email_deliveries()
 
 
 async def _ensure_tables() -> None:
@@ -91,39 +98,6 @@ async def _ensure_tables() -> None:
         await connection.run_sync(OwnerCredentialSetupToken.__table__.create, checkfirst=True)
 
 
-async def _clear_u6i6_rows_and_schemas() -> None:
-    async with AsyncSessionLocal() as session:
-        await session.execute(text("SET search_path TO public"))
-        rows = (
-            await session.execute(
-                text(
-                    "SELECT wholesaler_id, tenant_schema FROM public.tenant_registrations "
-                    "WHERE owner_email LIKE 'u6i6_%@example.com'"
-                )
-            )
-        ).mappings().all()
-        wholesaler_ids = [row["wholesaler_id"] for row in rows if row["wholesaler_id"] is not None]
-        for schema in {row["tenant_schema"] for row in rows if row["tenant_schema"] is not None}:
-            if schema.startswith("t_") and schema.replace("_", "").isalnum():
-                await session.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
-        await session.execute(
-            text(
-                "DELETE FROM public.owner_credential_setup_tokens WHERE registration_id IN ("
-                "SELECT id FROM public.tenant_registrations "
-                "WHERE owner_email LIKE 'u6i6_%@example.com')"
-            )
-        )
-        await session.execute(
-            text("DELETE FROM public.tenant_registrations WHERE owner_email LIKE 'u6i6_%@example.com'")
-        )
-        if wholesaler_ids:
-            await session.execute(
-                text("DELETE FROM public.wholesalers WHERE id = ANY(:wholesaler_ids)"),
-                {"wholesaler_ids": wholesaler_ids},
-            )
-        await session.commit()
-
-
 async def _client() -> AsyncClient:
     async def _override_public_db():
         async with AsyncSessionLocal() as session:
@@ -137,7 +111,8 @@ async def _client() -> AsyncClient:
 
     app.dependency_overrides[get_db_session] = _override_public_db
     transport = ASGITransport(app=app, raise_app_exceptions=False)
-    return AsyncClient(transport=transport, base_url="http://testserver")
+    return AsyncClient(transport=transport, base_url="http://testserver",
+                       event_hooks=_FIXTURE_SCOPE.http_hooks())
 
 
 def _signup_payload(email: str) -> dict[str, str]:
@@ -433,11 +408,14 @@ async def test_full_owner_onboarding_backend_chain_proves_hash_only_tokens_and_a
         RETAILER_OPERATOR_PERMISSION_CODES
     )
     assert await _table_count(tenant_schema, "users") == 1
-    assert await _table_count(tenant_schema, "roles") == 2
+    async with AsyncSessionLocal() as roles_db:
+        from tests.rc2_current_contract_support import assert_current_owner_roles
+        await assert_current_owner_roles(roles_db, tenant_schema)
     assert await _table_count(tenant_schema, "permissions") == len(CANONICAL_TENANT_PERMISSION_CODES)
     assert await _table_count(tenant_schema, "user_roles") == 1
     assert await _table_count(tenant_schema, "role_permissions") == (
         len(CANONICAL_ADMIN_PERMISSION_CODES) + len(RETAILER_OPERATOR_PERMISSION_CODES)
+        + sum(map(len, __import__("core.permission_registry", fromlist=["STAFF_DEFAULT_PERMISSION_CODES"]).STAFF_DEFAULT_PERMISSION_CODES.values()))
     )
 
     password_hash_after_setup = owner_admin["password_hash"]

@@ -89,7 +89,8 @@ class TestScenarioA_IdentityJWTCannotAccessBusinessData:
         """
         # Create an identity token (no tenant context)
         identity_token = create_identity_token(
-            user_id="user-123",
+            user_id="00000000-0000-0000-0000-000000000011",
+            tenant_user_map={"00000000-0000-0000-0000-000000000022": "00000000-0000-0000-0000-000000000011"},
             roles=["admin"],
             token_type="access",
         )
@@ -112,7 +113,11 @@ class TestScenarioA_IdentityJWTCannotAccessBusinessData:
         mock_request.headers = {"Authorization": f"Bearer {identity_token}"}
 
         # Authenticate - should succeed
-        auth_ctx = await strategy.authenticate(mock_request)
+        from tests.rc2_current_contract_support import BoundIdentitySQL
+        session = BoundIdentitySQL("00000000-0000-0000-0000-000000000022",
+            "00000000-0000-0000-0000-000000000011", ["admin", "user"])
+        with patch("database.session.AsyncSessionLocal", return_value=session):
+            auth_ctx = await strategy.authenticate(mock_request)
         assert auth_ctx is not None
         assert auth_ctx.token.is_identity_only is True
 
@@ -291,7 +296,8 @@ class TestMiddlewareBehavior:
 
         # Create identity token
         identity_token = create_identity_token(
-            user_id="test-user",
+            user_id="00000000-0000-0000-0000-000000000011",
+            tenant_user_map={"00000000-0000-0000-0000-000000000022": "00000000-0000-0000-0000-000000000011"},
             roles=["user"],
             token_type="access",
         )
@@ -301,7 +307,11 @@ class TestMiddlewareBehavior:
         mock_request.headers = {"Authorization": f"Bearer {identity_token}"}
 
         # Authenticate
-        auth_ctx = await strategy.authenticate(mock_request)
+        from tests.rc2_current_contract_support import BoundIdentitySQL
+        session = BoundIdentitySQL("00000000-0000-0000-0000-000000000022",
+            "00000000-0000-0000-0000-000000000011", ["admin", "user"])
+        with patch("database.session.AsyncSessionLocal", return_value=session):
+            auth_ctx = await strategy.authenticate(mock_request)
         assert auth_ctx is not None, "authenticate() must return AuthContext for valid token"
 
         # Resolve tenant context

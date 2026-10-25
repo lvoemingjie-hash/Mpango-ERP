@@ -1409,7 +1409,17 @@ async def _build_request_with_retailer_context(tenant_id: str, tenant_schema: st
     request = Request(scope)
     auth_ctx = AuthContext(token=token, raw_token="retailer-test-token")
     attach_auth_context(request, auth_ctx)
-    tenant_ctx = TenantContext(tenant_id=tenant_id, tenant_schema=tenant_schema, session=None, user=_FakeUser())
+    from types import SimpleNamespace
+    from tests.rc2_current_contract_support import current_rbac_sql
+    user = _FakeUser()
+    permissions = {p.code for r in user.roles for p in r.permissions}
+    async def execute(statement, params=None):
+        result = current_rbac_sql(statement, params, schema=tenant_schema,
+            user_id=token.user_id, permissions=permissions, roles=["retailer_operator"])
+        assert result is not None, "UNMODELED_RETAILER_AUTHORITY_SQL"
+        return result
+    tenant_ctx = TenantContext(tenant_id=tenant_id, tenant_schema=tenant_schema,
+        session=SimpleNamespace(execute=execute), user=user)
     attach_tenant_context(request, tenant_ctx)
     return request
 

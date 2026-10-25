@@ -700,7 +700,7 @@ def _git_bytes(repo, *argv):
 
 
 # This is an implementation-side source-continuation proposal, not CTO acceptance.
-REUSE_APPROVED_REF = "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d"
+REUSE_APPROVED_REF = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
 # Rebuild inputs/recipe are declared in intake_sources and the delivery receipt.
 REUSE_INTAKE_VERSION = 9
@@ -2606,8 +2606,9 @@ RC3_FIXTURE_SCOPE_INTAKE = {
 def _reuse_expected_metadata(repo):
     """Return an independent copy of the versioned fixed intake.
 
-    No coverage-supplied hash, machine path, network or side Git object
-    participates. Historical execution identities remain unchanged.
+    No working-coverage hash, machine path, network or unavailable side
+    intake participates. Only the fixed approved coverage blob supplies
+    the previous RC4 metadata; historical execution identities stay intact.
     """
     expected = json.loads(json.dumps(REUSE_EXPECTED_METADATA))
     expected["previous_rc2_source_intake"] = expected["current_source_intake"]
@@ -2711,14 +2712,15 @@ def _reuse_expected_metadata(repo):
     expected["previous_rc3_selection_binding"] = json.loads(json.dumps(expected["selection_binding"]))
     expected["previous_rc3_dependency_assessments"] = json.loads(json.dumps(expected["current_dependency_assessments"]))
     expected["previous_rc3_attachment_deltas"] = json.loads(json.dumps(expected["current_attachment_deltas"]))
+    previous_ci_ref = "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d"
     expected.update(record="RC4_CURRENT_SOURCE_CONTINUATION_PROPOSAL_V1",
                     authorization="CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
                     intake_version=REUSE_INTAKE_VERSION,
                     intake_status="AUTHOR_LOCAL_SOURCE_PROPOSAL_PENDING_CTO",
-                    product_anchor=REUSE_APPROVED_REF)
+                    product_anchor=previous_ci_ref)
     expected["current_source_intake"] = {
         "authorization": expected["authorization"],
-        "source_ref": REUSE_APPROVED_REF,
+        "source_ref": previous_ci_ref,
         "source_tree": "a32753d6f3d7c5388d7a522e1c04ac298e298d70",
         "source_parent": "bb625e893ab1ec3c50c7eb0cfeedf4a73e9f8f6b",
         "backend_tree": "c175cd58527923e4bab3e69c25110dfc7b5be1ad",
@@ -2733,7 +2735,7 @@ def _reuse_expected_metadata(repo):
                                 "nodes": 4505, "canonical_definition_changed": True},
     }
     expected["selection_binding"] = {
-        "authority": expected["authorization"], "source_ref": REUSE_APPROVED_REF,
+        "authority": expected["authorization"], "source_ref": previous_ci_ref,
         "discovered_files": 277, "ordinary_files": 250, "dedicated_files": 21,
         "ignores": 6, "union": 271, "intersection": 0, "unknown": 0,
     }
@@ -2745,7 +2747,7 @@ def _reuse_expected_metadata(repo):
         for item in expected["previous_rc3_dependency_assessments"]
     ]
     for delta in expected["current_attachment_deltas"]:
-        delta["current_source_ref"] = REUSE_APPROVED_REF
+        delta["current_source_ref"] = previous_ci_ref
     expected["ordinary_canonical_status"] = "AUTHOR_CURRENT_4505_NATIVE_COLLECTIONS__NO_FULL_BODY_PASS__CTO_PENDING"
     expected["additional_bounded_evidence"] = [{
         "id": "M01_R4_single_instance_UG_revoked_cached_replay",
@@ -2764,6 +2766,30 @@ def _reuse_expected_metadata(repo):
         "M01 R4 is a named single-instance UG chain on bb625e89, not all audit/cache/rcj coverage.",
         "No hosted CI, full backend body execution, independent V3 or release readiness is established here.",
     ]
+    previous = json.loads(_git_bytes(
+        repo, "show", REUSE_APPROVED_REF + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+    ))
+    expected["previous_rc4_source_intake"] = previous["current_source_intake"]
+    expected["previous_rc4_selection_binding"] = previous["selection_binding"]
+    expected.update(record="RC4_FIXED_CI_SOURCE_BINDING_V1",
+                    authorization="CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
+                    intake_status="FIXED_SOURCE_BINDING_SUCCESSOR_PENDING_CTO",
+                    product_anchor=REUSE_APPROVED_REF)
+    current = json.loads(json.dumps(previous["current_source_intake"]))
+    current.update(
+        authorization=expected["authorization"], source_ref=REUSE_APPROVED_REF,
+        source_tree="875c6b3a09e6745859074b8353d21eb49b97ed53",
+        source_parent="7500acbf82c492e12a0f2ff9e8ce5ab495eece3b",
+        backend_tree="782c3afdebe6c664ddaf8a58c430751f91e294f0",
+        frontend_tree="17c477ca022b0dc86118f481fd4ded907e92bcf8",
+        authority_status="SOURCE_COMPARISON_ANCHOR_AUTHORIZED__SUCCESSOR_PENDING_CTO",
+        source_contract_commit=REUSE_APPROVED_REF,
+        current_fresh_ordinary_collection="UNCHANGED_4505_DEFINITION__RETAINED_COLLECTIONS_ONLY",
+        historical_attachment_deltas_preserved_at_previous_ref=True,
+    )
+    current["ordinary_definition"]["canonical_definition_changed"] = False
+    expected["current_source_intake"] = current
+    expected["selection_binding"].update(authority=expected["authorization"], source_ref=REUSE_APPROVED_REF)
     return expected
 
 

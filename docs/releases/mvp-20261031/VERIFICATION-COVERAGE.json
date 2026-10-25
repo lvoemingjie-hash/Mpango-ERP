@@ -1,14 +1,14 @@
 {
-  "record": "RC4_CURRENT_SOURCE_CONTINUATION_PROPOSAL_V1",
-  "authorization": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
+  "record": "RC4_FIXED_CI_SOURCE_BINDING_V1",
+  "authorization": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
   "ruling": {
     "path": "AI_REPORT_INBOX/rc1-finite-closure-cto-20261015/CTO-REVIEW.zh-CN.md",
     "sha256": "37fa77e5ff1889c884f58ab929fe9ed06a7489446c933e9ddb81832a4c31a20c",
     "route": "APPROVED_FINITE_HYBRID_ROUTE__IMPLEMENTATION_AND_LOCAL_VALIDATION_ONLY"
   },
   "selection_binding": {
-    "authority": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
-    "source_ref": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
+    "authority": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
+    "source_ref": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
     "discovered_files": 277,
     "ordinary_files": 250,
     "dedicated_files": 21,
@@ -650,8 +650,8 @@
     "No hosted CI, full backend body execution, independent V3 or release readiness is established here."
   ],
   "intake_version": 9,
-  "intake_status": "AUTHOR_LOCAL_SOURCE_PROPOSAL_PENDING_CTO",
-  "product_anchor": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
+  "intake_status": "FIXED_SOURCE_BINDING_SUCCESSOR_PENDING_CTO",
+  "product_anchor": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
   "intake_sources": [
     {
       "relative_record": "mvp-rc2-post-images-cto-review-20261017/CTO-REVIEW.zh-CN.md",
@@ -695,6 +695,28 @@
     }
   ],
   "current_source_intake": {
+    "authorization": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
+    "source_ref": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+    "source_tree": "875c6b3a09e6745859074b8353d21eb49b97ed53",
+    "source_parent": "7500acbf82c492e12a0f2ff9e8ce5ab495eece3b",
+    "backend_tree": "782c3afdebe6c664ddaf8a58c430751f91e294f0",
+    "frontend_tree": "17c477ca022b0dc86118f481fd4ded907e92bcf8",
+    "authority_status": "SOURCE_COMPARISON_ANCHOR_AUTHORIZED__SUCCESSOR_PENDING_CTO",
+    "source_contract_commit": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+    "independent_v3_this_intake": "NOT_RUN",
+    "current_fresh_ordinary_collection": "UNCHANGED_4505_DEFINITION__RETAINED_COLLECTIONS_ONLY",
+    "historical_results_reexecuted": false,
+    "hosted_ci_this_intake": "NOT_RUN",
+    "ordinary_definition": {
+      "files": 250,
+      "dedicated_files": 21,
+      "ignores": 6,
+      "nodes": 4505,
+      "canonical_definition_changed": false
+    },
+    "historical_attachment_deltas_preserved_at_previous_ref": true
+  },
+  "previous_rc4_source_intake": {
     "authorization": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
     "source_ref": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
     "source_tree": "a32753d6f3d7c5388d7a522e1c04ac298e298d70",
@@ -714,6 +736,17 @@
       "nodes": 4505,
       "canonical_definition_changed": true
     }
+  },
+  "previous_rc4_selection_binding": {
+    "authority": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
+    "source_ref": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
+    "discovered_files": 277,
+    "ordinary_files": 250,
+    "dedicated_files": 21,
+    "ignores": 6,
+    "union": 271,
+    "intersection": 0,
+    "unknown": 0
   },
   "current_attachment_deltas": [
     {

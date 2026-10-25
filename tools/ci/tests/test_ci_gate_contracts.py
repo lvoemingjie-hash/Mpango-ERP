@@ -1276,7 +1276,7 @@ class TestR6ShardPlanControls:
         assert module.CANONICAL_NODEID_SHA256 == {
             shard: row['canonical_sha256'] for shard, row in selection['shards'].items()
         }
-        assert selection['source_ref'] == TestReuseValidityMachineCheck.APPROVED
+        assert selection['source_ref'] == TestReuseValidityMachineCheck.HISTORICAL_RC4_SOURCE_REF
         assert selection['total_nodes'] == 4505 and selection['all_native_collect_rc_zero']
 
     def test_same_count_swapped_nodeid_is_red(self, tmp_path):
@@ -3916,7 +3916,8 @@ class TestWrapperWrongHeadRefusal:
 class TestReuseValidityMachineCheck:
     """Approved Git objects, complete metadata and real admission controls."""
 
-    APPROVED = "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d"
+    APPROVED = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
+    HISTORICAL_RC4_SOURCE_REF = "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d"
     HISTORICAL_COVERAGE_REF = "bac775df8257ea2fd626d6de425f3564748b37f2"
 
     def _coverage(self, tmp_path):
@@ -4179,6 +4180,15 @@ PY
         assert coverage["bindings"][:-2] == historical["bindings"]
         assert coverage["recovered_native_node_maps"] == historical["recovered_native_node_maps"]
         assert coverage["previous_rc2_source_intake"] == historical["current_source_intake"]
+        previous_rc4 = json.loads(subprocess.check_output([
+            "git", "show", self.APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+        ], cwd=REPO_ROOT, text=True))
+        assert coverage["previous_rc4_source_intake"] == previous_rc4["current_source_intake"]
+        assert coverage["previous_rc4_source_intake"]["source_ref"] == self.HISTORICAL_RC4_SOURCE_REF
+        assert coverage["previous_rc4_selection_binding"] == previous_rc4["selection_binding"]
+        for key in ("bindings", "recovered_native_node_maps", "current_attachment_deltas",
+                    "current_dependency_assessments", "explicit_non_claims"):
+            assert coverage[key] == previous_rc4[key]
         current = coverage["current_source_intake"]
         assert current["source_ref"] == self.APPROVED
         for subtree, key in (("backend", "backend_tree"), ("frontend", "frontend_tree")):
@@ -4190,8 +4200,10 @@ PY
             "canonical_definition_changed": False,
         }
         assert current["ordinary_definition"]["files"] == 250
-        assert current["ordinary_definition"]["canonical_definition_changed"] is True
-        assert current["authority_status"] == "SOURCE_CONTINUATION_PROPOSED__CTO_REVIEW_PENDING"
+        assert current["ordinary_definition"]["canonical_definition_changed"] is False
+        assert current["authority_status"] == "SOURCE_COMPARISON_ANCHOR_AUTHORIZED__SUCCESSOR_PENDING_CTO"
+        assert current["source_contract_commit"] == self.APPROVED
+        assert current["historical_attachment_deltas_preserved_at_previous_ref"] is True
         assert current["historical_results_reexecuted"] is False
         assert current["hosted_ci_this_intake"] == "NOT_RUN"
         accepted = next(b for b in coverage["bindings"] if b["family"] == "s3_negotiation")

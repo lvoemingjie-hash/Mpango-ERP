@@ -105,12 +105,14 @@ _HISTORICAL_CANONICAL_DIGEST_INTS = {
     "invariants-jwt": 14225403732936862956787750016881398974573020047247214588285646003204590389255,
     "task-managed-pg": 26202434481483022035822387896696908997049812747828017617325771995640059934965,
 }
-# Current values come from the five native RC4 collections, not old counts.
+# Three legs retain their native RC4 bindings. The two changed legs are
+# derived by the CTO-reviewed seven-node profile transfer, NOT fresh collects.
+# Native collect-only under both intended profiles remains an admission gate.
 CANONICAL_NODEID_SHA256 = {
     "runtime-a": "6eed0a210105843cc4c82be0c919f4f5962b325fe600d7a7dffcf1e9dcdc4472",
-    "runtime-b": "88092068a62c32710a9e83831c3b6de43a0d5105a00843b28b810d05ac8ef59b",
+    "runtime-b": "03ad53c5359e0848a2afd21202a72450419014a8623c6da5e463e610f84ef7fe",
     "topology": "c5b860246b7e6829d45924e4f608da4250e27ad519d2fae00eea11a268a38200",
-    "invariants-jwt": "9babd523542d1937d0418cf1d5b01fffb90886d41988164e2b4e3c9feb0c4b2e",
+    "invariants-jwt": "33353c363b13460c544aa14a30326d7c8b4dd51161acac208641a13b8e33868b",
     "task-managed-pg": "39ee0d676ac12ae3fcd28a06908f2a6eede9182c325c4819067ed381a88038f5",
 }
 
@@ -2784,10 +2786,20 @@ def _reuse_expected_metadata(repo):
         frontend_tree="17c477ca022b0dc86118f481fd4ded907e92bcf8",
         authority_status="SOURCE_COMPARISON_ANCHOR_AUTHORIZED__SUCCESSOR_PENDING_CTO",
         source_contract_commit=REUSE_APPROVED_REF,
-        current_fresh_ordinary_collection="UNCHANGED_4505_DEFINITION__RETAINED_COLLECTIONS_ONLY",
+        current_fresh_ordinary_collection="DERIVED_4505_PROFILE_TRANSFER__AFFECTED_NATIVE_COLLECT_NOT_RUN",
         historical_attachment_deltas_preserved_at_previous_ref=True,
     )
-    current["ordinary_definition"]["canonical_definition_changed"] = False
+    current["ordinary_definition"].update(
+        canonical_definition_changed=True, global_node_set_changed=False,
+        profile_membership_changed=True,
+    )
+    current["profile_transfer"] = {
+        "file": "tests/test_pw1r3_rate_limit_context.py",
+        "source": "runtime-b", "destination": "invariants-jwt", "nodes": 7,
+        "evidence": "CTO_REVIEWED_EXISTING_NATIVE_LIST_DERIVATION_NOT_FRESH_COLLECT",
+        "current_affected_native_collection": "NOT_RUN",
+    }
+    expected["ordinary_canonical_status"] = "DERIVED_CURRENT_PROFILE_CANONICAL__AFFECTED_NATIVE_COLLECTION_PENDING"
     expected["current_source_intake"] = current
     expected["selection_binding"].update(authority=expected["authorization"], source_ref=REUSE_APPROVED_REF)
     return expected

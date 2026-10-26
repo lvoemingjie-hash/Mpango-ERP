@@ -680,7 +680,7 @@
       "sha256": "8dbcc00908bade6ffebbd5d5f5beeb04f9ea76476b891c1e54a82cb0287dac58"
     }
   ],
-  "ordinary_canonical_status": "AUTHOR_CURRENT_4505_NATIVE_COLLECTIONS__NO_FULL_BODY_PASS__CTO_PENDING",
+  "ordinary_canonical_status": "DERIVED_CURRENT_PROFILE_CANONICAL__AFFECTED_NATIVE_COLLECTION_PENDING",
   "frozen_external_paths": [
     "docker-compose.yml",
     "nginx/gateway.conf",
@@ -704,7 +704,7 @@
     "authority_status": "SOURCE_COMPARISON_ANCHOR_AUTHORIZED__SUCCESSOR_PENDING_CTO",
     "source_contract_commit": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
     "independent_v3_this_intake": "NOT_RUN",
-    "current_fresh_ordinary_collection": "UNCHANGED_4505_DEFINITION__RETAINED_COLLECTIONS_ONLY",
+    "current_fresh_ordinary_collection": "DERIVED_4505_PROFILE_TRANSFER__AFFECTED_NATIVE_COLLECT_NOT_RUN",
     "historical_results_reexecuted": false,
     "hosted_ci_this_intake": "NOT_RUN",
     "ordinary_definition": {
@@ -712,9 +712,19 @@
       "dedicated_files": 21,
       "ignores": 6,
       "nodes": 4505,
-      "canonical_definition_changed": false
+      "canonical_definition_changed": true,
+      "global_node_set_changed": false,
+      "profile_membership_changed": true
     },
-    "historical_attachment_deltas_preserved_at_previous_ref": true
+    "historical_attachment_deltas_preserved_at_previous_ref": true,
+    "profile_transfer": {
+      "file": "tests/test_pw1r3_rate_limit_context.py",
+      "source": "runtime-b",
+      "destination": "invariants-jwt",
+      "nodes": 7,
+      "evidence": "CTO_REVIEWED_EXISTING_NATIVE_LIST_DERIVATION_NOT_FRESH_COLLECT",
+      "current_affected_native_collection": "NOT_RUN"
+    }
   },
   "previous_rc4_source_intake": {
     "authorization": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",

@@ -52,8 +52,8 @@ jobs:
           - shard: runtime-b
             job-timeout-minutes: 30
             pytest-timeout: 18m
-            expected-files: "96"
-            expected-nodes: "1637"
+            expected-files: "95"
+            expected-nodes: "1630"
           - shard: topology
             job-timeout-minutes: 50
             pytest-timeout: 38m
@@ -62,8 +62,8 @@ jobs:
           - shard: invariants-jwt
             job-timeout-minutes: 25
             pytest-timeout: 13m
-            expected-files: "17"
-            expected-nodes: "311"
+            expected-files: "18"
+            expected-nodes: "318"
           - shard: task-managed-pg
             job-timeout-minutes: 25
             pytest-timeout: 13m

@@ -411,9 +411,9 @@ class TestDeployWorkflowContract:
         include = strategy["matrix"]["include"]
         expected = {
             "runtime-a": (30, "18m", "94", "1667"),
-            "runtime-b": (30, "18m", "96", "1637"),
+            "runtime-b": (30, "18m", "95", "1630"),
             "topology": (50, "38m", "39", "798"),
-            "invariants-jwt": (25, "13m", "17", "311"),
+            "invariants-jwt": (25, "13m", "18", "318"),
             "task-managed-pg": (25, "13m", "4", "92"),
         }
         assert {leg["shard"] for leg in include} == set(expected)
@@ -1176,7 +1176,9 @@ class TestTopologyHelperClassification:
         assert self.TARGET in plan["profiles"]["topology"]["files"]
         assert self.TARGET not in plan["profiles"]["runtime"]["files"]
         assert plan["profiles"]["topology"]["count"] == 39
-        assert plan["profiles"]["runtime"]["count"] == 190
+        assert plan["profiles"]["runtime"]["count"] == 189
+        assert "tests/test_pw1r3_rate_limit_context.py" in plan["profiles"]["invariants-jwt"]["files"]
+        assert "tests/test_pw1r3_rate_limit_context.py" not in plan["profiles"]["runtime"]["files"]
         assert plan["selection_counts"]["partition_total"] == 250
         # pytest_plugins STRING references do not move a file (R4 evidence:
         # both files passed under the runtime profile)
@@ -1205,7 +1207,7 @@ class TestTopologyHelperClassification:
             "pre-fix bytes must classify the importer as runtime (control RED direction)"
         )
         assert self.TARGET not in plan["profiles"]["topology"]["files"]
-        assert plan["profiles"]["runtime"]["count"] == 191
+        assert plan["profiles"]["runtime"]["count"] == 190
 
     def test_runtime_negative_without_topology_imports(self, tmp_path):
         plan = self._preflight_plan(tmp_path, BOOTSTRAP)
@@ -1267,7 +1269,7 @@ class TestR6ShardPlanControls:
         ).hexdigest()
 
     def test_canonical_constants_equal_cto_table(self):
-        """RC4 native frozen selection is an author proposal, not a CTO table."""
+        """A seven-node profile transfer is derived, not a fresh collection."""
         import importlib.util
         spec = importlib.util.spec_from_file_location("pte_r6r1", EVIDENCE_TOOL)
         module = importlib.util.module_from_spec(spec)
@@ -1276,8 +1278,50 @@ class TestR6ShardPlanControls:
         assert module.CANONICAL_NODEID_SHA256 == {
             shard: row['canonical_sha256'] for shard, row in selection['shards'].items()
         }
-        assert selection['source_ref'] == TestReuseValidityMachineCheck.HISTORICAL_RC4_SOURCE_REF
-        assert selection['total_nodes'] == 4505 and selection['all_native_collect_rc_zero']
+        assert selection['source_ref'] == TestReuseValidityMachineCheck.APPROVED
+        assert selection['historical_native_source_ref'] == TestReuseValidityMachineCheck.HISTORICAL_RC4_SOURCE_REF
+        assert selection['total_nodes'] == 4505
+        assert selection['all_native_collect_rc_zero'] is None
+        assert selection['historical_all_native_collect_rc_zero'] is True
+        assert selection['current_affected_native_collection'] == "NOT_RUN"
+        old = json.loads(subprocess.check_output([
+            "git", "show", TestReuseValidityMachineCheck.APPROVED
+            + ":docs/releases/mvp-20261031/RC4-TEST-SELECTION.json"
+        ], cwd=REPO_ROOT, text=True))
+        moved = "tests/test_pw1r3_rate_limit_context.py"
+        assert old["shards"]["runtime-b"]["node_count_per_file"][moved] == 7
+        fixed = {
+            "runtime-a": (94, 1667, old["shards"]["runtime-a"]["canonical_sha256"]),
+            "runtime-b": (95, 1630, "03ad53c5359e0848a2afd21202a72450419014a8623c6da5e463e610f84ef7fe"),
+            "topology": (39, 798, old["shards"]["topology"]["canonical_sha256"]),
+            "invariants-jwt": (18, 318, "33353c363b13460c544aa14a30326d7c8b4dd51161acac208641a13b8e33868b"),
+            "task-managed-pg": (4, 92, old["shards"]["task-managed-pg"]["canonical_sha256"]),
+        }
+        all_files = []
+        for shard, (files, nodes, digest) in fixed.items():
+            row, prior = selection["shards"][shard], old["shards"][shard]
+            assert (row["file_count"], row["node_count"], row["canonical_sha256"]) == (files, nodes, digest)
+            expected_files = set(prior["files"])
+            expected_per_file = dict(prior["node_count_per_file"])
+            if shard == "runtime-b":
+                expected_files.remove(moved)
+                del expected_per_file[moved]
+            elif shard == "invariants-jwt":
+                expected_files.add(moved)
+                expected_per_file[moved] = 7
+            else:
+                assert row == prior
+            assert row["files"] == sorted(expected_files)
+            assert row["node_count_per_file"] == expected_per_file
+            assert sum(row["node_count_per_file"].values()) == nodes
+            if shard in ("runtime-b", "invariants-jwt"):
+                assert row["current_native_collect"] == "NOT_RUN"
+                assert "collect_rc" not in row
+            all_files.extend(row["files"])
+        assert len(all_files) == len(set(all_files)) == 250
+        assert set(all_files) == {
+            path for row in old["shards"].values() for path in row["files"]
+        }
 
     def test_same_count_swapped_nodeid_is_red(self, tmp_path):
         """F-04 (R6R1): the exact node-set gate — a collect with the SAME
@@ -3733,7 +3777,7 @@ class TestR6R5HostedPreconditions:
     def test_e03_helper_and_backend_frozen(self):
         diff = self._git(
             "diff", "--name-only",
-            "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d", "HEAD",
+            TestReuseValidityMachineCheck.APPROVED, "HEAD",
             "--", "backend",
             cwd=REPO_ROOT,
         )
@@ -4063,10 +4107,12 @@ class TestReuseValidityMachineCheck:
             'tests/test_staff_permissions.py', 'tests/test_staff_credential_compatibility.py',
             'tests/test_inventory_manual_adjustment_http.py', 'tests/test_stock_adjustment_approval.py',
             'tests/audit_fixes/test_order_export_exit_r01.py', 'tests/audit_fixes/test_http_regressions.py',
+            'tests/test_pw1r3_rate_limit_context.py',
         }
         assert required <= native
         assert required.isdisjoint(plan['dedicated_evidence']['files'])
-        assert plan['profiles']['invariants-jwt']['count'] == 17
+        assert plan['profiles']['invariants-jwt']['count'] == 18
+        assert 'tests/test_pw1r3_rate_limit_context.py' not in plan['profiles']['runtime']['files']
         assert plan['selection_counts']['ordinary'] == 250
         assert len(plan['frozen_ignores']) == 6
 
@@ -4200,7 +4246,16 @@ PY
             "canonical_definition_changed": False,
         }
         assert current["ordinary_definition"]["files"] == 250
-        assert current["ordinary_definition"]["canonical_definition_changed"] is False
+        assert current["ordinary_definition"]["canonical_definition_changed"] is True
+        assert current["ordinary_definition"]["global_node_set_changed"] is False
+        assert current["ordinary_definition"]["profile_membership_changed"] is True
+        assert current["current_fresh_ordinary_collection"] == "DERIVED_4505_PROFILE_TRANSFER__AFFECTED_NATIVE_COLLECT_NOT_RUN"
+        assert current["profile_transfer"] == {
+            "file": "tests/test_pw1r3_rate_limit_context.py",
+            "source": "runtime-b", "destination": "invariants-jwt", "nodes": 7,
+            "evidence": "CTO_REVIEWED_EXISTING_NATIVE_LIST_DERIVATION_NOT_FRESH_COLLECT",
+            "current_affected_native_collection": "NOT_RUN",
+        }
         assert current["authority_status"] == "SOURCE_COMPARISON_ANCHOR_AUTHORIZED__SUCCESSOR_PENDING_CTO"
         assert current["source_contract_commit"] == self.APPROVED
         assert current["historical_attachment_deltas_preserved_at_previous_ref"] is True

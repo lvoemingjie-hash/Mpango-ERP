@@ -1,8 +1,10 @@
 {
-  "record": "RC4_TRACKED_SELECTION_AND_NATIVE_CANONICAL_V1",
+  "record": "RC4_DERIVED_PROFILE_TRANSFER_PROPOSAL_V2",
   "authority": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
-  "status": "AUTHOR_FROZEN_COLLECTION__CTO_PENDING__NO_FULL_BODY_PASS",
-  "source_ref": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
+  "status": "DERIVED_PROFILE_TRANSFER__AFFECTED_NATIVE_COLLECTION_PENDING__NO_FULL_BODY_PASS",
+  "source_ref": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+  "historical_native_source_ref": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
+  "revision_basis": "rc4-228f6eba-cto-source-review-20261026/delivery/PROFILE-TRANSFER-PLAN.json",
   "product_base": "bb625e893ab1ec3c50c7eb0cfeedf4a73e9f8f6b",
   "tracked_test_files": 277,
   "ignored_files": [
@@ -40,7 +42,16 @@
   "unknown_files": 0,
   "ordinary_dedicated_intersection": 0,
   "total_nodes": 4505,
-  "all_native_collect_rc_zero": true,
+  "all_native_collect_rc_zero": null,
+  "historical_all_native_collect_rc_zero": true,
+  "current_affected_native_collection": "NOT_RUN",
+  "profile_transfer": {
+    "file": "tests/test_pw1r3_rate_limit_context.py",
+    "source": "runtime-b",
+    "destination": "invariants-jwt",
+    "nodes": 7,
+    "evidence": "CTO_REVIEWED_EXISTING_NATIVE_LIST_DERIVATION_NOT_FRESH_COLLECT"
+  },
   "canonical_recipe": "raw backend-relative nodeids verbatim; reject duplicates; Python sorted strings; UTF-8 LF, exactly one trailing LF; SHA-256",
   "raw_nodeid_delta_sha256": "8f4502e691e8e54142a2da9b323a45f782d94d1062bf95c1c94d7ed86920c599",
   "global_added_node_count": 217,
@@ -281,7 +292,6 @@
         "tests/test_platform_p24_incident_runbook_closeout.py",
         "tests/test_platform_p25eb_durable_approval_resolver_integration.py",
         "tests/test_platform_stats_api.py",
-        "tests/test_pw1r3_rate_limit_context.py",
         "tests/test_pw1r4_cross_tenant_statement_cache.py",
         "tests/test_pw1r4b4_retailer_permission_context.py",
         "tests/test_r4_middleware_tenant_context_contract.py",
@@ -364,12 +374,13 @@
         "tests/test_uuid_serialization.py",
         "tests/test_v019_camel_adapter.py"
       ],
-      "file_count": 96,
-      "node_count": 1637,
-      "canonical_sha256": "88092068a62c32710a9e83831c3b6de43a0d5105a00843b28b810d05ac8ef59b",
-      "collect_rc": 0,
-      "collect_stdout_sha256": "34b7be92226caa34a84892c7169510c8e5ba9141a6b87a9d43a8463a24dcc968",
-      "collect_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file_count": 95,
+      "node_count": 1630,
+      "canonical_sha256": "03ad53c5359e0848a2afd21202a72450419014a8623c6da5e463e610f84ef7fe",
+      "current_native_collect": "NOT_RUN",
+      "historical_collect_rc": 0,
+      "historical_collect_stdout_sha256": "34b7be92226caa34a84892c7169510c8e5ba9141a6b87a9d43a8463a24dcc968",
+      "historical_collect_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "node_count_per_file": {
         "tests/test_platform_p17dc_backup_models.py": 14,
         "tests/test_platform_p17dc_backup_registry_read.py": 26,
@@ -385,7 +396,6 @@
         "tests/test_platform_p24_incident_runbook_closeout.py": 40,
         "tests/test_platform_p25eb_durable_approval_resolver_integration.py": 10,
         "tests/test_platform_stats_api.py": 13,
-        "tests/test_pw1r3_rate_limit_context.py": 7,
         "tests/test_pw1r4_cross_tenant_statement_cache.py": 9,
         "tests/test_pw1r4b4_retailer_permission_context.py": 5,
         "tests/test_r4_middleware_tenant_context_contract.py": 3,
@@ -468,7 +478,7 @@
         "tests/test_uuid_serialization.py": 5,
         "tests/test_v019_camel_adapter.py": 17
       },
-      "nodeids_retained_in_task_delivery": "nodeids-runtime-b.raw.txt"
+      "historical_nodeids_retained_in_task_delivery": "nodeids-runtime-b.raw.txt"
     },
     "topology": {
       "files": [
@@ -573,6 +583,7 @@
         "tests/test_mpango_invariants_r0_r1_guards.py",
         "tests/test_mpango_mvp_invariants_r0_concurrency.py",
         "tests/test_mpango_mvp_invariants_r0_revocation.py",
+        "tests/test_pw1r3_rate_limit_context.py",
         "tests/test_s5_ledger.py",
         "tests/test_staff_credential_compatibility.py",
         "tests/test_staff_permissions.py",
@@ -581,12 +592,13 @@
         "tests/test_stock_adjustment_migration_contract.py",
         "tests/test_stock_adjustment_seed_safety.py"
       ],
-      "file_count": 17,
-      "node_count": 311,
-      "canonical_sha256": "9babd523542d1937d0418cf1d5b01fffb90886d41988164e2b4e3c9feb0c4b2e",
-      "collect_rc": 0,
-      "collect_stdout_sha256": "3314d61b3100f06cc617cf3eae6cd5239d9c78586e7d5b64c329716684352347",
-      "collect_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file_count": 18,
+      "node_count": 318,
+      "canonical_sha256": "33353c363b13460c544aa14a30326d7c8b4dd51161acac208641a13b8e33868b",
+      "current_native_collect": "NOT_RUN",
+      "historical_collect_rc": 0,
+      "historical_collect_stdout_sha256": "3314d61b3100f06cc617cf3eae6cd5239d9c78586e7d5b64c329716684352347",
+      "historical_collect_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "node_count_per_file": {
         "tests/audit_fixes/test_continuation_boundaries.py": 4,
         "tests/audit_fixes/test_finite_contract.py": 14,
@@ -598,6 +610,7 @@
         "tests/test_mpango_invariants_r0_r1_guards.py": 70,
         "tests/test_mpango_mvp_invariants_r0_concurrency.py": 8,
         "tests/test_mpango_mvp_invariants_r0_revocation.py": 14,
+        "tests/test_pw1r3_rate_limit_context.py": 7,
         "tests/test_s5_ledger.py": 15,
         "tests/test_staff_credential_compatibility.py": 13,
         "tests/test_staff_permissions.py": 33,
@@ -606,7 +619,7 @@
         "tests/test_stock_adjustment_migration_contract.py": 5,
         "tests/test_stock_adjustment_seed_safety.py": 5
       },
-      "nodeids_retained_in_task_delivery": "nodeids-invariants-jwt.raw.txt"
+      "historical_nodeids_retained_in_task_delivery": "nodeids-invariants-jwt.raw.txt"
     },
     "task-managed-pg": {
       "files": [

@@ -241,8 +241,12 @@ async def test_actual_042_history_upgrade_and_repeated_grants_preserve_native_au
     try:
         migrate_url=migrate.set(database=name).render_as_string(hide_password=False)
         app_url=runtime.set(database=name).render_as_string(hide_password=False)
-        env={**os.environ,'DATABASE_URL':migrate_url,
+        env={**os.environ,'DATABASE_URL':migrate_url,'PYTHONPATH':str(ROOT),
             'MPANGO_DB_ADMIN_URL':admin,'MPANGO_DB_MIGRATE_URL':migrate_url,'MPANGO_DB_APP_URL':app_url}
+        call('import-root',[sys.executable,'-B','-c',
+            'import pathlib,core.permission_registry; '
+            'assert pathlib.Path(core.permission_registry.__file__).resolve() == '
+            + 'pathlib.Path(' + repr(str(ROOT/'core/permission_registry.py')) + ')'],env)
         call('alembic042',[sys.executable,'-B','-m','alembic','upgrade','042_order_negotiation_proposals'],env)
         provisioner=str(ROOT/'scripts/provision_runtime_db_roles.py')
         call('grants042',[sys.executable,'-B',provisioner,'--apply-grants'],env)

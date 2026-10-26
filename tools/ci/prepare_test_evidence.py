@@ -105,15 +105,14 @@ _HISTORICAL_CANONICAL_DIGEST_INTS = {
     "invariants-jwt": 14225403732936862956787750016881398974573020047247214588285646003204590389255,
     "task-managed-pg": 26202434481483022035822387896696908997049812747828017617325771995640059934965,
 }
-# Three legs retain their native RC4 bindings. The two changed legs are
-# derived by the CTO-reviewed seven-node profile transfer, NOT fresh collects.
-# Native collect-only under both intended profiles remains an admission gate.
+# Task-managed-pg replaces four obsolete writable-preparation nodes one for
+# one, bound to its new native collection. Other legs retain prior bindings.
 CANONICAL_NODEID_SHA256 = {
     "runtime-a": "6eed0a210105843cc4c82be0c919f4f5962b325fe600d7a7dffcf1e9dcdc4472",
     "runtime-b": "03ad53c5359e0848a2afd21202a72450419014a8623c6da5e463e610f84ef7fe",
     "topology": "c5b860246b7e6829d45924e4f608da4250e27ad519d2fae00eea11a268a38200",
     "invariants-jwt": "33353c363b13460c544aa14a30326d7c8b4dd51161acac208641a13b8e33868b",
-    "task-managed-pg": "39ee0d676ac12ae3fcd28a06908f2a6eede9182c325c4819067ed381a88038f5",
+    "task-managed-pg": "fb07315c5fa8c89517191a1df66db7f7447b0ec76cd8953c9715474544098d20",
 }
 
 # F-01 (R6R1): the task credential store is a single private store shared by

@@ -747,7 +747,7 @@ def _sanitized_stream_tail(stream: bytes, limit: int = 4000) -> str:
     return text_out.strip() or "<empty>"
 
 
-def test_real_pg16_demo_seeder_uses_canonical_catalog_identity() -> None:
+def test_real_pg16_demo_seeder_uses_canonical_catalog_identity(tmp_path) -> None:
     source_url = os.environ["TEST_DATABASE_URL"]
     with temporary_database_url(source_url, "skum1demoseed") as db_url:
         config = _alembic_config(db_url)
@@ -760,6 +760,8 @@ def test_real_pg16_demo_seeder_uses_canonical_catalog_identity() -> None:
         env["DATABASE_URL"] = db_url.app_url.replace(
             "postgresql+asyncpg://", "postgresql://", 1)
         env["MPANGO_ENV"] = "test"
+        for key in ("TMPDIR", "TMP", "TEMP"):
+            env[key] = str(tmp_path)
         # Three-identity: the demo seeder's internal bootstrap runs as the
         # runtime app role; the migration authority confers the
         # product-minimum grants on the disposable database first.
@@ -779,7 +781,7 @@ def test_real_pg16_demo_seeder_uses_canonical_catalog_identity() -> None:
         resource = json.loads(subprocess.check_output(["docker", "inspect", cid]))[0]
         assert resource["State"]["Running"]
         labels = resource["Config"]["Labels"]
-        with tempfile.NamedTemporaryFile(mode="w", dir=os.environ["TMPDIR"], suffix=".json") as manifest:
+        with tempfile.NamedTemporaryFile(mode="w", dir=tmp_path, suffix=".json") as manifest:
             json.dump({"container_id": resource["Id"], "task": labels["mpango.task"],
                 "owner": labels["mpango.owner"], "database": urlsplit(env["DATABASE_URL"]).path[1:]}, manifest)
             manifest.flush()

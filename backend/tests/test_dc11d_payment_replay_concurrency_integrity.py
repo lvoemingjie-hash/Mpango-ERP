@@ -52,17 +52,27 @@ def _migration_identity_prep_url() -> str:
 def _ensure_public_tables(_session=None) -> None:
     """Read-only admission: the native five-stage supply owns public DDL."""
     import psycopg2
+    from urllib.parse import unquote, urlsplit
     from core.config import get_settings
 
-    url = get_settings().DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://", 1)
+    configured = get_settings().DATABASE_URL
+    if not isinstance(configured, str) or not urlsplit(configured).path.lstrip("/"):
+        raise RuntimeError("DC11D_RUNTIME_DATABASE_REQUIRED")
+    url = configured.replace("postgresql+asyncpg://", "postgresql://", 1)
+    expected_database = unquote(urlsplit(url).path.lstrip("/"))
     conn = psycopg2.connect(url, connect_timeout=10)
-    conn.set_session(readonly=True)
     try:
+        conn.set_session(readonly=True)
         with conn.cursor() as cur:
+            cur.execute("SHOW transaction_read_only")
+            assert cur.fetchone() == ("on",), "DC11D_READ_ONLY_REQUIRED"
+            cur.execute("SELECT current_database(), current_user, "
+                        "has_schema_privilege(current_user,'public','CREATE')")
+            assert cur.fetchone() == (expected_database, "mpango_app", False), "DC11D_RUNTIME_IDENTITY_DATABASE_REQUIRED"
+            cur.execute("SELECT to_regclass('public.alembic_version')")
+            assert cur.fetchone()[0] is not None, "DC11D_CURRENT_HEAD_REQUIRED"
             cur.execute("SELECT version_num FROM public.alembic_version")
-            assert cur.fetchall() == [("044_inventory_adjustment_approval",)]
-            cur.execute("SELECT current_user, has_schema_privilege(current_user,'public','CREATE')")
-            assert cur.fetchone() == ("mpango_app", False)
+            assert cur.fetchall() == [("044_inventory_adjustment_approval",)], "DC11D_CURRENT_HEAD_REQUIRED"
             for name in ("wholesalers", "retailers", "wholesaler_retailer_bindings", "staff_stock_audit_events"):
                 cur.execute("SELECT to_regclass(%s)", ("public." + name,))
                 assert cur.fetchone()[0] is not None, "DC11D_CURRENT_PUBLIC_SUPPLY_REQUIRED"

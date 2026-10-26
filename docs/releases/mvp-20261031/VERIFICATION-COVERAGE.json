@@ -1,4 +1,20 @@
 {
+  "rc4_7692_local_contract_repair": {
+    "authority": "CTO-AUTH-RC4-7692-LOCAL-CONTRACT-AND-CAPACITY-REPAIR-R1-20261026",
+    "base": "7692c4c2e5165db30611d5b4bcb7de80c8d1e1b1",
+    "approved_product_source_unchanged": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+    "evidence_grade": "AUTHOR_LOCAL_DEVELOPMENT_ONLY__NOT_INDEPENDENT_V3",
+    "hosted_current_result": "FAILED_INCOMPLETE_1172P_6F_19S__11_WITHOUT_COMPLETION__3297_RUNTIME_NOT_STARTED",
+    "task_managed_native_collection": "92_UNIQUE__FOUR_ONE_TO_ONE_REPLACEMENTS__88_UNCHANGED",
+    "current_4505_body_pass": "NOT_ESTABLISHED",
+    "hosted_install_completion_after_cache_change": "NOT_RUN",
+    "dependency_precise_timeout_cause": "UNKNOWN",
+    "runtime_a_18m_completion": "UNKNOWN",
+    "capacity_reallocation": "LOCAL_TAIL_12_MEASURED__160_MINUTE_CANDIDATE__HOSTED_COMPLETION_NOT_PROVEN",
+    "reuse_acceptance_on_changed_test_protection_set": "CTO_REVIEW_REQUIRED__NO_NEW_REUSE_PASS",
+    "ci_secret_gate": "UNADJUDICATED",
+    "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED"
+  },
   "record": "RC4_FIXED_CI_SOURCE_BINDING_V1",
   "authorization": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
   "ruling": {

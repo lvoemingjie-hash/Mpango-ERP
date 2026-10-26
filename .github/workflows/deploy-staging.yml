@@ -42,7 +42,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        # Hard budget cap: 30+30+50+25+25 = 160 runner-minutes total.
+        # Hard budget cap: 30+30+45+30+25 = 160 runner-minutes total.
         include:
           - shard: runtime-a
             job-timeout-minutes: 30
@@ -55,13 +55,13 @@ jobs:
             expected-files: "95"
             expected-nodes: "1630"
           - shard: topology
-            job-timeout-minutes: 50
-            pytest-timeout: 38m
+            job-timeout-minutes: 45
+            pytest-timeout: 33m
             expected-files: "39"
             expected-nodes: "798"
           - shard: invariants-jwt
-            job-timeout-minutes: 25
-            pytest-timeout: 13m
+            job-timeout-minutes: 30
+            pytest-timeout: 18m
             expected-files: "18"
             expected-nodes: "318"
           - shard: task-managed-pg
@@ -100,13 +100,16 @@ jobs:
           fi
           echo "git baseline 6a8ddcf3... resolvable (full history present)"
 
+      # setup-python's Poetry cache queries Poetry before restoring the venv.
+      - name: Install Poetry
+        run: pipx install poetry==2.2.1
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Poetry
-        run: pip install poetry==2.2.1
+          cache: poetry
+          cache-dependency-path: backend/poetry.lock
 
       - name: Install dependencies
         working-directory: backend
@@ -114,10 +117,19 @@ jobs:
         env:
           POETRY_REQUESTS_TIMEOUT: '120'
           POETRY_REQUESTS_MAX_RETRIES: '2'
-        run: poetry install --no-interaction --no-ansi
+        run: |
+          poetry check --lock
+          poetry env use "$(command -v python)"
+          poetry install --no-interaction --no-ansi
+          poetry run pip check
 
       - name: Start task-owned Postgres 16 (labeled, exact ID recorded)
         run: |
+          mkdir -p "$RUNNER_TEMP/c91-pytest-tmp"
+          chmod 700 "$RUNNER_TEMP/c91-pytest-tmp"
+          for KEY in TMPDIR TMP TEMP; do
+            printf '%s=%s\n' "$KEY" "$RUNNER_TEMP/c91-pytest-tmp" >> "$GITHUB_ENV"
+          done
           # R6R3: register the task credential-store PATH (never a secret
           # value) once, before any docker call, so every later step —
           # supply wrapper, sanitizer, cleanup — resolves the SAME absolute

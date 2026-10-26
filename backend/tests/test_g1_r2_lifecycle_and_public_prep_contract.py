@@ -48,7 +48,6 @@ async def test_async_victim_after_sync_pool_executes_real_sql():
 
 
 _PREPARATIONS = (
-    ("tests.test_dc11d_payment_replay_concurrency_integrity", "_ensure_public_tables"),
     ("tests.test_dc12r1_j1_h2b_forgot_password_runtime_closure", "_prepare_tables"),
 )
 
@@ -83,6 +82,82 @@ def test_public_preparation_missing_key_refused_before_connect(monkeypatch, modu
     monkeypatch.setattr(psycopg2, "connect", forbid_connect)
     with pytest.raises(RuntimeError, match="missing:"):
         preparation()
+
+
+@pytest.mark.parametrize("case", ("database", "identity", "head_objects", "healthy"))
+def test_runtime_public_admission_is_read_only_and_bound(monkeypatch, case):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+    from core import config as settings_module
+    from tests import test_dc11d_payment_replay_concurrency_integrity as subject
+    from tests.test_sku_m1_migration_pg16 import _alembic_config, _database_url_env
+    from tests.async_test_utils import run_alembic_upgrade
+    from tests.order_state_r2.test_migration_c3 import _grant_product_minimum
+    from sqlalchemy import create_engine
+
+    real_connect = psycopg2.connect
+    actual_url = settings_module.get_settings().DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+    def exercise(url, expected=None):
+        url = str(url).replace("postgresql+asyncpg://", "postgresql://", 1)
+        connection = real_connect(url)
+        before = _catalog(connection)
+        connection.rollback()
+        with monkeypatch.context() as patch:
+            patch.setattr(psycopg2, "connect", lambda *a, **kw: connection)
+            if expected:
+                with pytest.raises(AssertionError, match=expected):
+                    subject._ensure_public_tables()
+            else:
+                subject._ensure_public_tables()
+        assert connection.closed, "DC11D_ADMISSION_CONNECTION_LEAK"
+        check = real_connect(url)
+        try:
+            assert _catalog(check) == before, "DC11D_ADMISSION_WROTE_CATALOG"
+        finally:
+            check.close()
+
+    @contextmanager
+    def current_child():
+        with temporary_database_url(os.environ["TEST_DATABASE_URL"], "dc11dadmit") as child:
+            with _database_url_env(child):
+                run_alembic_upgrade(_alembic_config(child), "head")
+            engine = create_engine(str(child).replace("postgresql+asyncpg://", "postgresql://", 1), future=True)
+            try:
+                _grant_product_minimum(engine)
+                yield child, engine
+            finally:
+                engine.dispose()
+
+    if case == "database":
+        with temporary_database_url(os.environ["TEST_DATABASE_URL"], "dc11dempty") as empty:
+            exercise(str(empty), "DC11D_RUNTIME_IDENTITY_DATABASE_REQUIRED")
+        # A healthy lookalike must not conceal a wrong-database connection.
+        with current_child() as (child, _):
+            exercise(child.app_url, "DC11D_RUNTIME_IDENTITY_DATABASE_REQUIRED")
+    elif case == "identity":
+        database = urlparse(actual_url).path
+        for key in ("TEST_ADMIN_DATABASE_URL", "TEST_OPERATOR_DATABASE_URL"):
+            exercise(urlparse(os.environ[key])._replace(path=database).geturl(),
+                     "DC11D_RUNTIME_IDENTITY_DATABASE_REQUIRED")
+    elif case == "head_objects":
+        with current_child() as (child, engine):
+            monkeypatch.setattr(settings_module, "get_settings", lambda: SimpleNamespace(DATABASE_URL=child.app_url))
+            with engine.begin() as db:
+                db.execute(text("UPDATE public.alembic_version SET version_num='043_staff_authority_and_credentials'"))
+            exercise(child.app_url, "DC11D_CURRENT_HEAD_REQUIRED")
+            with engine.begin() as db:
+                db.execute(text("UPDATE public.alembic_version SET version_num='044_inventory_adjustment_approval'"))
+                db.execute(text("ALTER TABLE public.staff_stock_audit_events RENAME TO admission_hidden_audit_events"))
+            exercise(child.app_url, "DC11D_CURRENT_PUBLIC_SUPPLY_REQUIRED")
+    else:
+        for key in ("TEST_DATABASE_URL", "TEST_MIGRATION_DATABASE_URL", "TEST_OPERATOR_DATABASE_URL"):
+            monkeypatch.delenv(key)
+        exercise(actual_url)
+        monkeypatch.setattr(settings_module, "get_settings", lambda: SimpleNamespace(DATABASE_URL=None))
+        monkeypatch.setattr(psycopg2, "connect", lambda *a, **kw: pytest.fail("DC11D_MISSING_RUNTIME_CONFIG_CONNECTED"))
+        with pytest.raises(RuntimeError, match="DC11D_RUNTIME_DATABASE_REQUIRED"):
+            subject._ensure_public_tables()
 
 
 def test_actual_admin_and_operator_refused_without_public_writes():

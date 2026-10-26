@@ -412,8 +412,8 @@ class TestDeployWorkflowContract:
         expected = {
             "runtime-a": (30, "18m", "94", "1667"),
             "runtime-b": (30, "18m", "95", "1630"),
-            "topology": (50, "38m", "39", "798"),
-            "invariants-jwt": (25, "13m", "18", "318"),
+            "topology": (45, "33m", "39", "798"),
+            "invariants-jwt": (30, "18m", "18", "318"),
             "task-managed-pg": (25, "13m", "4", "92"),
         }
         assert {leg["shard"] for leg in include} == set(expected)
@@ -1269,7 +1269,7 @@ class TestR6ShardPlanControls:
         ).hexdigest()
 
     def test_canonical_constants_equal_cto_table(self):
-        """A seven-node profile transfer is derived, not a fresh collection."""
+        """Retain the profile transfer and bind four native readonly replacements."""
         import importlib.util
         spec = importlib.util.spec_from_file_location("pte_r6r1", EVIDENCE_TOOL)
         module = importlib.util.module_from_spec(spec)
@@ -1283,7 +1283,15 @@ class TestR6ShardPlanControls:
         assert selection['total_nodes'] == 4505
         assert selection['all_native_collect_rc_zero'] is None
         assert selection['historical_all_native_collect_rc_zero'] is True
-        assert selection['current_affected_native_collection'] == "NOT_RUN"
+        assert selection['current_affected_native_collection'] == "TASK_MANAGED_NATIVE_92__OTHER_LEGS_REUSED"
+        replacement = selection['readonly_node_replacement']
+        assert len(replacement['mapping']) == 4
+        assert len(replacement['native_nodeids']) == len(set(replacement['native_nodeids'])) == 92
+        assert self._canon(replacement['native_nodeids']) == selection['shards']['task-managed-pg']['canonical_sha256']
+        before = set(replacement['prior_nodeids'])
+        after = set(replacement['native_nodeids'])
+        assert before - after == {row['old'] for row in replacement['mapping']}
+        assert after - before == {row['new'] for row in replacement['mapping']}
         old = json.loads(subprocess.check_output([
             "git", "show", TestReuseValidityMachineCheck.APPROVED
             + ":docs/releases/mvp-20261031/RC4-TEST-SELECTION.json"
@@ -1295,7 +1303,7 @@ class TestR6ShardPlanControls:
             "runtime-b": (95, 1630, "03ad53c5359e0848a2afd21202a72450419014a8623c6da5e463e610f84ef7fe"),
             "topology": (39, 798, old["shards"]["topology"]["canonical_sha256"]),
             "invariants-jwt": (18, 318, "33353c363b13460c544aa14a30326d7c8b4dd51161acac208641a13b8e33868b"),
-            "task-managed-pg": (4, 92, old["shards"]["task-managed-pg"]["canonical_sha256"]),
+            "task-managed-pg": (4, 92, self._canon(replacement['native_nodeids'])),
         }
         all_files = []
         for shard, (files, nodes, digest) in fixed.items():
@@ -1309,6 +1317,21 @@ class TestR6ShardPlanControls:
             elif shard == "invariants-jwt":
                 expected_files.add(moved)
                 expected_per_file[moved] = 7
+            elif shard == "task-managed-pg":
+                assert self._canon(replacement['prior_nodeids']) == prior['canonical_sha256']
+                assert replacement['historical_snapshot'] == prior
+                current = replacement['current_snapshot']
+                assert current == {
+                    'declared_output_kind': 'NATIVE_PYTEST_COLLECT_STDOUT',
+                    'source_access': 'MATERIAL_DECLARATION_NOT_RUNNER_GIT_INPUT',
+                    'collect_stdout_reference': 'native/collect-development-task-managed-pg.stdout',
+                }
+                assert re.fullmatch(r'[0-9a-f]{64}', row['collect_stdout_sha256'])
+                assert row['collect_stdout_sha256'] != prior['collect_stdout_sha256']
+                expected_row = dict(prior, canonical_sha256=self._canon(replacement['native_nodeids']),
+                                    collect_stdout_sha256=row['collect_stdout_sha256'],
+                                    nodeids_retained_in_task_delivery=current['collect_stdout_reference'])
+                assert row == expected_row
             else:
                 assert row == prior
             assert row["files"] == sorted(expected_files)
@@ -4765,12 +4788,14 @@ class TestThreeFamilyFiniteCloseout:
         doc = yaml.safe_load(DEPLOY_WF.read_text())
         step = TestR6R5HostedPreconditions._step(doc, "Install dependencies")
         assert step["timeout-minutes"] == 8, "THREE_FAMILY_DOWNLOAD_STEP_BOUND"
-        assert step["run"] == "poetry install --no-interaction --no-ansi"
+        commands = [line for line in step["run"].splitlines() if line.strip()]
+        assert commands == ["poetry check --lock", 'poetry env use "$(command -v python)"',
+                            "poetry install --no-interaction --no-ansi", "poetry run pip check"]
         bindir = tmp_path / "bin"
         bindir.mkdir()
         poetry = bindir / "poetry"
         poetry.write_text('#!/bin/bash\nprintf "%s\\n" "$POETRY_REQUESTS_TIMEOUT" '
-                          '"$POETRY_REQUESTS_MAX_RETRIES" "$*" > "$CAPTURE"\nexit "$FAKE_RC"\n')
+                          '"$POETRY_REQUESTS_MAX_RETRIES" "$*" >> "$CAPTURE"\nexit "$FAKE_RC"\n')
         poetry.chmod(0o755)
         for code in ("0", "23"):
             capture, sentinel = tmp_path / (code + ".txt"), tmp_path / (code + ".body")
@@ -4780,7 +4805,12 @@ class TestThreeFamilyFiniteCloseout:
             proc = subprocess.run([BASH, "-e", "-o", "pipefail", "-c",
                                    step["run"]+'\ntouch "$SENTINEL"\n'], env=env,
                                   cwd=REPO_ROOT / step["working-directory"], capture_output=True, text=True)
-            assert capture.read_text().splitlines() == ["120", "2", "install --no-interaction --no-ansi"], "THREE_FAMILY_EXECUTED_DOWNLOAD_ENV"
+            calls = capture.read_text().splitlines()
+            assert calls[:3] == ["120", "2", "check --lock"], "THREE_FAMILY_EXECUTED_DOWNLOAD_ENV"
+            if code == "0":
+                assert len(calls) == 12
+                assert calls[8] == "install --no-interaction --no-ansi"
+                assert calls[11] == "run pip check"
             assert proc.returncode == int(code)
             assert sentinel.exists() == (code == "0"), "INSTALL_FAILURE_MUST_BLOCK_BODY"
         assert step["env"] == {
@@ -5015,3 +5045,145 @@ class TestNative842TeardownCounts:
             expected = {"truncated": "JUNIT_NOT_WELL_FORMED", "duplicate": "DUPLICATE_JUNIT_NODEIDS_UNPROVEN",
                         "counter": "SUITE_COUNTER_CONTRADICTION", "rc0": "GREEN_RC_WITH_RED_OUTCOMES"}
             assert expected[corruption] in proc.stderr
+
+
+class TestRC4CurrentReadOnlyAndDependencyContracts:
+    def test_native_poetry_pip_fallback_checks_no_pip_target(self, tmp_path):
+        import hashlib
+        poetry = os.environ.get("C91_POETRY221") or shutil.which("poetry")
+        assert poetry, "POETRY221_REQUIRED"
+        version = subprocess.run([poetry, "--version"], capture_output=True, text=True)
+        assert version.returncode == 0 and version.stdout.strip() == "Poetry (version 2.2.1)", "POETRY221_REQUIRED"
+        target = tmp_path / "no-pip-target"
+        made = subprocess.run([sys.executable, "-B", "-m", "venv", "--without-pip", str(target)], capture_output=True)
+        assert made.returncode == 0
+        python = target / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        env = dict(os.environ, VIRTUAL_ENV=str(target), PATH=str(python.parent)+os.pathsep+os.environ["PATH"],
+                   POETRY_VIRTUALENVS_CREATE="false", PYTHONDONTWRITEBYTECODE="1",
+                   POETRY_CONFIG_DIR=str(tmp_path / "poetry-config"), POETRY_CACHE_DIR=str(tmp_path / "poetry-cache"))
+        probe = subprocess.run([poetry, "run", "python", "-B", "-c",
+                                "import sys,importlib.util;assert importlib.util.find_spec('pip') is None;print(sys.prefix)"],
+                               cwd=REPO_ROOT / "backend", env=env, capture_output=True, text=True)
+        assert probe.returncode == 0 and Path(probe.stdout.strip()).resolve() == target.resolve(), "PIP_CHECK_WRONG_TARGET"
+        def snapshot():
+            return {str(p.relative_to(target)):hashlib.sha256(p.read_bytes()).hexdigest()
+                    for p in target.rglob("*") if p.is_file() and not p.is_symlink()}
+        before = snapshot()
+        good = subprocess.run([poetry, "run", "pip", "check"], cwd=REPO_ROOT / "backend", env=env, capture_output=True)
+        assert good.returncode == 0 and snapshot() == before, "PIP_FALLBACK_MUST_BE_READ_ONLY"
+        site = next(target.glob("lib/python*/site-packages")) if os.name != "nt" else target / "Lib/site-packages"
+        metadata = site / "finite_probe-1.0.dist-info"
+        metadata.mkdir()
+        (metadata / "METADATA").write_text("Metadata-Version: 2.1\nName: finite-probe\nVersion: 1.0\nRequires-Dist: finite-missing-dependency-probe==1\n")
+        before = snapshot()
+        bad = subprocess.run([poetry, "run", "pip", "check"], cwd=REPO_ROOT / "backend", env=env, capture_output=True)
+        assert bad.returncode == 1 and b"finite-missing-dependency-probe" in bad.stdout, "BROKEN_TARGET_MUST_BE_REFUSED"
+        assert snapshot() == before, "PIP_CHECK_MUST_NOT_INSTALL_OR_MODIFY"
+
+    @pytest.mark.parametrize("corruption", ("historical_digest", "current_reference"))
+    def test_collection_provenance_mismatch_is_refused(self, monkeypatch, corruption):
+        path = REPO_ROOT / "docs/releases/mvp-20261031/RC4-TEST-SELECTION.json"
+        data = json.loads(path.read_text())
+        if corruption == "historical_digest":
+            data["readonly_node_replacement"]["historical_snapshot"]["collect_stdout_sha256"] = data["shards"]["task-managed-pg"]["collect_stdout_sha256"]
+        else:
+            data["readonly_node_replacement"]["current_snapshot"]["collect_stdout_reference"] = "nodeids-task-managed-pg.raw.txt"
+        read = Path.read_text
+        def changed(self, *args, **kwargs):
+            return json.dumps(data) if self == path else read(self, *args, **kwargs)
+        monkeypatch.setattr(Path, "read_text", changed)
+        with pytest.raises(AssertionError):
+            TestR6ShardPlanControls().test_canonical_constants_equal_cto_table()
+
+    def test_seeder_entry_uses_owned_tmp_without_parent_tmpdir(self, tmp_path):
+        import ast
+        import tempfile
+        from types import SimpleNamespace
+        path = REPO_ROOT / "backend/tests/test_sku_m1_migration_pg16.py"
+        function = next(n for n in ast.parse(path.read_text()).body
+                        if isinstance(n, ast.FunctionDef) and n.name == "test_real_pg16_demo_seeder_uses_canonical_catalog_identity")
+        block = next(n for n in ast.walk(function) if isinstance(n, ast.With)
+                     and "NamedTemporaryFile" in ast.unparse(n.items[0].context_expr))
+        assignment = next(n for n in ast.walk(function) if isinstance(n, ast.For)
+                          and ast.unparse(n.iter) == "('TMPDIR', 'TMP', 'TEMP')")
+        calls = []
+        def child(argv, **kwargs):
+            env = kwargs["env"]
+            manifest = Path(env["MPANGO_FRESH_DEMO_TASK_MANIFEST"])
+            assert manifest.parent == tmp_path and manifest.is_file()
+            assert manifest.stat().st_mode & 0o777 == 0o600
+            assert all(env[key] == str(tmp_path) for key in ("TMPDIR", "TMP", "TEMP"))
+            assert json.loads(manifest.read_text())["database"] == "owned"
+            calls.append(manifest)
+            return SimpleNamespace(returncode=0)
+        env = {"DATABASE_URL": "postgresql://invalid@127.0.0.1/owned"}
+        scope = dict(tmp_path=tmp_path, env=env, tempfile=tempfile, json=json,
+                     resource={"Id": "owned"}, labels={"mpango.task": "owned", "mpango.owner": "owned"},
+                     urlsplit=__import__("urllib.parse", fromlist=["urlsplit"]).urlsplit,
+                     subprocess=SimpleNamespace(run=child, PIPE=-1), sys=sys, BACKEND_DIR=path.parents[1], os=SimpleNamespace(environ={}))
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[assignment, block], type_ignores=[])), str(path), "exec"), scope)
+        assert len(calls) == 1 and not calls[0].exists(), "SEEDER_MANIFEST_LIFECYCLE"
+
+    def test_historical_subprocess_env_rebinds_current_backend(self, tmp_path):
+        import ast
+        path = REPO_ROOT / "backend/tests/test_staff_stock_migration_contract.py"
+        tree = ast.parse(path.read_text())
+        assignment = next(n for n in ast.walk(tree) if isinstance(n, ast.Assign)
+                          and any(isinstance(t, ast.Name) and t.id == "env" for t in n.targets))
+        backend = REPO_ROOT / "backend"
+        scope = dict(os=type("Env", (), {"environ": {"PYTHONPATH": str(tmp_path)}}), ROOT=backend,
+                     migrate_url="invalid", admin="invalid", app_url="invalid")
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[assignment], type_ignores=[])), str(path), "exec"), scope)
+        env = dict(os.environ, **scope["env"])
+        probe = tmp_path / "historical-import-probe.py"
+        probe.write_text("import pathlib,core.permission_registry\nassert pathlib.Path(core.permission_registry.__file__).resolve() == pathlib.Path(" + repr(str(backend / "core/permission_registry.py")) + ")\n")
+        result = subprocess.run([sys.executable, "-B", str(probe)], cwd=backend, env=env, capture_output=True)
+        assert result.returncode == 0, "HISTORICAL_IMPORT_ROOT_NOT_BOUND"
+
+    def test_readonly_setup_failure_still_closes_connection(self, monkeypatch):
+        import ast
+        from types import SimpleNamespace
+        import psycopg2
+        path = REPO_ROOT / "backend/tests/test_dc11d_payment_replay_concurrency_integrity.py"
+        function = next(n for n in ast.parse(path.read_text()).body
+                        if isinstance(n, ast.FunctionDef) and n.name == "_ensure_public_tables")
+        config = SimpleNamespace(get_settings=lambda: SimpleNamespace(DATABASE_URL="postgresql://invalid@127.0.0.1/owned"))
+        monkeypatch.setitem(sys.modules, "core.config", config)
+        class Connection:
+            closed = False
+            def set_session(self, **kwargs):
+                raise RuntimeError("SYNTHETIC_READONLY_SETUP_FAILURE")
+            def close(self):
+                self.closed = True
+        connection = Connection()
+        monkeypatch.setattr(psycopg2, "connect", lambda *a, **kw: connection)
+        scope = {}
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[])), str(path), "exec"), scope)
+        with pytest.raises(RuntimeError, match="SYNTHETIC_READONLY_SETUP_FAILURE"):
+            scope[function.name]()
+        assert connection.closed, "READONLY_SETUP_CONNECTION_LEAK"
+
+    def test_poetry_cache_uses_actual_platform_fields_and_prerequisite(self):
+        steps = yaml.safe_load(DEPLOY_WF.read_text())["jobs"]["test"]["steps"]
+        poetry = next(i for i, step in enumerate(steps) if step.get("name") == "Install Poetry")
+        setup = next(i for i, step in enumerate(steps) if step.get("name") == "Set up Python")
+        install = next(i for i, step in enumerate(steps) if step.get("name") == "Install dependencies")
+        assert poetry < setup < install, "POETRY_MUST_EXIST_BEFORE_CACHE_LOOKUP"
+        assert steps[poetry]["run"] == "pipx install poetry==2.2.1"
+        assert steps[setup]["uses"] == "actions/setup-python@v5"
+        assert steps[setup]["with"] == {"python-version": "${{ env.PYTHON_VERSION }}", "cache": "poetry", "cache-dependency-path": "backend/poetry.lock"}
+        assert "if" not in steps[install], "CACHE_HIT_MUST_NOT_SKIP_LOCK_INSTALL"
+
+    @pytest.mark.parametrize("failed_stage", range(1, 5))
+    def test_each_install_integrity_stage_blocks_body(self, tmp_path, failed_stage):
+        step = TestR6R5HostedPreconditions._step(yaml.safe_load(DEPLOY_WF.read_text()), "Install dependencies")
+        bindir = tmp_path / "bin"
+        bindir.mkdir()
+        tool = bindir / "poetry"
+        tool.write_text('#!/bin/bash\nn=0; test ! -e "$COUNT" || n=$(cat "$COUNT"); n=$((n+1)); echo "$n" > "$COUNT"; test "$n" -ne "$FAIL_STAGE" || exit 29\n')
+        tool.chmod(0o755)
+        sentinel = tmp_path / "body"
+        env = dict(os.environ, PATH=str(bindir)+os.pathsep+os.environ["PATH"], COUNT=str(tmp_path / "count"), FAIL_STAGE=str(failed_stage))
+        env.update(step["env"])
+        result = subprocess.run([BASH, "-e", "-o", "pipefail", "-c", step["run"] + '\ntouch "'+str(sentinel)+'"\n'], env=env, capture_output=True)
+        assert result.returncode == 29 and not sentinel.exists(), "INSTALL_INTEGRITY_FAILURE_MUST_BLOCK_BODY"

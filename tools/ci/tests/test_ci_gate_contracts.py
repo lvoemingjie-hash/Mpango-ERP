@@ -1278,7 +1278,7 @@ class TestR6ShardPlanControls:
         assert module.CANONICAL_NODEID_SHA256 == {
             shard: row['canonical_sha256'] for shard, row in selection['shards'].items()
         }
-        assert selection['source_ref'] == TestReuseValidityMachineCheck.APPROVED
+        assert selection['source_ref'] == TestReuseValidityMachineCheck.PREVIOUS_APPROVED
         assert selection['historical_native_source_ref'] == TestReuseValidityMachineCheck.HISTORICAL_RC4_SOURCE_REF
         assert selection['total_nodes'] == 4505
         assert selection['all_native_collect_rc_zero'] is None
@@ -1293,7 +1293,7 @@ class TestR6ShardPlanControls:
         assert before - after == {row['old'] for row in replacement['mapping']}
         assert after - before == {row['new'] for row in replacement['mapping']}
         old = json.loads(subprocess.check_output([
-            "git", "show", TestReuseValidityMachineCheck.APPROVED
+            "git", "show", TestReuseValidityMachineCheck.PREVIOUS_APPROVED
             + ":docs/releases/mvp-20261031/RC4-TEST-SELECTION.json"
         ], cwd=REPO_ROOT, text=True))
         moved = "tests/test_pw1r3_rate_limit_context.py"
@@ -3983,7 +3983,8 @@ class TestWrapperWrongHeadRefusal:
 class TestReuseValidityMachineCheck:
     """Approved Git objects, complete metadata and real admission controls."""
 
-    APPROVED = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
+    APPROVED = "5033e2cd039af3b989418ae0a57133a6355ca42c"
+    PREVIOUS_APPROVED = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
     HISTORICAL_RC4_SOURCE_REF = "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d"
     HISTORICAL_COVERAGE_REF = "bac775df8257ea2fd626d6de425f3564748b37f2"
 
@@ -4234,12 +4235,26 @@ PY
 
     def test_unapproved_product_ref_refused(self, tmp_path):
         coverage = self._coverage(tmp_path)
-        proc = subprocess.run([
-            sys.executable, str(EVIDENCE_TOOL), "verify-reuse", "--coverage", str(coverage),
-            "--repo-root", str(REPO_ROOT), "--approved-ref",
-            "fd37acbbd3af8c9d0ed64ecb4ad0849d4ab8c366"], capture_output=True, text=True)
-        assert proc.returncode == 5
-        assert "REUSE_APPROVED_REF_NOT_AUTHORIZED" in proc.stderr
+        for ref in ("fd37acbbd3af8c9d0ed64ecb4ad0849d4ab8c366", self.PREVIOUS_APPROVED):
+            proc = subprocess.run([
+                sys.executable, str(EVIDENCE_TOOL), "verify-reuse", "--coverage", str(coverage),
+                "--repo-root", str(REPO_ROOT), "--approved-ref", ref], capture_output=True, text=True)
+            assert proc.returncode == 5
+            assert "REUSE_APPROVED_REF_NOT_AUTHORIZED" in proc.stderr
+
+    @pytest.mark.parametrize("forgery", ("comparison_anchor", "reviewed_note"))
+    def test_fixed_alignment_metadata_tampering_refused(self, tmp_path, forgery):
+        path = self._coverage(tmp_path)
+        data = json.loads(path.read_text())
+        if forgery == "comparison_anchor":
+            data["fixed_source_alignment"]["whole_backend_frontend_comparison_source"] = self.PREVIOUS_APPROVED
+        else:
+            data["rc4_7692_local_contract_repair"]["current_4505_body_pass"] = "PASS"
+        path.write_text(json.dumps(data))
+        proc, result = self._check(REPO_ROOT, path)
+        assert proc.returncode == 5 and not result["all_valid"]
+        assert result["problems"] == ["REUSE_METADATA_PROVENANCE"]
+        assert not result["release_ready"] and not result["evidence_ready"]
 
     def test_current_intake_preserves_history_and_explicit_attachment_gaps(self, tmp_path):
         coverage = json.loads(self._coverage(tmp_path).read_text())
@@ -4250,7 +4265,7 @@ PY
         assert coverage["recovered_native_node_maps"] == historical["recovered_native_node_maps"]
         assert coverage["previous_rc2_source_intake"] == historical["current_source_intake"]
         previous_rc4 = json.loads(subprocess.check_output([
-            "git", "show", self.APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+            "git", "show", self.PREVIOUS_APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
         ], cwd=REPO_ROOT, text=True))
         assert coverage["previous_rc4_source_intake"] == previous_rc4["current_source_intake"]
         assert coverage["previous_rc4_source_intake"]["source_ref"] == self.HISTORICAL_RC4_SOURCE_REF
@@ -4272,14 +4287,27 @@ PY
         assert current["ordinary_definition"]["canonical_definition_changed"] is True
         assert current["ordinary_definition"]["global_node_set_changed"] is False
         assert current["ordinary_definition"]["profile_membership_changed"] is True
-        assert current["current_fresh_ordinary_collection"] == "DERIVED_4505_PROFILE_TRANSFER__AFFECTED_NATIVE_COLLECT_NOT_RUN"
+        assert current["current_fresh_ordinary_collection"] == "PRIOR_CTO_ACCEPTED_4505_AT_5033__NOT_RERUN_THIS_TOOL_TASK"
+        prior_comparison = coverage["previous_3a26_fixed_source_comparison"]
+        reviewed = json.loads(subprocess.check_output([
+            "git", "show", self.APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+        ], cwd=REPO_ROOT, text=True))
+        for key in prior_comparison:
+            assert prior_comparison[key] == reviewed[key]
+        assert prior_comparison["product_anchor"] == self.PREVIOUS_APPROVED
+        assert coverage["rc4_7692_local_contract_repair"] == reviewed["rc4_7692_local_contract_repair"]
+        for key in ("bindings", "recovered_native_node_maps", "current_attachment_deltas",
+                    "current_dependency_assessments", "explicit_non_claims"):
+            assert coverage[key] == reviewed[key]
+        assert coverage["fixed_source_alignment"]["historical_bindings_rebound"] is False
+        assert coverage["fixed_source_alignment"]["overall_source_ok"] is False
         assert current["profile_transfer"] == {
             "file": "tests/test_pw1r3_rate_limit_context.py",
             "source": "runtime-b", "destination": "invariants-jwt", "nodes": 7,
             "evidence": "CTO_REVIEWED_EXISTING_NATIVE_LIST_DERIVATION_NOT_FRESH_COLLECT",
             "current_affected_native_collection": "NOT_RUN",
         }
-        assert current["authority_status"] == "SOURCE_COMPARISON_ANCHOR_AUTHORIZED__SUCCESSOR_PENDING_CTO"
+        assert current["authority_status"] == "CTO_FIXED_COMPARISON_ONLY__NOT_OVERALL_SOURCE_OK"
         assert current["source_contract_commit"] == self.APPROVED
         assert current["historical_attachment_deltas_preserved_at_previous_ref"] is True
         assert current["historical_results_reexecuted"] is False
@@ -4430,24 +4458,63 @@ PY
         assert not result.get("all_valid", False)
 
     def test_backend_object_comparison_mutation_is_detected(self, tmp_path):
+        import ast
+        import hashlib
+        import stat
+
         repo = self._clone(tmp_path)
         target = repo / "backend/services/canonical_payment_service.py"
-        target.write_bytes(target.read_bytes() + b"\n# offline drift\n")
+        original, mode = target.read_bytes(), stat.S_IMODE(target.stat().st_mode)
         path = self._coverage(tmp_path)
-        pristine, _ = self._check(repo, path)
-        assert pristine.returncode == 5
-        source = EVIDENCE_TOOL.read_text()
+        source = EVIDENCE_TOOL.read_bytes()
         anchor = "object_problems, object_count = _reuse_object_problems(repo, args.approved_ref)"
-        assert source.count(anchor) == 1
+        assert source.decode().count(anchor) == 1
         mutant = tmp_path / "mutant.py"
-        mutant.write_text(source.replace(anchor, "object_problems, object_count = [], 0"))
-        mutant_result = path.with_suffix(".result.json")
-        mutant_result.unlink()
-        mutated, result = self._check(repo, path, tool=mutant)
-        # This is the false GREEN the permanent rejection oracle must detect.
-        assert mutated.returncode == 0 and result["all_valid"]
-        with pytest.raises(AssertionError, match="BACKEND_OBJECT_DRIFT_MUST_REFUSE"):
-            assert mutated.returncode != 0, "BACKEND_OBJECT_DRIFT_MUST_REFUSE"
+        steps = []
+
+        def observe(label, tool):
+            path.with_suffix(".result.json").unlink(missing_ok=True)
+            proc, result = self._check(repo, path, tool=tool)
+            steps.append({"label": label, "argv": proc.args, "rc": proc.returncode, "result": result})
+            return proc, result
+
+        try:
+            target.write_bytes(original + b"\n# offline drift\n")
+            pristine, result = observe("pristine_guard_on_drift", EVIDENCE_TOOL)
+            assert pristine.returncode == 5 and "REUSE_OBJECT_DRIFT" in result["problems"]
+            mutated_source = source.decode().replace(anchor, "object_problems, object_count = [], 0")
+            compile(ast.parse(mutated_source), "backend-mutant.py", "exec")
+            mutant.write_text(mutated_source)
+            mutant.chmod(0o644)
+            mutated, result = observe("removed_backend_call_false_green", mutant)
+            # This is the false GREEN the permanent rejection oracle must detect.
+            assert mutated.returncode == 0 and result["all_valid"]
+            with pytest.raises(AssertionError, match="BACKEND_OBJECT_DRIFT_MUST_REFUSE"):
+                assert mutated.returncode != 0, "BACKEND_OBJECT_DRIFT_MUST_REFUSE"
+            mutant.write_bytes(source)
+            mutant.chmod(0o644)
+            restored, result = observe("restored_guard_on_same_drift", mutant)
+            assert restored.returncode == 5 and not result["all_valid"]
+        finally:
+            target.write_bytes(original)
+            target.chmod(mode)
+            if mutant.exists():
+                mutant.write_bytes(source)
+                mutant.chmod(0o644)
+        honest, result = observe("restored_bytes_honest_green", mutant)
+        assert honest.returncode == 0 and result["all_valid"]
+        assert target.read_bytes() == original and stat.S_IMODE(target.stat().st_mode) == mode
+        assert mutant.read_bytes() == source and stat.S_IMODE(mutant.stat().st_mode) == 0o644
+        assert EVIDENCE_TOOL.read_bytes() == source
+        assert subprocess.check_output(["git", "status", "--porcelain"], cwd=repo) == b""
+        (tmp_path / "rc4-backend-mutant-proof.json").write_text(json.dumps({
+            "anchor_count": 1, "parse_compile": True, "steps": steps,
+            "driver_restored_sha256": hashlib.sha256(mutant.read_bytes()).hexdigest(),
+            "original_driver_sha256": hashlib.sha256(source).hexdigest(),
+            "backend_restored_sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+            "backend_original_sha256": hashlib.sha256(original).hexdigest(),
+            "mode_restored": True, "authoritative_source_unchanged": True,
+        }, indent=2) + "\n")
 
     @staticmethod
     def _admission(doc):
@@ -4888,7 +4955,8 @@ class TestThreeFamilyFiniteCloseout:
         assert route["classification"] == "AUTHOR_ROUTE_CONTRACT_CANDIDATE_PENDING_CTO"
         assert route["source_ref"] == coverage["previous_rc3_source_intake"]["source_ref"]
         assert not route["new_independent_v3"] and route["added_business_accepted_nodes"] == 0
-        assert coverage["intake_version"] == 9
+        assert coverage["previous_3a26_fixed_source_comparison"]["intake_version"] == 9
+        assert coverage["intake_version"] == 10
         previous = coverage["previous_route_contract_closeout"]
         assert previous["source_ref"] == "9e2221393f0a8c3da493ea32d4a3d93e41f4fa33"
         assert coverage["previous_route_contract_source_intake"]["source_ref"] == previous["source_ref"]

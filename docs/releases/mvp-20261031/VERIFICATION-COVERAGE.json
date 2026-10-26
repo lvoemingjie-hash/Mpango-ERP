@@ -15,16 +15,16 @@
     "ci_secret_gate": "UNADJUDICATED",
     "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED"
   },
-  "record": "RC4_FIXED_CI_SOURCE_BINDING_V1",
-  "authorization": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
+  "record": "RC4_CTO_FIXED_5033_SOURCE_COMPARISON_V1",
+  "authorization": "CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
   "ruling": {
     "path": "AI_REPORT_INBOX/rc1-finite-closure-cto-20261015/CTO-REVIEW.zh-CN.md",
     "sha256": "37fa77e5ff1889c884f58ab929fe9ed06a7489446c933e9ddb81832a4c31a20c",
     "route": "APPROVED_FINITE_HYBRID_ROUTE__IMPLEMENTATION_AND_LOCAL_VALIDATION_ONLY"
   },
   "selection_binding": {
-    "authority": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
-    "source_ref": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+    "authority": "CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
+    "source_ref": "5033e2cd039af3b989418ae0a57133a6355ca42c",
     "discovered_files": 277,
     "ordinary_files": 250,
     "dedicated_files": 21,
@@ -665,9 +665,9 @@
     "M01 R4 is a named single-instance UG chain on bb625e89, not all audit/cache/rcj coverage.",
     "No hosted CI, full backend body execution, independent V3 or release readiness is established here."
   ],
-  "intake_version": 9,
-  "intake_status": "FIXED_SOURCE_BINDING_SUCCESSOR_PENDING_CTO",
-  "product_anchor": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+  "intake_version": 10,
+  "intake_status": "FIXED_COMPARISON_ONLY__OVERALL_SOURCE_OK_CTO_PENDING",
+  "product_anchor": "5033e2cd039af3b989418ae0a57133a6355ca42c",
   "intake_sources": [
     {
       "relative_record": "mvp-rc2-post-images-cto-review-20261017/CTO-REVIEW.zh-CN.md",
@@ -696,7 +696,7 @@
       "sha256": "8dbcc00908bade6ffebbd5d5f5beeb04f9ea76476b891c1e54a82cb0287dac58"
     }
   ],
-  "ordinary_canonical_status": "DERIVED_CURRENT_PROFILE_CANONICAL__AFFECTED_NATIVE_COLLECTION_PENDING",
+  "ordinary_canonical_status": "PRIOR_CTO_ACCEPTED_4505_COLLECTION__NO_BODY_PASS_OR_RERUN",
   "frozen_external_paths": [
     "docker-compose.yml",
     "nginx/gateway.conf",
@@ -711,16 +711,16 @@
     }
   ],
   "current_source_intake": {
-    "authorization": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
-    "source_ref": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
-    "source_tree": "875c6b3a09e6745859074b8353d21eb49b97ed53",
-    "source_parent": "7500acbf82c492e12a0f2ff9e8ce5ab495eece3b",
-    "backend_tree": "782c3afdebe6c664ddaf8a58c430751f91e294f0",
+    "authorization": "CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
+    "source_ref": "5033e2cd039af3b989418ae0a57133a6355ca42c",
+    "source_tree": "9f7b80ac217219160dc4a7489077cad0ad981c54",
+    "source_parent": "7692c4c2e5165db30611d5b4bcb7de80c8d1e1b1",
+    "backend_tree": "5e1d45222ef1c57c064d5b12bd1c667c3650c144",
     "frontend_tree": "17c477ca022b0dc86118f481fd4ded907e92bcf8",
-    "authority_status": "SOURCE_COMPARISON_ANCHOR_AUTHORIZED__SUCCESSOR_PENDING_CTO",
-    "source_contract_commit": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+    "authority_status": "CTO_FIXED_COMPARISON_ONLY__NOT_OVERALL_SOURCE_OK",
+    "source_contract_commit": "5033e2cd039af3b989418ae0a57133a6355ca42c",
     "independent_v3_this_intake": "NOT_RUN",
-    "current_fresh_ordinary_collection": "DERIVED_4505_PROFILE_TRANSFER__AFFECTED_NATIVE_COLLECT_NOT_RUN",
+    "current_fresh_ordinary_collection": "PRIOR_CTO_ACCEPTED_4505_AT_5033__NOT_RERUN_THIS_TOOL_TASK",
     "historical_results_reexecuted": false,
     "hosted_ci_this_intake": "NOT_RUN",
     "ordinary_definition": {
@@ -3203,5 +3203,73 @@
         ]
       }
     ]
+  },
+  "previous_3a26_fixed_source_comparison": {
+    "record": "RC4_FIXED_CI_SOURCE_BINDING_V1",
+    "authorization": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
+    "intake_status": "FIXED_SOURCE_BINDING_SUCCESSOR_PENDING_CTO",
+    "intake_version": 9,
+    "product_anchor": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+    "current_source_intake": {
+      "authorization": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
+      "source_ref": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+      "source_tree": "875c6b3a09e6745859074b8353d21eb49b97ed53",
+      "source_parent": "7500acbf82c492e12a0f2ff9e8ce5ab495eece3b",
+      "backend_tree": "782c3afdebe6c664ddaf8a58c430751f91e294f0",
+      "frontend_tree": "17c477ca022b0dc86118f481fd4ded907e92bcf8",
+      "authority_status": "SOURCE_COMPARISON_ANCHOR_AUTHORIZED__SUCCESSOR_PENDING_CTO",
+      "source_contract_commit": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+      "independent_v3_this_intake": "NOT_RUN",
+      "current_fresh_ordinary_collection": "DERIVED_4505_PROFILE_TRANSFER__AFFECTED_NATIVE_COLLECT_NOT_RUN",
+      "historical_results_reexecuted": false,
+      "hosted_ci_this_intake": "NOT_RUN",
+      "ordinary_definition": {
+        "files": 250,
+        "dedicated_files": 21,
+        "ignores": 6,
+        "nodes": 4505,
+        "canonical_definition_changed": true,
+        "global_node_set_changed": false,
+        "profile_membership_changed": true
+      },
+      "historical_attachment_deltas_preserved_at_previous_ref": true,
+      "profile_transfer": {
+        "file": "tests/test_pw1r3_rate_limit_context.py",
+        "source": "runtime-b",
+        "destination": "invariants-jwt",
+        "nodes": 7,
+        "evidence": "CTO_REVIEWED_EXISTING_NATIVE_LIST_DERIVATION_NOT_FRESH_COLLECT",
+        "current_affected_native_collection": "NOT_RUN"
+      }
+    },
+    "selection_binding": {
+      "authority": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
+      "source_ref": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+      "discovered_files": 277,
+      "ordinary_files": 250,
+      "dedicated_files": 21,
+      "ignores": 6,
+      "union": 271,
+      "intersection": 0,
+      "unknown": 0
+    },
+    "ordinary_canonical_status": "DERIVED_CURRENT_PROFILE_CANONICAL__AFFECTED_NATIVE_COLLECTION_PENDING"
+  },
+  "fixed_source_alignment": {
+    "authority": "CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
+    "ruling_path": "AI_REPORT_INBOX/rc4-5033e2cd-cto-continuation-review-20261026/delivery/CTO-RULING.zh-CN.md",
+    "ruling_sha256": "599e54a1db084bb691f746931c6aee9fec948fa19ba82cdd0bcc05690aee619f",
+    "anchor_path": "AI_REPORT_INBOX/rc4-5033e2cd-cto-continuation-review-20261026/delivery/CTO-CI-SOURCE-ANCHOR.json",
+    "anchor_sha256": "dd7dcb4c6fdd72a1c53791a325eed4aa2d9cf26cd9eb870ef0b444f68601633e",
+    "previous_comparison_source": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+    "whole_backend_frontend_comparison_source": "5033e2cd039af3b989418ae0a57133a6355ca42c",
+    "prior_note_product_unchanged_scope": "PRODUCT_IMPLEMENTATION_ONLY__FOUR_TEST_ATTACHMENTS_CHANGED",
+    "prior_21": "CTO_ACCEPTED_AUTHOR_V2_AT_5033__NOT_RERUN",
+    "prior_4505": "CTO_ACCEPTED_COLLECTION_AT_5033__NOT_BODY_PASS_OR_RERUN",
+    "historical_bindings_rebound": false,
+    "overall_source_ok": false,
+    "hosted_ci": "NOT_RUN",
+    "ci_secret_gate": "UNADJUDICATED",
+    "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED"
   }
 }

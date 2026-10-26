@@ -289,7 +289,7 @@ jobs:
             exit 1
           fi
           # Fixed product/test source; a CI-only successor must not rebind to HEAD.
-          if ! python tools/ci/prepare_test_evidence.py verify-reuse --coverage docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json --repo-root . --approved-ref 3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37 --result-file "$RUNNER_TEMP/reuse-result.json" > "$RUNNER_TEMP/reuse.log" 2>&1; then
+          if ! python tools/ci/prepare_test_evidence.py verify-reuse --coverage docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json --repo-root . --approved-ref 5033e2cd039af3b989418ae0a57133a6355ca42c --result-file "$RUNNER_TEMP/reuse-result.json" > "$RUNNER_TEMP/reuse.log" 2>&1; then
             echo "verify-reuse REFUSED"
             exit 1
           fi

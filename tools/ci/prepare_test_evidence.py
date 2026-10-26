@@ -700,11 +700,12 @@ def _git_bytes(repo, *argv):
     return result.stdout
 
 
-# This is an implementation-side source-continuation proposal, not CTO acceptance.
-REUSE_APPROVED_REF = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
+# CTO fixes the comparison snapshot; this is not overall SOURCE_OK or CI PASS.
+REUSE_APPROVED_REF = "5033e2cd039af3b989418ae0a57133a6355ca42c"
+REUSE_PREVIOUS_APPROVED_REF = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
 # Rebuild inputs/recipe are declared in intake_sources and the delivery receipt.
-REUSE_INTAKE_VERSION = 9
+REUSE_INTAKE_VERSION = 10
 REUSE_EXPECTED_METADATA = json.loads(r'''
 {
   "record": "RC2_VERSIONED_DEDICATED_ACCEPTANCE_INTAKE_V1",
@@ -2768,23 +2769,23 @@ def _reuse_expected_metadata(repo):
         "No hosted CI, full backend body execution, independent V3 or release readiness is established here.",
     ]
     previous = json.loads(_git_bytes(
-        repo, "show", REUSE_APPROVED_REF + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+        repo, "show", REUSE_PREVIOUS_APPROVED_REF + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
     ))
     expected["previous_rc4_source_intake"] = previous["current_source_intake"]
     expected["previous_rc4_selection_binding"] = previous["selection_binding"]
     expected.update(record="RC4_FIXED_CI_SOURCE_BINDING_V1",
                     authorization="CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
                     intake_status="FIXED_SOURCE_BINDING_SUCCESSOR_PENDING_CTO",
-                    product_anchor=REUSE_APPROVED_REF)
+                    product_anchor=REUSE_PREVIOUS_APPROVED_REF)
     current = json.loads(json.dumps(previous["current_source_intake"]))
     current.update(
-        authorization=expected["authorization"], source_ref=REUSE_APPROVED_REF,
+        authorization=expected["authorization"], source_ref=REUSE_PREVIOUS_APPROVED_REF,
         source_tree="875c6b3a09e6745859074b8353d21eb49b97ed53",
         source_parent="7500acbf82c492e12a0f2ff9e8ce5ab495eece3b",
         backend_tree="782c3afdebe6c664ddaf8a58c430751f91e294f0",
         frontend_tree="17c477ca022b0dc86118f481fd4ded907e92bcf8",
         authority_status="SOURCE_COMPARISON_ANCHOR_AUTHORIZED__SUCCESSOR_PENDING_CTO",
-        source_contract_commit=REUSE_APPROVED_REF,
+        source_contract_commit=REUSE_PREVIOUS_APPROVED_REF,
         current_fresh_ordinary_collection="DERIVED_4505_PROFILE_TRANSFER__AFFECTED_NATIVE_COLLECT_NOT_RUN",
         historical_attachment_deltas_preserved_at_previous_ref=True,
     )
@@ -2800,7 +2801,54 @@ def _reuse_expected_metadata(repo):
     }
     expected["ordinary_canonical_status"] = "DERIVED_CURRENT_PROFILE_CANONICAL__AFFECTED_NATIVE_COLLECTION_PENDING"
     expected["current_source_intake"] = current
+    expected["selection_binding"].update(authority=expected["authorization"], source_ref=REUSE_PREVIOUS_APPROVED_REF)
+    # Preserve the complete prior comparison layer before rolling authority.
+    expected["intake_version"] = 9
+    expected["previous_3a26_fixed_source_comparison"] = json.loads(json.dumps({
+        key: expected[key] for key in (
+            "record", "authorization", "intake_status", "intake_version", "product_anchor",
+            "current_source_intake", "selection_binding", "ordinary_canonical_status",
+        )
+    }))
+    # This note is an immutable reviewed input, never the caller's live JSON.
+    reviewed = json.loads(_git_bytes(
+        repo, "show", REUSE_APPROVED_REF + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+    ))
+    expected["rc4_7692_local_contract_repair"] = reviewed["rc4_7692_local_contract_repair"]
+    expected.update(
+        record="RC4_CTO_FIXED_5033_SOURCE_COMPARISON_V1", intake_version=REUSE_INTAKE_VERSION,
+        authorization="CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
+        intake_status="FIXED_COMPARISON_ONLY__OVERALL_SOURCE_OK_CTO_PENDING",
+        product_anchor=REUSE_APPROVED_REF,
+    )
+    current.update(
+        authorization=expected["authorization"], source_ref=REUSE_APPROVED_REF,
+        source_contract_commit=REUSE_APPROVED_REF,
+        source_tree="9f7b80ac217219160dc4a7489077cad0ad981c54",
+        source_parent="7692c4c2e5165db30611d5b4bcb7de80c8d1e1b1",
+        backend_tree="5e1d45222ef1c57c064d5b12bd1c667c3650c144",
+        authority_status="CTO_FIXED_COMPARISON_ONLY__NOT_OVERALL_SOURCE_OK",
+        current_fresh_ordinary_collection="PRIOR_CTO_ACCEPTED_4505_AT_5033__NOT_RERUN_THIS_TOOL_TASK",
+    )
     expected["selection_binding"].update(authority=expected["authorization"], source_ref=REUSE_APPROVED_REF)
+    expected["ordinary_canonical_status"] = "PRIOR_CTO_ACCEPTED_4505_COLLECTION__NO_BODY_PASS_OR_RERUN"
+    expected["fixed_source_alignment"] = {
+        "authority": expected["authorization"],
+        "ruling_path": "AI_REPORT_INBOX/rc4-5033e2cd-cto-continuation-review-20261026/delivery/CTO-RULING.zh-CN.md",
+        "ruling_sha256": "599e54a1db084bb691f746931c6aee9fec948fa19ba82cdd0bcc05690aee619f",
+        "anchor_path": "AI_REPORT_INBOX/rc4-5033e2cd-cto-continuation-review-20261026/delivery/CTO-CI-SOURCE-ANCHOR.json",
+        "anchor_sha256": "dd7dcb4c6fdd72a1c53791a325eed4aa2d9cf26cd9eb870ef0b444f68601633e",
+        "previous_comparison_source": REUSE_PREVIOUS_APPROVED_REF,
+        "whole_backend_frontend_comparison_source": REUSE_APPROVED_REF,
+        "prior_note_product_unchanged_scope": "PRODUCT_IMPLEMENTATION_ONLY__FOUR_TEST_ATTACHMENTS_CHANGED",
+        "prior_21": "CTO_ACCEPTED_AUTHOR_V2_AT_5033__NOT_RERUN",
+        "prior_4505": "CTO_ACCEPTED_COLLECTION_AT_5033__NOT_BODY_PASS_OR_RERUN",
+        "historical_bindings_rebound": False,
+        "overall_source_ok": False,
+        "hosted_ci": "NOT_RUN",
+        "ci_secret_gate": "UNADJUDICATED",
+        "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED",
+    }
     return expected
 
 

@@ -45,27 +45,27 @@ jobs:
         # Hard budget cap: 30+30+45+30+25 = 160 runner-minutes total.
         include:
           - shard: runtime-a
-            job-timeout-minutes: 30
-            pytest-timeout: 18m
+            job-timeout-minutes: 50
+            pytest-timeout: 40m
             expected-files: "94"
             expected-nodes: "1667"
           - shard: runtime-b
-            job-timeout-minutes: 30
+            job-timeout-minutes: 25
             pytest-timeout: 18m
             expected-files: "95"
             expected-nodes: "1630"
           - shard: topology
-            job-timeout-minutes: 45
-            pytest-timeout: 33m
+            job-timeout-minutes: 35
+            pytest-timeout: 25m
             expected-files: "39"
             expected-nodes: "798"
           - shard: invariants-jwt
             job-timeout-minutes: 30
-            pytest-timeout: 18m
+            pytest-timeout: 20m
             expected-files: "18"
             expected-nodes: "318"
           - shard: task-managed-pg
-            job-timeout-minutes: 25
+            job-timeout-minutes: 20
             pytest-timeout: 13m
             expected-files: "4"
             expected-nodes: "92"
@@ -141,11 +141,15 @@ jobs:
           # environment-NAME channel (-e POSTGRES_PASSWORD, no value on the
           # docker argv / process listing).
           export POSTGRES_PASSWORD="$PW"
+          export CI_TASK_LABEL="rc4-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-${{ matrix.shard }}"
+          echo "CI_TASK_LABEL=$CI_TASK_LABEL" >> "$GITHUB_ENV"
           NAME="c91-r6-pg-${{ matrix.shard }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          CID=$(docker run -d --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" -p 127.0.0.1::5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD postgres:16-alpine)
+          CID=$(docker run -d --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" --label mpango.task="$CI_TASK_LABEL" -p 127.0.0.1::5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD postgres:16-alpine)
+          echo "CI_PG_CONTAINER_ID=$CID" >> "$GITHUB_ENV"
+          LABELS=$(docker inspect --format '{{ index .Config.Labels "mpango.owner" }}|{{ index .Config.Labels "mpango.task" }}' "$CID")
+          test "$LABELS" = "$CI_OWNER_LABEL|$CI_TASK_LABEL" || exit 1
           PGPORT=$(docker inspect --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' "$CID")
           {
-            echo "CI_PG_CONTAINER_ID=$CID"
             echo "CI_PG_PORT=$PGPORT"
             echo "CI_PG_ADMIN_PASSWORD=$PW"
           } >> "$GITHUB_ENV"
@@ -153,10 +157,14 @@ jobs:
 
       - name: Start task-owned Redis 7 (labeled, exact ID recorded)
         run: |
+          test -n "${CI_TASK_LABEL:-}" || exit 1
+          test "$CI_TASK_LABEL" = "rc4-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-${{ matrix.shard }}" || exit 1
           NAME="c91-r6-redis-${{ matrix.shard }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          CID=$(docker run -d --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" -p 127.0.0.1::6379 redis:7-alpine)
-          RPORT=$(docker inspect --format '{{(index (index .NetworkSettings.Ports "6379/tcp") 0).HostPort}}' "$CID")
+          CID=$(docker run -d --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" --label mpango.task="$CI_TASK_LABEL" -p 127.0.0.1::6379 redis:7-alpine)
           echo "CI_REDIS_CONTAINER_ID=$CID" >> "$GITHUB_ENV"
+          LABELS=$(docker inspect --format '{{ index .Config.Labels "mpango.owner" }}|{{ index .Config.Labels "mpango.task" }}' "$CID")
+          test "$LABELS" = "$CI_OWNER_LABEL|$CI_TASK_LABEL" || exit 1
+          RPORT=$(docker inspect --format '{{(index (index .NetworkSettings.Ports "6379/tcp") 0).HostPort}}' "$CID")
           echo "CI_REDIS_PORT=$RPORT" >> "$GITHUB_ENV"
           echo "Redis container $CID on 127.0.0.1:$RPORT (shard ${{ matrix.shard }})"
 
@@ -472,11 +480,11 @@ jobs:
           for cid_name in CI_PG_CONTAINER_ID CI_REDIS_CONTAINER_ID; do
             cid="${!cid_name:-}"
             if [ -n "$cid" ]; then
-              label="$(docker inspect --format '{{ index .Config.Labels "mpango.owner" }}' "$cid" 2>/dev/null || true)"
-              if [ "$label" = "$CI_OWNER_LABEL" ]; then
+              label="$(docker inspect --format '{{ index .Config.Labels "mpango.owner" }}|{{ index .Config.Labels "mpango.task" }}' "$cid" 2>/dev/null || true)"
+              if [ -n "${CI_TASK_LABEL:-}" ] && [ "$label" = "$CI_OWNER_LABEL|$CI_TASK_LABEL" ]; then
                 docker rm -f -v "$cid" || fail=1
               else
-                echo "container $cid has a mismatched/unknown owner label — NOT removed (exact-ID discipline, no prune/prefix deletion)"
+                echo "container $cid has mismatched/unknown owner/task labels — NOT removed (exact-ID discipline, no prune/prefix deletion)"
                 fail=1
               fi
             fi

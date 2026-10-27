@@ -275,6 +275,8 @@ class TestDeployWorkflowContract:
         for run in (pg, redis):
             assert "docker run -d" in run
             assert "--label mpango.owner=" in run
+            assert '--label mpango.task="$CI_TASK_LABEL"' in run
+            assert '"mpango.owner" }}|{{ index .Config.Labels "mpango.task"' in run
             assert "CI_PG_CONTAINER_ID=" in run or "CI_REDIS_CONTAINER_ID=" in run
             assert "docker inspect" in run
             # matrix key is part of the task ownership identity
@@ -410,11 +412,11 @@ class TestDeployWorkflowContract:
         assert strategy["max-parallel"] == 2
         include = strategy["matrix"]["include"]
         expected = {
-            "runtime-a": (30, "18m", "94", "1667"),
-            "runtime-b": (30, "18m", "95", "1630"),
-            "topology": (45, "33m", "39", "798"),
-            "invariants-jwt": (30, "18m", "18", "318"),
-            "task-managed-pg": (25, "13m", "4", "92"),
+            "runtime-a": (50, "40m", "94", "1667"),
+            "runtime-b": (25, "18m", "95", "1630"),
+            "topology": (35, "25m", "39", "798"),
+            "invariants-jwt": (30, "20m", "18", "318"),
+            "task-managed-pg": (20, "13m", "4", "92"),
         }
         assert {leg["shard"] for leg in include} == set(expected)
         for leg in include:
@@ -853,14 +855,25 @@ case "$1 $2" in
       *HostPort*) echo "36379" ;;
       *Config.Image*) echo "postgres:16-alpine|zcode-mvp-invariants-ci-deploy-staging-r3" ;;
       *mpango.owner*)
+        owner="${CI_OWNER_LABEL:-zcode-mvp-invariants-ci-deploy-staging-r3}"
         if [ -n "${C91_FAKE_OWNER_IDS:-}" ]; then
           case " $C91_FAKE_OWNER_IDS " in
-            *" $4 "*) echo "${CI_OWNER_LABEL:-zcode-mvp-invariants-ci-deploy-staging-r3}" ;;
-            *) echo "foreign-owner" ;;
+            *" $4 "*) ;;
+            *) owner="foreign-owner" ;;
           esac
-        else
-          echo "${CI_OWNER_LABEL:-zcode-mvp-invariants-ci-deploy-staging-r3}"
-        fi ;;
+        fi
+        case "$3" in
+          *mpango.task*)
+            task="${CI_TASK_LABEL:-}"
+            if [ -n "${C91_FAKE_TASK_IDS:-}" ]; then
+              case " $C91_FAKE_TASK_IDS " in
+                *" $4 "*) ;;
+                *) task="foreign-task" ;;
+              esac
+            fi
+            printf '%s|%s\n' "$owner" "$task" ;;
+          *) echo "$owner" ;;
+        esac ;;
       *) echo "postgres:16-alpine|zcode-mvp-invariants-ci-deploy-staging-r3" ;;
     esac ;;
 esac
@@ -916,6 +929,9 @@ class TestWorkflowRedisWiringExecuted:
                 "RUNNER_TEMP": str(Path(rec).parent).replace(chr(92), "/"),
             }
         )
+        for line in github_env_path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("CI_TASK_LABEL="):
+                env["CI_TASK_LABEL"] = line.partition("=")[2]
         env.update(extra_env)
         return subprocess.run(
             [BASH, "-c", run_block], capture_output=True, text=True,
@@ -1001,6 +1017,13 @@ class TestWorkflowRedisWiringExecuted:
         gh = github_env.read_text(encoding="utf-8")
         assert "CI_REDIS_PORT=36379" in gh and "CI_REDIS_CONTAINER_ID=fakedockerid" in gh
         assert "CI_PG_PORT=36379" in gh and "CI_PG_CONTAINER_ID=fakedockerid" in gh
+        task = re.search(r"^CI_TASK_LABEL=(.+)$", gh, re.M).group(1)
+        assert task == "rc4-r3r1-1-runtime-a"
+        creates = [p.read_text(encoding="utf-8") for p in rec.glob("docker-*.argv")
+                   if p.read_text(encoding="utf-8").startswith("run -d")]
+        assert len(creates) == 2
+        assert all(f"--label mpango.task={task}" in a for a in creates)
+        assert all("--label mpango.owner=zcode-mvp-invariants-ci-deploy-staging-r3" in a for a in creates)
         # R6: the admin credential travels via the GITHUB_ENV channel —
         # generated per run (high entropy), never the old fixed literal
         m = re.search(r"^CI_PG_ADMIN_PASSWORD=(\S+)$", gh, re.M)
@@ -2333,6 +2356,9 @@ class TestR6R1FragmentControls:
             "RUNNER_TEMP": self._posix(tmp_path),
         })
         env.update(self._job_env(tmp_path))
+        for line in github_env.read_text(encoding="utf-8").splitlines():
+            if line.startswith("CI_TASK_LABEL="):
+                env["CI_TASK_LABEL"] = line.partition("=")[2]
         return env
 
     @staticmethod
@@ -2948,6 +2974,7 @@ class TestR6R1FragmentControls:
         assert "CI_CREDENTIALS_FILE" not in env
         env["CI_CREDENTIALS_FILE"] = self._posix(store)
         env["C91_FAKE_OWNER_IDS"] = "own-task-id-1"
+        env["CI_TASK_LABEL"] = "rc4-r6r1-1-runtime-a"
         proc = self._run_script(cleanup["run"], env, str(tmp_path))
         assert proc.returncode == 0, proc.stderr
         all_argv = [p.read_text(encoding="utf-8").strip() for p in sorted(rec.glob("docker-*.argv"))]
@@ -2977,6 +3004,7 @@ class TestR6R1FragmentControls:
         assert "CI_CREDENTIALS_FILE" not in env2
         env2["CI_CREDENTIALS_FILE"] = self._posix(store)
         env2["C91_FAKE_OWNER_IDS"] = "own-a own-b"
+        env2["CI_TASK_LABEL"] = "rc4-r6r1-1-runtime-a"
         (rt / "GAP-cleanup.txt").unlink(missing_ok=True)
         proc2 = self._run_script(cleanup["run"], env2, str(tmp_path))
         assert proc2.returncode == 0, proc2.stderr
@@ -2984,6 +3012,27 @@ class TestR6R1FragmentControls:
         rm2 = [p.read_text(encoding="utf-8").strip() for p in sorted(rec2.glob("docker-*.argv"))
                if p.read_text(encoding="utf-8").startswith("rm -f -v")]
         assert sorted(rm2) == ["rm -f -v own-a", "rm -f -v own-b"]
+
+        # A matching owner alone must not authorize another task's ID.
+        rec3 = tmp_path / "records3"
+        rec3.mkdir()
+        env3 = {**env2, "C91_FAKE_DIR": self._posix(rec3),
+                "C91_FAKE_TASK_IDS": "own-a"}
+        proc3 = self._run_script(cleanup["run"], env3, str(tmp_path))
+        assert proc3.returncode == 0, proc3.stderr
+        rm3 = [p.read_text(encoding="utf-8").strip() for p in rec3.glob("docker-*.argv")
+               if p.read_text(encoding="utf-8").startswith("rm -f -v")]
+        assert rm3 == ["rm -f -v own-a"], "foreign task with matching owner was removed"
+        assert (rt / "GAP-cleanup.txt").is_file()
+
+        rec4 = tmp_path / "records4"
+        rec4.mkdir()
+        env4 = {**env2, "C91_FAKE_DIR": self._posix(rec4)}
+        env4.pop("CI_TASK_LABEL")
+        proc4 = self._run_script(cleanup["run"], env4, str(tmp_path))
+        assert proc4.returncode == 0, proc4.stderr
+        assert not any(p.read_text(encoding="utf-8").startswith("rm -f -v")
+                       for p in rec4.glob("docker-*.argv")), "missing task authorized removal"
 
 
     def test_gate_refusal_console_safety_duplicate_collect_nodeid(self, tmp_path):

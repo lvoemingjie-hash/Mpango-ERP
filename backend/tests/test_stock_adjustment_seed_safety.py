@@ -46,10 +46,23 @@ async def test_actual_owned_fresh_demo_admission_then_occupied_rejection(tmp_pat
         cid=os.environ['MPANGO_INVARIANTS_R0_PG_CONTAINER']
         info=json.loads(subprocess.check_output(['docker','inspect',cid]))[0]
         manifest=tmp_path/'fresh-demo-task.json'
-        manifest.write_text(json.dumps({'container_id':cid,'task':info['Config']['Labels']['mpango.task'],
-            'owner':info['Config']['Labels']['mpango.owner'],'database':database}));manifest.chmod(0o600)
+        identity={'container_id':cid,'task':info['Config']['Labels']['mpango.task'],
+            'owner':info['Config']['Labels']['mpango.owner'],'database':database}
+        assert identity['task'] and identity['owner'].startswith('zcode-mvp-invariants-')
+        manifest.write_text(json.dumps(identity));manifest.chmod(0o600)
         monkeypatch.setenv('MPANGO_ENV','test');monkeypatch.setenv('MPANGO_FRESH_DEMO_TASK_MANIFEST',str(manifest))
         monkeypatch.setenv('DATABASE_URL',au)
+        class NoDatabase:
+            async def scalar(self,*a,**k):raise AssertionError('LABEL_REFUSAL_REACHED_DATABASE')
+            async def execute(self,*a,**k):raise AssertionError('LABEL_REFUSAL_REACHED_DATABASE')
+        for invalid in ({k:v for k,v in identity.items() if k!='task'},
+                        {**identity,'task':identity['task']+'-foreign'},
+                        {**identity,'owner':identity['owner']+'-foreign'}):
+            manifest.write_text(json.dumps(invalid))
+            with pytest.raises(RuntimeError,match='FRESH_TASK_DEMO_TARGET_REQUIRED'):
+                await _admit_fresh_task_demo_target(NoDatabase())
+        manifest.write_text(json.dumps(identity))
+        record['label_refusals_before_database']=3;save()
         engine=create_async_engine(au.replace('postgresql://','postgresql+asyncpg://',1),poolclass=NullPool)
         async with engine.begin() as db:
             await _admit_fresh_task_demo_target(db)

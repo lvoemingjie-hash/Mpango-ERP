@@ -701,11 +701,12 @@ def _git_bytes(repo, *argv):
 
 
 # CTO fixes the comparison snapshot; this is not overall SOURCE_OK or CI PASS.
-REUSE_APPROVED_REF = "5033e2cd039af3b989418ae0a57133a6355ca42c"
+REUSE_APPROVED_REF = "47716cdc88451e233c4142e7da0c3d82c368dd22"
+REUSE_5033_APPROVED_REF = "5033e2cd039af3b989418ae0a57133a6355ca42c"
 REUSE_PREVIOUS_APPROVED_REF = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
 # Rebuild inputs/recipe are declared in intake_sources and the delivery receipt.
-REUSE_INTAKE_VERSION = 10
+REUSE_INTAKE_VERSION = 11
 REUSE_EXPECTED_METADATA = json.loads(r'''
 {
   "record": "RC2_VERSIONED_DEDICATED_ACCEPTANCE_INTAKE_V1",
@@ -2812,25 +2813,25 @@ def _reuse_expected_metadata(repo):
     }))
     # This note is an immutable reviewed input, never the caller's live JSON.
     reviewed = json.loads(_git_bytes(
-        repo, "show", REUSE_APPROVED_REF + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+        repo, "show", REUSE_5033_APPROVED_REF + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
     ))
     expected["rc4_7692_local_contract_repair"] = reviewed["rc4_7692_local_contract_repair"]
     expected.update(
-        record="RC4_CTO_FIXED_5033_SOURCE_COMPARISON_V1", intake_version=REUSE_INTAKE_VERSION,
+        record="RC4_CTO_FIXED_5033_SOURCE_COMPARISON_V1", intake_version=10,
         authorization="CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
         intake_status="FIXED_COMPARISON_ONLY__OVERALL_SOURCE_OK_CTO_PENDING",
-        product_anchor=REUSE_APPROVED_REF,
+        product_anchor=REUSE_5033_APPROVED_REF,
     )
     current.update(
-        authorization=expected["authorization"], source_ref=REUSE_APPROVED_REF,
-        source_contract_commit=REUSE_APPROVED_REF,
+        authorization=expected["authorization"], source_ref=REUSE_5033_APPROVED_REF,
+        source_contract_commit=REUSE_5033_APPROVED_REF,
         source_tree="9f7b80ac217219160dc4a7489077cad0ad981c54",
         source_parent="7692c4c2e5165db30611d5b4bcb7de80c8d1e1b1",
         backend_tree="5e1d45222ef1c57c064d5b12bd1c667c3650c144",
         authority_status="CTO_FIXED_COMPARISON_ONLY__NOT_OVERALL_SOURCE_OK",
         current_fresh_ordinary_collection="PRIOR_CTO_ACCEPTED_4505_AT_5033__NOT_RERUN_THIS_TOOL_TASK",
     )
-    expected["selection_binding"].update(authority=expected["authorization"], source_ref=REUSE_APPROVED_REF)
+    expected["selection_binding"].update(authority=expected["authorization"], source_ref=REUSE_5033_APPROVED_REF)
     expected["ordinary_canonical_status"] = "PRIOR_CTO_ACCEPTED_4505_COLLECTION__NO_BODY_PASS_OR_RERUN"
     expected["fixed_source_alignment"] = {
         "authority": expected["authorization"],
@@ -2839,7 +2840,7 @@ def _reuse_expected_metadata(repo):
         "anchor_path": "AI_REPORT_INBOX/rc4-5033e2cd-cto-continuation-review-20261026/delivery/CTO-CI-SOURCE-ANCHOR.json",
         "anchor_sha256": "dd7dcb4c6fdd72a1c53791a325eed4aa2d9cf26cd9eb870ef0b444f68601633e",
         "previous_comparison_source": REUSE_PREVIOUS_APPROVED_REF,
-        "whole_backend_frontend_comparison_source": REUSE_APPROVED_REF,
+        "whole_backend_frontend_comparison_source": REUSE_5033_APPROVED_REF,
         "prior_note_product_unchanged_scope": "PRODUCT_IMPLEMENTATION_ONLY__FOUR_TEST_ATTACHMENTS_CHANGED",
         "prior_21": "CTO_ACCEPTED_AUTHOR_V2_AT_5033__NOT_RERUN",
         "prior_4505": "CTO_ACCEPTED_COLLECTION_AT_5033__NOT_BODY_PASS_OR_RERUN",
@@ -2848,6 +2849,40 @@ def _reuse_expected_metadata(repo):
         "hosted_ci": "NOT_RUN",
         "ci_secret_gate": "UNADJUDICATED",
         "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED",
+    }
+    expected["previous_5033_fixed_source_comparison"] = json.loads(json.dumps({
+        key: expected[key] for key in (
+            "record", "authorization", "intake_status", "intake_version", "product_anchor",
+            "current_source_intake", "selection_binding", "ordinary_canonical_status", "fixed_source_alignment",
+        )
+    }))
+    expected.update(record="RC4_CTO_FIXED_477_OBSERVER_SOURCE_COMPARISON_V1",
+                    authorization="CTO-AUTH-RC4-477-OBSERVER-ADMISSION-L-R1-20261027",
+                    intake_version=REUSE_INTAKE_VERSION, product_anchor=REUSE_APPROVED_REF)
+    current.update(authorization=expected["authorization"], source_ref=REUSE_APPROVED_REF,
+        source_contract_commit=REUSE_APPROVED_REF,
+        source_tree="4ea739f8b7c17f2f78df8e1ee3c7020cbeee1de6",
+        source_parent="d8f7a26e0aecf9e908674d71ccc6cbbf996d56d8",
+        backend_tree="b0dec5908e1f1518312253847bf418b2c1c4499b",
+        current_fresh_ordinary_collection="PRIOR_4505_OLD_SOURCE_SELECTION_EQUIVALENT_REUSE__NOT_FRESH_COLLECT_AT_477")
+    expected["selection_binding"].update(authority=expected["authorization"], source_ref=REUSE_PREVIOUS_APPROVED_REF)
+    expected["fixed_source_alignment"] = {
+        "authority": expected["authorization"],
+        "ruling_path": "AI_REPORT_INBOX/rc4-477-observer-admission-cto-directive-20261027/delivery/inputs/CTO-RULING.zh-CN.md",
+        "ruling_sha256": "276ad73d71e8c97f6e6363d57833cdced6362fe521e78efa70a7090edb6ea765",
+        "anchor_path": "AI_REPORT_INBOX/rc4-477-observer-admission-cto-directive-20261027/delivery/inputs/CTO-RECHECK.json",
+        "anchor_sha256": "a0f195adef91154803c1e960cf2033766688454957cc467ba1fc06d584549dfb",
+        "previous_comparison_source": REUSE_5033_APPROVED_REF,
+        "whole_backend_frontend_comparison_source": REUSE_APPROVED_REF,
+        "historical_bindings_rebound": False, "overall_source_ok": False,
+        "STAFF_HOSTED_ORIGINAL_5": "OPEN", "STAFF_HOSTED_ROOT_CAUSE": "UNKNOWN",
+        "SOURCE_FAILED_RUN": 40416802614,
+        "LOCAL_BACKEND_FINITE": "61P_AT_477__AUTHOR_SCOPE__NOT_RERUN",
+        "LOCAL_TOOL_FOCUSED": "19P_AT_477__NOT_FULL_TOOL_GATE",
+        "RUNTIME_A_40M_HOSTED_COMPLETION": "NOT_RUN", "OBSERVABILITY_CURRENT_HOSTED": "NOT_RUN",
+        "CI_SECRET_GATE": "UNADJUDICATED", "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED",
+        "observation_transport": "EXISTING_JUNIT_PROPERTIES__ORIGINAL_NINE_CALL_WINDOWS_ONLY",
+        "missing_observation": "GAP__NOT_ZERO_REFUSALS",
     }
     return expected
 

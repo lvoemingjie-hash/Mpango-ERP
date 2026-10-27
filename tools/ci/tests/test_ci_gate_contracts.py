@@ -4032,7 +4032,8 @@ class TestWrapperWrongHeadRefusal:
 class TestReuseValidityMachineCheck:
     """Approved Git objects, complete metadata and real admission controls."""
 
-    APPROVED = "5033e2cd039af3b989418ae0a57133a6355ca42c"
+    APPROVED = "47716cdc88451e233c4142e7da0c3d82c368dd22"
+    PREVIOUS_5033_APPROVED = "5033e2cd039af3b989418ae0a57133a6355ca42c"
     PREVIOUS_APPROVED = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
     HISTORICAL_RC4_SOURCE_REF = "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d"
     HISTORICAL_COVERAGE_REF = "bac775df8257ea2fd626d6de425f3564748b37f2"
@@ -4284,7 +4285,8 @@ PY
 
     def test_unapproved_product_ref_refused(self, tmp_path):
         coverage = self._coverage(tmp_path)
-        for ref in ("fd37acbbd3af8c9d0ed64ecb4ad0849d4ab8c366", self.PREVIOUS_APPROVED):
+        for ref in ("fd37acbbd3af8c9d0ed64ecb4ad0849d4ab8c366", self.PREVIOUS_APPROVED,
+                    self.PREVIOUS_5033_APPROVED):
             proc = subprocess.run([
                 sys.executable, str(EVIDENCE_TOOL), "verify-reuse", "--coverage", str(coverage),
                 "--repo-root", str(REPO_ROOT), "--approved-ref", ref], capture_output=True, text=True)
@@ -4295,6 +4297,7 @@ PY
     def test_fixed_alignment_metadata_tampering_refused(self, tmp_path, forgery):
         path = self._coverage(tmp_path)
         data = json.loads(path.read_text())
+        pristine = json.loads(path.read_text())
         if forgery == "comparison_anchor":
             data["fixed_source_alignment"]["whole_backend_frontend_comparison_source"] = self.PREVIOUS_APPROVED
         else:
@@ -4304,6 +4307,17 @@ PY
         assert proc.returncode == 5 and not result["all_valid"]
         assert result["problems"] == ["REUSE_METADATA_PROVENANCE"]
         assert not result["release_ready"] and not result["evidence_ready"]
+        for key, value in (("STAFF_HOSTED_ROOT_CAUSE", "CLOSED"),
+                           ("STAFF_HOSTED_ORIGINAL_5", "PASS"),
+                           ("RUNTIME_A_40M_HOSTED_COMPLETION", "PASS"),
+                           ("OBSERVABILITY_CURRENT_HOSTED", "PASS"),
+                           ("CI_SECRET_GATE", "PASS")):
+            changed = json.loads(json.dumps(pristine))
+            changed["fixed_source_alignment"][key] = value
+            path.write_text(json.dumps(changed))
+            proc, result = self._check(REPO_ROOT, path)
+            assert proc.returncode == 5 and result['problems'] == ['REUSE_METADATA_PROVENANCE']
+            assert not result['all_valid'] and not result['release_ready'] and not result['evidence_ready']
 
     def test_current_intake_preserves_history_and_explicit_attachment_gaps(self, tmp_path):
         coverage = json.loads(self._coverage(tmp_path).read_text())
@@ -4336,13 +4350,18 @@ PY
         assert current["ordinary_definition"]["canonical_definition_changed"] is True
         assert current["ordinary_definition"]["global_node_set_changed"] is False
         assert current["ordinary_definition"]["profile_membership_changed"] is True
-        assert current["current_fresh_ordinary_collection"] == "PRIOR_CTO_ACCEPTED_4505_AT_5033__NOT_RERUN_THIS_TOOL_TASK"
+        assert current["current_fresh_ordinary_collection"] == "PRIOR_4505_OLD_SOURCE_SELECTION_EQUIVALENT_REUSE__NOT_FRESH_COLLECT_AT_477"
         prior_comparison = coverage["previous_3a26_fixed_source_comparison"]
         reviewed = json.loads(subprocess.check_output([
             "git", "show", self.APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
         ], cwd=REPO_ROOT, text=True))
-        for key in prior_comparison:
-            assert prior_comparison[key] == reviewed[key]
+        assert prior_comparison == reviewed["previous_3a26_fixed_source_comparison"]
+        prior_5033 = coverage["previous_5033_fixed_source_comparison"]
+        for key in prior_5033:
+            assert prior_5033[key] == reviewed[key]
+        assert prior_5033['intake_version'] == 10
+        assert prior_5033['product_anchor'] == self.PREVIOUS_5033_APPROVED
+        assert coverage['selection_binding']['source_ref'] == self.PREVIOUS_APPROVED
         assert prior_comparison["product_anchor"] == self.PREVIOUS_APPROVED
         assert coverage["rc4_7692_local_contract_repair"] == reviewed["rc4_7692_local_contract_repair"]
         for key in ("bindings", "recovered_native_node_maps", "current_attachment_deltas",
@@ -4944,7 +4963,8 @@ class TestThreeFamilyFiniteCloseout:
         unrelated.write_text("keep\n")
         env = dict(os.environ, PATH=str(bindir)+os.pathsep+os.environ["PATH"],
                    RUNNER_TEMP=str(rt), C91_FAKE_DIR=str(records), CI_OWNER_LABEL="task-owner",
-                   CI_PG_CONTAINER_ID="own-only", C91_FAKE_OWNER_IDS="own-only")
+                   CI_TASK_LABEL="task-id", CI_PG_CONTAINER_ID="own-only",
+                   C91_FAKE_OWNER_IDS="own-only", C91_FAKE_TASK_IDS="own-only")
         env.pop("CI_CREDENTIALS_FILE", None)
         env.pop("CI_REDIS_CONTAINER_ID", None)
         cleanup = helper._step(yaml.safe_load(DEPLOY_WF.read_text()), "Cleanup task-owned resources")
@@ -5005,7 +5025,7 @@ class TestThreeFamilyFiniteCloseout:
         assert route["source_ref"] == coverage["previous_rc3_source_intake"]["source_ref"]
         assert not route["new_independent_v3"] and route["added_business_accepted_nodes"] == 0
         assert coverage["previous_3a26_fixed_source_comparison"]["intake_version"] == 9
-        assert coverage["intake_version"] == 10
+        assert coverage["intake_version"] == 11
         previous = coverage["previous_route_contract_closeout"]
         assert previous["source_ref"] == "9e2221393f0a8c3da493ea32d4a3d93e41f4fa33"
         assert coverage["previous_route_contract_source_intake"]["source_ref"] == previous["source_ref"]
@@ -5304,3 +5324,298 @@ class TestRC4CurrentReadOnlyAndDependencyContracts:
         env.update(step["env"])
         result = subprocess.run([BASH, "-e", "-o", "pipefail", "-c", step["run"] + '\ntouch "'+str(sentinel)+'"\n'], env=env, capture_output=True)
         assert result.returncode == 29 and not sentinel.exists(), "INSTALL_INTEGRITY_FAILURE_MUST_BLOCK_BODY"
+
+
+class TestRC4StaffObserverControls:
+    """Offline test doubles only; never import the credential product module."""
+
+    @staticmethod
+    def _load(path=None):
+        import importlib.util
+        path = path or REPO_ROOT / 'tools/ci/rc4_staff_credential_observer.py'
+        spec = importlib.util.spec_from_file_location('rc4_observer_control', path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _stub(tmp_path):
+        from types import ModuleType, SimpleNamespace
+        import uuid
+        source = tmp_path / 'explicit-test-double.py'
+        code = ('def proof_failed():\n'
+                '    calls.append(1)\n'
+                '    if raises: raise returned\n'
+                '    return returned\n'
+                'def invoke():\n'
+                '    schema = raw_schema\n'
+                '    active = [None, None]\n'
+                '    rows = hostile\n'
+                '    return proof_failed()\n')
+        source.write_text(code, encoding='utf-8')
+        module = ModuleType('explicit_credential_test_double')
+        module.calls = []
+        module.raises = False
+        module.returned = ValueError('controlled business result')
+        module.raw_schema = 't_' + uuid.uuid4().hex
+        class Hostile(list):
+            def __len__(self):raise AssertionError('CUSTOM_LEN_MUST_NOT_RUN')
+            def __repr__(self):raise AssertionError('CUSTOM_REPR_MUST_NOT_RUN')
+        module.hostile = Hostile([1])
+        exec(compile(code, str(source), 'exec'), vars(module))
+        class Events:
+            def __init__(self):self.callbacks = []
+            def listen(self, engine, name, callback):
+                assert name == 'handle_error'
+                self.callbacks.append(callback)
+            def remove(self, engine, name, callback):self.callbacks.remove(callback)
+        return module, source, Events(), SimpleNamespace
+
+    @staticmethod
+    def _item(observer, name=None):
+        from types import SimpleNamespace
+        return SimpleNamespace(nodeid=observer._MODULE+'::'+(name or sorted(observer._NAMES)[0]), user_properties=[])
+
+    def test_lazy_scope_and_real_source_binding_refuse_shadow(self, monkeypatch, tmp_path):
+        import ast
+        from types import CodeType, FunctionType, ModuleType
+        prefixes = ('services.', 'database.', 'api.')
+        before = {n for n in sys.modules if n.startswith(prefixes)}
+        observer = self._load()
+        assert {n for n in sys.modules if n.startswith(prefixes)} == before
+        native = ast.parse((REPO_ROOT/'backend'/observer._MODULE).read_bytes())
+        assert observer._NAMES == {n.name for n in native.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith('test_')}
+        called = []
+        def forbidden():called.append(1);raise AssertionError('NON_TARGET_INSTALL')
+        monkeypatch.setattr(observer, '_bound_service', forbidden)
+        item = self._item(observer)
+        item.nodeid = 'tests/unrelated.py::test_one'
+        window = observer.pytest_runtest_call(item)
+        next(window)
+        with pytest.raises(StopIteration):next(window)
+        assert not called and not item.user_properties
+        observer = self._load()
+        shadow = ModuleType('services.staff_credential_service')
+        shadow.__file__ = str(tmp_path)
+        monkeypatch.setitem(sys.modules, 'services.staff_credential_service', shadow)
+        with pytest.raises(ValueError, match='SOURCE_BINDING_REFUSED'):observer._bound_service()
+        # Construct, but never call, the frozen function code with explicit
+        # test globals. No module import, Settings or product execution.
+        source = REPO_ROOT / observer._SOURCE
+        compiled = compile(source.read_bytes(),str(source),'exec',dont_inherit=True)
+        code = next(c for c in compiled.co_consts if type(c) is CodeType and c.co_name=='proof_failed')
+        shadow.__file__ = str(source)
+        shadow.proof_failed = FunctionType(code, vars(shadow))
+        assert observer._bound_service() == (shadow,shadow.proof_failed,source)
+        bad = compile('def proof_failed(): return None\n',str(source),'exec')
+        shadow.proof_failed = FunctionType(next(c for c in bad.co_consts if type(c) is CodeType),vars(shadow))
+        with pytest.raises(ValueError,match='SOURCE_BINDING_REFUSED'):observer._bound_service()
+
+    def test_transparent_refusal_bounded_safe_structure(self, monkeypatch, tmp_path, capsys):
+        observer = self._load()
+        module, source, events, namespace = self._stub(tmp_path)
+        original = module.proof_failed
+        monkeypatch.setattr(observer, '_bound_service', lambda: (module, original, source))
+        monkeypatch.setattr(observer, '_engine_events', lambda: (events, object()))
+        item = self._item(observer)
+        observation = observer._Observation(item)
+        canary = secrets.token_hex(32)
+        observation.start()
+        context = namespace(original_exception=namespace(sqlstate='42P01', message=canary),
+            statement='SELECT id,password_hash,is_active,is_deleted FROM '+canary,
+            parameters=(canary, 'private@example.invalid'))
+        assert events.callbacks[0](context) is None
+        for _ in range(20):assert module.invoke() is module.returned
+        observation.stop();observation.publish()
+        assert module.proof_failed is original and not events.callbacks and len(module.calls) == 20
+        payload = item.user_properties[0][1]
+        data = json.loads(payload)
+        assert data['enabled'] and data['restored'] and data['status'] == 'CLIPPED'
+        assert len(data['events']) == 16 and data['clipped'] is True
+        assert data['events'][0] == {'kind':'SQL_ERROR','sqlstate':'42P01','staff_copy_query':True}
+        assert all(e['site'] == observer._SOURCE and type(e['line']) is int and e['active_count'] == 2
+                   and e['other_copy_count'] is None and len(e['schema_sha256']) == 64 for e in data['events'][1:])
+        assert all(value not in payload for value in (canary,module.raw_schema,str(source),'private@example.invalid','SELECT id,'))
+        assert capsys.readouterr() == ('','')
+
+    def test_restore_on_business_failure_and_observation_errors(self, monkeypatch, tmp_path):
+        for mode in ('business_failure','callback_error','partial_install','unknown_sqlstate','transport_error'):
+            with monkeypatch.context() as mp:
+                observer = self._load()
+                case = tmp_path/mode;case.mkdir()
+                module, source, events, namespace = self._stub(case)
+                original = module.proof_failed
+                mp.setattr(observer, '_bound_service', lambda: (module, original, source))
+                mp.setattr(observer, '_engine_events', lambda: (events, object()))
+                if mode == 'callback_error':
+                    def broken(*args):raise RuntimeError('private observation detail')
+                    mp.setattr(observer._Observation, '_proof', broken)
+                if mode == 'partial_install':
+                    listen = events.listen
+                    def broken_listen(*args):listen(*args);raise RuntimeError('internal install failure')
+                    mp.setattr(events, 'listen', broken_listen)
+                item = self._item(observer)
+                if mode == 'transport_error':
+                    class BrokenTransport:
+                        def append(self, value):raise RuntimeError('private transport error')
+                    item.user_properties = BrokenTransport()
+                window = observer.pytest_runtest_call(item);next(window)
+                if mode == 'unknown_sqlstate':events.callbacks[0](namespace(original_exception=ValueError('private'), statement='unknown'))
+                if mode == 'business_failure':
+                    module.raises = True
+                    error = module.returned
+                    with pytest.raises(ValueError) as result:module.invoke()
+                    assert result.value is error
+                    with pytest.raises(ValueError) as propagated:window.throw(error)
+                    assert propagated.value is error
+                else:
+                    assert module.invoke() is module.returned
+                    with pytest.raises(StopIteration):next(window)
+                assert module.proof_failed is original and not events.callbacks and len(module.calls) == 1
+                if mode != 'transport_error':
+                    data = json.loads(item.user_properties[0][1])
+                    assert data['status'] == ('COMPLETE' if mode == 'business_failure' else 'GAP')
+                    if mode != 'business_failure':assert data['errors']
+
+    @staticmethod
+    def _native_child(tmp_path, *, plugin=None, enabled=True, label='run'):
+        import ast
+        import xml.etree.ElementTree as ET
+        root = tmp_path/label;root.mkdir()
+        observer_path = plugin or REPO_ROOT/'tools/ci/rc4_staff_credential_observer.py'
+        observer = TestRC4StaffObserverControls._load(observer_path)
+        native = ast.parse((REPO_ROOT/'backend'/observer._MODULE).read_bytes())
+        names = [n.name for n in native.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and n.name.startswith('test_')]
+        tests = root/'tests';tests.mkdir()
+        (root/'pytest.ini').write_text('[pytest]\njunit_family=xunit2\n')
+        code = '''import os, types, pathlib, socket
+import pytest
+import rc4_staff_credential_observer as observer
+service = types.ModuleType('explicit_native_test_double')
+service.calls = []
+service.raw_schema = 't_' + '1'*32
+service.returned = ValueError(os.environ['OBSERVER_FAKE_CANARY'])
+source = pathlib.Path(__file__).parent/'synthetic-service.py'
+body = "def proof_failed():\\n    calls.append(1)\\n    return returned\\ndef invoke():\\n    schema = raw_schema\\n    active = [None]\\n    rows = ()\\n    return proof_failed()\\n".replace('\\\\n','\\n')
+source.write_text(body)
+exec(compile(body,str(source),'exec'), vars(service))
+original = service.proof_failed
+class Events:
+    callbacks = []
+    def listen(self, engine, name, callback):self.callbacks.append(callback)
+    def remove(self, engine, name, callback):self.callbacks.remove(callback)
+events = Events()
+observer._bound_service = lambda: (service, original, source)
+observer._engine_events = lambda: (events, object())
+@pytest.fixture(autouse=True)
+def no_network(monkeypatch):
+    def denied(*args,**kwargs):raise RuntimeError('NATIVE_NETWORK_REFUSED')
+    monkeypatch.setattr(socket.socket,'connect',denied)
+    monkeypatch.setattr(socket.socket,'connect_ex',denied)
+def exercise():
+    for callback in list(events.callbacks):
+        callback(types.SimpleNamespace(original_exception=types.SimpleNamespace(sqlstate='42P01'),
+            statement='SELECT id,password_hash,is_active,is_deleted FROM '+os.environ['OBSERVER_FAKE_CANARY'],
+            parameters=(os.environ['OBSERVER_FAKE_CANARY'],)))
+    assert service.invoke() is service.returned
+'''
+        (root/'conftest.py').write_text(textwrap.dedent(code),encoding='utf-8')
+        body = 'from conftest import exercise\n\n'
+        for i,name in enumerate(names):
+            body += f'def {name}():\n    exercise()\n'
+            if i == 2:body += "    assert False, 'CONTROLLED_NATIVE_FAILURE'\n"
+        (tests/Path(observer._MODULE).name).write_text(body)
+        (tests/'test_z_after.py').write_text('import socket,pytest\nfrom conftest import service,original,events\ndef test_after_restored():\n    assert service.proof_failed is original and not events.callbacks\n    with pytest.raises(RuntimeError,match="NATIVE_NETWORK_REFUSED"):\n        with socket.socket() as s:s.connect(("127.0.0.1",1))\n')
+        canary = secrets.token_hex(32)
+        env = dict(os.environ, PYTHONPATH=str(observer_path.parent),PYTEST_DISABLE_PLUGIN_AUTOLOAD='1',OBSERVER_FAKE_CANARY=canary)
+        env.pop('PYTEST_ADDOPTS',None);env.pop('PYTEST_PLUGINS',None)
+        argv = [sys.executable,'-B','-m','pytest',observer._MODULE,'tests/test_z_after.py','-q','--disable-warnings',
+                '--junitxml='+str(root/'native.xml')]
+        if enabled:argv += ['-p','rc4_staff_credential_observer']
+        proc = subprocess.run(argv,cwd=root,env=env,capture_output=True,text=True,timeout=45)
+        (root/'native.stdout').write_text(proc.stdout);(root/'native.stderr').write_text(proc.stderr)
+        assert proc.returncode == 1 and 'CONTROLLED_NATIVE_FAILURE' in proc.stdout,'NATIVE_CONTROL_DID_NOT_REACH_BODY'
+        cases = list(ET.parse(root/'native.xml').iter('testcase'))
+        assert len(cases) == 10 and sum(c.find('failure') is not None for c in cases) == 1
+        assert all(c.find('error') is None and c.find('skipped') is None for c in cases)
+        assert canary not in proc.stdout+proc.stderr+(root/'native.xml').read_text()
+        return root,cases
+
+    @staticmethod
+    def _assert_native_observations(cases):
+        for case in cases[:9]:
+            properties = case.find('properties')
+            assert properties is not None,'RC4_OBSERVER_INSTALLATION_MISSING'
+            values = [p.attrib['value'] for p in properties if p.attrib['name']=='rc4_staff_observation_v1']
+            assert len(values) == 1,'RC4_OBSERVER_INSTALLATION_MISSING'
+            data = json.loads(values[0])
+            assert data['enabled'] and data['restored'] and data['status']=='COMPLETE','RC4_OBSERVER_INSTALLATION_MISSING'
+            assert [e['kind'] for e in data['events']] == ['SQL_ERROR','PROOF_FAILED']
+        assert cases[9].find('properties') is None
+
+    def test_native842_junit_and_existing_sanitizer_preserve_outcomes(self, tmp_path):
+        import xml.etree.ElementTree as ET
+        base, original = self._native_child(tmp_path, enabled=False, label='without-plugin')
+        path, observed = self._native_child(tmp_path, label='with-plugin')
+        self._assert_native_observations(observed)
+        vector = lambda cases:[(c.attrib['classname'],c.attrib['name'],c.find('failure') is not None) for c in cases]
+        assert vector(original) == vector(observed)
+        directory = tmp_path/'sanitize';directory.mkdir()
+        proc,out,receipt = TestR6SanitizeControls()._run_sanitize(directory,(path/'native.xml').read_text())
+        assert proc.returncode == 0,proc.stderr
+        published = list(ET.parse(out).iter('testcase'))
+        assert vector(published) == vector(observed)
+        self._assert_native_observations(published)
+        proof = json.loads(receipt.read_text())
+        assert proof['input_sha256'] == __import__('hashlib').sha256((path/'native.xml').read_bytes()).hexdigest()
+        assert proof['derived_output_sha256'] == __import__('hashlib').sha256(out.read_bytes()).hexdigest()
+
+    def test_workflow_only_runtime_a_loads_observer_preserving_rc(self, tmp_path):
+        helper = TestR6R1FragmentControls()
+        doc = yaml.safe_load(DEPLOY_WF.read_text())
+        body = helper._step(doc,'Run shard test body')['run']
+        collect = helper._step(doc,'Shard gate')['run']
+        assert 'rc4_staff_credential_observer' not in collect and 'OBSERVER_ARGS' not in collect
+        for leg in ('runtime-a','runtime-b','topology','invariants-jwt','task-managed-pg'):
+            for rc in (0,1,124):
+                case=tmp_path/(leg+'-'+str(rc));case.mkdir()
+                bin_dir=helper._bin_dir(case,timeout=True,poetry=True,docker=False)
+                rt=case/'rt';rt.mkdir();rec=case/'records';rec.mkdir()
+                (rt/'c91-test-env.sh').write_text("export TEST_ADMIN_DATABASE_URL=''\n")
+                (rt/('profile-'+leg+'.tests')).write_text('tests/synthetic.py\n')
+                fake=case/'fake-pytest.py'
+                fake.write_text('import os,sys,json,pathlib\npathlib.Path(os.environ["ARGV_RECORD"]).write_text(json.dumps(sys.argv[1:]))\nsys.exit(int(os.environ["FAKE_PYTEST_RC"]))\n')
+                env=dict(os.environ,PATH=str(bin_dir)+os.pathsep+os.environ['PATH'],
+                    RUNNER_TEMP=str(rt),C91_FAKE_DIR=str(rec),FAKE_PYTEST_SCRIPT=str(fake),
+                    FAKE_PYTEST_RC=str(rc),ARGV_RECORD=str(case/'argv.json'))
+                script=body.replace('${{ matrix.shard }}',leg).replace('${{ matrix.pytest-timeout }}','1m')
+                proc=helper._run_script(script,env,str(REPO_ROOT/'backend'))
+                assert proc.returncode == rc and (rt/'pytest-rc.txt').read_text().strip()==str(rc)
+                argv=json.loads((case/'argv.json').read_text())
+                assert ('rc4_staff_credential_observer' in argv) == (leg=='runtime-a')
+                assert argv.count('-p') == int(leg=='runtime-a')
+                calls=[p.read_text() for p in rec.glob('poetry-*.argv')]
+                assert sum(c.startswith('run pytest ') for c in calls)==1
+
+    def test_missing_installation_mutant_is_semantic_red_and_restored(self, tmp_path):
+        import hashlib
+        original=(REPO_ROOT/'tools/ci/rc4_staff_credential_observer.py').read_bytes()
+        anchor=b'        observation.start()'
+        assert original.count(anchor)==1
+        copy=tmp_path/'mutant';copy.mkdir()
+        target=copy/'rc4_staff_credential_observer.py';target.write_bytes(original);target.chmod(0o644)
+        before=hashlib.sha256(original).hexdigest();mode=target.stat().st_mode&0o777
+        try:
+            mutated=original.replace(anchor,b'        pass  # semantic mutant: no observer installation')
+            compile(mutated,str(target),'exec');target.write_bytes(mutated)
+            path,cases=self._native_child(tmp_path,plugin=target,label='mutant-child')
+            with pytest.raises(AssertionError,match='RC4_OBSERVER_INSTALLATION_MISSING'):
+                self._assert_native_observations(cases)
+        finally:
+            target.write_bytes(original);target.chmod(mode)
+        assert hashlib.sha256(target.read_bytes()).hexdigest()==before and target.stat().st_mode&0o777==mode
+        path,cases=self._native_child(tmp_path,plugin=target,label='restored-child')
+        self._assert_native_observations(cases)
+        (tmp_path/'observer-mutant-proof.json').write_text(json.dumps({'anchor_count':1,'semantic_marker':'RC4_OBSERVER_INSTALLATION_MISSING',
+            'original_sha256':before,'restored_sha256':hashlib.sha256(target.read_bytes()).hexdigest(),
+            'mode_restored':target.stat().st_mode&0o777==mode,'native_business_result_preserved':True,'control_green':True}))

@@ -6,6 +6,7 @@ import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage';
 import { SetupCredentialPage } from '@/pages/auth/SetupCredentialPage';
+import { useAuthStore } from '@/stores/authStore';
 
 const { mockPost } = vi.hoisted(() => ({
   mockPost: vi.fn(),
@@ -176,28 +177,40 @@ describe('credential lifecycle frontend', () => {
   });
 
   it('login page submits lowercase trimmed email', async () => {
-    mockPost.mockResolvedValue({
-      data: {
+    const originalBegin = useAuthStore.getState().beginAuthAttempt;
+    const beginAttempt = vi.spyOn(useAuthStore.getState(), 'beginAuthAttempt');
+    try {
+      mockPost.mockResolvedValue({
         data: {
-          access_token: 'identity-access-value',
-          refresh_token: 'identity-refresh-value',
-          roles: [],
-          available_tenants: [],
+          data: {
+            access_token: 'identity-access-value',
+            refresh_token: 'identity-refresh-value',
+            roles: [],
+            available_tenants: [],
+          },
         },
-      },
-    });
-
-    renderAt('/login', <LoginPage />);
-
-    await userEvent.type(screen.getByLabelText(/email/i), '  Owner@Example.COM  ');
-    await userEvent.type(screen.getByLabelText(/password/i), 'valid-passphrase');
-    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
-
-    await waitFor(() => {
-      expect(mockPost).toHaveBeenCalledWith('/auth/login', {
-        email: 'owner@example.com',
-        password: 'valid-passphrase', // pragma: allowlist secret
       });
-    });
+
+      renderAt('/login', <LoginPage />);
+
+      await userEvent.type(screen.getByLabelText(/email/i), '  Owner@Example.COM  ');
+      await userEvent.type(screen.getByLabelText(/password/i), 'valid-passphrase');
+      await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+      await waitFor(() => {
+        expect(beginAttempt).toHaveBeenCalledTimes(1);
+        expect(beginAttempt.mock.results[0].type).toBe('return');
+        expect(mockPost).toHaveBeenCalledWith('/auth/login', {
+          email: 'owner@example.com',
+          password: 'valid-passphrase', // pragma: allowlist secret
+        }, {
+          requiresAuthAttempt: true,
+          authAttempt: beginAttempt.mock.results[0].value,
+        });
+      });
+    } finally {
+      beginAttempt.mockRestore();
+      useAuthStore.setState({ beginAuthAttempt: originalBegin });
+    }
   });
 });

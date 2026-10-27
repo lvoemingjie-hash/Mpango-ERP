@@ -207,4 +207,81 @@ describe('real page attempt and caller boundaries', () => {
     await expect(authService.login({ email: 'owner@example.com', password: oneTimeInput }, undefined as never)).rejects.toSatisfy(axios.isCancel);
     expect(calls).toEqual([]);
   });
+  it('anonymous authentication intent is observable without any storage write', () => {
+    // Establish absent storage before the measured action; keep fixture removal in the spy history.
+    const writes = vi.spyOn(Storage.prototype, 'setItem');
+    const removals = vi.spyOn(Storage.prototype, 'removeItem');
+    const clears = vi.spyOn(Storage.prototype, 'clear');
+    localStorage.removeItem('mpango-auth');
+    expect(localStorage.getItem('mpango-auth')).toBeNull();
+    const removalCount = removals.mock.calls.length;
+    const before = useAuthStore.getState();
+    const observed: number[] = [];
+    const unsubscribe = useAuthStore.subscribe(state => observed.push(state.authAttemptSequence));
+    try {
+      const attempt = before.beginAuthAttempt();
+      expect(writes.mock.calls.length, 'AUTH_INTENT_ANONYMOUS_STORAGE_WRITE').toBe(0);
+      expect(removals).toHaveBeenCalledTimes(removalCount);
+      expect(clears).not.toHaveBeenCalled();
+      expect(localStorage.getItem('mpango-auth')).toBeNull();
+      expect(useAuthStore.getState()).not.toBe(before);
+      expect(attempt).toEqual({ generation: before.sessionGeneration, sequence: before.authAttemptSequence + 1 });
+      expect(useAuthStore.getState().sessionGeneration).toBe(before.sessionGeneration);
+      expect(observed).toEqual([attempt.sequence]);
+      expect(useAuthStore.getState().ownsAuthAttempt(attempt)).toBe(true);
+    } finally {
+      unsubscribe();
+    }
+  });
+  it('established authentication intent preserves storage bytes and supersedes its peer', () => {
+    establish('B');
+    const bytes = localStorage.getItem('mpango-auth');
+    expect(bytes).not.toBeNull();
+    const before = snapshot();
+    const writes = vi.spyOn(Storage.prototype, 'setItem');
+    const removals = vi.spyOn(Storage.prototype, 'removeItem');
+    const clears = vi.spyOn(Storage.prototype, 'clear');
+    const first = useAuthStore.getState().beginAuthAttempt();
+    const second = useAuthStore.getState().beginAuthAttempt();
+    expect(second).toEqual({ generation: first.generation, sequence: first.sequence + 1 });
+    expect(useAuthStore.getState().ownsAuthAttempt(first)).toBe(false);
+    expect(useAuthStore.getState().ownsAuthAttempt(second)).toBe(true);
+    useAuthStore.getState().failAuthAttempt(first, 'A');
+    expect(snapshot()).toEqual(before);
+    expect(writes).not.toHaveBeenCalled();
+    expect(removals).not.toHaveBeenCalled();
+    expect(clears).not.toHaveBeenCalled();
+    expect(localStorage.getItem('mpango-auth')).toBe(bytes);
+  });
+  it('real session transitions persist only the public DTO and invalidate old attempts', () => {
+    const writes = vi.spyOn(Storage.prototype, 'setItem');
+    const assertStored = () => {
+      const stored = JSON.parse(localStorage.getItem('mpango-auth')!);
+      const live = useAuthStore.getState();
+      expect(stored).toEqual({ version: 0, state: {
+        accessToken: live.accessToken, refreshToken: live.refreshToken, user: live.user,
+        tenantCode: live.tenantCode, retailerPortalCode: live.retailerPortalCode,
+      } });
+      expect(Object.keys(stored.state).sort()).toEqual(['accessToken', 'refreshToken', 'retailerPortalCode', 'tenantCode', 'user']);
+    };
+    const anonymousAttempt = useAuthStore.getState().beginAuthAttempt();
+    useAuthStore.getState().login(tokens('owner'), person('owner'), 'owner');
+    expect(writes).toHaveBeenCalledTimes(1); assertStored();
+    expect(useAuthStore.getState().ownsAuthAttempt(anonymousAttempt)).toBe(false);
+    const ownerAttempt = useAuthStore.getState().beginAuthAttempt();
+    establish('retailer');
+    expect(writes).toHaveBeenCalledTimes(2); assertStored();
+    expect(useAuthStore.getState().ownsAuthAttempt(ownerAttempt)).toBe(false);
+    useAuthStore.getState().updateTokens(tokens('refreshed'));
+    expect(writes).toHaveBeenCalledTimes(3); assertStored();
+    const retailerAttempt = useAuthStore.getState().beginAuthAttempt();
+    useAuthStore.getState().beginWorkspaceSelection(tokens('identity'));
+    expect(writes).toHaveBeenCalledTimes(4); assertStored();
+    expect(useAuthStore.getState().ownsAuthAttempt(retailerAttempt)).toBe(false);
+    const workspaceAttempt = useAuthStore.getState().beginAuthAttempt();
+    useAuthStore.getState().logout();
+    expect(writes).toHaveBeenCalledTimes(5); assertStored();
+    expect(useAuthStore.getState().ownsAuthAttempt(workspaceAttempt)).toBe(false);
+    expect(snapshot().accessToken).toBeNull();
+  });
 });

@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create, type StateCreator } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { CurrentUserData, TokenData, IdentityTokenData } from '@/types/auth';
 
@@ -100,14 +100,19 @@ const initialState: AuthState = {
   retailerPortalCode: null,
 };
 
-export const useAuthStore = create<LiveAuthStore>()(
-  persist(
+type PersistedAuthState = Pick<AuthState,
+  'accessToken' | 'refreshToken' | 'user' | 'tenantCode' | 'retailerPortalCode'>;
+
+// Capture vanilla set before persist wraps both its set argument and api.setState.
+// Intent-only updates still notify subscribers without writing the session DTO.
+const createAuthState: StateCreator<LiveAuthStore, [], [['zustand/persist', PersistedAuthState]]> = (rawSet, get, api) =>
+  persist<LiveAuthStore, [], [], PersistedAuthState>(
     (set, get) => ({
       ...initialState,
       authAttemptSequence: 0,
       beginAuthAttempt: () => {
         const sequence = get().authAttemptSequence + 1;
-        set({ authAttemptSequence: sequence });
+        rawSet({ authAttemptSequence: sequence });
         return { generation: get().sessionGeneration, sequence };
       },
       ownsAuthAttempt: (attempt) => attempt.generation === get().sessionGeneration
@@ -203,5 +208,6 @@ export const useAuthStore = create<LiveAuthStore>()(
         retailerPortalCode: state.retailerPortalCode,
       }),
     }
-  )
-);
+  )(rawSet, get, api);
+
+export const useAuthStore = create<LiveAuthStore>()(createAuthState);

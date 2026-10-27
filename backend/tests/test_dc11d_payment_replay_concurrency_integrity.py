@@ -176,8 +176,8 @@ async def _seed_confirmed_order(
     await session.execute(
         text(
             """
-            INSERT INTO orders (id, wholesaler_id, retailer_id, status, total_amount)
-            VALUES (:order_id, :tenant_id, :retailer_id, 'confirmed', :total)
+            INSERT INTO orders (id, wholesaler_id, retailer_id, status, total_amount, currency_snapshot)
+            VALUES (:order_id, :tenant_id, :retailer_id, 'confirmed', :total, 'KES')
             """
         ),
         {"order_id": order_id, "tenant_id": tenant_id, "retailer_id": retailer_id, "total": total},

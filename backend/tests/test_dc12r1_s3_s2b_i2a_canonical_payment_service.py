@@ -40,7 +40,7 @@ def _status(value: str):
 
 
 def _result_order(order_id: uuid.UUID, status_value: str = "paid"):
-    return SimpleNamespace(id=order_id, status=_status(status_value))
+    return SimpleNamespace(id=order_id, status=_status(status_value), currency_snapshot="KES")
 
 
 async def _confirm_in_new_session(
@@ -99,6 +99,7 @@ async def test_route_uses_canonical_payment_service_with_behavior_preserving_def
         id=order_id,
         status=_status("confirmed"),
         total_amount=Decimal("100.00"),
+        currency_snapshot="KES",
         wholesaler_id=uuid.uuid4(),
         retailer_id=uuid.uuid4(),
     )
@@ -204,6 +205,7 @@ async def test_service_does_not_commit_or_rollback_calls(
                 wholesaler_id=wholesaler_id,
                 total_amount=Decimal("100.00"),
                 status=_status("confirmed"),
+                currency_snapshot="KES",
             )
         ]
     )

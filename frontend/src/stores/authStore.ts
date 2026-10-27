@@ -6,7 +6,13 @@ function notifyAuthorityContextChanged() {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('mpango-authority-context-changed'));
 }
 
+function notifySessionGenerationChanged() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('mpango-session-generation-changed'));
+}
+
 interface AuthState {
+  /** In-memory ownership epoch; deliberately not persisted across page loads. */
+  sessionGeneration: number;
   accessToken: string | null;
   refreshToken: string | null;
   user: CurrentUserData | null;
@@ -50,7 +56,10 @@ interface AuthActions {
   beginWorkspaceSelection: (identityTokens: Pick<TokenData, 'access_token' | 'refresh_token'>) => void;
 }
 
-export type AuthStore = AuthState & AuthActions;
+// Preserve the public/persisted session DTO; request ownership is private
+// in-memory state of the live store, not another serialized authority claim.
+export type AuthStore = Omit<AuthState, 'sessionGeneration'> & AuthActions;
+type LiveAuthStore = AuthStore & Pick<AuthState, 'sessionGeneration'>;
 
 /**
  * PW1-R2 binding session contract — DERIVED facts only (no stored booleans
@@ -74,6 +83,7 @@ export function sessionKind(
 }
 
 const initialState: AuthState = {
+  sessionGeneration: 0,
   accessToken: null,
   refreshToken: null,
   user: null,
@@ -81,13 +91,14 @@ const initialState: AuthState = {
   retailerPortalCode: null,
 };
 
-export const useAuthStore = create<AuthStore>()(
+export const useAuthStore = create<LiveAuthStore>()(
   persist(
     (set, get) => ({
       ...initialState,
 
       login: (tokens, user, tenantCode) => {
         set({
+          sessionGeneration: get().sessionGeneration + 1,
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
           user,
@@ -95,23 +106,27 @@ export const useAuthStore = create<AuthStore>()(
           // DC-12R1-S2: owner login clears any retailer portal context.
           retailerPortalCode: null,
         });
+        notifySessionGenerationChanged();
         notifyAuthorityContextChanged();
       },
 
       retailerLogin: (tokens, user, wholesalerCode) => {
         set({
+          sessionGeneration: get().sessionGeneration + 1,
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
           user,
           tenantCode: wholesalerCode,
           retailerPortalCode: wholesalerCode,
         });
+        notifySessionGenerationChanged();
         // The portal login already returns its current contextual permissions.
         // Focus/403/refresh still revalidate this established session.
       },
 
-      logout: () =>
+      logout: () => {
         set({
+          sessionGeneration: get().sessionGeneration + 1,
           // DC-12R1-S2: preserve the portal code across logout so the
           // refresh-failure redirect returns the retailer to the same portal.
           retailerPortalCode: get().retailerPortalCode,
@@ -119,7 +134,9 @@ export const useAuthStore = create<AuthStore>()(
           refreshToken: null,
           user: null,
           tenantCode: null,
-        }),
+        });
+        notifySessionGenerationChanged();
+      },
 
       updateTokens: (tokens) => {
         set({
@@ -129,10 +146,18 @@ export const useAuthStore = create<AuthStore>()(
         notifyAuthorityContextChanged();
       },
 
-      setUser: (user) => set({ user }),
+      setUser: (user) => {
+        const state = get();
+        const changed = state.user?.id !== user.id
+          || state.user?.tenant_id !== user.tenant_id
+          || state.user?.tenant_schema !== user.tenant_schema;
+        set({ user, sessionGeneration: state.sessionGeneration + (changed ? 1 : 0) });
+        if (changed) notifySessionGenerationChanged();
+      },
 
-      beginWorkspaceSelection: (identityTokens) =>
+      beginWorkspaceSelection: (identityTokens) => {
         set({
+          sessionGeneration: get().sessionGeneration + 1,
           accessToken: identityTokens.access_token,
           refreshToken: identityTokens.refresh_token,
           // Pending identity session: forced, never a contextual session.
@@ -140,7 +165,9 @@ export const useAuthStore = create<AuthStore>()(
           tenantCode: null,
           // Unrelated portal context must not leak into owner selection.
           retailerPortalCode: null,
-        }),
+        });
+        notifySessionGenerationChanged();
+      },
     }),
     {
       name: 'mpango-auth',

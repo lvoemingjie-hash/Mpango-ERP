@@ -304,8 +304,8 @@ async def _seed_confirmed_order(db: AsyncSession, schema: str, ws_id: str, ret_i
     oid = uuid.uuid4()
     await db.execute(
         text(
-            f'INSERT INTO "{schema}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted) '
-            "VALUES (:id, :ws, :ret, 'confirmed', :total, false)"
+            f'INSERT INTO "{schema}".orders (id, wholesaler_id, retailer_id, status, total_amount, is_deleted, currency_snapshot) '
+            "VALUES (:id, :ws, :ret, 'confirmed', :total, false, 'KES')"
         ),
         {"id": oid, "ws": ws_id, "ret": ret_id, "total": total},
     )

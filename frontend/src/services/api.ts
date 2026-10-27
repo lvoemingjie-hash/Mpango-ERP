@@ -41,11 +41,26 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+type SessionRequest = InternalAxiosRequestConfig & {
+  _retry?: boolean;
+  _sessionGeneration?: number;
+  _storeAuthorization?: boolean;
+};
+const superseded = () => new axios.CanceledError('SESSION_SUPERSEDED');
+const ownsSession = (generation: number | undefined) => generation === useAuthStore.getState().sessionGeneration;
+
 // ---------------------------------------------------------------------------
 // Request Interceptor — inject Bearer token
 // ---------------------------------------------------------------------------
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    const request = config as SessionRequest;
+    if (request._sessionGeneration === undefined) {
+      request._sessionGeneration = useAuthStore.getState().sessionGeneration;
+      request._storeAuthorization = !config.headers.has('Authorization');
+    } else if (!config.skipAuthInterceptors && !ownsSession(request._sessionGeneration)) {
+      throw superseded();
+    }
     // PW1-R2-R2 (case-insensitive authorization precedence): a caller-provided
     // Authorization header ALWAYS wins, in ANY casing, including an explicitly
     // EMPTY value (the caller's deliberate fail-closed choice). Only when the
@@ -84,29 +99,44 @@ api.interceptors.request.use(
 // Response Interceptor — atomic token refresh with queue
 // ---------------------------------------------------------------------------
 
-let isRefreshing = false;
-let failedQueue: Array<{
-  resolve: (token: string) => void;
-  reject: (error: unknown) => void;
-}> = [];
+type RefreshFlight = {
+  generation: number;
+  queue: Array<{ resolve: (token: string) => void; reject: (error: unknown) => void }>;
+};
+let refreshFlight: RefreshFlight | null = null;
 
-function processQueue(error: unknown, token: string | null) {
-  failedQueue.forEach(({ resolve, reject }) => {
+function processQueue(flight: RefreshFlight, error: unknown, token: string | null) {
+  const queue = flight.queue;
+  flight.queue = [];
+  queue.forEach(({ resolve, reject }) => {
     if (error) {
       reject(error);
     } else {
       resolve(token!);
     }
   });
-  failedQueue = [];
+}
+
+// The store already uses browser events for context notifications. This
+// signal carries no token and does not require a new public store interface.
+if (typeof window !== 'undefined') {
+  window.addEventListener('mpango-session-generation-changed', () => {
+    if (refreshFlight && !ownsSession(refreshFlight.generation)) {
+      const abandoned = refreshFlight;
+      refreshFlight = null;
+      processQueue(abandoned, superseded(), null);
+    }
+  });
 }
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const request = response.config as SessionRequest;
+    if (!request.skipAuthInterceptors && !ownsSession(request._sessionGeneration)) throw superseded();
+    return response;
+  },
   async (error: AxiosError<ApiErrorResponse>) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & {
-      _retry?: boolean;
-    };
+    const originalRequest = error.config as SessionRequest | undefined;
     const status = error.response?.status;
     const detail = error.response?.data;
     const errorCode = detail && 'error' in detail ? detail.error.code : '';
@@ -119,6 +149,10 @@ api.interceptors.response.use(
     if (originalRequest?.skipAuthInterceptors) {
       return Promise.reject(error);
     }
+    // Capture at send time, not when a late 401 finally arrives. No old
+    // response may refresh, toast, revalidate authority, logout or redirect B.
+    if (!originalRequest) return Promise.reject(error);
+    if (!ownsSession(originalRequest._sessionGeneration)) return Promise.reject(superseded());
 
     // -----------------------------------------------------------------------
     // Guardrail-aware error toasts (Track E3)
@@ -161,24 +195,34 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // If already refreshing, queue this request
-    if (isRefreshing) {
+    originalRequest._retry = true;
+    const generation = originalRequest._sessionGeneration!;
+    const currentToken = useAuthStore.getState().accessToken;
+    if (originalRequest._storeAuthorization && currentToken
+        && originalRequest.headers.get('Authorization') !== `Bearer ${currentToken}`) {
+      originalRequest.headers.set('Authorization', `Bearer ${currentToken}`);
+      return api(originalRequest);
+    }
+
+    // Queue only within the owning generation; retry ownership is retained.
+    if (refreshFlight?.generation === generation) {
+      const flight = refreshFlight;
       return new Promise<string>((resolve, reject) => {
-        failedQueue.push({ resolve, reject });
+        flight.queue.push({ resolve, reject });
       }).then((newToken) => {
-        originalRequest.headers.set('Authorization', `Bearer ${newToken}`);
+        if (!ownsSession(generation)) throw superseded();
+        if (originalRequest._storeAuthorization) originalRequest.headers.set('Authorization', `Bearer ${newToken}`);
         return api(originalRequest);
       });
     }
 
-    // Mark as refreshing + retrying
-    originalRequest._retry = true;
-    isRefreshing = true;
+    const flight: RefreshFlight = { generation, queue: [] };
+    refreshFlight = flight;
 
     const { refreshToken, logout, updateTokens } = useAuthStore.getState();
 
     if (!refreshToken) {
-      isRefreshing = false;
+      if (refreshFlight === flight) refreshFlight = null;
       // DC-12R1-S2: redirect retailer sessions back to their supplier portal.
       const { retailerPortalCode } = useAuthStore.getState();
       logout();
@@ -200,6 +244,8 @@ api.interceptors.response.use(
 
       const newAccessToken = data.data.access_token;
 
+      if (!ownsSession(generation)) throw superseded();
+
       // Update store with new tokens
       updateTokens({
         access_token: newAccessToken,
@@ -207,14 +253,18 @@ api.interceptors.response.use(
       });
 
       // Process queued requests with new token
-      processQueue(null, newAccessToken);
+      processQueue(flight, null, newAccessToken);
 
       // Retry original request
-      originalRequest.headers.set('Authorization', `Bearer ${newAccessToken}`);
+      if (originalRequest._storeAuthorization) originalRequest.headers.set('Authorization', `Bearer ${newAccessToken}`);
       return api(originalRequest);
     } catch (refreshError) {
+      if (!ownsSession(generation)) {
+        processQueue(flight, superseded(), null);
+        return Promise.reject(superseded());
+      }
       // Refresh failed — clear everything, redirect to login
-      processQueue(refreshError, null);
+      processQueue(flight, refreshError, null);
       // DC-12R1-S2: redirect retailer sessions back to their supplier portal.
       const { retailerPortalCode } = useAuthStore.getState();
       logout();
@@ -225,7 +275,7 @@ api.interceptors.response.use(
       }
       return Promise.reject(refreshError);
     } finally {
-      isRefreshing = false;
+      if (refreshFlight === flight) refreshFlight = null;
     }
   }
 );
@@ -234,17 +284,17 @@ export { api };
 
 let authorityRefresh: { key: string; promise: Promise<void> } | null = null;
 export function refreshCurrentAuthority(): Promise<void> {
-  const { accessToken, user } = useAuthStore.getState();
+  const { accessToken, user, sessionGeneration } = useAuthStore.getState();
   if (!accessToken || !user?.tenant_id) return Promise.resolve();
   const tenant = user.tenant_id;
-  const key = tenant + ':' + accessToken;
+  const key = sessionGeneration + ':' + tenant + ':' + accessToken;
   if (authorityRefresh?.key === key) return authorityRefresh.promise;
   const promise = api.get<CurrentUserResponse>('/auth/me', {
     headers: { Authorization: `Bearer ${accessToken}` },
     skipAuthInterceptors: true,
   }).then(({ data }) => {
     const current = useAuthStore.getState();
-    if (current.accessToken !== accessToken || current.user?.tenant_id !== tenant) return;
+    if (current.sessionGeneration !== sessionGeneration || current.accessToken !== accessToken || current.user?.tenant_id !== tenant) return;
     const fresh = data.data;
     if (fresh?.id !== current.user.id || fresh.tenant_id !== tenant
         || fresh.tenant_schema !== current.user.tenant_schema
@@ -255,6 +305,7 @@ export function refreshCurrentAuthority(): Promise<void> {
     current.setUser(fresh);
   }).catch((error: AxiosError) => {
     const current = useAuthStore.getState();
+    if (current.sessionGeneration !== sessionGeneration) return;
     if (error.response?.status === 401 && current.accessToken === accessToken) current.logout();
     else if (current.accessToken === accessToken && current.user?.tenant_id === tenant) {
       current.setUser({ ...current.user, is_owner: false, permissions: [], authz_revision: null });

@@ -19,6 +19,7 @@ import services.ledger_service as ledger_service_module
 import services.order_command_service as order_command_module
 import services.payment_service as payment_service_module
 from services.payment_history_contract import assert_valid_payment_history
+from services.pricing_quote_service import CURRENCY_SCALE, money
 
 
 def _payment_error(status_code: int, code: str, message: str) -> HTTPException:
@@ -137,6 +138,28 @@ def _raise_invalid_amount(amount: Decimal) -> None:
             "INVALID_PAYMENT_AMOUNT",
             "Payment amount must be a positive finite number",
         )
+
+
+def _validate_order_payment_amount(order: OrderModel, amount: Decimal) -> None:
+    """The saved order currency, not current tenant settings, owns precision."""
+    currency = getattr(order, "currency_snapshot", None)
+    if currency not in CURRENCY_SCALE:
+        raise _payment_error(
+            status.HTTP_409_CONFLICT, "PAYMENT_CURRENCY_UNVERIFIED",
+            "New financial writes require a supported saved order currency",
+        )
+    try:
+        # money rejects non-zero excess digits before quantization can change
+        # the value. Never replace the original request amount with rounded DB data.
+        money(amount, currency)
+    except HTTPException as exc:
+        precision = isinstance(exc.detail, dict) and exc.detail.get("code") == "MONEY_PRECISION"
+        raise _payment_error(
+            status.HTTP_400_BAD_REQUEST,
+            "PAYMENT_AMOUNT_PRECISION" if precision else "INVALID_PAYMENT_AMOUNT",
+            "Payment amount exceeds the saved currency precision" if precision
+            else "Payment amount is outside the supported monetary range",
+        ) from None
 
 
 def _idempotency_conflict() -> HTTPException:
@@ -361,6 +384,10 @@ class CanonicalPaymentService:
                 "IDEMPOTENCY_KEY_CONFLICT",
                 "Idempotent payment attribution does not match its order",
             )
+        # Unknown-currency legacy rows may only take this already matched,
+        # zero-write replay. Known currency still has its exact precision gate.
+        if getattr(order, "currency_snapshot", None) in CURRENCY_SCALE:
+            _validate_order_payment_amount(order, Decimal(str(payment_record["amount"])))
         order_state = getattr(order.status, "value", order.status)
         return CanonicalPaymentResult(
             order=order,
@@ -434,6 +461,8 @@ class CanonicalPaymentService:
                 "IDEMPOTENCY_KEY_CONFLICT",
                 "Idempotent payment attribution does not match its order",
             )
+        if getattr(order, "currency_snapshot", None) in CURRENCY_SCALE:
+            _validate_order_payment_amount(order, amount)
         order_state = getattr(order.status, "value", order.status)
         return CanonicalPaymentResult(
             order=order,
@@ -594,6 +623,7 @@ class CanonicalPaymentService:
                 allocate_receipt=allocate_receipt,
             )
 
+        _validate_order_payment_amount(order, amount)
         await self._assert_history_integrity(db, order)
 
         current_state = OrderState(order.status.value)

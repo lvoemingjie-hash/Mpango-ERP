@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useToastStore } from '@/stores/toastStore';
 import type { LoginResponse, CurrentUserResponse } from '@/types/auth';
 import type { ApiErrorResponse } from '@/types/api';
+import type { AuthAttempt } from '@/stores/authStore';
 
 /**
  * DC-12R1-MVP-L1-J1-H2-A-R1: opt-out channel for deliberately PUBLIC,
@@ -23,6 +24,9 @@ import type { ApiErrorResponse } from '@/types/api';
 declare module 'axios' {
   export interface AxiosRequestConfig {
     skipAuthInterceptors?: boolean;
+    /** Local caller ownership only; never serialized into the HTTP payload. */
+    authAttempt?: AuthAttempt;
+    requiresAuthAttempt?: boolean;
   }
 }
 
@@ -48,6 +52,9 @@ type SessionRequest = InternalAxiosRequestConfig & {
 };
 const superseded = () => new axios.CanceledError('SESSION_SUPERSEDED');
 const ownsSession = (generation: number | undefined) => generation === useAuthStore.getState().sessionGeneration;
+const ownsCaller = (request: SessionRequest) => request.authAttempt
+  ? useAuthStore.getState().ownsAuthAttempt(request.authAttempt)
+  : !request.requiresAuthAttempt;
 
 // ---------------------------------------------------------------------------
 // Request Interceptor — inject Bearer token
@@ -55,6 +62,7 @@ const ownsSession = (generation: number | undefined) => generation === useAuthSt
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const request = config as SessionRequest;
+    if (!config.skipAuthInterceptors && !ownsCaller(request)) throw superseded();
     if (request._sessionGeneration === undefined) {
       request._sessionGeneration = useAuthStore.getState().sessionGeneration;
       request._storeAuthorization = !config.headers.has('Authorization');
@@ -132,7 +140,7 @@ if (typeof window !== 'undefined') {
 api.interceptors.response.use(
   (response) => {
     const request = response.config as SessionRequest;
-    if (!request.skipAuthInterceptors && !ownsSession(request._sessionGeneration)) throw superseded();
+    if (!request.skipAuthInterceptors && (!ownsSession(request._sessionGeneration) || !ownsCaller(request))) throw superseded();
     return response;
   },
   async (error: AxiosError<ApiErrorResponse>) => {
@@ -152,7 +160,7 @@ api.interceptors.response.use(
     // Capture at send time, not when a late 401 finally arrives. No old
     // response may refresh, toast, revalidate authority, logout or redirect B.
     if (!originalRequest) return Promise.reject(error);
-    if (!ownsSession(originalRequest._sessionGeneration)) return Promise.reject(superseded());
+    if (!ownsSession(originalRequest._sessionGeneration) || !ownsCaller(originalRequest)) return Promise.reject(superseded());
 
     // -----------------------------------------------------------------------
     // Guardrail-aware error toasts (Track E3)

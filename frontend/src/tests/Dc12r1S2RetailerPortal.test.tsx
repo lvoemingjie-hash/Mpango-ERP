@@ -144,7 +144,8 @@ describe('DC-12R1-S2 ClientLoginPage — call isolation', () => {
       email: 'retailer@example.com',
       password: TEST_PASSWORD,
       wholesaler_code: PORTAL_CODE,
-    });
+    }, { generation: useAuthStore.getState().sessionGeneration - 1,
+      sequence: useAuthStore.getState().authAttemptSequence });
     // Call isolation: owner endpoints are NEVER touched.
     expect(authService.login).not.toHaveBeenCalled();
     expect(authService.selectTenant).not.toHaveBeenCalled();
@@ -174,6 +175,8 @@ describe('DC-12R1-S2 ClientLoginPage — call isolation', () => {
     await waitFor(() => {
       expect(authService.retailerLogin).toHaveBeenCalledWith(
         expect.objectContaining({ wholesaler_code: PORTAL_CODE }),
+        { generation: useAuthStore.getState().sessionGeneration - 1,
+          sequence: useAuthStore.getState().authAttemptSequence },
       );
     });
   });

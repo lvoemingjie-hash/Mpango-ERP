@@ -725,7 +725,7 @@ describe('PW1-R2-R1: explicit Authorization precedence (token-gated adapters)', 
     resetAuth({ accessToken: 'stale-token', refreshToken: 'stale-refresh' });
 
     const { authService } = await import('@/services/authService');
-    await expect(authService.me('wrong-explicit-token')).rejects.toMatchObject({
+    await expect(authService.me('wrong-explicit-token', useAuthStore.getState().beginAuthAttempt())).rejects.toMatchObject({
       response: { status: 401 },
     });
     // The refresh flow did run and committed the refreshed token to the store

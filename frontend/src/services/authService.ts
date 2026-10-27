@@ -1,4 +1,5 @@
 import { api } from '@/services/api';
+import type { AuthAttempt } from '@/stores/authStore';
 import type {
   LoginRequest,
   LoginResponse,
@@ -16,12 +17,12 @@ import type {
  * No business logic here (per frontend_contract.md section 3).
  */
 export const authService = {
-  login: (payload: LoginRequest) =>
-    api.post<IdentityLoginResponse>('/auth/login', payload),
+  login: (payload: LoginRequest, attempt: AuthAttempt) =>
+    api.post<IdentityLoginResponse>('/auth/login', payload, { authAttempt: attempt, requiresAuthAttempt: true }),
 
-  selectTenant: (payload: SelectTenantRequest, token?: string) =>
+  selectTenant: (payload: SelectTenantRequest, token: string | undefined, attempt: AuthAttempt) =>
     api.post<LoginResponse>('/auth/select-tenant', payload,
-      token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+      { authAttempt: attempt, requiresAuthAttempt: true, ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}) },
     ),
 
   // DC-12R1-MVP-L1-J1-R1: wholesaler self-service signup. Reuses the existing
@@ -36,9 +37,9 @@ export const authService = {
   refresh: (refreshToken: string) =>
     api.post<LoginResponse>('/auth/refresh', { refresh_token: refreshToken }),
 
-  me: (token?: string) =>
+  me: (token: string | undefined, attempt: AuthAttempt) =>
     api.get<CurrentUserResponse>('/auth/me',
-      token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+      { authAttempt: attempt, requiresAuthAttempt: true, ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}) },
     ),
 
   logout: () => api.post('/auth/logout'),
@@ -94,6 +95,6 @@ export const authService = {
 
   // DC-12R1-S2: supplier-scoped retailer login. Calls only /client/auth/login.
   // Never calls /auth/login or /auth/select-tenant.
-  retailerLogin: (payload: RetailerLoginRequest) =>
-    api.post<RetailerLoginResponse>('/client/auth/login', payload),
+  retailerLogin: (payload: RetailerLoginRequest, attempt: AuthAttempt) =>
+    api.post<RetailerLoginResponse>('/client/auth/login', payload, { authAttempt: attempt, requiresAuthAttempt: true }),
 };

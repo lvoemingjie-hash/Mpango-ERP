@@ -26,6 +26,8 @@ export function WorkspaceSelectorPage() {
 
   const handleSelectTenant = async (tenant: TenantInfo) => {
     if (selectingId) return; // Prevent double-clicks
+    const attempt = useAuthStore.getState().beginAuthAttempt();
+    const owns = () => useAuthStore.getState().ownsAuthAttempt(attempt);
 
     setServerError(null);
     setSelectingId(tenant.id);
@@ -40,11 +42,13 @@ export function WorkspaceSelectorPage() {
       const identityToken = useAuthStore.getState().accessToken;
 
       // 1. Exchange the identity token for a contextual token (explicit token).
-      const ctxRes = await authService.selectTenant({ tenant_id: tenant.id }, identityToken ?? undefined);
+      const ctxRes = await authService.selectTenant({ tenant_id: tenant.id }, identityToken ?? undefined, attempt);
+      if (!owns()) return;
       const ctxTokens = ctxRes.data.data;
 
       // 2. Load the full user profile with the contextual access token.
-      const meRes = await authService.me(ctxTokens.access_token);
+      const meRes = await authService.me(ctxTokens.access_token, attempt);
+      if (!owns()) return;
 
       // 3. One-shot commit of the complete contextual session.
       login(ctxTokens, meRes.data.data, tenant.code);
@@ -52,6 +56,7 @@ export function WorkspaceSelectorPage() {
       // 4. Enter the app.
       navigate('/', { replace: true });
     } catch (err) {
+      if (!owns()) return;
       // Failure keeps the pending identity session (no user, no contextual
       // tokens) — every guard still fails closed — and selection remains
       // safely retryable. Fixed neutral copy only (PW1-R2 D2 alignment):
@@ -109,7 +114,7 @@ export function WorkspaceSelectorPage() {
         </div>
 
         <div className="mt-8 text-center">
-          <button 
+          <button
             onClick={() => {
               useAuthStore.getState().logout();
               navigate('/login');

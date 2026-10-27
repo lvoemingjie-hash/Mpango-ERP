@@ -239,10 +239,13 @@ export function OrderListPage() {
   const [payRemaining, setPayRemaining] = useState<number | null>(null);
   const [payAllowCreditSale, setPayAllowCreditSale] = useState(false);
 
-  const handleOpenPayModal = async (order: Order) => {
+  const handleOpenPayModal = async (order: Order, generation = useAuthStore.getState().sessionGeneration) => {
+    const owns = () => generation === useAuthStore.getState().sessionGeneration;
+    if (!owns()) return;
     // Fetch prior payments to compute true remaining settlement/exposure.
     try {
       const res = await paymentService.getByOrder(order.id);
+      if (!owns()) return;
       const items = res.data.data.items;
       const modalState = calculatePaymentModalState(order, items);
       if (modalState.remainingAmount <= 0) {
@@ -257,6 +260,7 @@ export function OrderListPage() {
       setPayAllowCreditSale(modalState.allowCreditSale);
       setPayModalOrder(order);
     } catch {
+      if (!owns()) return;
       useToastStore.getState().addToast({
         type: 'error',
         title: 'Payment History Unavailable',
@@ -307,12 +311,15 @@ export function OrderListPage() {
     }
 
     // Fallback: fetch the specific order when it is outside the current page.
+    const generation = useAuthStore.getState().sessionGeneration;
+    const owns = () => generation === useAuthStore.getState().sessionGeneration;
     (async () => {
       try {
         const res = await orderService.getById(collectOrderId);
+        if (!owns()) return;
         const fetched = res.data.data;
         if (hasPayPermission && canPay(fetched.status)) {
-          void handleOpenPayModal(fetched);
+          void handleOpenPayModal(fetched, generation);
         } else {
           useToastStore.getState().addToast({
             type: 'error',
@@ -323,6 +330,7 @@ export function OrderListPage() {
           });
         }
       } catch {
+        if (!owns()) return;
         useToastStore.getState().addToast({
           type: 'error',
           title: 'Order Not Found',

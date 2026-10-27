@@ -23,7 +23,9 @@ const response = (config: InternalAxiosRequestConfig, data: unknown): AxiosRespo
 const denied = (config: InternalAxiosRequestConfig, status = 401) => new AxiosError('controlled refusal',
   AxiosError.ERR_BAD_REQUEST, config, undefined, { ...response(config, { error: { code: 'CONTROLLED', message: 'denied' } }), status });
 const settle = <T>(promise: Promise<T>) => promise.then(value => value, error => error);
-const turn = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
+const arrived = async (path: string) => {
+  await vi.waitFor(() => expect(calls.some(call => call.url === path)).toBe(true));
+};
 const originalApiAdapter = api.defaults.adapter;
 const originalGlobalAdapter = axios.defaults.adapter;
 let calls: Array<{ url: string; auth: unknown }>;
@@ -87,14 +89,14 @@ describe('request-owned session generation', () => {
   it('late A 401 never starts a refresh owned by B', async () => {
     const late = deferred<AxiosResponse>(); let captured!: InternalAxiosRequestConfig;
     business = async config => { captured = config; return late.promise; };
-    login('A'); const pending = request(); await turn(); login('B');
+    login('A'); const pending = request(); await arrived('/protected'); login('B');
     late.reject(denied(captured)); const result = await pending;
     expect(axios.isCancel(result)).toBe(true); expect(refreshes).toHaveLength(0);
     expect(useAuthStore.getState().accessToken).toBe('B-access');
   });
   it('old queued A requests cannot replay using B credentials', async () => {
     login('A'); const first = request(); await started.promise;
-    const second = request('/queued'); await turn();
+    const second = request('/queued'); await arrived('/queued');
     expect(calls.filter(c => c.url === '/queued')).toHaveLength(1);
     login('B');
     // Queued work is refused at the boundary, before A's network returns.
@@ -107,7 +109,7 @@ describe('request-owned session generation', () => {
     login('B'); started = deferred<void>(); const fresh = request('/B'); await started.promise;
     expect(refreshes).toHaveLength(2);
     release(0, 'A-fresh'); await old;
-    const queued = request('/B-queued'); await turn(); expect(refreshes).toHaveLength(2);
+    const queued = request('/B-queued'); await arrived('/B-queued'); expect(refreshes).toHaveLength(2);
     release(1, 'B-fresh'); await fresh; await queued;
     expect(useAuthStore.getState().accessToken).toBe('B-fresh-access');
   });
@@ -127,14 +129,14 @@ describe('request-owned session generation', () => {
     const late = deferred<AxiosResponse>(); let captured!: InternalAxiosRequestConfig;
     business = async config => { captured = config; return late.promise; };
     useAuthStore.getState().beginWorkspaceSelection(tokens('identity'));
-    const old = request(); await turn();
+    const old = request(); await arrived('/protected');
     useAuthStore.getState().login(tokens('B'), user('B'), 'B');
     late.reject(denied(captured)); await old;
     expect(useAuthStore.getState().accessToken).toBe('B-access'); expect(refreshes).toHaveLength(0);
   });
   it('same-generation requests share one refresh and retry once', async () => {
     login('A'); const first = request(); await started.promise;
-    const second = request('/queued'); await turn(); release(0, 'A-fresh');
+    const second = request('/queued'); await arrived('/queued'); release(0, 'A-fresh');
     expect((await first).status).toBe(200); expect((await second).status).toBe(200);
     expect(refreshes).toHaveLength(1);
     expect(calls.filter(c => c.url === '/queued')).toHaveLength(2);
@@ -142,7 +144,7 @@ describe('request-owned session generation', () => {
   it('retried queued requests cannot create an infinite 401 refresh cycle', async () => {
     business = async config => { throw denied(config); };
     login('A'); const first = request(); await started.promise;
-    const second = request('/queued'); await turn(); release(0, 'A-fresh');
+    const second = request('/queued'); await arrived('/queued'); release(0, 'A-fresh');
     expect((await first).response.status).toBe(401); expect((await second).response.status).toBe(401);
     expect(refreshes).toHaveLength(1);
   });
@@ -167,7 +169,7 @@ describe('request-owned session generation', () => {
   it('late old 403 and authority refresh cannot change a new session', async () => {
     const late = deferred<AxiosResponse>(); let captured!: InternalAxiosRequestConfig;
     business = async config => { captured = config; return late.promise; };
-    login('A'); const old = request(); await turn(); login('B');
+    login('A'); const old = request(); await arrived('/protected'); login('B');
     late.reject(denied(captured, 403)); await old;
     expect(calls.filter(c => c.url === '/auth/me')).toHaveLength(0);
     expect(useToastStore.getState().toasts).toHaveLength(0);
@@ -180,7 +182,7 @@ describe('request-owned session generation', () => {
       if (config.url === '/late') { captured = config; return late.promise; }
       throw denied(config);
     };
-    login('A'); const old = request('/late'); await turn();
+    login('A'); const old = request('/late'); await arrived('/late');
     const peer = request(); await started.promise; release(0, 'A-fresh'); await peer;
     late.reject(denied(captured)); expect((await old).status).toBe(200);
     expect(refreshes).toHaveLength(1);

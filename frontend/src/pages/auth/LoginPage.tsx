@@ -38,6 +38,8 @@ export function LoginPage() {
   });
 
   const onSubmit = async (formData: LoginFormData) => {
+    const attempt = useAuthStore.getState().beginAuthAttempt();
+    const owns = () => useAuthStore.getState().ownsAuthAttempt(attempt);
     setServerError(null);
     const normalizedFormData = {
       ...formData,
@@ -46,7 +48,8 @@ export function LoginPage() {
 
     try {
       // 1. Identity Phase - get identity tokens + available tenants
-      const loginRes = await authService.login(normalizedFormData);
+      const loginRes = await authService.login(normalizedFormData, attempt);
+      if (!owns()) return;
       const identityData = loginRes.data.data;
 
       // Keep identity token in a local variable - do NOT store in global
@@ -57,7 +60,8 @@ export function LoginPage() {
       // Task 2: Routing Logic
       if (identityData.roles.includes('super_admin')) {
         // Condition A: Super Admin goes directly to dashboard (which handles system perms)
-        const meRes = await authService.me(idToken);
+        const meRes = await authService.me(idToken, attempt);
+        if (!owns()) return;
         login(identityData, meRes.data.data, null);
         navigate('/', { replace: true });
         return;
@@ -66,10 +70,12 @@ export function LoginPage() {
       if (identityData.available_tenants.length === 1) {
         // Condition B: Single Tenant -> auto select
         const tenant = identityData.available_tenants[0];
-        const ctxRes = await authService.selectTenant({ tenant_id: tenant.id }, idToken);
+        const ctxRes = await authService.selectTenant({ tenant_id: tenant.id }, idToken, attempt);
+        if (!owns()) return;
         const ctxTokens = ctxRes.data.data;
 
-        const meRes = await authService.me(ctxTokens.access_token);
+        const meRes = await authService.me(ctxTokens.access_token, attempt);
+        if (!owns()) return;
         login(ctxTokens, meRes.data.data, tenant.code);
         navigate('/', { replace: true });
         return;
@@ -80,10 +86,12 @@ export function LoginPage() {
         if (urlTenantCode) {
           const matchedTenant = identityData.available_tenants.find(t => t.code === urlTenantCode);
           if (matchedTenant) {
-            const ctxRes = await authService.selectTenant({ tenant_id: matchedTenant.id }, idToken);
+            const ctxRes = await authService.selectTenant({ tenant_id: matchedTenant.id }, idToken, attempt);
+            if (!owns()) return;
             const ctxTokens = ctxRes.data.data;
 
-            const meRes = await authService.me(ctxTokens.access_token);
+            const meRes = await authService.me(ctxTokens.access_token, attempt);
+            if (!owns()) return;
             login(ctxTokens, meRes.data.data, matchedTenant.code);
             navigate('/', { replace: true });
             return;
@@ -115,6 +123,7 @@ export function LoginPage() {
       setServerError('Invalid credentials');
 
     } catch (err) {
+      if (!owns()) return;
       // PW1-R2 (D2 closure): fixed neutral copy only. Never surface
       // axiosErr.message, the backend message, request_id, the response
       // body, or internal error codes on the owner login form.
@@ -128,7 +137,7 @@ export function LoginPage() {
       }
 
       // Clear partial tokens on failure
-      useAuthStore.getState().logout();
+      useAuthStore.getState().failAuthAttempt(attempt);
     }
   };
 

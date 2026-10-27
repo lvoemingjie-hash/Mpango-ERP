@@ -54,6 +54,9 @@ export function ClientLoginPage() {
       return;
     }
 
+    const attempt = useAuthStore.getState().beginAuthAttempt();
+    const owns = () => useAuthStore.getState().ownsAuthAttempt(attempt);
+
     try {
       // DC-12R1-S2: single supplier-scoped login call. Never calls
       // /auth/login or /auth/select-tenant.
@@ -61,7 +64,8 @@ export function ClientLoginPage() {
         email: formData.email,
         password: formData.password,
         wholesaler_code: portalCode,
-      });
+      }, attempt);
+      if (!owns()) return;
       const data = res.data.data;
 
       // Build the contextual session and store it. The portal code is
@@ -91,6 +95,7 @@ export function ClientLoginPage() {
       );
       navigate('/client', { replace: true });
     } catch (err) {
+      if (!owns()) return;
       // The backend may emit either the legacy envelope {error:{code,message}}
       // or the production flat envelope {code,message,request_id}; read the
       // body loosely so both shapes are handled without favoring either.
@@ -115,19 +120,9 @@ export function ClientLoginPage() {
         setServerError('An unexpected error occurred. Please try again.');
       }
 
-      // DC-12R1-S2-R2: on a failed login the retained portal code must
-      // become the portal being ATTEMPTED (portalCode), never a previously
-      // selected one. We do NOT call logout() (which would preserve a stale
-      // code from a prior successful login, e.g. A). Instead we clear any
-      // authenticated session while pinning the portal code to the current
-      // attempt, so a later refresh-failure redirects to THIS portal.
-      useAuthStore.setState({
-        accessToken: null,
-        refreshToken: null,
-        user: null,
-        tenantCode: null,
-        retailerPortalCode: portalCode,
-      });
+      // Central cleanup advances the epoch, rejects queued retries, and pins
+      // only this still-owned attempt's portal. A stale catch never reaches it.
+      useAuthStore.getState().failAuthAttempt(attempt, portalCode);
     }
   };
 

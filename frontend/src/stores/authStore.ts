@@ -59,7 +59,16 @@ interface AuthActions {
 // Preserve the public/persisted session DTO; request ownership is private
 // in-memory state of the live store, not another serialized authority claim.
 export type AuthStore = Omit<AuthState, 'sessionGeneration'> & AuthActions;
-type LiveAuthStore = AuthStore & Pick<AuthState, 'sessionGeneration'>;
+export interface AuthAttempt {
+  readonly generation: number;
+  readonly sequence: number;
+}
+type LiveAuthStore = AuthStore & Pick<AuthState, 'sessionGeneration'> & {
+  authAttemptSequence: number;
+  beginAuthAttempt: () => AuthAttempt;
+  ownsAuthAttempt: (attempt: AuthAttempt) => boolean;
+  failAuthAttempt: (attempt: AuthAttempt, portalCode?: string) => void;
+};
 
 /**
  * PW1-R2 binding session contract — DERIVED facts only (no stored booleans
@@ -95,6 +104,21 @@ export const useAuthStore = create<LiveAuthStore>()(
   persist(
     (set, get) => ({
       ...initialState,
+      authAttemptSequence: 0,
+      beginAuthAttempt: () => {
+        const sequence = get().authAttemptSequence + 1;
+        set({ authAttemptSequence: sequence });
+        return { generation: get().sessionGeneration, sequence };
+      },
+      ownsAuthAttempt: (attempt) => attempt.generation === get().sessionGeneration
+        && attempt.sequence === get().authAttemptSequence,
+      failAuthAttempt: (attempt, portalCode) => {
+        if (!get().ownsAuthAttempt(attempt)) return;
+        set({ sessionGeneration: get().sessionGeneration + 1,
+          accessToken: null, refreshToken: null, user: null, tenantCode: null,
+          retailerPortalCode: portalCode ?? get().retailerPortalCode });
+        notifySessionGenerationChanged();
+      },
 
       login: (tokens, user, tenantCode) => {
         set({

@@ -37,6 +37,7 @@ from services.canonical_payment_service import (
     CanonicalPaymentService,
     _is_valid_receipt_number,
 )
+from services.pricing_quote_service import CURRENCY_SCALE, money
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -128,6 +129,26 @@ class PaymentDeclarationService:
                 "ORDER_NOT_FOUND",
                 f"Order with ID '{order_id}' not found for this relationship",
             )
+
+        # Validate the original Decimal before either replay acceptance or the
+        # first NUMERIC(12,2) INSERT can discard its currency precision.
+        currency = getattr(order, "currency_snapshot", None)
+        if currency not in CURRENCY_SCALE:
+            raise _declaration_error(
+                status.HTTP_409_CONFLICT,
+                "DECLARATION_CURRENCY_UNVERIFIED",
+                "New declarations require a supported saved order currency",
+            )
+        try:
+            money(declared_amount, currency)
+        except HTTPException as exc:
+            precision = isinstance(exc.detail, dict) and exc.detail.get("code") == "MONEY_PRECISION"
+            raise _declaration_error(
+                status.HTTP_400_BAD_REQUEST,
+                "DECLARATION_AMOUNT_PRECISION" if precision else "INVALID_DECLARED_AMOUNT",
+                "Declared amount exceeds the saved currency precision" if precision
+                else "Declared amount is outside the supported monetary range",
+            ) from None
 
         # Idempotency: same (retailer, key) + same payload -> return existing.
         existing = await self._repo.get_by_retailer_idempotency(

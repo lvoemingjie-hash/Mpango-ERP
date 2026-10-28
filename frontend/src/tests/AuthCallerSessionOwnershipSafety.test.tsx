@@ -162,7 +162,7 @@ describe('real page attempt and caller boundaries', () => {
     fireEvent.click(screen.getByRole('button', { name: /Alpha Workspace/ })); const config = await gate.entered.promise;
     fireEvent.click(screen.getByText('Sign out and try another account')); const before = snapshot();
     await act(async () => { gate.result.resolve(ok(config, tokens('A'))); });
-    expect(snapshot()).toEqual(before); expect(navigations.at(-1)).toBe('/login');
+    expect(snapshot()).toEqual(before); expect(navigations[navigations.length - 1]).toBe('/login');
   });
   it('BASE_COUNTER old order fallback cannot emit toast for B', async () => {
     establish('A'); const gate = park('/orders/old-order'); mount('/orders?collect=old-order'); await gate.entered.promise;

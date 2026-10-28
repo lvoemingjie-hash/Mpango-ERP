@@ -133,40 +133,49 @@ class PaymentDeclarationService:
         # Validate the original Decimal before either replay acceptance or the
         # first NUMERIC(12,2) INSERT can discard its currency precision.
         currency = getattr(order, "currency_snapshot", None)
-        if currency not in CURRENCY_SCALE:
-            raise _declaration_error(
-                status.HTTP_409_CONFLICT,
-                "DECLARATION_CURRENCY_UNVERIFIED",
-                "New declarations require a supported saved order currency",
-            )
-        try:
-            money(declared_amount, currency)
-        except HTTPException as exc:
-            precision = isinstance(exc.detail, dict) and exc.detail.get("code") == "MONEY_PRECISION"
-            raise _declaration_error(
-                status.HTTP_400_BAD_REQUEST,
-                "DECLARATION_AMOUNT_PRECISION" if precision else "INVALID_DECLARED_AMOUNT",
-                "Declared amount exceeds the saved currency precision" if precision
-                else "Declared amount is outside the supported monetary range",
-            ) from None
+        if currency in CURRENCY_SCALE:
+            try:
+                money(declared_amount, currency)
+            except HTTPException as exc:
+                precision = isinstance(exc.detail, dict) and exc.detail.get("code") == "MONEY_PRECISION"
+                raise _declaration_error(
+                    status.HTTP_400_BAD_REQUEST,
+                    "DECLARATION_AMOUNT_PRECISION" if precision else "INVALID_DECLARED_AMOUNT",
+                    "Declared amount exceeds the saved currency precision" if precision
+                    else "Declared amount is outside the supported monetary range",
+                ) from None
 
         # Idempotency: same (retailer, key) + same payload -> return existing.
         existing = await self._repo.get_by_retailer_idempotency(
             db, retailer_id=retailer_id, idempotency_key=idempotency_key
         )
         if existing is not None:
-            if self._same_declaration_request(
-                existing,
-                order_id=str(order.id),
-                declared_amount=declared_amount,
-                method=method,
-                transfer_reference=normalized_ref,
+            if (
+                str(existing.get("retailer_id")) == str(retailer_id)
+                and str(existing.get("wholesaler_id")) == str(wholesaler_id)
+                and existing.get("idempotency_key") == idempotency_key
+                and self._same_declaration_request(
+                    existing,
+                    order_id=str(order.id),
+                    declared_amount=declared_amount,
+                    method=method,
+                    transfer_reference=normalized_ref,
+                )
             ):
                 return existing, True
             raise _declaration_error(
                 status.HTTP_409_CONFLICT,
                 "DECLARATION_IDEMPOTENCY_KEY_CONFLICT",
                 "Declaration idempotency key was already used with a different request",
+            )
+
+        # A legacy record may be replayed read-only without inventing its
+        # currency. Unknown currency never authorizes a new declaration.
+        if currency not in CURRENCY_SCALE:
+            raise _declaration_error(
+                status.HTTP_409_CONFLICT,
+                "DECLARATION_CURRENCY_UNVERIFIED",
+                "New declarations require a supported saved order currency",
             )
 
         record = await self._repo.create(

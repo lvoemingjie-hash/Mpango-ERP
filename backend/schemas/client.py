@@ -15,6 +15,9 @@ from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from schemas.declaration import (
+    ActiveBindingView, BusinessIdentityView, ContextSubjectView, SupplierIdentityView,
+)
 from services.pricing_quote_service import QUOTE_TOKEN_MAX_LENGTH
 
 
@@ -229,3 +232,13 @@ CLIENT_VISIBLE_STATUSES = {
 def map_order_status_for_client(internal_status: str) -> str:
     """Map internal order status to client-visible status."""
     return CLIENT_VISIBLE_STATUSES.get(internal_status, internal_status.upper())
+
+
+class ClientPortalContext(BaseModel):
+    """Current self relationship only; no cashier or financial capability."""
+
+    context: ContextSubjectView
+    supplier: SupplierIdentityView
+    retailer: BusinessIdentityView
+    binding: ActiveBindingView
+    observed_at: datetime

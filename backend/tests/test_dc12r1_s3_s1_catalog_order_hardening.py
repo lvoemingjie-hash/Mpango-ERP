@@ -697,6 +697,7 @@ class TestClientRouteAllowlist:
             configure_app(app, get_settings())
 
         expected = {
+            ("GET", "/api/v1/client/auth/context"): None,
             ("POST", "/api/v1/client/auth/forgot-password"): None,
             ("POST", "/api/v1/client/auth/login"): None,
             ("POST", "/api/v1/client/auth/reset-password"): None,
@@ -743,7 +744,7 @@ class TestClientRouteAllowlist:
                         permissions.add(call.permission)
                     elif call is client_scope:
                         permissions.update({"client:orders:read", "client:orders:create"})
-                if route.path == "/api/v1/client/orders/{order_id}/negotiations":
+                if route.path in {"/api/v1/client/orders/{order_id}/negotiations", "/api/v1/client/auth/context"}:
                     assert any(dep.call is resolve_client_identity for dep in route.dependant.dependencies)
             for method in methods:
                 actual[(method, route.path)] = frozenset(permissions)

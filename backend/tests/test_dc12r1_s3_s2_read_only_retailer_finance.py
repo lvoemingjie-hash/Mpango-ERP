@@ -336,7 +336,11 @@ class TestReadOnlyClientFinanceRoutePolicy:
         # permissions, are checked by the shared current contract node body.
         from tests.test_dc12r1_s3_s1_catalog_order_hardening import TestClientRouteAllowlist
         TestClientRouteAllowlist().test_exact_client_route_inventory()
-        assert len(actual) == 26
+        assert len(actual) == 27
+        from api.v1.client.dependencies import resolve_client_identity
+        context_route = next(route for route in app.routes if isinstance(route, APIRoute)
+                             and route.path == "/api/v1/client/auth/context")
+        assert any(dep.call is resolve_client_identity for dep in context_route.dependant.dependencies)
         assert actual[("GET", "/api/v1/client/payments")] == "client:payments:read"
         assert actual[("GET", "/api/v1/client/finance/balance")] == "client:finance:read"
         assert not [key for key in actual if key[1].startswith("/api/v1/client/payments") and key[0] != "GET"]

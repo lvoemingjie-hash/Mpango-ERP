@@ -11,18 +11,21 @@ they are NOT swallowed as INVALID_CREDENTIALS.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db_session
+from api.dependencies import get_db_session, get_tenant_db_session, get_tenant_context
+from api.v1.client.dependencies import ClientIdentity, resolve_client_identity
 from core.error_codes import ErrorCode, MpangoAPIException
 from core.security import create_contextual_token, verify_password
 from db.sql_safety import validate_identifier
 from models.wholesaler import Wholesaler
+from schemas.client import ClientPortalContext
+from schemas.common import DataResponse
 from schemas.retailer_credentials import (
     WHOLESALER_CODE_RE,
     RetailerCredentialResponse,
@@ -45,6 +48,28 @@ from services.retailer_provisioning_service import (
 )
 
 router = APIRouter()
+
+
+@router.get("/context", response_model=DataResponse[ClientPortalContext])
+async def retailer_portal_context(
+    request: Request,
+    client: ClientIdentity = Depends(resolve_client_identity),
+    db: AsyncSession = Depends(get_tenant_db_session),
+):
+    from services.party_context_service import (
+        read_client_portal_context, reject_selectors, validate_context,
+    )
+
+    tenant = get_tenant_context(request)
+    wid, uid, schema = validate_context(client.token, tenant)
+    reject_selectors(request)
+    view = await read_client_portal_context(
+        db, wholesaler_id=wid, user_id=uid,
+        retailer_id=UUID(str(client.retailer_id)), schema=schema,
+    )
+    return DataResponse(
+        success=True, data=ClientPortalContext(**view), timestamp=datetime.now(timezone.utc),
+    )
 
 NEUTRAL_RETAILER_CREDENTIAL_MESSAGE = (
     "Retailer credential result is not disclosed through this endpoint."

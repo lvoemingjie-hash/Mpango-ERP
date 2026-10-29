@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from math import ceil
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +34,7 @@ from repositories.payment_declaration_repository import PaymentDeclarationReposi
 from repositories.payment_repository import PaymentRepository
 from schemas.common import DataResponse, Pagination
 from schemas.declaration import (
+    CashierReviewContext,
     DeclarationConfirmResponse,
     DeclarationRejectRequest,
     DeclarationView,
@@ -50,6 +51,38 @@ from services.print_service import (
 
 
 router = APIRouter()
+
+
+@router.get("/{declaration_id}/review-context", response_model=DataResponse[CashierReviewContext])
+async def get_declaration_review_context(
+    declaration_id: str,
+    request: Request,
+    token: TokenPayload = Depends(RequirePermission("payments:read")),
+):
+    from api.context import get_tenant_context
+    from services.party_context_service import (
+        read_cashier_declaration_context,
+        reject_selectors,
+        validate_context,
+    )
+    from services.staff_management_service import current_staff_access
+
+    if not token.tenant_id or not token.tenant_schema or not token.user_id:
+        raise HTTPException(403, detail={"code": "TENANT_CONTEXT_REQUIRED", "message": "A current trading context is required"})
+    tenant = get_tenant_context(request)
+    wid, uid, _schema = validate_context(token, tenant)
+    access = await current_staff_access(tenant.session, str(wid), tenant.tenant_schema, str(uid))
+    if "retailer_operator" in access["roles"] or "payments:read" not in access["permissions"]:
+        raise HTTPException(403, detail={"code": "PERMISSION_DENIED", "message": "Current merchant read permission required"})
+    reject_selectors(request)
+    try:
+        did = uuid.UUID(declaration_id)
+    except (TypeError, ValueError):
+        raise HTTPException(404, detail={"code": "DECLARATION_NOT_FOUND", "message": "Declaration not found"}) from None
+    view = await read_cashier_declaration_context(
+        tenant.session, wholesaler_id=wid, user_id=uid, declaration_id=did,
+    )
+    return DataResponse(success=True, data=CashierReviewContext(**view), timestamp=datetime.now(timezone.utc))
 
 
 async def _supplier_binding_active(db: AsyncSession, ws_uuid, rt_uuid) -> bool:

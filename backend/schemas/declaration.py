@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -120,6 +120,60 @@ class DeclarationConfirmResponse(BaseModel):
     confirmed_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ContextSubjectView(BaseModel):
+    tenant_id: str
+    user_id: str
+
+
+class BusinessIdentityView(BaseModel):
+    id: str
+    name: str | None
+    name_resolution: Literal["RESOLVED", "MISSING"]
+
+
+class SupplierIdentityView(BusinessIdentityView):
+    code: str
+
+
+class ActiveBindingView(BaseModel):
+    id: str
+    status: Literal["active"]
+
+
+class ReviewDeclarationView(BaseModel):
+    id: str
+    order_id: str
+    status: Literal["pending", "confirmed", "rejected"]
+    declared_amount: str
+    method: Literal["cash", "transfer"]
+    transfer_reference: str | None
+
+
+class ReviewOrderView(BaseModel):
+    id: str
+    status: str
+
+
+class ReviewMoneyView(BaseModel):
+    currency: Literal["KES", "UGX"] | None
+    currency_status: Literal["KNOWN", "LEGACY_CURRENCY_UNVERIFIED", "UNSUPPORTED"]
+    balance_due: str | None
+    balance_status: Literal["VERIFIED", "UNVERIFIED"]
+
+
+class CashierReviewContext(BaseModel):
+    context: ContextSubjectView
+    declaration: ReviewDeclarationView
+    order: ReviewOrderView
+    supplier: SupplierIdentityView
+    retailer: BusinessIdentityView
+    binding: ActiveBindingView
+    money: ReviewMoneyView
+    review_state: Literal["READY", "UNRESOLVED", "NOT_ACTIONABLE"]
+    reason_codes: list[str]
+    observed_at: datetime
 
 
 class StatementLineView(BaseModel):

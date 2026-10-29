@@ -12,7 +12,10 @@ import { pricingService } from '@/services/pricingService';
 vi.mock('@/services/retailerService', () => ({
   retailerService: {
     getAll: vi.fn().mockResolvedValue({
-      data: { data: { items: [{ retailer: { id: 'retailer-1', name: 'Jeff Retailer UG' } }] } },
+      data: { data: {
+        items: [{ retailer: { id: 'retailer-1', name: 'Jeff Retailer UG' } }],
+        pagination: { page: 1, size: 100, total: 1, pages: 1 },
+      } },
     }),
   },
 }));

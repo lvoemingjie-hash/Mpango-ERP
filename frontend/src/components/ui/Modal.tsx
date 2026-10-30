@@ -43,6 +43,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
                   </Dialog.Title>
                   <button
                     type="button"
+                    aria-label="Close dialog"
                     onClick={onClose}
                     className="rounded-md p-1 text-gray-400 hover:text-gray-500"
                   >

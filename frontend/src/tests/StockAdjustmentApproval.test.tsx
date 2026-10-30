@@ -65,3 +65,19 @@ it('does not expose explicit Owner direct mode to a named employee approver',asy
   await screen.findByText('Damaged stock');
   expect(screen.queryByLabelText(/Explicit Owner direct/)).not.toBeInTheDocument();
 });
+
+it('requires a genuine rejection reason and retains it with the same decision key after an unknown result',async()=>{
+  mocks.decideAdjustment.mockRejectedValue(new Error('unknown'));
+  render(<MemoryRouter><StockAdjustmentPage/></MemoryRouter>);
+  const reject=await screen.findByRole('button',{name:'Reject'});
+  expect(reject).toBeDisabled();
+  await userEvent.type(screen.getByLabelText('Rejection reason for BOX'),'  Count needs verification  ');
+  await userEvent.click(reject);
+  await screen.findByRole('alert');
+  const first=mocks.decideAdjustment.mock.calls[0];
+  expect(first[3]).toBe('Count needs verification');
+  expect(screen.getByLabelText('Rejection reason for BOX')).toBeDisabled();
+  await userEvent.click(screen.getByRole('button',{name:'Reject'}));
+  await waitFor(()=>expect(mocks.decideAdjustment).toHaveBeenCalledTimes(2));
+  expect(mocks.decideAdjustment.mock.calls[1]).toEqual(first);
+});

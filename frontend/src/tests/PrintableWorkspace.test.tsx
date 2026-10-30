@@ -612,6 +612,22 @@ const CASHIER_USER = {
   permissions: ['payments:read', 'payments:create'],
 };
 
+/** Current read DTO for review preparation; receipt oracles below are unchanged. */
+function currentReviewResponse(row: PaymentDeclaration) {
+  const user = useAuthStore.getState().user!;
+  return axiosResponse({ success: true, timestamp: '2026-10-30T00:00:00Z', data: {
+    context: { tenant_id: user.tenant_id, user_id: user.id },
+    declaration: { id: row.id, order_id: row.order_id, status: 'pending', declared_amount: row.declared_amount,
+      method: row.method, transfer_reference: row.transfer_reference ?? null },
+    order: { id: row.order_id, status: 'confirmed' },
+    supplier: { id: user.tenant_id, code: 'SYNTHETIC', name: 'Synthetic supplier', name_resolution: 'RESOLVED' },
+    retailer: { id: 'retailer-review', name: 'Synthetic customer', name_resolution: 'RESOLVED' },
+    binding: { id: 'binding-review', status: 'active' },
+    money: { currency: 'KES', currency_status: 'KNOWN', balance_due: '2000.00', balance_status: 'VERIFIED' },
+    review_state: 'READY', reason_codes: [], observed_at: '2026-10-30T00:00:00Z',
+  } });
+}
+
 /** Seed the cashier queue with one pending declaration, then render it. */
 async function renderQueueWithPending(declId: string) {
   useAuthStore.setState({
@@ -622,7 +638,11 @@ async function renderQueueWithPending(declId: string) {
     retailerPortalCode: null,
   });
   // Persistent authentic list response (queue reloads after confirm).
-  mockGet.mockReturnValue(authenticListResponse([pendingDeclaration(declId)]) as never);
+  const row = { ...pendingDeclaration(declId), currency: 'KES', currency_status: 'KNOWN' };
+  mockGet.mockImplementation(async (url) => {
+    if (url === `/declarations/${encodeURIComponent(declId)}/review-context`) return currentReviewResponse(row) as never;
+    return authenticListResponse([row]) as never;
+  });
   const rendered = render(
     <MemoryRouter initialEntries={['/declarations']}>
       <Routes>
@@ -631,7 +651,9 @@ async function renderQueueWithPending(declId: string) {
     </MemoryRouter>,
   );
   // Anchor on the confirm button (present for a pending row; robust to formatting).
-  await waitFor(() => expect(rendered.container.querySelector('button')).toBeTruthy());
+  await screen.findByRole('button', { name: 'Review payment' });
+  fireEvent.click(screen.getByRole('button', { name: 'Review payment' }));
+  fireEvent.click(await screen.findByRole('checkbox', { name: /verified that this money/ }));
   return rendered;
 }
 
@@ -945,6 +967,15 @@ async function renderAppRouterAt(path: string) {
   cleanup();
   // Satisfy every GET the route tree may issue while navigating/printing.
   mockGet.mockImplementation(async (url: string) => {
+    if (url === '/client/auth/context') {
+      const user = useAuthStore.getState().user!;
+      return axiosResponse({ success: true, timestamp: '2026-10-30T00:00:00Z', data: {
+        context: { tenant_id: user.tenant_id, user_id: user.id },
+        supplier: { id: user.tenant_id, code: 'SYNTHETIC', name: 'Supplier', name_resolution: 'RESOLVED' },
+        retailer: { id: 'retailer-route', name: 'Retailer', name_resolution: 'RESOLVED' },
+        binding: { id: 'binding-route', status: 'active' }, observed_at: '2026-10-30T00:00:00Z',
+      } }) as never;
+    }
     if (url.includes('/statements/print')) {
       return axiosResponse(ok(STATEMENT_FIXTURE).data) as never;
     }
@@ -1271,10 +1302,10 @@ describe('R3 Correction 1 — genuine link-follow to ReceiptPrintPage (Contract 
     // receipt page resolves its own fixture when navigated to.
     mockGet.mockImplementation(async (url: string) => {
       if (url === '/declarations' || (url.startsWith('/declarations') && url.includes('page='))) {
-        return authenticListResponse([pendingDeclaration(REQUEST_ID)]) as never;
+        return authenticListResponse([{ ...pendingDeclaration(REQUEST_ID), currency: 'KES', currency_status: 'KNOWN' }]) as never;
       }
       if (url.includes('/receipt')) return axiosResponse(ok(RECEIPT_FIXTURE).data) as never;
-      if (url.includes('/print') && url.includes('/declarations/')) return axiosResponse(ok(DECL_PRINT_FIXTURE).data) as never;
+      if (url === `/declarations/${REQUEST_ID}/review-context`) return currentReviewResponse(pendingDeclaration(REQUEST_ID)) as never;
       if (url.includes('/print') && url.includes('/orders/')) return axiosResponse(ok(ORDER_PRINT_FIXTURE).data) as never;
       return axiosResponse({ success: true, data: { items: [], pagination: { page: 1, size: 20, total: 0, pages: 0 } }, timestamp: 't' }) as never;
     });
@@ -1292,6 +1323,9 @@ describe('R3 Correction 1 — genuine link-follow to ReceiptPrintPage (Contract 
       window.history.pushState({}, '', '/declarations');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
+    // Complete the current mandatory customer/order review, preserving the original receipt assertions below.
+    fireEvent.click(await screen.findByRole('button', { name: 'Review payment' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: /verified that this money/ }));
     // Wait for the cashier queue + the real Confirm button.
     await waitFor(() => expect(screen.getByRole('button', { name: /confirm/i })).toBeInTheDocument(), { timeout: 3000 });
 

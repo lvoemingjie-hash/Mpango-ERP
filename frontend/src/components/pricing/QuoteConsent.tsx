@@ -20,11 +20,13 @@ interface Props {
   onLockChange?: (locked: boolean) => void;
   /** S2 must refresh row eligibility along with the changed economic quote. */
   onStale?: () => Promise<ServerQuote | null>;
+  /** Optional current-context guard for retained ordinary client operations. */
+  canSubmit?: () => boolean;
 }
 
 /** The retained pending closure owns the original accepted intent on an unknown result. */
 export function QuoteConsent({ intent, disabled, replacing, preview, submit,
-  initialPending, onPendingChange, onLockChange, onStale }: Props) {
+  initialPending, onPendingChange, onLockChange, onStale, canSubmit }: Props) {
   const [quote, setQuote] = useState<ServerQuote | null>(initialPending?.quote || null);
   const [busy, setBusy] = useState(false);
   const [unknown, setUnknown] = useState(Boolean(initialPending));
@@ -52,7 +54,7 @@ export function QuoteConsent({ intent, disabled, replacing, preview, submit,
     finally { setBusy(false); }
   };
   const accept = async () => {
-    if (sending.current) return;
+    if (sending.current || (canSubmit && !canSubmit())) return;
     if (!quote && !pending.current) return;
     sending.current = true;
     if (!pending.current) {
@@ -60,7 +62,7 @@ export function QuoteConsent({ intent, disabled, replacing, preview, submit,
       try { accepted.persist?.({ quote: accepted.quote, key: accepted.key }); }
       catch {
         sending.current = false;
-        setMessage('Unable to retain this accepted request. Please retry before submitting.');
+        setMessage('Unable to retain this accepted request. Reopen this tab to check recovery before submitting.');
         return;
       }
       pending.current = accepted;
@@ -77,11 +79,18 @@ export function QuoteConsent({ intent, disabled, replacing, preview, submit,
         code?: string; old_total?: string; new_total?: string; delta?: string; quote?: ServerQuote;
         changes?: { sku_id: string; old_price: string; new_price: string }[];
       } } } }).response;
-      if (!response || (response.status || 0) >= 500 || response.status === 408) {
+      if (canSubmit && !canSubmit()) {
+        setUnknown(true);
+        setMessage('Your session or permissions changed. Sign in again to recover the original order.');
+      } else if (canSubmit && (response?.status === 401 || response?.status === 403)) {
+        setUnknown(true);
+        setMessage('This session cannot recover the original order. Check your access with your supplier.');
+      } else if (!response || (response.status || 0) >= 500 || response.status === 408 || response.status === 429) {
         setUnknown(true);
         setMessage('Result unknown. Retry the SAME accepted order; do not create a second order.');
       } else {
-        accepted.persist?.(null);
+        try { accepted.persist?.(null); }
+        catch { setUnknown(true); setMessage('The original request could not be cleared. Check its result before starting another order.'); return; }
         pending.current = null; setUnknown(false);
         const detail = response.data?.details;
         if ((response.data?.code === 'PRICE_PREVIEW_STALE' || response.data?.code === 'REORDER_PREVIEW_STALE') && detail?.quote) {
@@ -112,7 +121,7 @@ export function QuoteConsent({ intent, disabled, replacing, preview, submit,
     {!unknown && <button type="button" disabled={busy || disabled} onClick={refresh} className="btn-secondary whitespace-normal">
       {busy ? 'Working...' : 'Review server quote'}
     </button>}
-    {(quote || unknown) && <button type="button" disabled={busy || (!unknown && disabled)}
+    {(quote || unknown) && <button type="button" disabled={busy || (canSubmit && !canSubmit()) || (!unknown && disabled)}
       onClick={accept} className="btn-primary whitespace-normal">
       {unknown ? 'Retry same accepted submission' : replacing ? 'Accept and replace old draft' : 'Accept these prices and create draft'}
     </button>}

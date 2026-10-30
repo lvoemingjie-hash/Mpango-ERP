@@ -39,7 +39,7 @@ export default function DeclarationHistoryPage() {
       setDeclarations((res.data as { items: PaymentDeclaration[] }).items);
       setTotalPages((res.data as { pagination: { pages: number } }).pagination.pages);
     } catch (err: unknown) {
-      setError((err as Error).message || 'Failed to load declarations');
+      setError((err as { response?: { status?: number } }).response?.status === 403 ? 'Your account cannot view these declarations.' : 'Could not load declarations. Please retry.');
     } finally {
       setLoading(false);
     }
@@ -58,6 +58,8 @@ export default function DeclarationHistoryPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <h1 className="text-lg font-semibold text-gray-900 mb-4">My Declarations</h1>
+      <p className="mb-4 text-sm text-gray-600">If a submission result was unknown, reopen its order and use Declare Payment in the same browser tab to recover the original request. Do not record the payment twice.</p>
+      <Link to="/client/orders" className="mb-4 inline-block text-sm text-primary-700 underline">Find the original order</Link>
       {declarations.length === 0 ? (
         <EmptyState icon={BanknotesIcon} title="No declarations" description="You haven't submitted any payment declarations yet." />
       ) : (
@@ -74,6 +76,7 @@ export default function DeclarationHistoryPage() {
               {/* DC-12R1-S3-S2B-I2C-I2: printable declaration (Contract B).
                   Receipt link (Contract C) is shown ONLY when confirmed. */}
               <div className="no-print mt-2 flex flex-wrap gap-2">
+                <Link to={`/client/orders/${encodeURIComponent(d.order_id)}`} className="text-xs text-primary-700 underline">View order</Link>
                 <Link
                   to={`/client/declarations/${d.id}/print`}
                   className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50"

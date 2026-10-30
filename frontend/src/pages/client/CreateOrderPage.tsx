@@ -1,11 +1,14 @@
-import { useState, useEffect } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeftIcon, TrashIcon, PlusIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
 import { ProductImage } from '@/components/catalog/ProductImage';
 import { OrderProductPicker } from '@/components/catalog/OrderProductPicker';
 import { clientOrderService } from '@/services/clientOrderService';
 import { QuoteConsent } from '@/components/pricing/QuoteConsent';
 import { formatMoney } from '@/utils/printFormat';
+import { useAuthStore } from '@/stores/authStore';
+import { operationScope, ownsOperation, readPending, savePending, clearPending } from '@/utils/pendingClientOperation';
+import type { PendingOperation } from '@/utils/pendingClientOperation';
 import type { ClientProduct, ClientSellableUnit, CreateOrderItem } from '@/types/client';
 
 interface OrderLineItem {
@@ -21,19 +24,40 @@ interface OrderLineItem {
 }
 
 export function CreateOrderPage() {
+  const auth = useAuthStore();
+  const [params] = useSearchParams();
+  const replacing = params.get('replace');
+  const scope = operationScope(replacing ? 'replace' : 'create', replacing || 'new');
+  return <OrderEditor key={`${scope}:${auth.sessionGeneration}`} scope={scope} generation={auth.sessionGeneration} />;
+}
+
+function OrderEditor({ scope, generation }: { scope: string | null; generation: number }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const replacing = params.get('replace');
-  const [items, setItems] = useState<OrderLineItem[]>([]);
-  const [notes, setNotes] = useState('');
+  const kind = replacing ? 'replace' : 'create';
+  const [retained] = useState(() => readPending(scope, kind));
+  const original = useRef<PendingOperation | null>(retained.value);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const owns = () => mounted.current && ownsOperation(kind, replacing || 'new', scope, generation);
+  const [items, setItems] = useState<OrderLineItem[]>(() => {
+    const saved = retained.value;
+    return saved && saved.kind !== 'declare' ? saved.body.items.map(item => ({ ...item, sku_code: item.sku_code || item.sellable_unit_id,
+      name: saved.quote.lines.find(line => line.sku_id === item.sellable_unit_id)?.product_name || item.sku_code || 'Selected product' })) : [];
+  });
+  const [notes, setNotes] = useState(retained.value && retained.value.kind !== 'declare' ? retained.value.body.notes || '' : '');
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  const confirmedId = useRef<string | null>(null);
+  const [cleanupError, setCleanupError] = useState('');
   const [showPicker, setShowPicker] = useState(false);
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
-  const [editorLocked, setEditorLocked] = useState(false);
+  const [editorLocked, setEditorLocked] = useState(Boolean(retained.value));
 
   useEffect(() => {
     const state = location.state as { items?: OrderLineItem[] } | null;
-    if (state?.items) {
+    if (state?.items && !retained.value) {
       setItems(state.items);
       setQuantityDrafts({});
     }
@@ -81,6 +105,11 @@ export function CreateOrderPage() {
     sellable_unit_id: item.sellable_unit_id, sku_code: item.sku_code, quantity: item.quantity,
   }));
 
+  if (createdId) return <section className="rounded-xl border bg-white p-4 space-y-3">
+    <h1 className="text-lg font-semibold">Draft created</h1>
+    {cleanupError && <p role="alert" className="text-sm text-amber-800">{cleanupError}</p>}
+    <Link to={`/client/orders/${encodeURIComponent(createdId)}`} className="btn-primary inline-block">View created draft</Link>
+  </section>;
   return <div className="space-y-4">
     <div className="flex items-center gap-3">
       <button type="button" aria-label="Back to products" disabled={editorLocked} onClick={() => navigate('/client')}
@@ -150,18 +179,48 @@ export function CreateOrderPage() {
         className="w-full resize-none rounded-xl border border-gray-300 px-3 py-2 text-base shadow-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 disabled:bg-gray-50" />
     </div>
     <p className="text-sm text-gray-500">Catalog prices are indicative. Review the server quote before accepting this draft.</p>
+    {retained.error && <p role="alert" className="text-sm text-red-700">{retained.error}</p>}
+    {retained.value && <p className="text-sm text-amber-800">An accepted order is awaiting a verified result. The quote below is the original request; recovery keeps its quantities and notes unchanged.</p>}
     <QuoteConsent
       intent={JSON.stringify({ orderItems, notes, quantityDrafts })}
-      disabled={!items.length || hasInvalidQuantity}
+      disabled={!owns() || Boolean(retained.error) || !items.length || hasInvalidQuantity}
+      canSubmit={owns}
+      initialPending={retained.value && retained.value.kind !== 'declare' ? retained.value : null}
+      onPendingChange={pending => {
+        if (!owns()) throw new Error('Session changed');
+        if (!pending) {
+          if (confirmedId.current) return;
+          if (original.current) clearPending(original.current);
+          original.current = null;
+          return;
+        }
+        if (!scope || retained.error) throw new Error('Retention unavailable');
+        const value: PendingOperation = { version: 1, scope, kind, key: pending.key, quote: pending.quote,
+          body: { items: orderItems, ...(notes ? { notes } : {}), quote_token: pending.quote.quote_token } };
+        savePending(value);
+        original.current = JSON.parse(JSON.stringify(value)) as PendingOperation;
+      }}
       onLockChange={setEditorLocked}
       replacing={Boolean(replacing)}
       preview={async () => (await clientOrderService.preview({ items: orderItems })).data.data}
       submit={async (quote, key) => {
-        const data = { items: orderItems, notes: notes || undefined, quote_token: quote.quote_token };
+        if (!owns()) throw new Error('Session changed');
+        const saved = original.current;
+        if (!saved || saved.kind === 'declare' || saved.key !== key || saved.quote.quote_token !== quote.quote_token) throw new Error('Original request unavailable');
+        // Re-check persistence immediately before every write, including recovery.
+        savePending(saved);
+        const data = saved.body;
         const result = replacing
           ? await clientOrderService.replaceDraft(replacing, data, key)
           : await clientOrderService.create(data, key);
-        navigate(`/client/orders/${result.data.data.id}`, { replace: true });
+        if (!owns()) throw new Error('Session changed');
+        if (typeof result.data.data.id !== 'string' || !result.data.data.id.trim()) throw new Error('Result unavailable');
+        confirmedId.current = result.data.data.id;
+        setCreatedId(result.data.data.id);
+        try { clearPending(saved); }
+        catch { setCleanupError('The draft was created, but local recovery data could not be cleared. Open this draft to check its result before starting another order.'); return; }
+        original.current = null;
+        navigate(`/client/orders/${encodeURIComponent(result.data.data.id)}`, { replace: true });
       }}
     />
   </div>;

@@ -148,7 +148,8 @@ describe('F-04 payment declaration navigation closure', () => {
 
   it('T5 order load failure fabricates no declare entry', async () => {
     useAuthStore.setState({ user: userWith(['client:payments:read', 'client:payments:declare']) });
-    vi.mocked(clientOrderService.getById).mockRejectedValue(new Error('boom'));
+    // Preserve the original not-found oracle with an authentic HTTP 404 fixture.
+    vi.mocked(clientOrderService.getById).mockRejectedValue({ response: { status: 404 } });
     render(<MemoryRouter initialEntries={[`/client/orders/${ORDER_ID}`]}>
       <Routes>
         <Route path="/client/orders/:orderId" element={<OrderDetailPage />} />
@@ -191,4 +192,22 @@ describe('F-04 payment declaration navigation closure', () => {
     expect(screen.getByRole('link', { name: 'Print order' })).toBeVisible();
     window.innerWidth = 1024;
   });
+});
+
+
+it.each([
+  [new Error('synthetic transport failure'), 'Could not load this order. Please retry.'],
+  [{ response: { status: 500 } }, 'Could not load this order. Please retry.'],
+  [{ response: { status: 403 } }, 'Your account cannot access this order.'],
+])('keeps failed order reads non-actionable with accurate safe copy (%#)', async (failure, message) => {
+  useAuthStore.setState({ user: userWith(['client:payments:read', 'client:payments:declare']) });
+  vi.mocked(clientOrderService.getById).mockRejectedValue(failure);
+  render(<MemoryRouter initialEntries={[`/client/orders/${ORDER_ID}`]}><Routes>
+    <Route path="/client/orders/:orderId" element={<OrderDetailPage />} />
+  </Routes></MemoryRouter>);
+  await screen.findByText(message as string);
+  expect(screen.queryByRole('link', { name: 'Declare Payment' })).toBeNull();
+  expect(screen.queryByText('Order not found.')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Retry order' })).toBeEnabled();
+  expect(clientOrderService.create).not.toHaveBeenCalled();
 });

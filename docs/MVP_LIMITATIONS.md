@@ -3,6 +3,8 @@
 **Last Updated:** 2026-02-18
 **Target Release:** v0.2.0 (Investor Demo)
 
+> Historical scope notice (2026-10-29): the dated Investor Demo statements below are retained as their original historical record. For the bounded Mac recovery and UX candidate based on `8a99802a`, see [Mac MVP recovery and UX](guides/mac-mvp-recovery-and-ux.md). That candidate has a separate evidence report; it does not establish real email delivery, an integrated business chain, Mac deployment, backup/restore, or production readiness.
+
 This document explicitly states known limitations of the MVP release to set correct expectations for stakeholders, demo audiences, and early adopters.
 
 ---

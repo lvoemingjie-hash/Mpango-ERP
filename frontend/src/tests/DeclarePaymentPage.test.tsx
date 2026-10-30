@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import DeclarePaymentPage from '@/pages/client/DeclarePaymentPage';
+import { useAuthStore } from '@/stores/authStore';
+import { clientOrderService } from '@/services/clientOrderService';
+vi.mock('@/services/clientOrderService', () => ({ clientOrderService: { getById: vi.fn() } }));
+beforeEach(() => {
+  sessionStorage.clear(); localStorage.clear();
+  useAuthStore.setState({ accessToken: 'synthetic-session', user: { id: 'actor-one', tenant_id: 'tenant-one', tenant_schema: 't_one', full_name: 'Synthetic', email: null, roles: ['retailer_operator'], permissions: ['client:payments:declare','client:orders:read'] }, tenantCode: 'PORTAL', retailerPortalCode: 'PORTAL' });
+  vi.mocked(clientOrderService.getById).mockResolvedValue({ data: { data: { id: ORDER_ID, currency: 'KES' } } } as never);
+});
 
 const ORDER_ID = 'order-abc-123';
 const mockNavigate = vi.fn();
@@ -70,7 +78,7 @@ describe('DeclarePaymentPage idempotency', () => {
       });
     }
     vi.spyOn(crypto, 'randomUUID').mockImplementation(() => UUIDS[uuidIdx++]);
-    vi.mocked(submitDeclaration).mockResolvedValue({} as never);
+    vi.mocked(submitDeclaration).mockResolvedValue({ success: true, data: { id: 'synthetic-declaration', order_id: ORDER_ID } } as never);
   });
 
   afterEach(() => {
@@ -82,12 +90,13 @@ describe('DeclarePaymentPage idempotency', () => {
     return vi.mocked(crypto.randomUUID).mock.calls.length;
   }
 
-  function fillAmount(value: string) {
+  async function fillAmount(value: string) {
+    await screen.findByLabelText('Amount (KES)');
     fireEvent.change(screen.getByLabelText(/amount/i), { target: { value } });
   }
 
   function submit() {
-    fireEvent.click(screen.getByRole('button', { name: /submit declaration/i }));
+    fireEvent.click(screen.getByRole('button', { name: /submit declaration|recover original declaration/i }));
   }
 
   it('reuses the same idempotency key when the first request fails and the user retries', async () => {
@@ -103,7 +112,7 @@ describe('DeclarePaymentPage idempotency', () => {
       .mockRejectedValueOnce(new Error('Network timeout'))
       .mockRejectedValueOnce(new Error('Server error'));
 
-    fillAmount('500');
+    await fillAmount('500');
     submit();
     await waitFor(() => expect(submitDeclaration).toHaveBeenCalledTimes(1));
 
@@ -124,7 +133,7 @@ describe('DeclarePaymentPage idempotency', () => {
     render(<DeclarePaymentPage />);
     const callsAfterMount = totalCalls();
 
-    fillAmount('300');
+    await fillAmount('300');
     submit();
 
     // On success: randomUUID IS called again (key rotation).
@@ -142,7 +151,7 @@ describe('DeclarePaymentPage idempotency', () => {
   it('prevents duplicate in-flight submissions on rapid double-submit', async () => {
     const { container } = render(<DeclarePaymentPage />);
     const form = container.querySelector('form') as HTMLFormElement;
-    fillAmount('750');
+    await fillAmount('750');
 
     fireEvent.submit(form);
     fireEvent.submit(form);
@@ -154,7 +163,7 @@ describe('DeclarePaymentPage idempotency', () => {
   it('navigates once after a successful submission', async () => {
     render(<DeclarePaymentPage />);
 
-    fillAmount('300');
+    await fillAmount('300');
     submit();
 
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
@@ -162,20 +171,27 @@ describe('DeclarePaymentPage idempotency', () => {
     expect(submitDeclaration).toHaveBeenCalledTimes(1);
   });
 
-  it('does not touch localStorage or sessionStorage', async () => {
+  it('retains only the scoped original declaration, never login secrets, then clears after success (approved contract)', async () => {
     const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
     const getItemSpy = vi.spyOn(Storage.prototype, 'getItem');
     const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem');
 
     render(<DeclarePaymentPage />);
-    fillAmount('900');
+    await fillAmount('900');
     submit();
 
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
 
-    expect(setItemSpy).not.toHaveBeenCalled();
-    expect(getItemSpy).not.toHaveBeenCalled();
-    expect(removeItemSpy).not.toHaveBeenCalled();
+    expect(setItemSpy).toHaveBeenCalledTimes(1);
+    const [storageKey, raw] = setItemSpy.mock.calls[0];
+    expect(storageKey).toContain('mpango-pending:v1:');
+    for (const part of ['actor-one', 'tenant-one', 't_one', 'PORTAL', ORDER_ID, 'declare']) expect(storageKey).toContain(part);
+    expect(JSON.parse(raw).body).toEqual({ declared_amount: '900', method: 'cash' });
+    expect(raw).not.toMatch(/accessToken|refreshToken|password|synthetic-session/);
+    expect(getItemSpy).toHaveBeenCalledWith(storageKey);
+    expect(removeItemSpy).toHaveBeenCalledWith(storageKey);
+    expect(sessionStorage.getItem(storageKey)).toBeNull();
+    expect(setItemSpy.mock.instances).toEqual([sessionStorage]);
   });
 
   /**
@@ -219,11 +235,12 @@ describe('DeclarePaymentPage neutral error copy (WPR-003)', () => {
     vi.restoreAllMocks();
   });
 
-  function fillAmount(value: string) {
+  async function fillAmount(value: string) {
+    await screen.findByLabelText('Amount (KES)');
     fireEvent.change(screen.getByLabelText(/amount/i), { target: { value } });
   }
   function submit() {
-    fireEvent.click(screen.getByRole('button', { name: /submit declaration/i }));
+    fireEvent.click(screen.getByRole('button', { name: /submit declaration|recover original declaration/i }));
   }
 
   // A payload a verbose/malicious backend might return. None of it may appear.
@@ -238,7 +255,7 @@ describe('DeclarePaymentPage neutral error copy (WPR-003)', () => {
       },
     });
     render(<DeclarePaymentPage />);
-    fillAmount('500');
+    await fillAmount('500');
     submit();
     await waitFor(() => expect(screen.queryByText(/could not be processed/i)).not.toBeNull());
 
@@ -259,7 +276,7 @@ describe('DeclarePaymentPage neutral error copy (WPR-003)', () => {
       response: { status: 409, data: { message: MALICIOUS_MESSAGE } },
     });
     render(<DeclarePaymentPage />);
-    fillAmount('500');
+    await fillAmount('500');
     submit();
     await waitFor(() => expect(screen.getByText(/This declaration could not be processed\. Please review and try again\./i)).toBeInTheDocument());
   });
@@ -267,7 +284,7 @@ describe('DeclarePaymentPage neutral error copy (WPR-003)', () => {
   it('never renders the raw Error.message on a network/timeout failure', async () => {
     vi.mocked(submitDeclaration).mockRejectedValueOnce(new Error('Network timeout ECONNREFUSED 10.0.0.5:5432'));
     render(<DeclarePaymentPage />);
-    fillAmount('300');
+    await fillAmount('300');
     submit();
     await waitFor(() => expect(screen.queryByText(/could not submit your declaration right now/i)).not.toBeNull());
     // Raw exception text MUST NOT leak.
@@ -282,7 +299,7 @@ describe('DeclarePaymentPage neutral error copy (WPR-003)', () => {
       .mockRejectedValueOnce({ response: { status: 500, data: { message: 'boom' } } })
       .mockRejectedValueOnce({ response: { status: 409, data: { message: 'dup' } } });
     render(<DeclarePaymentPage />);
-    fillAmount('750');
+    await fillAmount('750');
     submit();
     await waitFor(() => expect(submitDeclaration).toHaveBeenCalledTimes(1));
     submit();

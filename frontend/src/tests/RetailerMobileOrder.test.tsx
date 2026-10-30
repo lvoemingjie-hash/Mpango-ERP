@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { CreateOrderPage } from '@/pages/client/CreateOrderPage';
+import { useAuthStore } from '@/stores/authStore';
 import { clientProductService } from '@/services/clientProductService';
 import { clientOrderService } from '@/services/clientOrderService';
 import type { ClientProduct } from '@/types/client';
@@ -28,8 +29,8 @@ function catalog(items = [product], page = 1, pages = 1) {
 }
 
 function serverQuote(total = '25.50') {
-  return { data: { data: { quote_token: `server-quote-${total}`, currency: 'KES', total,
-    lines: [{ sku_id: 'bottle-id', product_name: 'Riverside Juice', quantity: 1,
+  return { data: { data: { quote_token: `server-quote-${total}`, currency: 'KES', country: 'KE', expires_at: 9999999999, total,
+    lines: [{ sku_id: 'bottle-id', sku_code: 'JUICE-BTL', revision: 1, source: 'BASE_PRICE', product_name: 'Riverside Juice', quantity: 1,
       unit: 'bottle', display_label: 'bottle', package_quantity: '1', unit_price: total, subtotal: total }],
   } } };
 }
@@ -54,6 +55,8 @@ async function picker() {
 }
 
 beforeEach(() => {
+  sessionStorage.clear();
+  useAuthStore.setState({ accessToken: 'synthetic-session', user: { id: 'actor-one', tenant_id: 'tenant-one', tenant_schema: 't_one', full_name: 'Synthetic', email: null, roles: ['retailer_operator'], permissions: ['client:orders:create', 'client:orders:read'] }, tenantCode: 'PORTAL', retailerPortalCode: 'PORTAL' });
   vi.resetAllMocks();
   vi.mocked(clientProductService.getAll).mockResolvedValue(catalog() as never);
   vi.mocked(clientOrderService.preview).mockResolvedValue(serverQuote() as never);

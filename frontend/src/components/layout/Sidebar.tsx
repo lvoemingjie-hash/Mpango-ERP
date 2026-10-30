@@ -86,6 +86,7 @@ function SidebarBody() {
         <span className="text-lg font-semibold text-gray-900">Mpango ERP</span>
       </div>
 
+      <p className="px-6 pt-3 text-xs text-gray-500">Sales: orders · Declarations: verify received payments · Finance: balances and statements. Access depends on your role.</p>
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
         {visibleItems.map((item) => {
@@ -94,6 +95,7 @@ function SidebarBody() {
             <Link
               key={item.path}
               to={item.path}
+              aria-current={active ? 'page' : undefined}
               className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${active
                   ? 'bg-primary-50 text-primary-700 ring-1 ring-inset ring-primary-200'
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'

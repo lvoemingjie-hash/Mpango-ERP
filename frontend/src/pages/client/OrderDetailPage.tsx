@@ -33,8 +33,9 @@ export function OrderDetailPage() {
     try {
       const res = await clientOrderService.getById(orderId);
       setOrder(res.data.data);
-    } catch {
-      setError('Order not found.');
+    } catch (error) {
+      const status = (error as { response?: { status?: number } }).response?.status;
+      setError(status === 404 ? 'Order not found.' : status === 403 ? 'Your account cannot access this order.' : 'Could not load this order. Please retry.');
     } finally {
       setLoading(false);
     }
@@ -104,7 +105,7 @@ export function OrderDetailPage() {
           <ArrowLeftIcon className="h-4 w-4" />
           Back to orders
         </button>
-        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">{error}</div>
+        <div role="alert" className="rounded-lg bg-red-50 p-4 text-sm text-red-700">{error} <button onClick={load} className="underline">Retry order</button></div>
       </div>
     );
   }
@@ -221,6 +222,12 @@ export function OrderDetailPage() {
         </div>
       </div>
 
+      <section aria-label="Order and payment information" className="rounded-xl border bg-white p-4 text-sm space-y-2">
+        <p><strong>Order:</strong> {badge.label}. This does not by itself confirm that payment has been received.</p>
+        <p><strong>Payment:</strong> a submitted declaration awaits supplier verification. Only a confirmed receipt records payment received.</p>
+        <p><strong>Fulfilment:</strong> {order.status === 'DELIVERED' ? 'This order is marked delivered.' : order.status === 'RETURNED' ? 'This order is marked returned.' : 'This order is not marked delivered.'}</p>
+        {can(user, CLIENT_PERMISSIONS.PAYMENTS_READ) && <Link to="/client/declarations" className="inline-block text-primary-700 underline">Check declarations and receipts</Link>}
+      </section>
       {/* Status Timeline (simplified) */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-sm font-semibold text-gray-900">Order Status</h2>

@@ -23,6 +23,7 @@ import { api } from '@/services/api';
 import { ProductListPage } from '@/pages/client/ProductListPage';
 import { ProductDetailPage } from '@/pages/client/ProductDetailPage';
 import { CreateOrderPage } from '@/pages/client/CreateOrderPage';
+import { useAuthStore } from '@/stores/authStore';
 
 type Handler = (config: InternalAxiosRequestConfig) => AxiosResponse | Promise<AxiosResponse>;
 
@@ -101,6 +102,8 @@ function detailPayload() {
 
 describe('R1 product-level multipackaging UX', () => {
   beforeEach(() => {
+  sessionStorage.clear();
+  useAuthStore.setState({ accessToken: 'synthetic-session', user: { id: 'actor-one', tenant_id: 'tenant-one', tenant_schema: 't_one', full_name: 'Synthetic', email: null, roles: ['retailer_operator'], permissions: ['client:orders:create', 'client:orders:read'] }, tenantCode: 'PORTAL', retailerPortalCode: 'PORTAL' });
     vi.restoreAllMocks();
   });
   afterEach(() => {
@@ -166,8 +169,8 @@ describe('R1 product-level multipackaging UX', () => {
     const { bodies } = installAdapter({
       'GET /client/products/juice-detail': (c) => ok(c, apiResponse(detailPayload())),
       'POST /client/orders/quote': (c) => ok(c, apiResponse({
-        quote_token: 'synthetic-server-quote', currency: 'KES', total: '289.00',
-        lines: [{ sku_id: CASE_ID, product_name: 'Riverside Juice', quantity: 1,
+        quote_token: 'synthetic-server-quote', currency: 'KES', country: 'KE', expires_at: 9999999999, total: '289.00',
+        lines: [{ sku_id: CASE_ID, sku_code: 'JUICE-CASE', revision: 1, source: 'BASE_PRICE', product_name: 'Riverside Juice', quantity: 1,
           unit: 'case', display_label: 'case', package_quantity: '12',
           unit_price: '289.00', subtotal: '289.00' }],
       })),

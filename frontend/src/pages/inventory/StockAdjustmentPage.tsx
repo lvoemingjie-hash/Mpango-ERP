@@ -15,6 +15,8 @@ export function StockAdjustmentPage() {
   const [snapshot,setSnapshot]=useState<AdjustmentSnapshot|null>(null);
   const [delta,setDelta]=useState('');
   const [reason,setReason]=useState('');
+  const [rejectReasons,setRejectReasons]=useState<Record<string,string>>({});
+  const retainedReasons=useRef<Record<string,string>>({});
   const [kind,setKind]=useState('correction');
   const [direct,setDirect]=useState(false);
   const [busy,setBusy]=useState(false);
@@ -35,10 +37,13 @@ export function StockAdjustmentPage() {
     catch(e){setError(normalizeApiError(e));}finally{setBusy(false);}
   }
   async function decide(row:StockAdjustment,action:'approve'|'reject'|'withdraw') {
+    const rejectionReason=retainedReasons.current[row.id] || (rejectReasons[row.id] || '').trim();
+    if(action==='reject'&&!rejectionReason)return;
+    if(action==='reject')retainedReasons.current[row.id]=rejectionReason;
     setBusy(true);setError('');setMessage('');
     const lookup=row.id+':'+action;
     decisions.current[lookup]??=crypto.randomUUID();
-    try {const result=await inventoryService.decideAdjustment(row,action,decisions.current[lookup],action==='reject'?'Rejected by approver':'');
+    try {const result=await inventoryService.decideAdjustment(row,action,decisions.current[lookup],action==='reject'?rejectionReason:'');
       setMessage('Request '+result.status.replace(/_/g,' ')+'.');await load();}
     catch(e){setError(normalizeApiError(e));}finally{setBusy(false);}
   }
@@ -62,13 +67,14 @@ export function StockAdjustmentPage() {
         onChange={e=>{setSku(e.target.value);setSnapshot(null);}}><option value="">Select a product</option>
         {stocks.map(s=><option key={s.sku_id} value={s.sku_id}>{s.sku_name} · {s.sku_code}</option>)}</select></label>
       <button type="button" disabled={busy||!sku} onClick={()=>void refreshSnapshot()} className="btn-secondary">Load current stock snapshot</button>
-      {snapshot&&<p className="rounded bg-gray-50 p-3 text-sm">Unit: {snapshot.unit} · Pack: {snapshot.package_quantity}<br/>
-        On hand: {snapshot.quantity_on_hand} · Reserved: {snapshot.quantity_reserved}<br/>Stock revision {snapshot.stock_revision} · Policy {snapshot.policy_version}</p>}
+      {snapshot&&<div className="rounded bg-gray-50 p-3 text-sm"><p>Unit: {snapshot.unit} · Pack: {snapshot.package_quantity}<br/>
+        On hand: {snapshot.quantity_on_hand} · Reserved: {snapshot.quantity_reserved}</p>
+        <details className="mt-2"><summary className="cursor-pointer">Technical reference for support</summary>Stock revision {snapshot.stock_revision} · Policy {snapshot.policy_version}</details></div>}
       <label className="block">Reason type<select className="mt-1 min-h-12 w-full rounded border p-2" value={kind} disabled={busy} onChange={e=>setKind(e.target.value)}>
         <option value="correction">Correction (+ or -)</option><option value="loss">Loss (-)</option><option value="shrink">Shrinkage (-)</option><option value="gain">Gain (+)</option></select></label>
       <label className="block">Signed quantity<input className="mt-1 min-h-12 w-full rounded border p-2" inputMode="decimal" type="text" value={delta}
         disabled={busy} onChange={e=>setDelta(e.target.value)} required placeholder="-5.00 or 10.00"/></label>
-      <p className="text-sm text-gray-600">Quantity is in the displayed selling unit, at most two decimal places. It is never rounded.</p>
+      <p className="text-sm text-gray-600">Use a minus sign to remove stock and a plus sign or positive number to add stock. Quantity is in the displayed selling unit, at most two decimal places. It is never rounded.</p>
       <label className="block">Reason<textarea className="mt-1 w-full rounded border p-2" value={reason} maxLength={1000} required disabled={busy} onChange={e=>setReason(e.target.value)}/></label>
       {user?.is_owner&&<label className="flex min-h-12 items-center gap-3"><input type="checkbox" checked={direct} disabled={busy} onChange={e=>{setDirect(e.target.checked);key.current=crypto.randomUUID();}}/>
         Explicit Owner direct adjustment (if enabled)</label>}
@@ -82,7 +88,9 @@ export function StockAdjustmentPage() {
       {row.result?.quantity_after&&<p>Stock: {row.result.quantity_before} → {row.result.quantity_after}</p>}
       {row.status==='pending'&&<div className="flex flex-wrap gap-3">
         {row.requester_id===user?.id?<><p className="w-full text-sm text-gray-600">You cannot approve your own request.</p><button className="btn-secondary" disabled={busy} onClick={()=>void decide(row,'withdraw')}>Withdraw</button></>:
-          canApprove&&<><button className="btn-primary" disabled={busy} onClick={()=>void decide(row,'approve')}>Approve</button><button className="btn-secondary" disabled={busy} onClick={()=>void decide(row,'reject')}>Reject</button></>}
+          canApprove&&<><button className="btn-primary" disabled={busy} onClick={()=>void decide(row,'approve')}>Approve</button><label className="w-full text-sm">Rejection reason<input aria-label={`Rejection reason for ${row.payload.sku_code}`} className="mt-1 min-h-12 w-full rounded border p-2" maxLength={1000}
+            value={rejectReasons[row.id]||''} disabled={busy||Boolean(retainedReasons.current[row.id])} onChange={e=>setRejectReasons(current=>({...current,[row.id]:e.target.value}))}/></label>
+            <button className="btn-secondary" disabled={busy||!(rejectReasons[row.id]||'').trim()} onClick={()=>void decide(row,'reject')}>Reject</button></>}
       </div>}
     </article>)}</div>
   </main>;

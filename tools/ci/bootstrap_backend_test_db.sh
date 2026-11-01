@@ -97,8 +97,10 @@ TENANT_SCHEMA="${CI_TEST_TENANT_SCHEMA:-t_test}"
 REDIS_URL="${CI_REDIS_URL:-}"
 PW1R3_REDIS_URL="${PW1R3_TEST_REDIS_URL:-}"
 PG_CONTAINER_ID="${CI_PG_CONTAINER_ID:-}"
+PG_IMAGE_ID="${CI_PG_IMAGE_ID:-}"
 REDIS_CONTAINER_ID="${CI_REDIS_CONTAINER_ID:-}"
 OWNER_LABEL="${CI_OWNER_LABEL:-}"
+TASK_LABEL="${CI_TASK_LABEL:-}"
 SKIP_SERVICE_WAIT="${CI_SUPPLY_SKIP_SERVICE_WAIT:-0}"
 # Task-scoped credential store: re-running the supply against an already
 # provisioned task cluster MUST reuse the original role passwords (the
@@ -249,6 +251,7 @@ TOPOLOGY_KEYS = {
 TOPOLOGY_MODULES = {"async_test_utils", "reporting_bootstrap_contract_helpers"}
 INVARIANTS_MODULES = {"mpango_invariants_r0_support"}
 NATIVE_JWT_MODULES = {
+    "tests.test_cashier_context_readonly_contract",
     "tests.staff_approval_support",
     "tests.test_inventory_manual_adjustment_safety",
     "tests.test_inventory_manual_adjustment_http",
@@ -409,6 +412,8 @@ plan = {
         "MPANGO_INVARIANTS_R0_REDIS_CONTAINER",
         "MPANGO_INVARIANTS_R0_MIGRATION_DATABASE_URL",
         "MPANGO_INVARIANTS_R0_ADMIN_DATABASE_URL",
+        "CI_TEST_DB", "CI_PG_HOST", "CI_PG_PORT", "CI_PG_CONTAINER_ID",
+        "CI_PG_IMAGE_ID", "CONTEXT_PG_IMAGE_ID", "CI_OWNER_LABEL", "CI_TASK_LABEL",
     ],
     "profile_extra_env": PROFILE_ENV,
     "profiles": {p: {"files": partition[p], "count": len(partition[p])} for p in PROFILE_ORDER},
@@ -459,17 +464,25 @@ wait_for_tcp() {
 }
 if [ "$SKIP_SERVICE_WAIT" != "1" ]; then
     wait_for_tcp "$PG_HOST" "$PG_PORT" "postgres"
-    REDIS_HOST_PARSED="$("$PY_RUNNER" -c "import urllib.parse,sys; print(urllib.parse.urlparse(sys.argv[1]).hostname or 'localhost')" "$REDIS_URL")"
-    REDIS_PORT_PARSED="$("$PY_RUNNER" -c "import urllib.parse,sys; print(urllib.parse.urlparse(sys.argv[1]).port or 6379)" "$REDIS_URL")"
+    REDIS_HOST_PARSED="$(CI_REDIS_URL="$REDIS_URL" "$PY_RUNNER" -c "import os,urllib.parse; print(urllib.parse.urlparse(os.environ['CI_REDIS_URL']).hostname or 'localhost')")"
+    REDIS_PORT_PARSED="$(CI_REDIS_URL="$REDIS_URL" "$PY_RUNNER" -c "import os,urllib.parse; print(urllib.parse.urlparse(os.environ['CI_REDIS_URL']).port or 6379)")"
     wait_for_tcp "$REDIS_HOST_PARSED" "$REDIS_PORT_PARSED" "redis"
 fi
 
-if [ -n "$PG_CONTAINER_ID" ] && command -v docker >/dev/null 2>&1; then
+if [ -n "$PG_CONTAINER_ID" ]; then
+    command -v docker >/dev/null 2>&1 || refuse "CONTEXT_TASK_INSPECT_UNAVAILABLE"
+    [[ "$PG_CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || refuse "CONTEXT_TASK_CONTAINER_REGISTRATION_REQUIRED"
+    [[ "$PG_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] || refuse "CONTEXT_TASK_IMAGE_REGISTRATION_REQUIRED"
+    [ -n "$OWNER_LABEL" ] && [ -n "$TASK_LABEL" ] || refuse "CONTEXT_TASK_LABEL_REGISTRATION_REQUIRED"
     FACT="$(docker inspect --format '{{.Config.Image}}|{{index .Config.Labels "mpango.owner"}}' "$PG_CONTAINER_ID")"
     case "$FACT" in
         postgres:16*) echo "[supply] PG container fact verified: $PG_CONTAINER_ID ($FACT |label|)" ;;
         *) refuse "declared PG container $PG_CONTAINER_ID is not postgres:16 (fact: $FACT)" ;;
     esac
+    # CI_PG_IMAGE_ID is registered by the task before container creation.
+    # An observation may verify it, never manufacture its own expected value.
+    FACT="$(docker inspect --format '{{.Id}}|{{.Image}}|{{index .Config.Labels "mpango.owner"}}|{{index .Config.Labels "mpango.task"}}|{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostIp}}|{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' "$PG_CONTAINER_ID")"
+    [ "$FACT" = "$PG_CONTAINER_ID|$PG_IMAGE_ID|$OWNER_LABEL|$TASK_LABEL|127.0.0.1|$PG_PORT" ] || refuse "CONTEXT_TASK_RESOURCE_IDENTITY_MISMATCH"
 fi
 
 gen_password() { "$PY_RUNNER" -c "import secrets; print(secrets.token_hex(16))"; }
@@ -500,7 +513,7 @@ while True:
 PYKEY
 )"
 if [ -z "$PW1R3_REDIS_URL" ]; then
-    PW1R3_REDIS_URL="$("$PY_RUNNER" -c "import sys;u=sys.argv[1];print(u.rsplit('/',1)[0]+'/15')" "$REDIS_URL")"
+    PW1R3_REDIS_URL="$(CI_REDIS_URL="$REDIS_URL" "$PY_RUNNER" -c "import os;u=os.environ['CI_REDIS_URL'];print(u.rsplit('/',1)[0]+'/15')")"
 fi
 
 if [ -n "$CREDS_FILE" ] && [ ! -f "$CREDS_FILE" ]; then
@@ -674,6 +687,14 @@ if [ -n "$ENV_FILE" ]; then
         echo "export MPANGO_INVARIANTS_R0_ADMIN_DATABASE_URL='${MAINT_URL}'"
         echo "export MPANGO_TEMP_DB_ALLOWED_PORTS='${PG_PORT}'"
         echo "export MPANGO_TEMP_DB_ALLOWED_HOSTS='127.0.0.1,localhost'"
+        echo "export CI_TEST_DB='${TEST_DB}'"
+        echo "export CI_PG_HOST='${PG_HOST}'"
+        echo "export CI_PG_PORT='${PG_PORT}'"
+        echo "export CI_PG_CONTAINER_ID='${PG_CONTAINER_ID}'"
+        echo "export CI_PG_IMAGE_ID='${PG_IMAGE_ID}'"
+        echo "export CONTEXT_PG_IMAGE_ID='${PG_IMAGE_ID}'"
+        echo "export CI_OWNER_LABEL='${OWNER_LABEL}'"
+        echo "export CI_TASK_LABEL='${TASK_LABEL}'"
     } > "$ENV_FILE"
     chmod 600 "$ENV_FILE"
     echo "[supply] versioned env file written (mode 0600): $ENV_FILE"
@@ -699,6 +720,14 @@ if [ -n "$GITHUB_ENV_FILE" ]; then
         echo "MPANGO_INVARIANTS_R0_ADMIN_DATABASE_URL=$MAINT_URL"
         echo "MPANGO_TEMP_DB_ALLOWED_PORTS=$PG_PORT"
         echo "MPANGO_TEMP_DB_ALLOWED_HOSTS=127.0.0.1,localhost"
+        echo "CI_TEST_DB=$TEST_DB"
+        echo "CI_PG_HOST=$PG_HOST"
+        echo "CI_PG_PORT=$PG_PORT"
+        echo "CI_PG_CONTAINER_ID=$PG_CONTAINER_ID"
+        echo "CI_PG_IMAGE_ID=$PG_IMAGE_ID"
+        echo "CONTEXT_PG_IMAGE_ID=$PG_IMAGE_ID"
+        echo "CI_OWNER_LABEL=$OWNER_LABEL"
+        echo "CI_TASK_LABEL=$TASK_LABEL"
     } >> "$GITHUB_ENV_FILE"
     echo "[supply] github env keys appended (values masked; file never echoed or uploaded)"
 fi

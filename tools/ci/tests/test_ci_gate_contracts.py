@@ -5619,3 +5619,226 @@ def exercise():
         (tmp_path/'observer-mutant-proof.json').write_text(json.dumps({'anchor_count':1,'semantic_marker':'RC4_OBSERVER_INSTALLATION_MISSING',
             'original_sha256':before,'restored_sha256':hashlib.sha256(target.read_bytes()).hexdigest(),
             'mode_restored':target.stat().st_mode&0o777==mode,'native_business_result_preserved':True,'control_green':True}))
+
+
+class TestCurrentPreparationContract:
+    """Offline execution of the real fixture admission and supply channels."""
+
+    @staticmethod
+    def _facts():
+        cid, image = 'a' * 64, 'sha256:' + 'b' * 64
+        env = dict(DATABASE_URL='postgresql://mpango_app@127.0.0.1:55432/test_current_prep',
+                   TEST_DATABASE_URL='postgresql://mpango_app@127.0.0.1:55432/test_current_prep',
+                   CI_TEST_DB='test_current_prep', CI_PG_HOST='127.0.0.1', CI_PG_PORT='55432',
+                   CI_PG_CONTAINER_ID=cid, CI_PG_IMAGE_ID=image, CONTEXT_PG_IMAGE_ID=image,
+                   CI_TASK_LABEL='current-prep-task', CI_OWNER_LABEL='zcode-mvp-invariants-current-prep',
+                   MPANGO_ENV='staging')
+        info = {'Id': cid, 'Image': image, 'Config': {'Labels': {
+            'mpango.task': env['CI_TASK_LABEL'], 'mpango.owner': env['CI_OWNER_LABEL']}},
+            'NetworkSettings': {'Ports': {'5432/tcp': [{'HostIp': '127.0.0.1', 'HostPort': '55432'}]}}}
+        return env, info
+
+    @staticmethod
+    def _entry(env, info, monkeypatch):
+        import ast
+        import types
+        source = REPO_ROOT / 'backend/tests/test_cashier_context_readonly_contract.py'
+        tree = ast.parse(source.read_text())
+        fixture = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'context_world')
+        prefix = []
+        for statement in fixture.body:
+            if (isinstance(statement, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'world'
+                                                        for t in statement.targets)):
+                break
+            prefix.append(statement)
+        # These are the real admission statements before ContextWorld creation,
+        # not a second implementation and not a backend-module import.
+        helpers = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_assert_context_task_identity']
+        entry = ast.FunctionDef(name='entry', args=ast.arguments(posonlyargs=[], args=[], kwonlyargs=[],
+            kw_defaults=[], defaults=[]), body=prefix, decorator_list=[])
+        module = ast.fix_missing_locations(ast.Module(body=helpers + [entry], type_ignores=[]))
+        calls = []
+
+        def inspect(argv, **kwargs):
+            assert argv == ['docker', 'inspect', env['CI_PG_CONTAINER_ID']], 'CONTEXT_INSPECT_WRONG_TARGET'
+            calls.append(list(argv))
+            return json.dumps([info]).encode()
+
+        with monkeypatch.context() as patch:
+            patch.setattr(subprocess, 'check_output', inspect)
+            namespace = {'os': types.SimpleNamespace(environ=env), 'json': json}
+            exec(compile(module, str(source), 'exec'), namespace)
+            namespace['entry']()
+        return calls
+
+    def test_registered_context_task_is_accepted(self, monkeypatch):
+        env, info = self._facts()
+        before = dict(env)
+        try:
+            calls = self._entry(env, info, monkeypatch)
+        except AssertionError:
+            raise AssertionError('CONTEXT_REGISTERED_TASK_REJECTED') from None
+        assert calls == [['docker', 'inspect', info['Id']]]
+        assert env == before
+
+    def test_context_metadata_refuses_wrong_scope_and_profile(self, monkeypatch):
+        env, info = self._facts()
+        cases = []
+        for key in env:
+            value = dict(env)
+            del value[key]
+            cases.append(('missing-' + key, value))
+        for name, field, value in [
+            ('old-db', 'TEST_DATABASE_URL', 'postgresql://mpango_app@127.0.0.1:55432/test_mpango_cashier_context_20261029'),
+            ('same-prefix-other-task', 'TEST_DATABASE_URL', 'postgresql://mpango_app@127.0.0.1:55432/test_other_task'),
+            ('not-test-marked', 'CI_TEST_DB', 'production'),
+            ('wrong-role', 'TEST_DATABASE_URL', 'postgresql://postgres@127.0.0.1:55432/test_current_prep'),
+            ('wrong-endpoint', 'CI_PG_PORT', '55433'), ('wrong-host', 'CI_PG_HOST', 'localhost'),
+            ('bad-profile', 'MPANGO_ENV', 'test'), ('blank-image', 'CONTEXT_PG_IMAGE_ID', ''),
+            ('wrong-image-registration', 'CONTEXT_PG_IMAGE_ID', 'sha256:' + 'c' * 64),
+        ]:
+            altered = dict(env)
+            altered[field] = value
+            if field == 'TEST_DATABASE_URL':
+                altered['DATABASE_URL'] = value
+            cases.append((name, altered))
+        for name, altered in cases:
+            with pytest.raises(AssertionError, match='CONTEXT_TASK_'):
+                self._entry(altered, info, monkeypatch)
+
+    def test_context_resource_mismatches_are_refused(self, monkeypatch):
+        env, info = self._facts()
+        for field in ('Id', 'Image', 'owner', 'task', 'port', 'ipv6-extra'):
+            value = json.loads(json.dumps(info))
+            if field == 'Id':
+                value['Id'] = 'c' * 64
+            elif field == 'Image':
+                value['Image'] = 'sha256:' + 'c' * 64
+            elif field in ('owner', 'task'):
+                value['Config']['Labels']['mpango.' + field] = 'foreign'
+            elif field == 'port':
+                value['NetworkSettings']['Ports']['5432/tcp'][0]['HostPort'] = '55433'
+            else:
+                value['NetworkSettings']['Ports']['5432/tcp'].append({'HostIp': '::1', 'HostPort': '55432'})
+            # The fake inspect returns a mismatched observation for the exact
+            # registered CID; it never changes the independent expected data.
+            with pytest.raises(AssertionError, match='CONTEXT_TASK_'):
+                self._entry(env, value, monkeypatch)
+
+    def test_client_and_cashier_use_real_jwt_partition(self, tmp_path):
+        helper = TestBootstrapPreflight()
+        helper.tmp = tmp_path
+        proc = helper._run({}, plan=tmp_path / 'current-plan.json')
+        assert proc.returncode == 0, proc.stderr
+        plan = json.loads((tmp_path / 'current-plan.json').read_text())
+        for path in ('tests/test_cashier_context_readonly_contract.py', 'tests/test_client_portal_context_contract.py'):
+            assert path in plan['profiles']['invariants-jwt']['files'], 'CONTEXT_CLIENT_REAL_JWT_PROFILE'
+            assert path not in plan['profiles']['runtime']['files']
+        counts = plan['selection_counts']
+        assert (counts['collected_test_files'], counts['ordinary'], counts['dedicated']) == (281, 254, 21)
+        assert [plan['profiles'][p]['count'] for p in ('runtime', 'topology', 'invariants-jwt', 'task-managed-pg')] == [191, 39, 20, 4]
+
+    def _supply(self, tmp_path, *, explicit_db15=False, overrides=None, refusal=None):
+        """Real wrapper, fake tools; TCP probe intercepted before any socket."""
+        env, info = self._facts()
+        root, bin_dir, rec = tmp_path, tmp_path / 'bin', tmp_path / 'records'
+        bin_dir.mkdir()
+        rec.mkdir()
+        (bin_dir / 'psql').write_text(FAKE_PSQL)
+        (bin_dir / 'poetry').write_text(FAKE_POETRY_PASS)
+        (bin_dir / 'python-recorder').write_text(
+            '#!' + sys.executable + '\nimport json,os,pathlib,sys,uuid\n'
+            'p=pathlib.Path(os.environ["C91_FAKE_DIR"])/("python-"+uuid.uuid4().hex+".args.json")\n'
+            'p.write_text(json.dumps(sys.argv[1:]))\n'
+            'if len(sys.argv)>2 and sys.argv[1]=="-c" and "socket.create_connection" in sys.argv[2]:sys.exit(0)\n'
+            'os.execv(os.environ["REAL_PYTHON"],[os.environ["REAL_PYTHON"],*sys.argv[1:]])\n')
+        (bin_dir / 'docker').write_text(
+            '#!/usr/bin/env bash\n'
+            'test "$1" = inspect && test "$2" = --format || exit 90\n'
+            'case "$3" in\n'
+            '  *Config.Image*) printf "postgres:16-alpine|%s\\n" "$C91_OBS_OWNER" ;;\n'
+            '  *) printf "%s|%s|%s|%s|127.0.0.1|55432\\n" "$C91_OBS_CID" "$C91_OBS_IMAGE" "$C91_OBS_OWNER" "$C91_OBS_TASK" ;;\n'
+            'esac\n')
+        for file in bin_dir.iterdir():
+            file.chmod(0o755)
+        canary = secrets.token_urlsafe(24)
+        controlled = dict(os.environ, **env)
+        controlled.update(PATH=str(bin_dir) + os.pathsep + os.environ['PATH'], C91_FAKE_DIR=str(rec),
+            REAL_PYTHON=sys.executable, PYTHON_BIN=str(bin_dir / 'python-recorder'),
+            C91_OBS_CID=info['Id'], C91_OBS_IMAGE=info['Image'],
+            C91_OBS_OWNER=info['Config']['Labels']['mpango.owner'],
+            C91_OBS_TASK=info['Config']['Labels']['mpango.task'],
+            CI_PG_ADMIN_USER='postgres', CI_PG_ADMIN_PASSWORD=PREFLIGHT_CREDENTIAL,
+            CI_REDIS_URL='redis://:' + canary + '@127.0.0.1:36379/0',
+            PW1R3_TEST_REDIS_URL=('redis://:' + canary + '@127.0.0.1:36379/15') if explicit_db15 else '',
+            CI_SUPPLY_SKIP_SERVICE_WAIT='0')
+        controlled.update(overrides or {})
+        output, github = root / 'env.sh', root / 'github-env'
+        proc = subprocess.run([BASH, str(BOOTSTRAP), '--repo-root', str(REPO_ROOT),
+            '--env-file', str(output), '--github-env', str(github), '--plan-file', str(root / 'plan.json'),
+            '--profile-dir', str(root / 'profiles')], env=controlled, capture_output=True, text=True, timeout=30)
+        if refusal is not None:
+            assert proc.returncode != 0 and refusal in proc.stderr, 'CONTEXT_SUPPLY_MISMATCH_NOT_REFUSED'
+            assert not any('--provision' in p.read_text() for p in rec.glob('poetry-*.argv'))
+            return
+        assert proc.returncode == 0, 'CONTEXT_FAKE_SUPPLY_REFUSED'
+        argv = [json.loads(p.read_text()) for p in rec.glob('python-*.args.json')]
+        return controlled, canary, proc, output, github, argv
+
+    def test_registered_metadata_is_produced_for_fixture(self, tmp_path, monkeypatch):
+        good = tmp_path / 'valid'
+        good.mkdir()
+        env, _, _, output, github, _ = self._supply(good)
+        for name in ('CI_TEST_DB', 'CI_PG_HOST', 'CI_PG_PORT', 'CI_PG_CONTAINER_ID',
+                     'CI_PG_IMAGE_ID', 'CONTEXT_PG_IMAGE_ID', 'CI_TASK_LABEL', 'CI_OWNER_LABEL'):
+            expected = env['CI_PG_IMAGE_ID'] if name == 'CONTEXT_PG_IMAGE_ID' else env[name]
+            assert "export " + name + "='" + expected + "'" in output.read_text(), 'CONTEXT_PREP_METADATA_NOT_EXPORTED'
+            assert name + '=' + expected + '\n' in github.read_text(), 'CONTEXT_PREP_METADATA_NOT_EXPORTED'
+        import shlex
+        produced = {}
+        for line in output.read_text().splitlines():
+            if line.startswith('export '):
+                key, value = line[7:].split('=', 1)
+                produced[key] = shlex.split(value)[0]
+        # The real invariants-jwt profile applies staging after the supply's
+        # default test env; it does not grant a different database identity.
+        produced['MPANGO_ENV'] = 'staging'
+        _, info = self._facts()
+        assert self._entry(produced, info, monkeypatch) == [['docker', 'inspect', info['Id']]]
+        for key, value, category in (
+            ('CI_PG_IMAGE_ID', '', 'CONTEXT_TASK_IMAGE_REGISTRATION_REQUIRED'),
+            ('CI_PG_IMAGE_ID', 'sha256:' + 'c' * 64, 'CONTEXT_TASK_RESOURCE_IDENTITY_MISMATCH'),
+            ('CI_TASK_LABEL', 'foreign', 'CONTEXT_TASK_RESOURCE_IDENTITY_MISMATCH'),
+        ):
+            bad = tmp_path / ('refused-' + category + '-' + str(len(list(tmp_path.iterdir()))))
+            bad.mkdir()
+            self._supply(bad, overrides={key: value}, refusal=category)
+
+    def test_redis_default_db15_has_no_argv_or_output_secret(self, tmp_path):
+        _, canary, proc, output, _, argv = self._supply(tmp_path)
+        assert not any(canary in arg for call in argv for arg in call), 'REDIS_URL_SECRET_IN_PROCESS_ARGV'
+        assert canary not in proc.stdout + proc.stderr, 'REDIS_URL_SECRET_IN_STDOUT'
+        assert 'redis://:' + canary + '@127.0.0.1:36379/15' in output.read_text()
+        assert sum('urlparse' in ' '.join(call) and '.hostname' in ' '.join(call) for call in argv) == 1
+        assert sum('urlparse' in ' '.join(call) and '.port' in ' '.join(call) for call in argv) == 1
+        assert sum('rsplit' in ' '.join(call) and 'CI_REDIS_URL' in ' '.join(call) for call in argv) == 1
+
+    def test_redis_explicit_db15_preserves_private_input(self, tmp_path):
+        env, canary, proc, output, _, argv = self._supply(tmp_path, explicit_db15=True)
+        assert not any(canary in arg for call in argv for arg in call), 'REDIS_URL_SECRET_IN_PROCESS_ARGV'
+        assert canary not in proc.stdout + proc.stderr
+        assert env['PW1R3_TEST_REDIS_URL'] in output.read_text()
+
+    def test_fixture_business_functions_and_ci_authority_stay_frozen(self):
+        import ast
+        path = 'backend/tests/test_cashier_context_readonly_contract.py'
+        old = subprocess.check_output(['git', 'show', 'dfbf1369fd74a05b10049420e9baf4962e660921:' + path], cwd=REPO_ROOT)
+        old_tree, new_tree = ast.parse(old), ast.parse((REPO_ROOT / path).read_text())
+        select = lambda tr: {n.name: ast.dump(n, include_attributes=False) for n in tr.body
+                            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                            and n.name not in {'context_world', '_assert_context_task_identity'}}
+        assert select(old_tree) == select(new_tree)
+        for path in ('tools/ci/prepare_test_evidence.py', '.github/workflows/deploy-staging.yml',
+                     'docs/releases/mvp-20261031/RC4-TEST-SELECTION.json', '.secrets.baseline'):
+            assert (REPO_ROOT / path).read_bytes() == subprocess.check_output(
+                ['git', 'show', 'dfbf1369fd74a05b10049420e9baf4962e660921:' + path], cwd=REPO_ROOT)

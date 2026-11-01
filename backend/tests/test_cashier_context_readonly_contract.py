@@ -195,20 +195,57 @@ class ContextWorld:
                 await db.execute(text(restore), params)
 
 
+def _assert_context_task_identity(env, inspect_container):
+    """Consume registered task facts; never derive expected facts from inspect."""
+    import re
+    from urllib.parse import urlparse
+
+    required = ("DATABASE_URL", "TEST_DATABASE_URL", "CI_TEST_DB", "CI_PG_HOST", "CI_PG_PORT",
+                "CI_PG_CONTAINER_ID", "CI_PG_IMAGE_ID", "CONTEXT_PG_IMAGE_ID", "CI_TASK_LABEL",
+                "CI_OWNER_LABEL", "MPANGO_ENV")
+    if any(not isinstance(env.get(key), str) or not env[key].strip() for key in required):
+        raise AssertionError("CONTEXT_TASK_METADATA_REQUIRED")
+    if env["MPANGO_ENV"] != "staging":
+        raise AssertionError("CONTEXT_TASK_REAL_JWT_PROFILE_REQUIRED")
+    if not re.fullmatch(r"(?:test|pytest|ci)[_-][a-z0-9_-]+", env["CI_TEST_DB"]):
+        raise AssertionError("CONTEXT_TASK_TEST_DATABASE_REQUIRED")
+    try:
+        endpoint = urlparse(env["TEST_DATABASE_URL"])
+        port = int(env["CI_PG_PORT"])
+        valid = (env["DATABASE_URL"] == env["TEST_DATABASE_URL"]
+                 and endpoint.scheme in {"postgresql", "postgresql+asyncpg"}
+                 and endpoint.username == "mpango_app"
+                 and endpoint.hostname == env["CI_PG_HOST"] == "127.0.0.1"
+                 and 0 < port < 65536 and endpoint.port == port
+                 and endpoint.path == "/" + env["CI_TEST_DB"]
+                 and not endpoint.query and not endpoint.fragment)
+    except ValueError:
+        valid = False
+    if not valid:
+        raise AssertionError("CONTEXT_TASK_DATABASE_IDENTITY_MISMATCH")
+    cid, image = env["CI_PG_CONTAINER_ID"], env["CI_PG_IMAGE_ID"]
+    if (not re.fullmatch(r"[0-9a-f]{64}", cid)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", image)
+            or env["CONTEXT_PG_IMAGE_ID"] != image):
+        raise AssertionError("CONTEXT_TASK_RESOURCE_REGISTRATION_REQUIRED")
+    info = inspect_container(cid)
+    try:
+        valid = (info["Id"] == cid and info["Image"] == image
+                 and info["Config"]["Labels"]["mpango.task"] == env["CI_TASK_LABEL"]
+                 and info["Config"]["Labels"]["mpango.owner"] == env["CI_OWNER_LABEL"]
+                 and info["NetworkSettings"]["Ports"]["5432/tcp"] == [
+                     {"HostIp": "127.0.0.1", "HostPort": str(port)}])
+    except (KeyError, TypeError):
+        valid = False
+    if not valid:
+        raise AssertionError("CONTEXT_TASK_RESOURCE_IDENTITY_MISMATCH")
+
+
 @pytest_asyncio.fixture(scope="module")
 async def context_world():
     import subprocess
-    from urllib.parse import urlparse
-    endpoint = urlparse(os.environ["TEST_DATABASE_URL"])
-    assert os.environ["DATABASE_URL"] == os.environ["TEST_DATABASE_URL"]
-    assert endpoint.username == "mpango_app" and endpoint.hostname == "127.0.0.1"
-    assert endpoint.path == "/test_mpango_cashier_context_20261029"
-    cid = os.environ["CI_PG_CONTAINER_ID"]
-    info = json.loads(subprocess.check_output(["docker", "inspect", cid]))[0]
-    assert info["Id"] == cid and info["Image"] == os.environ["CONTEXT_PG_IMAGE_ID"]
-    assert info["Config"]["Labels"]["mpango.task"] == os.environ["CI_TASK_LABEL"]
-    assert info["Config"]["Labels"]["mpango.owner"] == os.environ["CI_OWNER_LABEL"]
-    assert info["NetworkSettings"]["Ports"]["5432/tcp"] == [{"HostIp": "127.0.0.1", "HostPort": str(endpoint.port)}]
+    _assert_context_task_identity(os.environ, lambda cid: json.loads(
+        subprocess.check_output(["docker", "inspect", cid]))[0])
     world = ContextWorld()
     try:
         yield await world.initialize()

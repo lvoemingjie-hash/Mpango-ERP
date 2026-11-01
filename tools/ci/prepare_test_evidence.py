@@ -105,14 +105,23 @@ _HISTORICAL_CANONICAL_DIGEST_INTS = {
     "invariants-jwt": 14225403732936862956787750016881398974573020047247214588285646003204590389255,
     "task-managed-pg": 26202434481483022035822387896696908997049812747828017617325771995640059934965,
 }
-# Task-managed-pg replaces four obsolete writable-preparation nodes one for
-# one, bound to its new native collection. Other legs retain prior bindings.
+# Fixed 2add: all five native collections, in one fresh task environment.
+# Historical canonical tables remain in the preserved selection/intake layer.
 CANONICAL_NODEID_SHA256 = {
-    "runtime-a": "6eed0a210105843cc4c82be0c919f4f5962b325fe600d7a7dffcf1e9dcdc4472",
+    "runtime-a": "1adc9dfae7a3bb2aee326d638f589eda941fa8911858bae75f7828476e2aa246",
     "runtime-b": "03ad53c5359e0848a2afd21202a72450419014a8623c6da5e463e610f84ef7fe",
     "topology": "c5b860246b7e6829d45924e4f608da4250e27ad519d2fae00eea11a268a38200",
-    "invariants-jwt": "33353c363b13460c544aa14a30326d7c8b4dd51161acac208641a13b8e33868b",
+    "invariants-jwt": "ba8abeac874542d1521818b8e94723239de9801401b7c07e724c2107c4447644",
     "task-managed-pg": "fb07315c5fa8c89517191a1df66db7f7447b0ec76cd8953c9715474544098d20",
+}
+
+# Populated only from the five authorized native collect originals.
+CURRENT_COLLECTION_COUNTS = {
+    "runtime-a": 1702,
+    "runtime-b": 1630,
+    "topology": 798,
+    "invariants-jwt": 352,
+    "task-managed-pg": 92,
 }
 
 # F-01 (R6R1): the task credential store is a single private store shared by
@@ -258,7 +267,9 @@ def _read_argfile(path: str) -> list:
         lines = Path(path).read_text(encoding="utf-8").splitlines()
     except OSError as exc:
         raise Refused(f"ARGFILE_UNREADABLE: {path} ({exc.__class__.__name__})", 3)
-    return [ln.strip() for ln in lines if ln.strip()]
+    if any(not ln or ln != ln.strip() for ln in lines):
+        raise Refused("ARGFILE_ENTRY_INVALID: empty or whitespace-altered member", 3)
+    return lines
 
 
 def _collect_nodeids(path: str) -> list:
@@ -701,12 +712,13 @@ def _git_bytes(repo, *argv):
 
 
 # CTO fixes the comparison snapshot; this is not overall SOURCE_OK or CI PASS.
-REUSE_APPROVED_REF = "47716cdc88451e233c4142e7da0c3d82c368dd22"
+REUSE_477_APPROVED_REF = "47716cdc88451e233c4142e7da0c3d82c368dd22"
+REUSE_APPROVED_REF = "2add5eec0f21e1bc6e505e77e9385e33a105f347"
 REUSE_5033_APPROVED_REF = "5033e2cd039af3b989418ae0a57133a6355ca42c"
 REUSE_PREVIOUS_APPROVED_REF = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
 # Rebuild inputs/recipe are declared in intake_sources and the delivery receipt.
-REUSE_INTAKE_VERSION = 11
+REUSE_INTAKE_VERSION = 12
 REUSE_EXPECTED_METADATA = json.loads(r'''
 {
   "record": "RC2_VERSIONED_DEDICATED_ACCEPTANCE_INTAKE_V1",
@@ -2858,9 +2870,9 @@ def _reuse_expected_metadata(repo):
     }))
     expected.update(record="RC4_CTO_FIXED_477_OBSERVER_SOURCE_COMPARISON_V1",
                     authorization="CTO-AUTH-RC4-477-OBSERVER-ADMISSION-L-R1-20261027",
-                    intake_version=REUSE_INTAKE_VERSION, product_anchor=REUSE_APPROVED_REF)
-    current.update(authorization=expected["authorization"], source_ref=REUSE_APPROVED_REF,
-        source_contract_commit=REUSE_APPROVED_REF,
+                    intake_version=11, product_anchor=REUSE_477_APPROVED_REF)
+    current.update(authorization=expected["authorization"], source_ref=REUSE_477_APPROVED_REF,
+        source_contract_commit=REUSE_477_APPROVED_REF,
         source_tree="4ea739f8b7c17f2f78df8e1ee3c7020cbeee1de6",
         source_parent="d8f7a26e0aecf9e908674d71ccc6cbbf996d56d8",
         backend_tree="b0dec5908e1f1518312253847bf418b2c1c4499b",
@@ -2873,7 +2885,7 @@ def _reuse_expected_metadata(repo):
         "anchor_path": "AI_REPORT_INBOX/rc4-477-observer-admission-cto-directive-20261027/delivery/inputs/CTO-RECHECK.json",
         "anchor_sha256": "a0f195adef91154803c1e960cf2033766688454957cc467ba1fc06d584549dfb",
         "previous_comparison_source": REUSE_5033_APPROVED_REF,
-        "whole_backend_frontend_comparison_source": REUSE_APPROVED_REF,
+        "whole_backend_frontend_comparison_source": REUSE_477_APPROVED_REF,
         "historical_bindings_rebound": False, "overall_source_ok": False,
         "STAFF_HOSTED_ORIGINAL_5": "OPEN", "STAFF_HOSTED_ROOT_CAUSE": "UNKNOWN",
         "SOURCE_FAILED_RUN": 40416802614,
@@ -2883,6 +2895,60 @@ def _reuse_expected_metadata(repo):
         "CI_SECRET_GATE": "UNADJUDICATED", "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED",
         "observation_transport": "EXISTING_JUNIT_PROPERTIES__ORIGINAL_NINE_CALL_WINDOWS_ONLY",
         "missing_observation": "GAP__NOT_ZERO_REFUSALS",
+    }
+    expected["previous_477_fixed_source_comparison"] = json.loads(json.dumps({
+        key: expected[key] for key in (
+            "record", "authorization", "intake_status", "intake_version", "product_anchor",
+            "current_source_intake", "selection_binding", "ordinary_canonical_status", "fixed_source_alignment",
+        )
+    }))
+    authorization = "CTO-AUTH-2ADD-CI-ALIGNMENT-AND-FIVE-COLLECT-CODEXL-R1-20261101"
+    # The existing fixed object, never HEAD or a caller's coverage, is authority.
+    def fixed_oid(suffix):
+        return _git_bytes(repo, "rev-parse", REUSE_APPROVED_REF + suffix).decode().strip()
+    expected.update(record="CURRENT_2ADD_CI_ONLY_INTAKE_V1", intake_version=REUSE_INTAKE_VERSION,
+                    authorization=authorization, product_anchor=REUSE_APPROVED_REF,
+                    intake_status="AUTHOR_CI_ONLY_INTAKE_PENDING_CTO")
+    current.update(authorization=authorization, source_ref=REUSE_APPROVED_REF,
+                   source_contract_commit=REUSE_APPROVED_REF,
+                   source_tree=fixed_oid("^{tree}"), source_parent=fixed_oid("^"),
+                   backend_tree=fixed_oid(":backend"), frontend_tree=fixed_oid(":frontend"),
+                   authority_status="FIXED_2ADD_PREPARATION_ONLY__NOT_BODY_OR_RELEASE_PASS",
+                   current_fresh_ordinary_collection="CURRENT_FIVE_NATIVE_COLLECTIONS__NO_BODY_EXECUTION",
+                   independent_v3_this_intake="NOT_RUN", hosted_ci_this_intake="NOT_RUN")
+    current["ordinary_definition"] = {
+        "files": 254, "dedicated_files": 21, "ignores": 6,
+        "nodes": sum(CURRENT_COLLECTION_COUNTS.values()),
+        "canonical_definition_changed": True, "global_node_set_changed": True,
+        "profile_membership_changed": True,
+    }
+    expected["selection_binding"] = {
+        "authority": authorization, "source_ref": REUSE_APPROVED_REF,
+        "discovered_files": 281, "ordinary_files": 254, "dedicated_files": 21,
+        "ignores": 6, "union": 275, "intersection": 0, "unknown": 0,
+    }
+    expected["ordinary_canonical_status"] = "CURRENT_NATIVE_COLLECT_ONLY__NO_BODY_PASS"
+    expected["historical_explicit_non_claims"] = expected["explicit_non_claims"]
+    expected["explicit_non_claims"] = [
+        "Fixed 2add source supports preparation/collect admission only; CTO product and release decisions remain separate.",
+        "281 tracked tests split into 254 ordinary, 21 dedicated and six ignored files; node totals come only from current native collect.",
+        "Historical bindings, candidates, node maps and gaps retain their original scope and are not rebound.",
+        "Old24, R7/R5 scan and three resource-action gaps remain open; no body or browser was rerun.",
+        "No hosted CI, independent V3, full backend pass or release readiness is established here.",
+    ]
+    expected["current_collection_binding"] = {
+        "source_ref": REUSE_APPROVED_REF, "node_counts": CURRENT_COLLECTION_COUNTS,
+        "canonical_sha256": CANONICAL_NODEID_SHA256,
+        "claim": "AUTHOR_NATIVE_COLLECT_ONLY__NOT_BUSINESS_OR_CI_PASS",
+    }
+    expected["fixed_source_alignment"] = {
+        "authority": authorization, "previous_comparison_source": REUSE_477_APPROVED_REF,
+        "whole_backend_frontend_comparison_source": REUSE_APPROVED_REF,
+        "historical_bindings_rebound": False, "overall_source_ok": False,
+        "OLD_24_HOSTED_FAILURES": "OPEN__NOT_EXECUTED_THIS_TASK",
+        "R7_R5_FINAL_SCAN_AND_THREE_RESOURCE_ACTION_GAPS": "RETAINED",
+        "CI_SECRET_GATE": "UNADJUDICATED", "hosted_ci": "NOT_RUN",
+        "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED",
     }
     return expected
 

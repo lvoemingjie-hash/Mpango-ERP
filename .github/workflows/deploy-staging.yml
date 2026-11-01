@@ -47,8 +47,8 @@ jobs:
           - shard: runtime-a
             job-timeout-minutes: 50
             pytest-timeout: 40m
-            expected-files: "94"
-            expected-nodes: "1667"
+            expected-files: "96"
+            expected-nodes: "1702"
           - shard: runtime-b
             job-timeout-minutes: 25
             pytest-timeout: 18m
@@ -62,8 +62,8 @@ jobs:
           - shard: invariants-jwt
             job-timeout-minutes: 30
             pytest-timeout: 20m
-            expected-files: "18"
-            expected-nodes: "318"
+            expected-files: "20"
+            expected-nodes: "352"
           - shard: task-managed-pg
             job-timeout-minutes: 20
             pytest-timeout: 13m
@@ -135,6 +135,14 @@ jobs:
           # supply wrapper, sanitizer, cleanup — resolves the SAME absolute
           # store path through the GITHUB_ENV channel.
           echo "CI_CREDENTIALS_FILE=$RUNNER_TEMP/c91-task-credentials.env" >> "$GITHUB_ENV"
+          # A fresh hosted runner need not cache either task image. Acquire
+          # both before any create; later observations only verify identity.
+          for IMAGE in postgres:16-alpine redis:7-alpine; do
+            if ! timeout 90s docker pull "$IMAGE"; then
+              echo "TASK_IMAGE_ACQUISITION_FAILED: $IMAGE"
+              exit 1
+            fi
+          done
           PW="$(python -c 'import secrets; print(secrets.token_urlsafe(24))')"
           echo "::add-mask::$PW"
           # R6R1 (F-05): the admin credential crosses to docker through the
@@ -144,11 +152,31 @@ jobs:
           export CI_TASK_LABEL="rc4-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-${{ matrix.shard }}"
           echo "CI_TASK_LABEL=$CI_TASK_LABEL" >> "$GITHUB_ENV"
           NAME="c91-r6-pg-${{ matrix.shard }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          CID=$(docker run -d --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" --label mpango.task="$CI_TASK_LABEL" -p 127.0.0.1::5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD postgres:16-alpine)
+          # Register the tag identity BEFORE creation; observations only verify it.
+          IMAGE_ID=$(docker image inspect postgres:16-alpine --format '{{.Id}}')
+          [[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
+          docker image inspect postgres:16-alpine --format '{{json .RepoDigests}}' > "$RUNNER_TEMP/pg-image-digests.json"
+          echo "CI_PG_IMAGE_ID=$IMAGE_ID" >> "$GITHUB_ENV"
+          CID=$(docker run -d --pull=never --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" --label mpango.task="$CI_TASK_LABEL" -p 127.0.0.1::5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD postgres:16-alpine)
           echo "CI_PG_CONTAINER_ID=$CID" >> "$GITHUB_ENV"
           LABELS=$(docker inspect --format '{{ index .Config.Labels "mpango.owner" }}|{{ index .Config.Labels "mpango.task" }}' "$CID")
           test "$LABELS" = "$CI_OWNER_LABEL|$CI_TASK_LABEL" || exit 1
-          PGPORT=$(docker inspect --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' "$CID")
+          test "$(docker image inspect postgres:16-alpine --format '{{.Id}}')" = "$IMAGE_ID" || exit 1
+          test "$(docker inspect --format '{{.Image}}' "$CID")" = "$IMAGE_ID" || exit 1
+          PORTS_JSON=$(docker inspect --format '{{json .NetworkSettings.Ports}}' "$CID")
+          export PORTS_JSON
+          PGPORT=$(python - <<'PYPORT'
+          import json, os
+          ports = json.loads(os.environ['PORTS_JSON'])
+          assert set(ports) == {'5432/tcp'}, 'PG_PORT_KEYS_REFUSED'
+          rows = ports['5432/tcp']
+          assert isinstance(rows, list) and len(rows) == 1, 'PG_PORT_COUNT_REFUSED'
+          row = rows[0]
+          assert row['HostIp'] == '127.0.0.1', 'PG_PORT_SCOPE_REFUSED'
+          assert row['HostPort'].isdigit() and 0 < int(row['HostPort']) < 65536, 'PG_PORT_NUMBER_REFUSED'
+          print(row['HostPort'])
+          PYPORT
+          )
           {
             echo "CI_PG_PORT=$PGPORT"
             echo "CI_PG_ADMIN_PASSWORD=$PW"
@@ -160,12 +188,30 @@ jobs:
           test -n "${CI_TASK_LABEL:-}" || exit 1
           test "$CI_TASK_LABEL" = "rc4-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-${{ matrix.shard }}" || exit 1
           NAME="c91-r6-redis-${{ matrix.shard }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          CID=$(docker run -d --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" --label mpango.task="$CI_TASK_LABEL" -p 127.0.0.1::6379 redis:7-alpine)
+          RPW="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          echo "::add-mask::$RPW"
+          echo "CI_REDIS_PASSWORD=$RPW" >> "$GITHUB_ENV"
+          export REDIS_PASSWORD="$RPW"
+          CID=$(docker run -d --pull=never --name "$NAME" --label mpango.owner="$CI_OWNER_LABEL" --label mpango.task="$CI_TASK_LABEL" -p 127.0.0.1::6379 -e REDIS_PASSWORD --entrypoint /bin/sh redis:7-alpine -c 'set -eu; umask 077; mkdir -p /run/mpango-redis; printf "bind 0.0.0.0\nprotected-mode yes\nsave \"\"\nappendonly no\nrequirepass %s\n" "$REDIS_PASSWORD" > /run/mpango-redis/redis.conf; chown -R redis:redis /run/mpango-redis; chmod 700 /run/mpango-redis; unset REDIS_PASSWORD; exec /usr/local/bin/docker-entrypoint.sh redis-server /run/mpango-redis/redis.conf')
           echo "CI_REDIS_CONTAINER_ID=$CID" >> "$GITHUB_ENV"
           LABELS=$(docker inspect --format '{{ index .Config.Labels "mpango.owner" }}|{{ index .Config.Labels "mpango.task" }}' "$CID")
           test "$LABELS" = "$CI_OWNER_LABEL|$CI_TASK_LABEL" || exit 1
-          RPORT=$(docker inspect --format '{{(index (index .NetworkSettings.Ports "6379/tcp") 0).HostPort}}' "$CID")
+          PORTS_JSON=$(docker inspect --format '{{json .NetworkSettings.Ports}}' "$CID")
+          export PORTS_JSON
+          RPORT=$(python - <<'PYPORT'
+          import json, os
+          ports = json.loads(os.environ['PORTS_JSON'])
+          assert set(ports) == {'6379/tcp'}, 'REDIS_PORT_KEYS_REFUSED'
+          rows = ports['6379/tcp']
+          assert isinstance(rows, list) and len(rows) == 1, 'REDIS_PORT_COUNT_REFUSED'
+          row = rows[0]
+          assert row['HostIp'] == '127.0.0.1', 'REDIS_PORT_SCOPE_REFUSED'
+          assert row['HostPort'].isdigit() and 0 < int(row['HostPort']) < 65536, 'REDIS_PORT_NUMBER_REFUSED'
+          print(row['HostPort'])
+          PYPORT
+          )
           echo "CI_REDIS_PORT=$RPORT" >> "$GITHUB_ENV"
+          echo "CI_REDIS_URL=redis://:$RPW@127.0.0.1:$RPORT/0" >> "$GITHUB_ENV"
           echo "Redis container $CID on 127.0.0.1:$RPORT (shard ${{ matrix.shard }})"
 
       - name: Provision test database via the five-phase product recipe
@@ -175,7 +221,7 @@ jobs:
           CI_PG_ADMIN_USER: postgres
           CI_TEST_DB: test_ci_mpango
           CI_TEST_TENANT_SCHEMA: t_test
-          CI_REDIS_URL: redis://127.0.0.1:${{ env.CI_REDIS_PORT }}/0
+          CI_REDIS_URL: ${{ env.CI_REDIS_URL }}
         run: |
           bash tools/ci/bootstrap_backend_test_db.sh --github-env "$GITHUB_ENV" --env-file "$RUNNER_TEMP/c91-test-env.sh" --plan-file "$RUNNER_TEMP/supply-plan.json" --profile-dir "$RUNNER_TEMP"
 
@@ -253,6 +299,8 @@ jobs:
             exit 1
           fi
           echo "shard-verify (file gate): membership exact"
+          mapfile -t TEST_FILES < "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests"
+          test "${#TEST_FILES[@]}" -gt 0 || exit 1
           cd backend
           set -a; . "$RUNNER_TEMP/c91-test-env.sh"; set +a
           case "${{ matrix.shard }}" in
@@ -275,7 +323,7 @@ jobs:
           # locks the plain-nodeid collect format the frozen canonical
           # parses, regardless of ini -v or injected PYTEST_ADDOPTS; ini
           # addopts (incl. --strict-markers) still apply unchanged.
-          if ! poetry run pytest --collect-only --verbosity=-1 $(xargs -a "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests") > "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" 2> "$RUNNER_TEMP/collect-${{ matrix.shard }}.err"; then
+          if ! poetry run pytest --collect-only --verbosity=-1 "${TEST_FILES[@]}" > "$RUNNER_TEMP/collect-${{ matrix.shard }}.txt" 2> "$RUNNER_TEMP/collect-${{ matrix.shard }}.err"; then
             echo "collect-only FAILED (raw output in private runner staging)"
             exit 1
           fi
@@ -297,7 +345,7 @@ jobs:
             exit 1
           fi
           # Fixed product/test source; a CI-only successor must not rebind to HEAD.
-          if ! python tools/ci/prepare_test_evidence.py verify-reuse --coverage docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json --repo-root . --approved-ref 47716cdc88451e233c4142e7da0c3d82c368dd22 --result-file "$RUNNER_TEMP/reuse-result.json" > "$RUNNER_TEMP/reuse.log" 2>&1; then
+          if ! python tools/ci/prepare_test_evidence.py verify-reuse --coverage docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json --repo-root . --approved-ref 2add5eec0f21e1bc6e505e77e9385e33a105f347 --result-file "$RUNNER_TEMP/reuse-result.json" > "$RUNNER_TEMP/reuse.log" 2>&1; then
             echo "verify-reuse REFUSED"
             exit 1
           fi
@@ -307,7 +355,10 @@ jobs:
         if: steps.provision.outcome == 'success' && steps.reuse-admission.outcome == 'success'
         working-directory: backend
         run: |
-          set -o pipefail
+          set -euo pipefail
+          python ../tools/ci/prepare_test_evidence.py shard-verify --plan "$RUNNER_TEMP/supply-plan.json" --shard "${{ matrix.shard }}" --argfile "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests" --expected-files "${{ matrix.expected-files }}" > "$RUNNER_TEMP/body-file-gate.log" 2>&1
+          mapfile -t TEST_FILES < "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests"
+          test "${#TEST_FILES[@]}" -gt 0 || exit 1
           set -a; . "$RUNNER_TEMP/c91-test-env.sh"; set +a
           case "${{ matrix.shard }}" in
             topology|task-managed-pg) export MPANGO_ALLOW_TEMP_DB_CREATE=1 ;;
@@ -361,7 +412,7 @@ jobs:
           fi
           echo "shard ${{ matrix.shard }} test body started (raw pytest output goes to private runner staging, never to this console)"
           set +e
-          timeout --signal=INT --kill-after=60s ${{ matrix.pytest-timeout }} poetry run pytest "${OBSERVER_ARGS[@]}" $(xargs -a "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests") -q --tb=short --junitxml=../junit-${{ matrix.shard }}.xml > "$RUNNER_TEMP/pytest-stdout.txt" 2> "$RUNNER_TEMP/pytest-stderr.txt"
+          timeout --signal=INT --kill-after=60s ${{ matrix.pytest-timeout }} poetry run pytest "${OBSERVER_ARGS[@]}" "${TEST_FILES[@]}" -q --tb=short --junitxml=../junit-${{ matrix.shard }}.xml > "$RUNNER_TEMP/pytest-stdout.txt" 2> "$RUNNER_TEMP/pytest-stderr.txt"
           rc=$?
           set -e
           kill "$OBS_PID" 2>/dev/null || true
@@ -417,6 +468,15 @@ jobs:
               exit 0
             fi
           done
+          # This value is job env, not a required key in the role store.
+          # Check it before even an empty log can reach the outlet.
+          if [ -z "${CI_REDIS_PASSWORD:-}" ]; then
+            echo "Redis secret channel unavailable — refusing the ENTIRE payload outlet"
+            python tools/ci/prepare_test_evidence.py refusal-receipt --reason redis_secret_channel_unavailable --out "$PUB/publication-refusal.json" || true
+            echo "publication_refused_all" > "$RUNNER_TEMP/GAP-publication.txt"
+            cp "$RUNNER_TEMP"/GAP-*.txt "$PUB"/ 2>/dev/null || true
+            exit 0
+          fi
           # R6R5 (E-02): the sanitizer's required-key set (tool-level, per
           # call) now includes MPANGO_TEST_ADMIN_PASSWORD alongside the
           # frozen five; the two lists stay in lockstep with the outlet
@@ -437,7 +497,7 @@ jobs:
             if [ "$allow_empty" = "allow-empty" ]; then
               EXTRA_ARGS="$EXTRA_ARGS --allow-empty"
             fi
-            if python tools/ci/prepare_test_evidence.py sanitize --input "$src" --output "$PUB/$dst" --receipt "$PUB/$dst.receipt.json" --secrets-file "$SECRETS" --extra-env CI_PG_ADMIN_PASSWORD $EXTRA_ARGS; then
+            if python tools/ci/prepare_test_evidence.py sanitize --input "$src" --output "$PUB/$dst" --receipt "$PUB/$dst.receipt.json" --secrets-file "$SECRETS" --extra-env CI_PG_ADMIN_PASSWORD,CI_REDIS_PASSWORD $EXTRA_ARGS; then
               echo "sanitized: $dst"
             else
               echo "sanitize REFUSED for $src — recording an evidence gap; the raw file is NOT uploaded"

@@ -1,35 +1,19 @@
 {
-  "rc4_7692_local_contract_repair": {
-    "authority": "CTO-AUTH-RC4-7692-LOCAL-CONTRACT-AND-CAPACITY-REPAIR-R1-20261026",
-    "base": "7692c4c2e5165db30611d5b4bcb7de80c8d1e1b1",
-    "approved_product_source_unchanged": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
-    "evidence_grade": "AUTHOR_LOCAL_DEVELOPMENT_ONLY__NOT_INDEPENDENT_V3",
-    "hosted_current_result": "FAILED_INCOMPLETE_1172P_6F_19S__11_WITHOUT_COMPLETION__3297_RUNTIME_NOT_STARTED",
-    "task_managed_native_collection": "92_UNIQUE__FOUR_ONE_TO_ONE_REPLACEMENTS__88_UNCHANGED",
-    "current_4505_body_pass": "NOT_ESTABLISHED",
-    "hosted_install_completion_after_cache_change": "NOT_RUN",
-    "dependency_precise_timeout_cause": "UNKNOWN",
-    "runtime_a_18m_completion": "UNKNOWN",
-    "capacity_reallocation": "LOCAL_TAIL_12_MEASURED__160_MINUTE_CANDIDATE__HOSTED_COMPLETION_NOT_PROVEN",
-    "reuse_acceptance_on_changed_test_protection_set": "CTO_REVIEW_REQUIRED__NO_NEW_REUSE_PASS",
-    "ci_secret_gate": "UNADJUDICATED",
-    "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED"
-  },
-  "record": "RC4_CTO_FIXED_477_OBSERVER_SOURCE_COMPARISON_V1",
-  "authorization": "CTO-AUTH-RC4-477-OBSERVER-ADMISSION-L-R1-20261027",
+  "record": "CURRENT_2ADD_CI_ONLY_INTAKE_V1",
+  "authorization": "CTO-AUTH-2ADD-CI-ALIGNMENT-AND-FIVE-COLLECT-CODEXL-R1-20261101",
   "ruling": {
     "path": "AI_REPORT_INBOX/rc1-finite-closure-cto-20261015/CTO-REVIEW.zh-CN.md",
     "sha256": "37fa77e5ff1889c884f58ab929fe9ed06a7489446c933e9ddb81832a4c31a20c",
     "route": "APPROVED_FINITE_HYBRID_ROUTE__IMPLEMENTATION_AND_LOCAL_VALIDATION_ONLY"
   },
   "selection_binding": {
-    "authority": "CTO-AUTH-RC4-477-OBSERVER-ADMISSION-L-R1-20261027",
-    "source_ref": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
-    "discovered_files": 277,
-    "ordinary_files": 250,
+    "authority": "CTO-AUTH-2ADD-CI-ALIGNMENT-AND-FIVE-COLLECT-CODEXL-R1-20261101",
+    "source_ref": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
+    "discovered_files": 281,
+    "ordinary_files": 254,
     "dedicated_files": 21,
     "ignores": 6,
-    "union": 271,
+    "union": 275,
     "intersection": 0,
     "unknown": 0
   },
@@ -659,15 +643,15 @@
     }
   ],
   "explicit_non_claims": [
-    "RC4 source-continuation is an author proposal pending CTO, not a CTO source acceptance.",
-    "277 tracked files minus six ignores split into 250 ordinary and 21 dedicated files; five native collections froze 4505 nodes, no full body pass.",
-    "Historical acceptance, node maps, candidates and original gaps retain their original scope and bytes.",
-    "M01 R4 is a named single-instance UG chain on bb625e89, not all audit/cache/rcj coverage.",
-    "No hosted CI, full backend body execution, independent V3 or release readiness is established here."
+    "Fixed 2add source supports preparation/collect admission only; CTO product and release decisions remain separate.",
+    "281 tracked tests split into 254 ordinary, 21 dedicated and six ignored files; node totals come only from current native collect.",
+    "Historical bindings, candidates, node maps and gaps retain their original scope and are not rebound.",
+    "Old24, R7/R5 scan and three resource-action gaps remain open; no body or browser was rerun.",
+    "No hosted CI, independent V3, full backend pass or release readiness is established here."
   ],
-  "intake_version": 11,
-  "intake_status": "FIXED_COMPARISON_ONLY__OVERALL_SOURCE_OK_CTO_PENDING",
-  "product_anchor": "47716cdc88451e233c4142e7da0c3d82c368dd22",
+  "intake_version": 12,
+  "intake_status": "AUTHOR_CI_ONLY_INTAKE_PENDING_CTO",
+  "product_anchor": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
   "intake_sources": [
     {
       "relative_record": "mvp-rc2-post-images-cto-review-20261017/CTO-REVIEW.zh-CN.md",
@@ -696,7 +680,7 @@
       "sha256": "8dbcc00908bade6ffebbd5d5f5beeb04f9ea76476b891c1e54a82cb0287dac58"
     }
   ],
-  "ordinary_canonical_status": "PRIOR_CTO_ACCEPTED_4505_COLLECTION__NO_BODY_PASS_OR_RERUN",
+  "ordinary_canonical_status": "CURRENT_NATIVE_COLLECT_ONLY__NO_BODY_PASS",
   "frozen_external_paths": [
     "docker-compose.yml",
     "nginx/gateway.conf",
@@ -711,25 +695,25 @@
     }
   ],
   "current_source_intake": {
-    "authorization": "CTO-AUTH-RC4-477-OBSERVER-ADMISSION-L-R1-20261027",
-    "source_ref": "47716cdc88451e233c4142e7da0c3d82c368dd22",
-    "source_tree": "4ea739f8b7c17f2f78df8e1ee3c7020cbeee1de6",
-    "source_parent": "d8f7a26e0aecf9e908674d71ccc6cbbf996d56d8",
-    "backend_tree": "b0dec5908e1f1518312253847bf418b2c1c4499b",
-    "frontend_tree": "17c477ca022b0dc86118f481fd4ded907e92bcf8",
-    "authority_status": "CTO_FIXED_COMPARISON_ONLY__NOT_OVERALL_SOURCE_OK",
-    "source_contract_commit": "47716cdc88451e233c4142e7da0c3d82c368dd22",
+    "authorization": "CTO-AUTH-2ADD-CI-ALIGNMENT-AND-FIVE-COLLECT-CODEXL-R1-20261101",
+    "source_ref": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
+    "source_tree": "c236d6e62fb9663aaf1140c321581f503a6e067f",
+    "source_parent": "dfbf1369fd74a05b10049420e9baf4962e660921",
+    "backend_tree": "2ea11033ff15ad58fa2c01d17362b35d28fa2cac",
+    "frontend_tree": "0d408ad5c8c621b263c06aa1e7761cf5f0047cb0",
+    "authority_status": "FIXED_2ADD_PREPARATION_ONLY__NOT_BODY_OR_RELEASE_PASS",
+    "source_contract_commit": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
     "independent_v3_this_intake": "NOT_RUN",
-    "current_fresh_ordinary_collection": "PRIOR_4505_OLD_SOURCE_SELECTION_EQUIVALENT_REUSE__NOT_FRESH_COLLECT_AT_477",
+    "current_fresh_ordinary_collection": "CURRENT_FIVE_NATIVE_COLLECTIONS__NO_BODY_EXECUTION",
     "historical_results_reexecuted": false,
     "hosted_ci_this_intake": "NOT_RUN",
     "ordinary_definition": {
-      "files": 250,
+      "files": 254,
       "dedicated_files": 21,
       "ignores": 6,
-      "nodes": 4505,
+      "nodes": 4574,
       "canonical_definition_changed": true,
-      "global_node_set_changed": false,
+      "global_node_set_changed": true,
       "profile_membership_changed": true
     },
     "historical_attachment_deltas_preserved_at_previous_ref": true,
@@ -741,38 +725,6 @@
       "evidence": "CTO_REVIEWED_EXISTING_NATIVE_LIST_DERIVATION_NOT_FRESH_COLLECT",
       "current_affected_native_collection": "NOT_RUN"
     }
-  },
-  "previous_rc4_source_intake": {
-    "authorization": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
-    "source_ref": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
-    "source_tree": "a32753d6f3d7c5388d7a522e1c04ac298e298d70",
-    "source_parent": "bb625e893ab1ec3c50c7eb0cfeedf4a73e9f8f6b",
-    "backend_tree": "c175cd58527923e4bab3e69c25110dfc7b5be1ad",
-    "frontend_tree": "17c477ca022b0dc86118f481fd4ded907e92bcf8",
-    "authority_status": "SOURCE_CONTINUATION_PROPOSED__CTO_REVIEW_PENDING",
-    "source_contract_commit": "CURRENT_HEAD_TEST_ATTACHMENTS_ONLY__NO_PRODUCT_EDITS",
-    "independent_v3_this_intake": "NOT_RUN",
-    "current_fresh_ordinary_collection": "COLLECT_ONLY_4505_CURRENT_NATIVE_NODES__NO_FULL_BODY_PASS",
-    "historical_results_reexecuted": false,
-    "hosted_ci_this_intake": "NOT_RUN",
-    "ordinary_definition": {
-      "files": 250,
-      "dedicated_files": 21,
-      "ignores": 6,
-      "nodes": 4505,
-      "canonical_definition_changed": true
-    }
-  },
-  "previous_rc4_selection_binding": {
-    "authority": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
-    "source_ref": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
-    "discovered_files": 277,
-    "ordinary_files": 250,
-    "dedicated_files": 21,
-    "ignores": 6,
-    "union": 271,
-    "intersection": 0,
-    "unknown": 0
   },
   "current_attachment_deltas": [
     {
@@ -3043,6 +2995,283 @@
       "new_pytest_nodes_claimed": 0
     }
   ],
+  "previous_rc4_source_intake": {
+    "authorization": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
+    "source_ref": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
+    "source_tree": "a32753d6f3d7c5388d7a522e1c04ac298e298d70",
+    "source_parent": "bb625e893ab1ec3c50c7eb0cfeedf4a73e9f8f6b",
+    "backend_tree": "c175cd58527923e4bab3e69c25110dfc7b5be1ad",
+    "frontend_tree": "17c477ca022b0dc86118f481fd4ded907e92bcf8",
+    "authority_status": "SOURCE_CONTINUATION_PROPOSED__CTO_REVIEW_PENDING",
+    "source_contract_commit": "CURRENT_HEAD_TEST_ATTACHMENTS_ONLY__NO_PRODUCT_EDITS",
+    "independent_v3_this_intake": "NOT_RUN",
+    "current_fresh_ordinary_collection": "COLLECT_ONLY_4505_CURRENT_NATIVE_NODES__NO_FULL_BODY_PASS",
+    "historical_results_reexecuted": false,
+    "hosted_ci_this_intake": "NOT_RUN",
+    "ordinary_definition": {
+      "files": 250,
+      "dedicated_files": 21,
+      "ignores": 6,
+      "nodes": 4505,
+      "canonical_definition_changed": true
+    }
+  },
+  "previous_rc4_selection_binding": {
+    "authority": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
+    "source_ref": "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d",
+    "discovered_files": 277,
+    "ordinary_files": 250,
+    "dedicated_files": 21,
+    "ignores": 6,
+    "union": 271,
+    "intersection": 0,
+    "unknown": 0
+  },
+  "previous_3a26_fixed_source_comparison": {
+    "record": "RC4_FIXED_CI_SOURCE_BINDING_V1",
+    "authorization": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
+    "intake_status": "FIXED_SOURCE_BINDING_SUCCESSOR_PENDING_CTO",
+    "intake_version": 9,
+    "product_anchor": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+    "current_source_intake": {
+      "authorization": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
+      "source_ref": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+      "source_tree": "875c6b3a09e6745859074b8353d21eb49b97ed53",
+      "source_parent": "7500acbf82c492e12a0f2ff9e8ce5ab495eece3b",
+      "backend_tree": "782c3afdebe6c664ddaf8a58c430751f91e294f0",
+      "frontend_tree": "17c477ca022b0dc86118f481fd4ded907e92bcf8",
+      "authority_status": "SOURCE_COMPARISON_ANCHOR_AUTHORIZED__SUCCESSOR_PENDING_CTO",
+      "source_contract_commit": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+      "independent_v3_this_intake": "NOT_RUN",
+      "current_fresh_ordinary_collection": "DERIVED_4505_PROFILE_TRANSFER__AFFECTED_NATIVE_COLLECT_NOT_RUN",
+      "historical_results_reexecuted": false,
+      "hosted_ci_this_intake": "NOT_RUN",
+      "ordinary_definition": {
+        "files": 250,
+        "dedicated_files": 21,
+        "ignores": 6,
+        "nodes": 4505,
+        "canonical_definition_changed": true,
+        "global_node_set_changed": false,
+        "profile_membership_changed": true
+      },
+      "historical_attachment_deltas_preserved_at_previous_ref": true,
+      "profile_transfer": {
+        "file": "tests/test_pw1r3_rate_limit_context.py",
+        "source": "runtime-b",
+        "destination": "invariants-jwt",
+        "nodes": 7,
+        "evidence": "CTO_REVIEWED_EXISTING_NATIVE_LIST_DERIVATION_NOT_FRESH_COLLECT",
+        "current_affected_native_collection": "NOT_RUN"
+      }
+    },
+    "selection_binding": {
+      "authority": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
+      "source_ref": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+      "discovered_files": 277,
+      "ordinary_files": 250,
+      "dedicated_files": 21,
+      "ignores": 6,
+      "union": 271,
+      "intersection": 0,
+      "unknown": 0
+    },
+    "ordinary_canonical_status": "DERIVED_CURRENT_PROFILE_CANONICAL__AFFECTED_NATIVE_COLLECTION_PENDING"
+  },
+  "rc4_7692_local_contract_repair": {
+    "authority": "CTO-AUTH-RC4-7692-LOCAL-CONTRACT-AND-CAPACITY-REPAIR-R1-20261026",
+    "base": "7692c4c2e5165db30611d5b4bcb7de80c8d1e1b1",
+    "approved_product_source_unchanged": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+    "evidence_grade": "AUTHOR_LOCAL_DEVELOPMENT_ONLY__NOT_INDEPENDENT_V3",
+    "hosted_current_result": "FAILED_INCOMPLETE_1172P_6F_19S__11_WITHOUT_COMPLETION__3297_RUNTIME_NOT_STARTED",
+    "task_managed_native_collection": "92_UNIQUE__FOUR_ONE_TO_ONE_REPLACEMENTS__88_UNCHANGED",
+    "current_4505_body_pass": "NOT_ESTABLISHED",
+    "hosted_install_completion_after_cache_change": "NOT_RUN",
+    "dependency_precise_timeout_cause": "UNKNOWN",
+    "runtime_a_18m_completion": "UNKNOWN",
+    "capacity_reallocation": "LOCAL_TAIL_12_MEASURED__160_MINUTE_CANDIDATE__HOSTED_COMPLETION_NOT_PROVEN",
+    "reuse_acceptance_on_changed_test_protection_set": "CTO_REVIEW_REQUIRED__NO_NEW_REUSE_PASS",
+    "ci_secret_gate": "UNADJUDICATED",
+    "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED"
+  },
+  "fixed_source_alignment": {
+    "authority": "CTO-AUTH-2ADD-CI-ALIGNMENT-AND-FIVE-COLLECT-CODEXL-R1-20261101",
+    "previous_comparison_source": "47716cdc88451e233c4142e7da0c3d82c368dd22",
+    "whole_backend_frontend_comparison_source": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
+    "historical_bindings_rebound": false,
+    "overall_source_ok": false,
+    "OLD_24_HOSTED_FAILURES": "OPEN__NOT_EXECUTED_THIS_TASK",
+    "R7_R5_FINAL_SCAN_AND_THREE_RESOURCE_ACTION_GAPS": "RETAINED",
+    "CI_SECRET_GATE": "UNADJUDICATED",
+    "hosted_ci": "NOT_RUN",
+    "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED"
+  },
+  "previous_5033_fixed_source_comparison": {
+    "record": "RC4_CTO_FIXED_5033_SOURCE_COMPARISON_V1",
+    "authorization": "CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
+    "intake_status": "FIXED_COMPARISON_ONLY__OVERALL_SOURCE_OK_CTO_PENDING",
+    "intake_version": 10,
+    "product_anchor": "5033e2cd039af3b989418ae0a57133a6355ca42c",
+    "current_source_intake": {
+      "authorization": "CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
+      "source_ref": "5033e2cd039af3b989418ae0a57133a6355ca42c",
+      "source_tree": "9f7b80ac217219160dc4a7489077cad0ad981c54",
+      "source_parent": "7692c4c2e5165db30611d5b4bcb7de80c8d1e1b1",
+      "backend_tree": "5e1d45222ef1c57c064d5b12bd1c667c3650c144",
+      "frontend_tree": "17c477ca022b0dc86118f481fd4ded907e92bcf8",
+      "authority_status": "CTO_FIXED_COMPARISON_ONLY__NOT_OVERALL_SOURCE_OK",
+      "source_contract_commit": "5033e2cd039af3b989418ae0a57133a6355ca42c",
+      "independent_v3_this_intake": "NOT_RUN",
+      "current_fresh_ordinary_collection": "PRIOR_CTO_ACCEPTED_4505_AT_5033__NOT_RERUN_THIS_TOOL_TASK",
+      "historical_results_reexecuted": false,
+      "hosted_ci_this_intake": "NOT_RUN",
+      "ordinary_definition": {
+        "files": 250,
+        "dedicated_files": 21,
+        "ignores": 6,
+        "nodes": 4505,
+        "canonical_definition_changed": true,
+        "global_node_set_changed": false,
+        "profile_membership_changed": true
+      },
+      "historical_attachment_deltas_preserved_at_previous_ref": true,
+      "profile_transfer": {
+        "file": "tests/test_pw1r3_rate_limit_context.py",
+        "source": "runtime-b",
+        "destination": "invariants-jwt",
+        "nodes": 7,
+        "evidence": "CTO_REVIEWED_EXISTING_NATIVE_LIST_DERIVATION_NOT_FRESH_COLLECT",
+        "current_affected_native_collection": "NOT_RUN"
+      }
+    },
+    "selection_binding": {
+      "authority": "CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
+      "source_ref": "5033e2cd039af3b989418ae0a57133a6355ca42c",
+      "discovered_files": 277,
+      "ordinary_files": 250,
+      "dedicated_files": 21,
+      "ignores": 6,
+      "union": 271,
+      "intersection": 0,
+      "unknown": 0
+    },
+    "ordinary_canonical_status": "PRIOR_CTO_ACCEPTED_4505_COLLECTION__NO_BODY_PASS_OR_RERUN",
+    "fixed_source_alignment": {
+      "authority": "CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
+      "ruling_path": "AI_REPORT_INBOX/rc4-5033e2cd-cto-continuation-review-20261026/delivery/CTO-RULING.zh-CN.md",
+      "ruling_sha256": "599e54a1db084bb691f746931c6aee9fec948fa19ba82cdd0bcc05690aee619f",
+      "anchor_path": "AI_REPORT_INBOX/rc4-5033e2cd-cto-continuation-review-20261026/delivery/CTO-CI-SOURCE-ANCHOR.json",
+      "anchor_sha256": "dd7dcb4c6fdd72a1c53791a325eed4aa2d9cf26cd9eb870ef0b444f68601633e",
+      "previous_comparison_source": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+      "whole_backend_frontend_comparison_source": "5033e2cd039af3b989418ae0a57133a6355ca42c",
+      "prior_note_product_unchanged_scope": "PRODUCT_IMPLEMENTATION_ONLY__FOUR_TEST_ATTACHMENTS_CHANGED",
+      "prior_21": "CTO_ACCEPTED_AUTHOR_V2_AT_5033__NOT_RERUN",
+      "prior_4505": "CTO_ACCEPTED_COLLECTION_AT_5033__NOT_BODY_PASS_OR_RERUN",
+      "historical_bindings_rebound": false,
+      "overall_source_ok": false,
+      "hosted_ci": "NOT_RUN",
+      "ci_secret_gate": "UNADJUDICATED",
+      "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED"
+    }
+  },
+  "previous_477_fixed_source_comparison": {
+    "record": "RC4_CTO_FIXED_477_OBSERVER_SOURCE_COMPARISON_V1",
+    "authorization": "CTO-AUTH-RC4-477-OBSERVER-ADMISSION-L-R1-20261027",
+    "intake_status": "FIXED_COMPARISON_ONLY__OVERALL_SOURCE_OK_CTO_PENDING",
+    "intake_version": 11,
+    "product_anchor": "47716cdc88451e233c4142e7da0c3d82c368dd22",
+    "current_source_intake": {
+      "authorization": "CTO-AUTH-RC4-477-OBSERVER-ADMISSION-L-R1-20261027",
+      "source_ref": "47716cdc88451e233c4142e7da0c3d82c368dd22",
+      "source_tree": "4ea739f8b7c17f2f78df8e1ee3c7020cbeee1de6",
+      "source_parent": "d8f7a26e0aecf9e908674d71ccc6cbbf996d56d8",
+      "backend_tree": "b0dec5908e1f1518312253847bf418b2c1c4499b",
+      "frontend_tree": "17c477ca022b0dc86118f481fd4ded907e92bcf8",
+      "authority_status": "CTO_FIXED_COMPARISON_ONLY__NOT_OVERALL_SOURCE_OK",
+      "source_contract_commit": "47716cdc88451e233c4142e7da0c3d82c368dd22",
+      "independent_v3_this_intake": "NOT_RUN",
+      "current_fresh_ordinary_collection": "PRIOR_4505_OLD_SOURCE_SELECTION_EQUIVALENT_REUSE__NOT_FRESH_COLLECT_AT_477",
+      "historical_results_reexecuted": false,
+      "hosted_ci_this_intake": "NOT_RUN",
+      "ordinary_definition": {
+        "files": 250,
+        "dedicated_files": 21,
+        "ignores": 6,
+        "nodes": 4505,
+        "canonical_definition_changed": true,
+        "global_node_set_changed": false,
+        "profile_membership_changed": true
+      },
+      "historical_attachment_deltas_preserved_at_previous_ref": true,
+      "profile_transfer": {
+        "file": "tests/test_pw1r3_rate_limit_context.py",
+        "source": "runtime-b",
+        "destination": "invariants-jwt",
+        "nodes": 7,
+        "evidence": "CTO_REVIEWED_EXISTING_NATIVE_LIST_DERIVATION_NOT_FRESH_COLLECT",
+        "current_affected_native_collection": "NOT_RUN"
+      }
+    },
+    "selection_binding": {
+      "authority": "CTO-AUTH-RC4-477-OBSERVER-ADMISSION-L-R1-20261027",
+      "source_ref": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
+      "discovered_files": 277,
+      "ordinary_files": 250,
+      "dedicated_files": 21,
+      "ignores": 6,
+      "union": 271,
+      "intersection": 0,
+      "unknown": 0
+    },
+    "ordinary_canonical_status": "PRIOR_CTO_ACCEPTED_4505_COLLECTION__NO_BODY_PASS_OR_RERUN",
+    "fixed_source_alignment": {
+      "authority": "CTO-AUTH-RC4-477-OBSERVER-ADMISSION-L-R1-20261027",
+      "ruling_path": "AI_REPORT_INBOX/rc4-477-observer-admission-cto-directive-20261027/delivery/inputs/CTO-RULING.zh-CN.md",
+      "ruling_sha256": "276ad73d71e8c97f6e6363d57833cdced6362fe521e78efa70a7090edb6ea765",
+      "anchor_path": "AI_REPORT_INBOX/rc4-477-observer-admission-cto-directive-20261027/delivery/inputs/CTO-RECHECK.json",
+      "anchor_sha256": "a0f195adef91154803c1e960cf2033766688454957cc467ba1fc06d584549dfb",
+      "previous_comparison_source": "5033e2cd039af3b989418ae0a57133a6355ca42c",
+      "whole_backend_frontend_comparison_source": "47716cdc88451e233c4142e7da0c3d82c368dd22",
+      "historical_bindings_rebound": false,
+      "overall_source_ok": false,
+      "STAFF_HOSTED_ORIGINAL_5": "OPEN",
+      "STAFF_HOSTED_ROOT_CAUSE": "UNKNOWN",
+      "SOURCE_FAILED_RUN": 40416802614,
+      "LOCAL_BACKEND_FINITE": "61P_AT_477__AUTHOR_SCOPE__NOT_RERUN",
+      "LOCAL_TOOL_FOCUSED": "19P_AT_477__NOT_FULL_TOOL_GATE",
+      "RUNTIME_A_40M_HOSTED_COMPLETION": "NOT_RUN",
+      "OBSERVABILITY_CURRENT_HOSTED": "NOT_RUN",
+      "CI_SECRET_GATE": "UNADJUDICATED",
+      "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED",
+      "observation_transport": "EXISTING_JUNIT_PROPERTIES__ORIGINAL_NINE_CALL_WINDOWS_ONLY",
+      "missing_observation": "GAP__NOT_ZERO_REFUSALS"
+    }
+  },
+  "historical_explicit_non_claims": [
+    "RC4 source-continuation is an author proposal pending CTO, not a CTO source acceptance.",
+    "277 tracked files minus six ignores split into 250 ordinary and 21 dedicated files; five native collections froze 4505 nodes, no full body pass.",
+    "Historical acceptance, node maps, candidates and original gaps retain their original scope and bytes.",
+    "M01 R4 is a named single-instance UG chain on bb625e89, not all audit/cache/rcj coverage.",
+    "No hosted CI, full backend body execution, independent V3 or release readiness is established here."
+  ],
+  "current_collection_binding": {
+    "source_ref": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
+    "node_counts": {
+      "runtime-a": 1702,
+      "runtime-b": 1630,
+      "topology": 798,
+      "invariants-jwt": 352,
+      "task-managed-pg": 92
+    },
+    "canonical_sha256": {
+      "runtime-a": "1adc9dfae7a3bb2aee326d638f589eda941fa8911858bae75f7828476e2aa246",
+      "runtime-b": "03ad53c5359e0848a2afd21202a72450419014a8623c6da5e463e610f84ef7fe",
+      "topology": "c5b860246b7e6829d45924e4f608da4250e27ad519d2fae00eea11a268a38200",
+      "invariants-jwt": "ba8abeac874542d1521818b8e94723239de9801401b7c07e724c2107c4447644",
+      "task-managed-pg": "fb07315c5fa8c89517191a1df66db7f7447b0ec76cd8953c9715474544098d20"
+    },
+    "claim": "AUTHOR_NATIVE_COLLECT_ONLY__NOT_BUSINESS_OR_CI_PASS"
+  },
   "recovered_native_node_maps": {
     "record": "CTO_RECOVERED_ACCEPTED_NODE_MAPS",
     "candidate": "88c7d8157ac5c46795d411ea6799112e017c9532",
@@ -3203,146 +3432,5 @@
         ]
       }
     ]
-  },
-  "previous_3a26_fixed_source_comparison": {
-    "record": "RC4_FIXED_CI_SOURCE_BINDING_V1",
-    "authorization": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
-    "intake_status": "FIXED_SOURCE_BINDING_SUCCESSOR_PENDING_CTO",
-    "intake_version": 9,
-    "product_anchor": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
-    "current_source_intake": {
-      "authorization": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
-      "source_ref": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
-      "source_tree": "875c6b3a09e6745859074b8353d21eb49b97ed53",
-      "source_parent": "7500acbf82c492e12a0f2ff9e8ce5ab495eece3b",
-      "backend_tree": "782c3afdebe6c664ddaf8a58c430751f91e294f0",
-      "frontend_tree": "17c477ca022b0dc86118f481fd4ded907e92bcf8",
-      "authority_status": "SOURCE_COMPARISON_ANCHOR_AUTHORIZED__SUCCESSOR_PENDING_CTO",
-      "source_contract_commit": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
-      "independent_v3_this_intake": "NOT_RUN",
-      "current_fresh_ordinary_collection": "DERIVED_4505_PROFILE_TRANSFER__AFFECTED_NATIVE_COLLECT_NOT_RUN",
-      "historical_results_reexecuted": false,
-      "hosted_ci_this_intake": "NOT_RUN",
-      "ordinary_definition": {
-        "files": 250,
-        "dedicated_files": 21,
-        "ignores": 6,
-        "nodes": 4505,
-        "canonical_definition_changed": true,
-        "global_node_set_changed": false,
-        "profile_membership_changed": true
-      },
-      "historical_attachment_deltas_preserved_at_previous_ref": true,
-      "profile_transfer": {
-        "file": "tests/test_pw1r3_rate_limit_context.py",
-        "source": "runtime-b",
-        "destination": "invariants-jwt",
-        "nodes": 7,
-        "evidence": "CTO_REVIEWED_EXISTING_NATIVE_LIST_DERIVATION_NOT_FRESH_COLLECT",
-        "current_affected_native_collection": "NOT_RUN"
-      }
-    },
-    "selection_binding": {
-      "authority": "CTO-AUTH-RC4-3A26B6D6-CI-SOURCE-BINDING-L-R1-20261026",
-      "source_ref": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
-      "discovered_files": 277,
-      "ordinary_files": 250,
-      "dedicated_files": 21,
-      "ignores": 6,
-      "union": 271,
-      "intersection": 0,
-      "unknown": 0
-    },
-    "ordinary_canonical_status": "DERIVED_CURRENT_PROFILE_CANONICAL__AFFECTED_NATIVE_COLLECTION_PENDING"
-  },
-  "fixed_source_alignment": {
-    "authority": "CTO-AUTH-RC4-477-OBSERVER-ADMISSION-L-R1-20261027",
-    "ruling_path": "AI_REPORT_INBOX/rc4-477-observer-admission-cto-directive-20261027/delivery/inputs/CTO-RULING.zh-CN.md",
-    "ruling_sha256": "276ad73d71e8c97f6e6363d57833cdced6362fe521e78efa70a7090edb6ea765",
-    "anchor_path": "AI_REPORT_INBOX/rc4-477-observer-admission-cto-directive-20261027/delivery/inputs/CTO-RECHECK.json",
-    "anchor_sha256": "a0f195adef91154803c1e960cf2033766688454957cc467ba1fc06d584549dfb",
-    "previous_comparison_source": "5033e2cd039af3b989418ae0a57133a6355ca42c",
-    "whole_backend_frontend_comparison_source": "47716cdc88451e233c4142e7da0c3d82c368dd22",
-    "historical_bindings_rebound": false,
-    "overall_source_ok": false,
-    "STAFF_HOSTED_ORIGINAL_5": "OPEN",
-    "STAFF_HOSTED_ROOT_CAUSE": "UNKNOWN",
-    "SOURCE_FAILED_RUN": 40416802614,
-    "LOCAL_BACKEND_FINITE": "61P_AT_477__AUTHOR_SCOPE__NOT_RERUN",
-    "LOCAL_TOOL_FOCUSED": "19P_AT_477__NOT_FULL_TOOL_GATE",
-    "RUNTIME_A_40M_HOSTED_COMPLETION": "NOT_RUN",
-    "OBSERVABILITY_CURRENT_HOSTED": "NOT_RUN",
-    "CI_SECRET_GATE": "UNADJUDICATED",
-    "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED",
-    "observation_transport": "EXISTING_JUNIT_PROPERTIES__ORIGINAL_NINE_CALL_WINDOWS_ONLY",
-    "missing_observation": "GAP__NOT_ZERO_REFUSALS"
-  },
-  "previous_5033_fixed_source_comparison": {
-    "record": "RC4_CTO_FIXED_5033_SOURCE_COMPARISON_V1",
-    "authorization": "CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
-    "intake_status": "FIXED_COMPARISON_ONLY__OVERALL_SOURCE_OK_CTO_PENDING",
-    "intake_version": 10,
-    "product_anchor": "5033e2cd039af3b989418ae0a57133a6355ca42c",
-    "current_source_intake": {
-      "authorization": "CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
-      "source_ref": "5033e2cd039af3b989418ae0a57133a6355ca42c",
-      "source_tree": "9f7b80ac217219160dc4a7489077cad0ad981c54",
-      "source_parent": "7692c4c2e5165db30611d5b4bcb7de80c8d1e1b1",
-      "backend_tree": "5e1d45222ef1c57c064d5b12bd1c667c3650c144",
-      "frontend_tree": "17c477ca022b0dc86118f481fd4ded907e92bcf8",
-      "authority_status": "CTO_FIXED_COMPARISON_ONLY__NOT_OVERALL_SOURCE_OK",
-      "source_contract_commit": "5033e2cd039af3b989418ae0a57133a6355ca42c",
-      "independent_v3_this_intake": "NOT_RUN",
-      "current_fresh_ordinary_collection": "PRIOR_CTO_ACCEPTED_4505_AT_5033__NOT_RERUN_THIS_TOOL_TASK",
-      "historical_results_reexecuted": false,
-      "hosted_ci_this_intake": "NOT_RUN",
-      "ordinary_definition": {
-        "files": 250,
-        "dedicated_files": 21,
-        "ignores": 6,
-        "nodes": 4505,
-        "canonical_definition_changed": true,
-        "global_node_set_changed": false,
-        "profile_membership_changed": true
-      },
-      "historical_attachment_deltas_preserved_at_previous_ref": true,
-      "profile_transfer": {
-        "file": "tests/test_pw1r3_rate_limit_context.py",
-        "source": "runtime-b",
-        "destination": "invariants-jwt",
-        "nodes": 7,
-        "evidence": "CTO_REVIEWED_EXISTING_NATIVE_LIST_DERIVATION_NOT_FRESH_COLLECT",
-        "current_affected_native_collection": "NOT_RUN"
-      }
-    },
-    "selection_binding": {
-      "authority": "CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
-      "source_ref": "5033e2cd039af3b989418ae0a57133a6355ca42c",
-      "discovered_files": 277,
-      "ordinary_files": 250,
-      "dedicated_files": 21,
-      "ignores": 6,
-      "union": 271,
-      "intersection": 0,
-      "unknown": 0
-    },
-    "ordinary_canonical_status": "PRIOR_CTO_ACCEPTED_4505_COLLECTION__NO_BODY_PASS_OR_RERUN",
-    "fixed_source_alignment": {
-      "authority": "CTO-AUTH-RC4-5033-TOOL-ALIGNMENT-L-R1-20261027",
-      "ruling_path": "AI_REPORT_INBOX/rc4-5033e2cd-cto-continuation-review-20261026/delivery/CTO-RULING.zh-CN.md",
-      "ruling_sha256": "599e54a1db084bb691f746931c6aee9fec948fa19ba82cdd0bcc05690aee619f",
-      "anchor_path": "AI_REPORT_INBOX/rc4-5033e2cd-cto-continuation-review-20261026/delivery/CTO-CI-SOURCE-ANCHOR.json",
-      "anchor_sha256": "dd7dcb4c6fdd72a1c53791a325eed4aa2d9cf26cd9eb870ef0b444f68601633e",
-      "previous_comparison_source": "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37",
-      "whole_backend_frontend_comparison_source": "5033e2cd039af3b989418ae0a57133a6355ca42c",
-      "prior_note_product_unchanged_scope": "PRODUCT_IMPLEMENTATION_ONLY__FOUR_TEST_ATTACHMENTS_CHANGED",
-      "prior_21": "CTO_ACCEPTED_AUTHOR_V2_AT_5033__NOT_RERUN",
-      "prior_4505": "CTO_ACCEPTED_COLLECTION_AT_5033__NOT_BODY_PASS_OR_RERUN",
-      "historical_bindings_rebound": false,
-      "overall_source_ok": false,
-      "hosted_ci": "NOT_RUN",
-      "ci_secret_gate": "UNADJUDICATED",
-      "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED"
-    }
   }
 }

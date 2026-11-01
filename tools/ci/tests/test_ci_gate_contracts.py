@@ -307,7 +307,7 @@ class TestDeployWorkflowContract:
         assert "--env-file" in provision["run"] and "--plan-file" in provision["run"]
         # the run's registered Redis port reaches the wrapper BEFORE it runs
         assert "CI_REDIS_URL" in provision["env"]
-        assert "${{ env.CI_REDIS_PORT }}" in provision["env"]["CI_REDIS_URL"]
+        assert provision["env"]["CI_REDIS_URL"] == "${{ env.CI_REDIS_URL }}"
         assert "CI_REDIS_URL" not in provision["run"]  # no post-hoc GITHUB_ENV echo
         # R6: the task credential store is declared so the sanitize stage has
         # a fail-closed secret source; the admin credential reaches this step
@@ -381,13 +381,15 @@ class TestDeployWorkflowContract:
         pytest_line = pytest_lines[0]
         assert "timeout --signal=INT --kill-after=60s ${{ matrix.pytest-timeout }}" in pytest_line
         assert "--junitxml=../junit-${{ matrix.shard }}.xml" in pytest_line
-        assert 'xargs -a "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests"' in pytest_line
+        assert '"${TEST_FILES[@]}"' in pytest_line
+        assert 'mapfile -t TEST_FILES' in body['run']
+        assert '$(xargs' not in body['run']
         # the recorded rc — not a later step's success — decides the leg
         assert 'echo "$rc" > "$RUNNER_TEMP/pytest-rc.txt"' in body["run"]
         assert 'exit "$rc"' in body["run"]
         # the pytest command itself is never softened with || true / || exit 0
         assert "|| true" not in pytest_line and "|| exit 0" not in pytest_line
-        assert "set -o pipefail" in body["run"]
+        assert "set -euo pipefail" in body["run"]
         # R6R1 (F-05): raw pytest stdout/stderr goes to PRIVATE runner
         # staging, never to the Actions console
         assert '> "$RUNNER_TEMP/pytest-stdout.txt" 2> "$RUNNER_TEMP/pytest-stderr.txt"' in pytest_line
@@ -411,12 +413,13 @@ class TestDeployWorkflowContract:
         assert strategy["fail-fast"] is False
         assert strategy["max-parallel"] == 2
         include = strategy["matrix"]["include"]
+        selection = json.loads((REPO_ROOT / 'docs/releases/mvp-20261031/RC4-TEST-SELECTION.json').read_text())
         expected = {
-            "runtime-a": (50, "40m", "94", "1667"),
-            "runtime-b": (25, "18m", "95", "1630"),
-            "topology": (35, "25m", "39", "798"),
-            "invariants-jwt": (30, "20m", "18", "318"),
-            "task-managed-pg": (20, "13m", "4", "92"),
+            "runtime-a": (50, "40m", "96", str(selection['shards']['runtime-a']['node_count'])),
+            "runtime-b": (25, "18m", "95", str(selection['shards']['runtime-b']['node_count'])),
+            "topology": (35, "25m", "39", str(selection['shards']['topology']['node_count'])),
+            "invariants-jwt": (30, "20m", "20", str(selection['shards']['invariants-jwt']['node_count'])),
+            "task-managed-pg": (20, "13m", "4", str(selection['shards']['task-managed-pg']['node_count'])),
         }
         assert {leg["shard"] for leg in include} == set(expected)
         for leg in include:
@@ -848,10 +851,25 @@ DIR="${C91_FAKE_DIR:-/tmp}"
 N=$(ls "$DIR" 2>/dev/null | grep -c '^docker-' || true)
 printf '%s\n' "$*" > "$DIR/docker-$N.argv"
 case "$1 $2" in
-  "run -d") echo "fakedockerid$$" ;;
+  "image inspect")
+    case "$*" in
+      *RepoDigests*) echo '["postgres@sha256:synthetic-public-image-digest"]' ;;
+      *) printf 'sha256:%064d\n' 1 ;;
+    esac ;;
+  "run -d")
+    case "$*" in
+      *POSTGRES_USER*) printf '%064d\n' 1 ;;
+      *) printf '%064d\n' 2 ;;
+    esac ;;
   "rm -f") echo "removed:$*" ;;
   "inspect --format")
     case "$3" in
+      *json*.NetworkSettings.Ports*)
+        port=6379
+        if [ "$4" = "$(printf '%064d' 1)" ]; then port=5432; fi
+        printf '{"%s/tcp":[{"HostIp":"127.0.0.1","HostPort":"36379"}]}\n' "$port" ;;
+      '{{.Image}}') printf 'sha256:%064d\n' "${C91_FAKE_IMAGE_NUMBER:-1}" ;;
+      *'{{.Id}}'*) printf '%s|sha256:%064d|%s|%s|127.0.0.1|36379\n' "$4" 1 "$CI_OWNER_LABEL" "$CI_TASK_LABEL" ;;
       *HostPort*) echo "36379" ;;
       *Config.Image*) echo "postgres:16-alpine|zcode-mvp-invariants-ci-deploy-staging-r3" ;;
       *mpango.owner*)
@@ -967,6 +985,10 @@ class TestWorkflowRedisWiringExecuted:
             "CI_PG_ADMIN_PASSWORD",
             "CI_PG_PORT",
             "CI_REDIS_PORT",
+            "CI_REDIS_URL",
+            "CI_PG_CONTAINER_ID",
+            "CI_PG_IMAGE_ID",
+            "CI_TASK_LABEL",
         ):
             m = re.search(rf"^{key}=(.*)$", github_env, re.M)
             if m:
@@ -1015,8 +1037,8 @@ class TestWorkflowRedisWiringExecuted:
         proc = self._run_fragment(bin_dir, rec, github_env, redis_step["run"], {})
         assert proc.returncode == 0, proc.stderr
         gh = github_env.read_text(encoding="utf-8")
-        assert "CI_REDIS_PORT=36379" in gh and "CI_REDIS_CONTAINER_ID=fakedockerid" in gh
-        assert "CI_PG_PORT=36379" in gh and "CI_PG_CONTAINER_ID=fakedockerid" in gh
+        assert "CI_REDIS_PORT=36379" in gh and "CI_REDIS_CONTAINER_ID=" + format(2, '064d') in gh
+        assert "CI_PG_PORT=36379" in gh and "CI_PG_CONTAINER_ID=" + format(1, '064d') in gh
         task = re.search(r"^CI_TASK_LABEL=(.+)$", gh, re.M).group(1)
         assert task == "rc4-r3r1-1-runtime-a"
         creates = [p.read_text(encoding="utf-8") for p in rec.glob("docker-*.argv")
@@ -1030,12 +1052,15 @@ class TestWorkflowRedisWiringExecuted:
         assert m and len(m.group(1)) >= 24
 
         prov_env, _ = self._provision_env_and_run(sandbox)
-        assert prov_env["CI_REDIS_URL"] == "redis://127.0.0.1:36379/0"
+        from urllib.parse import urlparse
+        parsed = urlparse(prov_env["CI_REDIS_URL"])
+        assert (parsed.scheme, parsed.hostname, parsed.port, parsed.path) == ('redis', '127.0.0.1', 36379, '/0')
+        assert parsed.password and len(parsed.password) >= 32
         proc2, env_file = self._run_wrapper_with_merged_env(sandbox, prov_env, "wf")
         assert proc2.returncode == 0, proc2.stderr
         text = env_file.read_text(encoding="utf-8")
-        assert "export REDIS_URL='redis://127.0.0.1:36379/0'" in text
-        assert "export PW1R3_TEST_REDIS_URL='redis://127.0.0.1:36379/15'" in text
+        assert "export REDIS_URL='" + prov_env['CI_REDIS_URL'] + "'" in text
+        assert "export PW1R3_TEST_REDIS_URL='" + prov_env['CI_REDIS_URL'].rsplit('/', 1)[0] + "/15'" in text
         assert "redis://localhost:6379" not in text
         # R6: the task credential store the sanitize stage depends on is live
         store = Path(prov_env["CI_CREDENTIALS_FILE"])
@@ -1199,10 +1224,10 @@ class TestTopologyHelperClassification:
         assert self.TARGET in plan["profiles"]["topology"]["files"]
         assert self.TARGET not in plan["profiles"]["runtime"]["files"]
         assert plan["profiles"]["topology"]["count"] == 39
-        assert plan["profiles"]["runtime"]["count"] == 189
+        assert plan["profiles"]["runtime"]["count"] == 191
         assert "tests/test_pw1r3_rate_limit_context.py" in plan["profiles"]["invariants-jwt"]["files"]
         assert "tests/test_pw1r3_rate_limit_context.py" not in plan["profiles"]["runtime"]["files"]
-        assert plan["selection_counts"]["partition_total"] == 250
+        assert plan["selection_counts"]["partition_total"] == 254
         # pytest_plugins STRING references do not move a file (R4 evidence:
         # both files passed under the runtime profile)
         for non_importer in (
@@ -1230,7 +1255,7 @@ class TestTopologyHelperClassification:
             "pre-fix bytes must classify the importer as runtime (control RED direction)"
         )
         assert self.TARGET not in plan["profiles"]["topology"]["files"]
-        assert plan["profiles"]["runtime"]["count"] == 190
+        assert plan["profiles"]["runtime"]["count"] == 192
 
     def test_runtime_negative_without_topology_imports(self, tmp_path):
         plan = self._preflight_plan(tmp_path, BOOTSTRAP)
@@ -1301,6 +1326,23 @@ class TestR6ShardPlanControls:
         assert module.CANONICAL_NODEID_SHA256 == {
             shard: row['canonical_sha256'] for shard, row in selection['shards'].items()
         }
+        assert selection['source_ref'] == TestReuseValidityMachineCheck.APPROVED
+        assert selection['all_native_collect_rc_zero'] is True
+        assert module.CURRENT_COLLECTION_COUNTS == {
+            shard: row['node_count'] for shard, row in selection['shards'].items()
+        }
+        assert sum(module.CURRENT_COLLECTION_COUNTS.values()) == selection['total_nodes']
+        assert [selection['shards'][s]['file_count'] for s in module.SHARD_NAMES] == [96, 95, 39, 20, 4]
+        # Keep the reviewed prior transfer/replacement proof at its original bytes.
+        prior_selection = json.loads(subprocess.check_output([
+            'git', 'show', TestReuseValidityMachineCheck.APPROVED
+            + ':docs/releases/mvp-20261031/RC4-TEST-SELECTION.json'
+        ], cwd=REPO_ROOT, text=True))
+        assert selection['previous_selection'] == prior_selection
+        assert all(selection['shards'][s]['collect_rc'] == 0 for s in module.SHARD_NAMES)
+        all_current = [p for s in module.SHARD_NAMES for p in selection['shards'][s]['files']]
+        assert len(all_current) == len(set(all_current)) == 254
+        selection = prior_selection
         assert selection['source_ref'] == TestReuseValidityMachineCheck.PREVIOUS_APPROVED
         assert selection['historical_native_source_ref'] == TestReuseValidityMachineCheck.HISTORICAL_RC4_SOURCE_REF
         assert selection['total_nodes'] == 4505
@@ -2403,7 +2445,7 @@ class TestR6R1FragmentControls:
         assert proc.stdout.count(pw) == 1
         assert f"::add-mask::{pw}" in proc.stdout
         assert "CI_PG_PORT=36379" in gh
-        assert "CI_PG_CONTAINER_ID=fakedockerid" in gh
+        assert "CI_PG_CONTAINER_ID=" + format(1, '064d') in gh
 
     def _supply_scope_store(self, tmp_path, bin_dir, github_env, rec):
         """Runs the PG/Redis start fragments and the REAL wrapper (fake
@@ -2422,7 +2464,8 @@ class TestR6R1FragmentControls:
         for key, value in provision["env"].items():
             env[key] = str(value).replace("${{ env.CI_REDIS_PORT }}", "36379")
         gh = github_env.read_text(encoding="utf-8")
-        for key in ("CI_CREDENTIALS_FILE", "CI_PG_ADMIN_PASSWORD", "CI_PG_PORT", "CI_REDIS_PORT"):
+        for key in ("CI_CREDENTIALS_FILE", "CI_PG_ADMIN_PASSWORD", "CI_PG_PORT", "CI_REDIS_PORT",
+                    "CI_REDIS_URL", "CI_PG_CONTAINER_ID", "CI_PG_IMAGE_ID", "CI_TASK_LABEL"):
             env[key] = re.search(rf"^{key}=(.*)$", gh, re.M).group(1)
         proc = subprocess.run(
             [BASH, self._posix(BOOTSTRAP), "--repo-root", self._posix(REPO_ROOT),
@@ -2483,6 +2526,7 @@ class TestR6R1FragmentControls:
         sanitize = self._step(doc, "Sanitize shard evidence")
         env = dict(os.environ)
         env.pop("CI_CREDENTIALS_FILE", None)  # no host-env rescue (control B)
+        env.pop("CI_REDIS_PASSWORD", None)  # only the actual job channel may supply it
         env["RUNNER_TEMP"] = self._posix(rt)
         env.update(self._job_env(tmp_path))
         if github_env is not None and github_env.is_file():
@@ -2547,7 +2591,8 @@ class TestR6R1FragmentControls:
         gh_admin = tmp_path / "github-env"
         gh_admin.write_text(
             "CI_CREDENTIALS_FILE=" + self._posix(rt / "c91-task-credentials.env") + "\n"
-            + "CI_PG_ADMIN_PASSWORD=" + secrets.token_hex(16) + "\n",
+            + "CI_PG_ADMIN_PASSWORD=" + secrets.token_hex(16) + "\n"
+            + "CI_REDIS_PASSWORD=" + secrets.token_hex(16) + "\n",
             encoding="utf-8", newline="\n",
         )
         proc, _ = self._run_publication_scope(tmp_path, rt, junit_text, gh_admin)
@@ -2574,7 +2619,8 @@ class TestR6R1FragmentControls:
         gh_admin = tmp_path / "github-env"
         gh_admin.write_text(
             "CI_CREDENTIALS_FILE=" + self._posix(rt / "c91-task-credentials.env") + "\n"
-            + "CI_PG_ADMIN_PASSWORD=" + secrets.token_hex(16) + "\n",
+            + "CI_PG_ADMIN_PASSWORD=" + secrets.token_hex(16) + "\n"
+            + "CI_REDIS_PASSWORD=" + secrets.token_hex(16) + "\n",
             encoding="utf-8", newline="\n",
         )
         proc, _ = self._run_publication_scope(tmp_path, rt, junit_text, gh_admin)
@@ -2606,6 +2652,7 @@ class TestR6R1FragmentControls:
         # simulated GITHUB_ENV channel: the PG-start registration + the admin value
         env["CI_CREDENTIALS_FILE"] = self._posix(rt / "c91-task-credentials.env")
         env["CI_PG_ADMIN_PASSWORD"] = secrets.token_hex(16)
+        env["CI_REDIS_PASSWORD"] = secrets.token_hex(16)
         junit_in_repo = REPO_ROOT / "junit-runtime-a.xml"
         try:
             junit_in_repo.write_bytes(b"")
@@ -2735,14 +2782,18 @@ class TestR6R1FragmentControls:
             "export TEST_ADMIN_DATABASE_URL=''\n", encoding="utf-8", newline="\n"
         )
         (rt / "profile-runtime-a.tests").write_text(
-            "tests/test_file_a.py\n", encoding="utf-8", newline="\n"
+            "tests/test_file_a.py\ntests/test_platform_p12_support_console.py\n", encoding="utf-8", newline="\n"
         )
+        (rt / 'supply-plan.json').write_text(json.dumps({'profiles': {'runtime': {'files': [
+            'tests/test_file_a.py', 'tests/test_platform_p12_support_console.py', 'tests/test_z9.py'
+        ]}}}))
         doc = yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
         body = self._step(doc, "Run shard test body")
         script = (
             body["run"]
             .replace("${{ matrix.shard }}", "runtime-a")
             .replace("${{ matrix.pytest-timeout }}", "1m")
+            .replace("${{ matrix.expected-files }}", "2")
         )
         secret = secrets.token_hex(12)
         env = dict(os.environ)
@@ -3200,7 +3251,7 @@ class TestR6R4RealGeneratorControls:
             ln for ln in run_text.splitlines()
             if "poetry run pytest" in ln and "--collect-only" in ln
         )
-        head = line.split("$(xargs")[0]
+        head = line.split('"${TEST_FILES[@]}"')[0]
         return [
             tok for tok in head.split()
             if tok not in ("if", "!", "poetry", "run", "pytest")
@@ -3899,8 +3950,8 @@ class TestDedicatedEvidencePartition:
         assert proc.returncode == 0, proc.stderr
         assert "registry exact (21 files)" in proc.stdout
         assert "unknown=0" in proc.stdout
-        assert plan["selection_counts"]["selected"] == 271
-        assert plan["selection_counts"]["ordinary"] == 250
+        assert plan["selection_counts"]["selected"] == 275
+        assert plan["selection_counts"]["ordinary"] == 254
         families = plan["dedicated_evidence"]["families"]
         assert {k: len(v) for k, v in families.items()} == {
             "s1_pricing_quote": 6, "s2_reorder": 4,
@@ -4032,7 +4083,8 @@ class TestWrapperWrongHeadRefusal:
 class TestReuseValidityMachineCheck:
     """Approved Git objects, complete metadata and real admission controls."""
 
-    APPROVED = "47716cdc88451e233c4142e7da0c3d82c368dd22"
+    APPROVED = "2add5eec0f21e1bc6e505e77e9385e33a105f347"
+    PREVIOUS_477_APPROVED = "47716cdc88451e233c4142e7da0c3d82c368dd22"
     PREVIOUS_5033_APPROVED = "5033e2cd039af3b989418ae0a57133a6355ca42c"
     PREVIOUS_APPROVED = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
     HISTORICAL_RC4_SOURCE_REF = "cffc1271a8746cb5d8fe8dc6690f4880a6da0b1d"
@@ -4161,17 +4213,17 @@ class TestReuseValidityMachineCheck:
             return json.loads(plan.read_text())
 
         first = prepare()
-        assert first['selection_counts']['collected_test_files'] == 277
+        assert first['selection_counts']['collected_test_files'] == 281
         assert 'tests/test_aa_rc4_untracked_control.py' not in first['profiles']['runtime']['files']
         subprocess.run(['git', 'add', str(future.relative_to(repo))], cwd=repo, check=True)
         second = prepare()
-        assert second['selection_counts']['collected_test_files'] == 278
+        assert second['selection_counts']['collected_test_files'] == 282
         assert 'tests/test_aa_rc4_untracked_control.py' in second['profiles']['runtime']['files']
         subprocess.run([sys.executable, str(EVIDENCE_TOOL), 'shard-plan', '--plan', str(plan),
                         '--profile-dir', str(tmp_path / 'profiles')], check=True, capture_output=True)
         proc = subprocess.run([sys.executable, str(EVIDENCE_TOOL), 'shard-verify', '--plan', str(plan),
             '--shard', 'runtime-a', '--argfile', str(tmp_path / 'profiles/profile-runtime-a.tests'),
-            '--expected-files', '94'], capture_output=True, text=True)
+            '--expected-files', '96'], capture_output=True, text=True)
         assert proc.returncode == 3 and 'SHARD_FILE_COUNT_MISMATCH' in proc.stderr
 
     def test_native_families_stay_ordinary_and_get_real_jwt_profile(self, tmp_path):
@@ -4185,9 +4237,9 @@ class TestReuseValidityMachineCheck:
         }
         assert required <= native
         assert required.isdisjoint(plan['dedicated_evidence']['files'])
-        assert plan['profiles']['invariants-jwt']['count'] == 18
+        assert plan['profiles']['invariants-jwt']['count'] == 20
         assert 'tests/test_pw1r3_rate_limit_context.py' not in plan['profiles']['runtime']['files']
-        assert plan['selection_counts']['ordinary'] == 250
+        assert plan['selection_counts']['ordinary'] == 254
         assert len(plan['frozen_ignores']) == 6
 
     def test_actual_native_shell_case_supplies_only_same_app_and_private_outputs(self, tmp_path):
@@ -4334,7 +4386,7 @@ PY
         assert coverage["previous_rc4_source_intake"]["source_ref"] == self.HISTORICAL_RC4_SOURCE_REF
         assert coverage["previous_rc4_selection_binding"] == previous_rc4["selection_binding"]
         for key in ("bindings", "recovered_native_node_maps", "current_attachment_deltas",
-                    "current_dependency_assessments", "explicit_non_claims"):
+                    "current_dependency_assessments"):
             assert coverage[key] == previous_rc4[key]
         current = coverage["current_source_intake"]
         assert current["source_ref"] == self.APPROVED
@@ -4346,14 +4398,14 @@ PY
             "nodes": 4288, "files": 236, "dedicated_files": 21, "ignores": 6,
             "canonical_definition_changed": False,
         }
-        assert current["ordinary_definition"]["files"] == 250
+        assert current["ordinary_definition"]["files"] == 254
         assert current["ordinary_definition"]["canonical_definition_changed"] is True
-        assert current["ordinary_definition"]["global_node_set_changed"] is False
+        assert current["ordinary_definition"]["global_node_set_changed"] is True
         assert current["ordinary_definition"]["profile_membership_changed"] is True
-        assert current["current_fresh_ordinary_collection"] == "PRIOR_4505_OLD_SOURCE_SELECTION_EQUIVALENT_REUSE__NOT_FRESH_COLLECT_AT_477"
+        assert current["current_fresh_ordinary_collection"] == "CURRENT_FIVE_NATIVE_COLLECTIONS__NO_BODY_EXECUTION"
         prior_comparison = coverage["previous_3a26_fixed_source_comparison"]
         reviewed = json.loads(subprocess.check_output([
-            "git", "show", self.APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+            "git", "show", self.PREVIOUS_477_APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
         ], cwd=REPO_ROOT, text=True))
         assert prior_comparison == reviewed["previous_3a26_fixed_source_comparison"]
         prior_5033 = coverage["previous_5033_fixed_source_comparison"]
@@ -4361,11 +4413,11 @@ PY
             assert prior_5033[key] == reviewed[key]
         assert prior_5033['intake_version'] == 10
         assert prior_5033['product_anchor'] == self.PREVIOUS_5033_APPROVED
-        assert coverage['selection_binding']['source_ref'] == self.PREVIOUS_APPROVED
+        assert coverage['selection_binding']['source_ref'] == self.APPROVED
         assert prior_comparison["product_anchor"] == self.PREVIOUS_APPROVED
         assert coverage["rc4_7692_local_contract_repair"] == reviewed["rc4_7692_local_contract_repair"]
         for key in ("bindings", "recovered_native_node_maps", "current_attachment_deltas",
-                    "current_dependency_assessments", "explicit_non_claims"):
+                    "current_dependency_assessments"):
             assert coverage[key] == reviewed[key]
         assert coverage["fixed_source_alignment"]["historical_bindings_rebound"] is False
         assert coverage["fixed_source_alignment"]["overall_source_ok"] is False
@@ -4375,7 +4427,7 @@ PY
             "evidence": "CTO_REVIEWED_EXISTING_NATIVE_LIST_DERIVATION_NOT_FRESH_COLLECT",
             "current_affected_native_collection": "NOT_RUN",
         }
-        assert current["authority_status"] == "CTO_FIXED_COMPARISON_ONLY__NOT_OVERALL_SOURCE_OK"
+        assert current["authority_status"] == "FIXED_2ADD_PREPARATION_ONLY__NOT_BODY_OR_RELEASE_PASS"
         assert current["source_contract_commit"] == self.APPROVED
         assert current["historical_attachment_deltas_preserved_at_previous_ref"] is True
         assert current["historical_results_reexecuted"] is False
@@ -5025,7 +5077,7 @@ class TestThreeFamilyFiniteCloseout:
         assert route["source_ref"] == coverage["previous_rc3_source_intake"]["source_ref"]
         assert not route["new_independent_v3"] and route["added_business_accepted_nodes"] == 0
         assert coverage["previous_3a26_fixed_source_comparison"]["intake_version"] == 9
-        assert coverage["intake_version"] == 11
+        assert coverage["intake_version"] == 12
         previous = coverage["previous_route_contract_closeout"]
         assert previous["source_ref"] == "9e2221393f0a8c3da493ea32d4a3d93e41f4fa33"
         assert coverage["previous_route_contract_source_intake"]["source_ref"] == previous["source_ref"]
@@ -5219,18 +5271,40 @@ class TestRC4CurrentReadOnlyAndDependencyContracts:
 
     @pytest.mark.parametrize("corruption", ("historical_digest", "current_reference"))
     def test_collection_provenance_mismatch_is_refused(self, monkeypatch, corruption):
+        import copy
+        import traceback
         path = REPO_ROOT / "docs/releases/mvp-20261031/RC4-TEST-SELECTION.json"
         data = json.loads(path.read_text())
+        consumer = TestR6ShardPlanControls().test_canonical_constants_equal_cto_table
+        consumer()  # The same real consumer must first accept the unmodified input.
+        original = copy.deepcopy(data)
+        replacement = data["previous_selection"]["readonly_node_replacement"]
         if corruption == "historical_digest":
-            data["readonly_node_replacement"]["historical_snapshot"]["collect_stdout_sha256"] = data["shards"]["task-managed-pg"]["collect_stdout_sha256"]
+            field = ("historical_snapshot", "collect_stdout_sha256")
+            replacement[field[0]][field[1]] = data["shards"]["task-managed-pg"]["collect_stdout_sha256"]
         else:
-            data["readonly_node_replacement"]["current_snapshot"]["collect_stdout_reference"] = "nodeids-task-managed-pg.raw.txt"
+            field = ("current_snapshot", "collect_stdout_reference")
+            replacement[field[0]][field[1]] = "nodeids-task-managed-pg.raw.txt"
+        before = original["previous_selection"]["readonly_node_replacement"][field[0]][field[1]]
+        after = replacement[field[0]][field[1]]
+        assert before != after, 'HISTORY_CORRUPTION_MUST_CHANGE_TARGET'
+        restored = copy.deepcopy(data)
+        restored["previous_selection"]["readonly_node_replacement"][field[0]][field[1]] = before
+        assert restored == original, 'HISTORY_CORRUPTION_MUST_ONLY_CHANGE_TARGET'
         read = Path.read_text
         def changed(self, *args, **kwargs):
             return json.dumps(data) if self == path else read(self, *args, **kwargs)
         monkeypatch.setattr(Path, "read_text", changed)
-        with pytest.raises(AssertionError):
-            TestR6ShardPlanControls().test_canonical_constants_equal_cto_table()
+        with pytest.raises(AssertionError) as refusal:
+            consumer()
+        frames = traceback.extract_tb(refusal.value.__traceback__)
+        intended_comparison = any(f.name == 'test_canonical_constants_equal_cto_table'
+            and f.line == "assert selection['previous_selection'] == prior_selection" for f in frames)
+        assert intended_comparison, 'HISTORY_MUST_REFUSE_AT_FIXED_SNAPSHOT_COMPARISON'
+        TestThreeGapOfflineCloseout._observe('history-' + corruption, {
+            'positive_same_consumer': True, 'changed_field': ['previous_selection', 'readonly_node_replacement', *field],
+            'before': before, 'after': after, 'one_field_changed': True,
+            'intended_snapshot_comparison_refused': intended_comparison})
 
     def test_seeder_entry_uses_owned_tmp_without_parent_tmpdir(self, tmp_path):
         import ast
@@ -5581,14 +5655,21 @@ def exercise():
                 case=tmp_path/(leg+'-'+str(rc));case.mkdir()
                 bin_dir=helper._bin_dir(case,timeout=True,poetry=True,docker=False)
                 rt=case/'rt';rt.mkdir();rec=case/'records';rec.mkdir()
-                (rt/'c91-test-env.sh').write_text("export TEST_ADMIN_DATABASE_URL=''\n")
-                (rt/('profile-'+leg+'.tests')).write_text('tests/synthetic.py\n')
+                (rt/'c91-test-env.sh').write_text("export TEST_ADMIN_DATABASE_URL=''\nexport DATABASE_URL='synthetic-app-no-connection'\n")
+                runtime = ['tests/synthetic.py', 'tests/test_platform_p12_support_console.py', 'tests/test_z9.py']
+                members = runtime[:2] if leg == 'runtime-a' else runtime[2:] if leg == 'runtime-b' else ['tests/synthetic.py']
+                (rt/('profile-'+leg+'.tests')).write_text('\n'.join(members) + '\n')
+                (rt/'supply-plan.json').write_text(json.dumps({'profiles': {
+                    'runtime': {'files': runtime},
+                    **{p: {'files': ['tests/synthetic.py']} for p in ('topology', 'invariants-jwt', 'task-managed-pg')},
+                }}))
                 fake=case/'fake-pytest.py'
                 fake.write_text('import os,sys,json,pathlib\npathlib.Path(os.environ["ARGV_RECORD"]).write_text(json.dumps(sys.argv[1:]))\nsys.exit(int(os.environ["FAKE_PYTEST_RC"]))\n')
                 env=dict(os.environ,PATH=str(bin_dir)+os.pathsep+os.environ['PATH'],
                     RUNNER_TEMP=str(rt),C91_FAKE_DIR=str(rec),FAKE_PYTEST_SCRIPT=str(fake),
                     FAKE_PYTEST_RC=str(rc),ARGV_RECORD=str(case/'argv.json'))
                 script=body.replace('${{ matrix.shard }}',leg).replace('${{ matrix.pytest-timeout }}','1m')
+                script=script.replace('${{ matrix.expected-files }}', str(len(members)))
                 proc=helper._run_script(script,env,str(REPO_ROOT/'backend'))
                 assert proc.returncode == rc and (rt/'pytest-rc.txt').read_text().strip()==str(rc)
                 argv=json.loads((case/'argv.json').read_text())
@@ -5838,7 +5919,252 @@ class TestCurrentPreparationContract:
                             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
                             and n.name not in {'context_world', '_assert_context_task_identity'}}
         assert select(old_tree) == select(new_tree)
-        for path in ('tools/ci/prepare_test_evidence.py', '.github/workflows/deploy-staging.yml',
-                     'docs/releases/mvp-20261031/RC4-TEST-SELECTION.json', '.secrets.baseline'):
-            assert (REPO_ROOT / path).read_bytes() == subprocess.check_output(
-                ['git', 'show', 'dfbf1369fd74a05b10049420e9baf4962e660921:' + path], cwd=REPO_ROOT)
+        probe = TestReuseValidityMachineCheck()
+        # This phase permits CI-only edits, never a different product/test source.
+        module = TestR6R4RealGeneratorControls._evidence_module()
+        assert module.REUSE_APPROVED_REF == probe.APPROVED
+        problems, count = module._reuse_object_problems(REPO_ROOT, probe.APPROVED)
+        assert problems == [] and count > 100
+        changed = subprocess.check_output(
+            ['git', 'diff', '--name-only', probe.APPROVED], cwd=REPO_ROOT, text=True).splitlines()
+        assert set(changed) <= {
+            '.github/workflows/deploy-staging.yml', 'tools/ci/prepare_test_evidence.py',
+            'tools/ci/tests/test_ci_gate_contracts.py', '.secrets.baseline',
+            'docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json',
+            'docs/releases/mvp-20261031/RC4-TEST-SELECTION.json',
+        }
+
+    def test_workflow_registered_image_is_not_observation_authority(self, tmp_path):
+        helper = TestWorkflowRedisWiringExecuted()
+        doc = yaml.safe_load(DEPLOY_WF.read_text())
+        step = next(s for s in doc['jobs']['test']['steps'] if 'Postgres 16' in s.get('name', ''))
+        bindir, records, github = tmp_path/'bin', tmp_path/'records', tmp_path/'github-env'
+        bindir.mkdir(); records.mkdir(); github.write_text('')
+        docker = bindir/'docker'
+        docker.write_text(FAKE_DOCKER); docker.chmod(0o755)
+        good = helper._run_fragment(bindir, records, github, step['run'], {})
+        assert good.returncode == 0, good.stderr
+        assert 'CI_PG_IMAGE_ID=sha256:' + format(1, '064d') in github.read_text()
+        bad = helper._run_fragment(bindir, records, github, step['run'], {'C91_FAKE_IMAGE_NUMBER':'2'})
+        assert bad.returncode != 0, 'OBSERVED_IMAGE_CANNOT_REPLACE_REGISTERED_IMAGE'
+
+    @pytest.mark.parametrize('bad_member', ['', ' tests/test_m00.py', 'tests/test_m00.py '])
+    def test_argfile_empty_and_altered_members_refuse(self, tmp_path, bad_member):
+        helper = TestR6ShardPlanControls()
+        plan = helper._write_plan(tmp_path, helper.RUNTIME_FILES)
+        assert helper._run('shard-plan', '--plan', plan, '--profile-dir', tmp_path).returncode == 0
+        path = tmp_path/'profile-runtime-a.tests'
+        path.write_text(path.read_text() + bad_member + '\n')
+        proc = helper._run('shard-verify', '--plan', plan, '--shard', 'runtime-a',
+                           '--argfile', path, '--expected-files', '4')
+        assert proc.returncode == 3 and 'ARGFILE_ENTRY_INVALID' in proc.stderr
+
+    def test_line_array_keeps_one_argument_per_member(self, tmp_path):
+        doc = yaml.safe_load(DEPLOY_WF.read_text())
+        for fragment in ('Shard gate', 'Run shard test body'):
+            body = next(s['run'] for s in doc['jobs']['test']['steps'] if fragment in s.get('name',''))
+            assert '$(xargs' not in body
+            line = next(ln for ln in body.splitlines() if 'mapfile -t TEST_FILES' in ln)
+            script = line.replace('${{ matrix.shard }}','runtime-a')
+            script += '\npython - "${TEST_FILES[@]}" <<\'PY\'\nimport json,sys\nprint(json.dumps(sys.argv[1:]))\nPY\n'
+            members = ['tests/test_one.py::test_x[has space]', 'tests/test_z.py::test_x[a::b]']
+            (tmp_path/'profile-runtime-a.tests').write_text('\n'.join(members)+'\n')
+            proc = subprocess.run([BASH, '-c', script], env=dict(os.environ, RUNNER_TEMP=str(tmp_path)),
+                                  capture_output=True, text=True)
+            assert proc.returncode == 0 and json.loads(proc.stdout) == members
+
+
+class TestThreeGapOfflineCloseout:
+    """Execute the real workflow with stateful image and secret-channel controls."""
+
+    @pytest.fixture(autouse=True)
+    def workflow_input(self, monkeypatch):
+        old = os.environ.get('C91_THREE_GAP_WORKFLOW')
+        if old:
+            monkeypatch.setattr(sys.modules[__name__], 'DEPLOY_WF', Path(old))
+
+    @staticmethod
+    def _observe(name, data):
+        import hashlib
+        directory = os.environ.get('C91_THREE_GAP_OBSERVATIONS')
+        if directory:
+            target = Path(directory)
+            target.mkdir(parents=True, exist_ok=True)
+            data['workflow_sha256'] = hashlib.sha256(DEPLOY_WF.read_bytes()).hexdigest()
+            (target / (name + '.json')).write_text(json.dumps(data, indent=2) + '\n')
+
+    @pytest.mark.parametrize('case', ('cold', 'hot', 'pg-failure', 'redis-failure'))
+    def test_image_acquisition_before_creation(self, tmp_path, case):
+        helper = TestR6R1FragmentControls()
+        bin_dir = helper._bin_dir(tmp_path)
+        legacy = bin_dir / 'docker-legacy'
+        (bin_dir / 'docker').rename(legacy)
+        events = tmp_path / 'image-events.jsonl'
+        state = tmp_path / 'image-state.json'
+        tags = ['postgres:16-alpine', 'redis:7-alpine']
+        state.write_text(json.dumps(tags if case == 'hot' else []))
+        (bin_dir / 'docker').write_text(
+            '#!' + sys.executable + '\n' + textwrap.dedent('''
+            import json, os, pathlib, subprocess, sys
+            args = sys.argv[1:]
+            state = pathlib.Path(os.environ['IMAGE_STATE'])
+            available = set(json.loads(state.read_text()))
+            with open(os.environ['IMAGE_EVENTS'], 'a') as f:
+                f.write(json.dumps(args) + '\\n')
+            if args[:1] == ['pull']:
+                if args[1] == os.environ.get('IMAGE_FAIL_TAG'):
+                    sys.exit(42)
+                available.add(args[1])
+                state.write_text(json.dumps(sorted(available)))
+                sys.exit(0)
+            if args[:2] == ['image', 'inspect'] and args[2] not in available:
+                sys.exit(61)
+            if args[:2] == ['run', '-d']:
+                tag = next((x for x in args if x in ('postgres:16-alpine', 'redis:7-alpine')), None)
+                if tag not in available:
+                    sys.exit(62)
+            sys.exit(subprocess.call([str(pathlib.Path(__file__).with_name('docker-legacy')), *args]))
+            '''))
+        (bin_dir / 'docker').chmod(0o755)
+        rec = tmp_path / 'records'
+        rec.mkdir()
+        github_env = tmp_path / 'github-env'
+        github_env.write_text('')
+        doc = yaml.safe_load(DEPLOY_WF.read_text())
+        env = helper._fragment_env(tmp_path, bin_dir, github_env, rec)
+        env.update(IMAGE_STATE=str(state), IMAGE_EVENTS=str(events),
+                   IMAGE_FAIL_TAG={'pg-failure': tags[0], 'redis-failure': tags[1]}.get(case, ''))
+        results = []
+        for fragment in ('Postgres 16', 'Redis 7'):
+            block = helper._step(doc, fragment)['run'].replace('${{ matrix.shard }}', 'runtime-a')
+            result = helper._run_script(block, env, str(tmp_path))
+            results.append(result.returncode)
+            if result.returncode != 0:
+                break
+            for line in github_env.read_text().splitlines():
+                key, value = line.split('=', 1)
+                env[key] = value
+        calls = [json.loads(line) for line in events.read_text().splitlines()]
+        pulls = [call for call in calls if call[:1] == ['pull']]
+        creates = [call for call in calls if call[:2] == ['run', '-d']]
+        self._observe('image-' + case, {'native_rcs': results, 'ordered_docker_argv': calls,
+            'created_containers': len(creates), 'real_docker_calls': 0})
+        expected = tags[:1] if case == 'pg-failure' else tags
+        assert pulls == [['pull', tag] for tag in expected], 'THREE_GAP_IMAGE_ACQUISITION_REQUIRED'
+        if case.endswith('failure'):
+            assert results == [1] and not creates, 'THREE_GAP_IMAGE_FAILURE_MUST_BLOCK_CREATE'
+            # Ordinary downstream steps cannot opt out of the platform success gate.
+            provision = helper._step(doc, 'Provision test database')
+            assert 'always()' not in provision.get('if', '')
+        else:
+            assert results == [0, 0] and len(creates) == 2, 'THREE_GAP_COLD_OR_HOT_START_REFUSED'
+            first_inspect = next(i for i, c in enumerate(calls) if c[:2] == ['image', 'inspect'])
+            assert all(calls.index(['pull', tag]) < first_inspect for tag in tags)
+            assert all('--pull=never' in c for c in creates)
+            pg_block = helper._step(doc, 'Postgres 16')['run']
+            assert 'timeout 90s docker pull "$IMAGE"' in pg_block
+
+    @pytest.mark.parametrize('channel', ('valid', 'missing', 'empty'))
+    def test_redis_exact_channel_and_whole_outlet(self, tmp_path, channel):
+        from urllib.parse import quote
+        import hashlib
+        import html
+
+        helper = TestR6R1FragmentControls()
+        # One real-generator case, then reserved characters at the randomness seam
+        # to make supported percent/XML/JSON encodings genuinely different.
+        variants = ('native-generator', 'encoded-generator') if channel == 'valid' else ('native-generator',)
+        observations = []
+        for variant in variants:
+            rt = tmp_path / variant
+            rt.mkdir()
+            bin_dir = helper._bin_dir(rt)
+            rec = rt / 'records'
+            rec.mkdir()
+            github_env = rt / 'github-env'
+            github_env.write_text('')
+            env = helper._fragment_env(rt, bin_dir, github_env, rec)
+            env['CI_TASK_LABEL'] = 'rc4-r6r1-1-runtime-a'
+            if variant == 'encoded-generator':
+                env['CONTROL_GENERATED_VALUE'] = secrets.token_urlsafe(32) + '&<>"\\/%='
+                (bin_dir / 'python').write_text(
+                    '#!' + sys.executable + '\n'
+                    'import os,sys\n'
+                    'if len(sys.argv)==3 and sys.argv[1]=="-c" and "secrets.token_urlsafe(32)" in sys.argv[2]:\n'
+                    ' print(os.environ["CONTROL_GENERATED_VALUE"])\n'
+                    'else:\n'
+                    ' os.execv(sys.executable,[sys.executable,*sys.argv[1:]])\n')
+                (bin_dir / 'python').chmod(0o755)
+            doc = yaml.safe_load(DEPLOY_WF.read_text())
+            start = helper._step(doc, 'Redis 7')['run'].replace('${{ matrix.shard }}', 'runtime-a')
+            producer = helper._run_script(start, env, str(rt))
+            assert producer.returncode == 0, 'THREE_GAP_REDIS_PRODUCER_SETUP'
+            exported = dict(line.split('=', 1) for line in github_env.read_text().splitlines())
+            value = re.search(r'^::add-mask::(.+)$', producer.stdout, re.M).group(1)
+            for line in producer.stdout.splitlines():
+                assert value not in line or line.startswith('::add-mask::'), 'THREE_GAP_REDIS_CONSOLE_VALUE'
+            docker_argv = ''.join(p.read_text() for p in rec.glob('docker-*.argv'))
+            assert value not in docker_argv, 'THREE_GAP_REDIS_ARGV_VALUE'
+            store = rt / 'store.env'
+            store.write_text(''.join(k + '=' + secrets.token_urlsafe(32) + '\n' for k in
+                ('MIGRATE_PASSWORD', 'APP_PASSWORD', 'OPERATOR_PASSWORD', 'REPORTING_PASSWORD', 'SECRET_KEY', 'MPANGO_TEST_ADMIN_PASSWORD')))
+            admin = secrets.token_urlsafe(32)
+            with github_env.open('a') as f:
+                f.write('CI_CREDENTIALS_FILE=' + str(store) + '\nCI_PG_ADMIN_PASSWORD=' + admin + '\n')
+            if channel != 'valid':
+                lines = [line for line in github_env.read_text().splitlines() if not line.startswith('CI_REDIS_PASSWORD=')]
+                if channel == 'empty':
+                    lines.append('CI_REDIS_PASSWORD=')
+                github_env.write_text('\n'.join(lines) + '\n')
+            junit = helper._seed_publication_inputs(rt, admin)
+            raw = rt / 'pytest-stdout.txt'
+            forms = [value, quote(value, safe=''), html.escape(value, quote=True), json.dumps(value)[1:-1]]
+            raw.write_text('redis://:' + value + '@127.0.0.1:1/0\n' + '\n'.join(forms) + '\n')
+            before = hashlib.sha256(raw.read_bytes()).hexdigest()
+            proc, _ = helper._run_publication_scope(rt, rt, junit, github_env)
+            pub = rt / 'publish'
+            outputs = [p for p in pub.iterdir() if '.sanitized.' in p.name]
+            if channel != 'valid':
+                refusal_path = pub / 'publication-refusal.json'
+                refused = refusal_path.exists() and json.loads(refusal_path.read_text()).get('reason') == 'redis_secret_channel_unavailable'
+                observations.append({'variant': variant, 'native_rc': proc.returncode,
+                    'whole_outlet_named_refusal': refused, 'payload_count': len(outputs)})
+                self._observe('redis-' + channel, {'subcases': observations})
+                assert refused and not outputs, 'THREE_GAP_REDIS_WHOLE_OUTLET_MUST_REFUSE'
+                # Separately drive the actual CLI command, including its declared
+                # env-name list, to retain the tool's own non-empty-input refusal.
+                cli = next(line.strip()[3:-6] for line in
+                    helper._step(doc, 'Sanitize shard evidence')['run'].splitlines()
+                    if line.strip().startswith('if python tools/ci/prepare_test_evidence.py sanitize '))
+                cli_out = rt / 'direct-outlet'
+                cli_out.mkdir()
+                cli_env = dict(os.environ, src=str(raw), PUB=str(cli_out), dst='blocked.txt',
+                    SECRETS=str(store), CI_PG_ADMIN_PASSWORD=admin,
+                    EXTRA_ARGS='--require-keys ' + TestR6R5HostedPreconditions.SIX_KEYS)
+                cli_env.pop('CI_REDIS_PASSWORD', None)
+                if channel == 'empty':
+                    cli_env['CI_REDIS_PASSWORD'] = ''
+                direct = helper._run_script(cli, cli_env, str(REPO_ROOT))
+                observations[-1]['direct_sanitize_rc'] = direct.returncode
+                observations[-1]['direct_named_missing_env'] = 'SECRETS_ENV_MISSING' in direct.stderr
+                self._observe('redis-' + channel, {'subcases': observations})
+                assert direct.returncode == 4 and 'SECRETS_ENV_MISSING' in direct.stderr, 'THREE_GAP_REDIS_DIRECT_CLI_MUST_REFUSE'
+                assert not list(cli_out.iterdir()), 'THREE_GAP_REDIS_NO_RAW_FALLBACK'
+            else:
+                output = pub / 'pytest-stdout-runtime-a.sanitized.txt'
+                receipt_path = Path(str(output) + '.receipt.json')
+                receipt = json.loads(receipt_path.read_text()) if receipt_path.exists() else {}
+                replaced = receipt.get('replacements', {}).get('exact:CI_REDIS_PASSWORD', 0)
+                clean = output.exists() and all(form not in output.read_text() for form in forms)
+                observations.append({'variant': variant, 'native_rc': proc.returncode,
+                    'producer_job_env_same_value': exported.get('CI_REDIS_PASSWORD') == value,
+                    'exact_rule_replacements': replaced, 'clean_output': clean,
+                    'raw_unchanged': hashlib.sha256(raw.read_bytes()).hexdigest() == before})
+                self._observe('redis-' + channel, {'subcases': observations})
+                assert exported.get('CI_REDIS_PASSWORD') == value and replaced > 0 and clean, 'THREE_GAP_REDIS_EXACT_SOURCE_REQUIRED'
+                assert all(form not in json.dumps(receipt) for form in forms), 'THREE_GAP_REDIS_RECEIPT_VALUE'
+                assert proc.returncode == 0 and hashlib.sha256(raw.read_bytes()).hexdigest() == before
+                assert not list(rt.glob('GAP-*.txt'))
+                empty_receipt = json.loads((pub / 'pytest-stderr-runtime-a.sanitized.txt.receipt.json').read_text())
+                assert empty_receipt['empty_log'] is True
+                assert json.loads((pub / 'junit-runtime-a.sanitized.xml.receipt.json').read_text())['mapping_invariance'] == 'ok'

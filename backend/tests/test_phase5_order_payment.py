@@ -1,46 +1,294 @@
-"""Phase 5 - Order Payment Contract Tests.
+"""Phase5 contracts using typed, explicit database I/O doubles.
 
-Covers:
-- PayOrderRequest schema validation
-- Order state machine: confirmed -> paid / partially_paid
-- Outstanding balance correctness (true remaining, not total_amount)
-- Atomic transaction: payment + state transition rollback on failure
-- Legacy empty-body pay flow (backward compat)
-- Request-level API tests for POST /orders/{order_id}/pay
-- Overpayment rejection against remaining balance
-- Cumulative settlement: partial + partial = paid
+Real route/canonical/history/hold/locked-command producers execute. These
+tests do not establish PostgreSQL durability or real ledger atomicity.
+CTO R1R1 explicitly migrates three ledger producers, preserving nodeids.
 """
 
-import pytest as _pytest
-import pytest
+import copy
+import os
+import uuid
+from contextlib import contextmanager
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
+from unittest.mock import AsyncMock, patch
 
-# ---------------------------------------------------------------------------
-# 1. Schema Validation
-# ---------------------------------------------------------------------------
+import pytest
 
-@_pytest.fixture(autouse=True)
-def _bypass_r2_hold_verification(monkeypatch):
-    """Route-mechanics unit suite on a fake session: the R2 hold lifecycle
-    verification runs against real sessions in the integration suites; here
-    it is bypassed so the repository doubles drive the flow."""
-    from unittest.mock import AsyncMock as _AsyncMock
+WHOLESALER_ID = uuid.UUID("00000000-0000-4000-8000-000000000001")
+ACTOR_ID = uuid.UUID("00000000-0000-4000-8000-000000000002")
+RETAILER_ID = uuid.UUID("00000000-0000-4000-8000-000000000003")
+ORDER_ID = uuid.UUID("00000000-0000-4000-8000-000000000004")
+PAYMENT_ID = uuid.UUID("00000000-0000-4000-8000-000000000005")
+PRIOR_PAYMENT_ID = uuid.UUID("00000000-0000-4000-8000-000000000006")
 
-    from services.canonical_payment_service import CanonicalPaymentService as _CPS
+# Inherited defaults are retained; explicit task configuration takes priority.
+os.environ.setdefault("MPANGO_ENV", "test")
+os.environ.setdefault("DATABASE_URL", os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/mpango_erp"))  # pragma: allowlist secret
+os.environ.setdefault("SECRET_KEY", "test-secret-key-for-testing-only-minimum-32-characters-long")
 
-    monkeypatch.setattr(_CPS, "_lock_hold_rows", _AsyncMock(return_value=[]))
-    monkeypatch.setattr(_CPS, "_verify_hold_contract", _AsyncMock())
-    monkeypatch.setattr(_CPS, "_convert_hold", _AsyncMock())
-    monkeypatch.setattr(_CPS, "_reduce_hold", _AsyncMock())
-    yield
+
+class _Rows:
+    def __init__(self, *, rows=(), scalar=None, one=None, rowcount=0):
+        self.rows = list(rows)
+        self.value = scalar
+        self.one_value = one
+        self.rowcount = rowcount
+
+    def scalar(self):
+        return self.value
+
+    def scalar_one_or_none(self):
+        return self.one_value
+
+    def scalars(self):
+        return self
+
+    def mappings(self):
+        return self
+
+    def all(self):
+        return list(self.rows)
+
+    def first(self):
+        return self.rows[0] if self.rows else None
+
+    def one(self):
+        assert len(self.rows) == 1
+        return self.rows[0]
+
+
+def _make_mock_order(order_status="confirmed", order_total=Decimal("5000"), *, currency="UGX"):
+    from models.order import Order, OrderStatus
+
+    return Order(
+        id=ORDER_ID, status=OrderStatus(order_status), total_amount=Decimal(order_total),
+        wholesaler_id=WHOLESALER_ID, retailer_id=RETAILER_ID,
+        currency_snapshot=currency, is_deleted=False, items=[],
+    )
+
+
+def _payment_row(*, amount, method, status="pending", payment_id=PAYMENT_ID,
+                 transaction_id=None, key=None):
+    return {
+        "id": payment_id, "order_id": ORDER_ID, "retailer_id": RETAILER_ID,
+        "amount": Decimal(amount), "method": method, "status": status,
+        "transaction_id": transaction_id, "idempotency_key": key,
+        "created_by": ACTOR_ID, "is_deleted": False,
+    }
+
+
+class _Transaction:
+    def __init__(self, db):
+        self.db = db
+        self.before = None
+        self.exit_errors = []
+
+    async def __aenter__(self):
+        self.before = self.db.snapshot()
+        return self.db
+
+    async def __aexit__(self, kind, value, traceback):
+        self.exit_errors.append(kind)
+        if kind is not None:
+            self.db.restore(self.before)
+        return False
+
+
+class _FixtureSession:
+    """Only declared order/payment/hold SQL I/O; unknown SQL raises."""
+
+    def __init__(self, order, *, prior_paid=Decimal("0"), credit_count=0):
+        from models.order_credit_hold import OrderCreditHold
+
+        self.order = order
+        self.payments = []
+        if prior_paid:
+            self.payments.append(_payment_row(
+                amount=prior_paid, method="cash", payment_id=PRIOR_PAYMENT_ID))
+        for index in range(credit_count):
+            self.payments.append(_payment_row(
+                amount=order.total_amount, method="credit", payment_id=uuid.UUID(int=100 + index)))
+        self.holds = [OrderCreditHold(
+            id=uuid.UUID(int=200), order_id=order.id, amount=order.total_amount,
+            remaining_amount=order.total_amount - prior_paid,
+            status="active", created_by=ACTOR_ID, updated_by=ACTOR_ID,
+        )]
+        self.balance = order.total_amount - prior_paid
+        self.info = {"tenant_schema": "t_test", "tenant_id": str(WHOLESALER_ID)}
+        self.sql = []
+        self.writes = []
+        self.ledger_calls = []
+        self.command_calls = []
+        self.invalid_history_rows = []
+        self.rollback_count = 0
+        self.order_locks = 0
+        self.nested_transactions = []
+        self.flush = AsyncMock()
+        self.refresh = AsyncMock()
+        self.commit = AsyncMock()
+        self.close = AsyncMock()
+        self.before = self.snapshot()
+
+    def snapshot(self):
+        return {
+            "status": self.order.status, "updated_by": self.order.updated_by,
+            "holds": [(h.status, h.amount, h.remaining_amount, h.updated_by) for h in self.holds],
+            "payments": copy.deepcopy(self.payments), "balance": self.balance,
+            "ledger": copy.deepcopy(self.ledger_calls),
+        }
+
+    def restore(self, before):
+        self.order.status = before["status"]
+        self.order.updated_by = before["updated_by"]
+        for hold, values in zip(self.holds, before["holds"]):
+            hold.status, hold.amount, hold.remaining_amount, hold.updated_by = values
+        self.payments[:] = copy.deepcopy(before["payments"])
+        self.balance = before["balance"]
+        self.ledger_calls[:] = copy.deepcopy(before["ledger"])
+
+    def begin(self):
+        return _Transaction(self)
+
+    def begin_nested(self):
+        transaction = _Transaction(self)
+        self.nested_transactions.append(transaction)
+        return transaction
+
+    def in_transaction(self):
+        return True
+
+    async def rollback(self):
+        self.rollback_count += 1
+        self.restore(self.before)
+
+    async def execute(self, statement, params=None):
+        from models.order import Order
+        from models.order_credit_hold import OrderCreditHold
+
+        params = params or {}
+        sql = " ".join(str(statement).split())
+        self.sql.append((sql, copy.deepcopy(params)))
+        entities = [d.get("entity") for d in getattr(statement, "column_descriptions", [])]
+        if entities == [Order]:
+            if "FOR UPDATE" in sql:
+                assert statement.get_execution_options()["populate_existing"] is True
+                self.order_locks += 1
+            return _Rows(one=self.order)
+        if entities == [OrderCreditHold]:
+            assert "FOR UPDATE" in sql
+            return _Rows(rows=self.holds)
+        if "COUNT(*) AS invalid_rows" in sql:
+            assert params["order_ids"] == [self.order.id]
+            return _Rows(rows=self.invalid_history_rows)
+        if sql.startswith("SELECT COALESCE(SUM(amount), 0)"):
+            assert params["order_id"] == self.order.id
+            methods = params.get("methods", ("cash", "transfer"))
+            return _Rows(scalar=sum(
+                (p["amount"] for p in self.payments if p["method"] in methods), Decimal("0")))
+        if sql.startswith("SELECT COUNT(*) FROM payments"):
+            assert params["order_id"] == self.order.id
+            return _Rows(scalar=sum(p["method"] == params["method"] for p in self.payments))
+        if sql.startswith("SELECT") and "FROM payments" in sql:
+            if "idempotency_key" in params:
+                rows = [p for p in self.payments if p["idempotency_key"] == params["idempotency_key"]]
+            elif "transaction_id" in params:
+                rows = [p for p in self.payments if p["transaction_id"] == params["transaction_id"]]
+            elif "pid" in params:
+                rows = [p for p in self.payments if p["id"] == params["pid"]]
+            else:
+                raise AssertionError("Undeclared payment query")
+            return _Rows(rows=copy.deepcopy(rows))
+        if sql.startswith("INSERT INTO payments"):
+            assert params["order_id"] == self.order.id
+            assert params["retailer_id"] == self.order.retailer_id
+            assert isinstance(params["amount"], Decimal)
+            row = _payment_row(
+                amount=params["amount"], method=params["method"], status=params["status"],
+                transaction_id=params["transaction_id"], key=params["idempotency_key"])
+            self.payments.append(row)
+            self.writes.append("payment")
+            return _Rows(rows=[copy.deepcopy(row)])
+        if sql.startswith("UPDATE payments"):
+            assert params["order_id"] == self.order.id
+            for payment in self.payments:
+                if payment["method"] in {"cash", "transfer"} and payment["status"] == "pending":
+                    payment["status"] = "completed"
+            self.writes.append("complete-payments")
+            return _Rows(rowcount=1)
+        if sql.startswith("UPDATE public.wholesaler_retailer_bindings"):
+            assert params["wholesaler_id"] == self.order.wholesaler_id
+            assert params["retailer_id"] == self.order.retailer_id
+            assert isinstance(params["delta"], Decimal)
+            assert self.balance + params["delta"] >= 0
+            self.balance += params["delta"]
+            self.writes.append(("binding", params["delta"]))
+            return _Rows(rowcount=1)
+        raise AssertionError("Undeclared SQL I/O: " + sql)
+
+
+class _FakeToken:
+    user_id = str(ACTOR_ID)
+    tenant_id = str(WHOLESALER_ID)
+    tenant_schema = "t_test"
+    role = "wholesaler"
+
+
+@contextmanager
+def _world(*, status="confirmed", total=Decimal("5000"), prior_paid=Decimal("0"),
+           currency="UGX", credit_count=0):
+    """Replace ledger I/O only; observe and delegate the real transition helper."""
+    from services.ledger_service import LedgerService
+    from services.order_command_service import OrderCommandService
+
+    db = _FixtureSession(_make_mock_order(status, total, currency=currency),
+                         prior_paid=prior_paid, credit_count=credit_count)
+    original = OrderCommandService._post_transition_ledger
+
+    async def observe(command, order, from_state, to_state, payment_method):
+        db.command_calls.append({"order_id": order.id, "target_state": to_state,
+                                 "payment_method": payment_method})
+        return await original(command, order, from_state, to_state, payment_method)
+
+    async def record_ledger(*, order_id, payment_id, amount, description):
+        db.ledger_calls.append({"order_id": order_id, "payment_id": payment_id,
+                                "amount": amount, "description": description})
+        db.writes.append("ledger")
+
+    with patch.object(LedgerService, "post_payment_received", new_callable=AsyncMock,
+                      side_effect=record_ledger) as ledger, \
+         patch.object(OrderCommandService, "_post_transition_ledger", new=observe):
+        yield SimpleNamespace(db=db, order=db.order, ledger=ledger)
+
+
+async def _pay(world, amount, method="cash", *, key="phase5-payment", reference=None):
+    from api.v1.orders import pay_order
+    from schemas.order import PayOrderRequest
+
+    return await pay_order(
+        order_id=str(world.order.id), token=_FakeToken(), db=world.db,
+        payment_input=PayOrderRequest(amount=amount, method=method, transaction_id=reference),
+        x_idempotency_key=key)
+
+
+def _assert_no_economic_io(world, before):
+    assert world.db.snapshot() == before
+    assert world.db.writes == []
+    world.ledger.assert_not_awaited()
+
+
+def _assert_receipt(world, amount):
+    expected = {
+        "order_id": ORDER_ID, "payment_id": PAYMENT_ID, "amount": amount,
+        "description": f"Payment received for order {ORDER_ID} - Amount: {amount}",
+    }
+    world.ledger.assert_awaited_once_with(**expected)
+    assert world.db.ledger_calls == [expected]
 
 
 def test_pay_order_request_defaults():
-    """PayOrderRequest with no fields: amount=None, method=None."""
     from schemas.order import PayOrderRequest
+
     req = PayOrderRequest()
     assert req.amount is None
     assert req.method is None
@@ -48,1889 +296,656 @@ def test_pay_order_request_defaults():
 
 
 def test_pay_order_request_structured():
-    """PayOrderRequest with amount and method set."""
     from schemas.order import PayOrderRequest
-    req = PayOrderRequest(amount=5000, method="cash")
-    assert req.amount == 5000
+
+    req = PayOrderRequest(amount=Decimal("5000"), method="cash")
+    assert req.amount == Decimal("5000")
     assert req.method == "cash"
 
 
 def test_pay_order_request_invalid_amount():
-    """Negative amount rejected by schema."""
+    from pydantic import ValidationError
     from schemas.order import PayOrderRequest
-    with pytest.raises(Exception):
-        PayOrderRequest(amount=-100)
 
+    with pytest.raises(ValidationError):
+        PayOrderRequest(amount=Decimal("-100"))
 
-# ---------------------------------------------------------------------------
-# 2. Order State Machine Transitions
-# ---------------------------------------------------------------------------
 
 def test_confirmed_to_paid():
-    """confirmed -> paid is valid."""
     from core.domain.order_state import OrderState, is_valid_transition
+
     assert is_valid_transition(OrderState.CONFIRMED, OrderState.PAID)
 
 
 def test_confirmed_to_partially_paid():
-    """confirmed -> partially_paid is valid."""
     from core.domain.order_state import OrderState, is_valid_transition
+
     assert is_valid_transition(OrderState.CONFIRMED, OrderState.PARTIALLY_PAID)
 
 
 def test_partially_paid_to_paid():
-    """partially_paid -> paid is valid."""
     from core.domain.order_state import OrderState, is_valid_transition
+
     assert is_valid_transition(OrderState.PARTIALLY_PAID, OrderState.PAID)
 
 
 def test_draft_cannot_pay():
-    """draft -> paid is INVALID."""
     from core.domain.order_state import OrderState, is_valid_transition
+
     assert not is_valid_transition(OrderState.DRAFT, OrderState.PAID)
 
 
 def test_paid_cannot_pay_again():
-    """paid -> paid is INVALID (no duplicate)."""
     from core.domain.order_state import OrderState, is_valid_transition
+
     assert not is_valid_transition(OrderState.PAID, OrderState.PAID)
 
 
-# ---------------------------------------------------------------------------
-# 3. Outstanding Balance Correctness
-# ---------------------------------------------------------------------------
-
 @pytest.mark.asyncio
 async def test_outstanding_balance_full_payment():
-    """Full payment on order with no prior payments: pay_amount == total."""
-    order_total = Decimal("10000")
-    prior_paid = Decimal("0")
-    remaining = order_total - prior_paid
+    total, prior = Decimal("10000"), Decimal("0")
+    remaining = total - prior
     assert remaining == Decimal("10000")
-    pay_amount = Decimal("10000")
-    assert pay_amount <= remaining
-    assert prior_paid + pay_amount >= order_total  # -> PAID
+    amount = Decimal("10000")
+    assert amount <= remaining
+    assert prior + amount >= total
 
 
 @pytest.mark.asyncio
 async def test_outstanding_balance_partial_payment():
-    """Partial payment leaves remaining balance."""
-    order_total = Decimal("10000")
-    prior_paid = Decimal("0")
-    remaining = order_total - prior_paid
-    pay_amount = Decimal("4000")
-    assert pay_amount <= remaining
-    cumulative = prior_paid + pay_amount
-    assert cumulative < order_total  # -> PARTIALLY_PAID
-    new_remaining = order_total - cumulative
-    assert new_remaining == Decimal("6000")
+    total, prior, amount = Decimal("10000"), Decimal("0"), Decimal("4000")
+    assert amount <= total - prior
+    cumulative = prior + amount
+    assert cumulative < total
+    assert total - cumulative == Decimal("6000")
 
 
 @pytest.mark.asyncio
 async def test_outstanding_balance_second_partial():
-    """Second partial payment computed against true remaining."""
-    order_total = Decimal("10000")
-    prior_paid = Decimal("4000")  # first payment already recorded
-    remaining = order_total - prior_paid
+    total, prior, amount = Decimal("10000"), Decimal("4000"), Decimal("6000")
+    remaining = total - prior
     assert remaining == Decimal("6000")
-    pay_amount = Decimal("6000")
-    assert pay_amount <= remaining
-    cumulative = prior_paid + pay_amount
-    assert cumulative >= order_total  # -> PAID
+    assert amount <= remaining
+    assert prior + amount >= total
 
 
 @pytest.mark.asyncio
 async def test_outstanding_balance_reject_overpayment():
-    """Payment exceeding remaining balance must be rejected."""
-    order_total = Decimal("10000")
-    prior_paid = Decimal("7000")
-    remaining = order_total - prior_paid
+    remaining = Decimal("10000") - Decimal("7000")
     assert remaining == Decimal("3000")
-    pay_amount = Decimal("5000")
-    assert pay_amount > remaining  # REJECT
+    assert Decimal("5000") > remaining
 
 
 @pytest.mark.asyncio
 async def test_outstanding_balance_no_double_full():
-    """Second full payment on fully-paid order must be rejected."""
-    order_total = Decimal("10000")
-    prior_paid = Decimal("10000")
-    remaining = order_total - prior_paid
+    remaining = Decimal("10000") - Decimal("10000")
     assert remaining == Decimal("0")
-    pay_amount = Decimal("1")
-    assert pay_amount > remaining  # REJECT
+    assert Decimal("1") > remaining
 
-
-# ---------------------------------------------------------------------------
-# 4. PaymentRepository.get_order_paid_total
-# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_get_order_paid_total_returns_sum():
-    """PaymentRepository.get_order_paid_total aggregates prior payments."""
     from repositories.payment_repository import PaymentRepository
 
-    repo = PaymentRepository()
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar.return_value = Decimal("7000")
-    mock_db.execute = AsyncMock(return_value=mock_result)
-
-    total = await repo.get_order_paid_total(mock_db, order_id="order-123")
-    assert total == Decimal("7000")
-    mock_db.execute.assert_called_once()
+    db = _FixtureSession(_make_mock_order(order_total=Decimal("10000")), prior_paid=Decimal("7000"))
+    assert await PaymentRepository().get_order_paid_total(db, order_id=ORDER_ID) == Decimal("7000")
+    assert len(db.sql) == 1
 
 
 @pytest.mark.asyncio
 async def test_get_order_paid_total_zero_when_none():
-    """Returns 0 when no payments exist for order."""
     from repositories.payment_repository import PaymentRepository
 
-    repo = PaymentRepository()
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar.return_value = None
-    mock_db.execute = AsyncMock(return_value=mock_result)
+    db = _FixtureSession(_make_mock_order())
+    assert await PaymentRepository().get_order_paid_total(db, order_id=ORDER_ID) == Decimal("0")
 
-    total = await repo.get_order_paid_total(mock_db, order_id="order-456")
-    assert total == Decimal("0")
-
-
-# ---------------------------------------------------------------------------
-# 5. Atomic Transaction: payment + state transition rollback
-# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_atomic_payment_and_transition():
-    """Both payment creation and state transition in single db.begin()."""
-    from repositories.payment_repository import PaymentRepository
-
-    repo = PaymentRepository()
-
-    # Track begin() calls
-    mock_db = MagicMock()
-    begin_ctx = MagicMock()
-    begin_ctx.__aenter__ = AsyncMock(return_value=None)
-    begin_ctx.__aexit__ = AsyncMock(return_value=None)
-    mock_db.begin.return_value = begin_ctx
-
-    mock_payment = MagicMock()
-    mock_payment.id = "pay-001"
-    mock_payment.amount = Decimal("5000")
-
-    repo.create = AsyncMock(return_value=mock_payment)
-
-    # Simulate: payment created, then transition succeeds
-    created = await repo.create(mock_db, order_id="ord-1")
-    assert created.id == "pay-001"
-
-    # Verify begin() was available (real usage in pay_order wraps both ops)
-    mock_db.begin.assert_not_called()  # not called here, called in handler
+    """Real producer writes within a fake caller transaction, not PG atomicity."""
+    with _world() as world:
+        transaction = world.db.begin()
+        async with transaction:
+            response = await _pay(world, Decimal("5000"))
+            assert response.data["payment_id"] == str(PAYMENT_ID)
+            assert response.data["status"] == "paid"
+        assert transaction.exit_errors == [None]
+        assert len(world.db.nested_transactions) == 1
+        assert world.db.writes[0] == "payment"
+        assert world.db.command_calls[0]["target_state"].value == "paid"
+        assert world.db.rollback_count == 0
 
 
 @pytest.mark.asyncio
 async def test_atomic_rollback_on_transition_failure():
-    """If state transition fails, payment must also roll back."""
-    mock_db = MagicMock()
-    begin_ctx = MagicMock()
-    begin_ctx.__aenter__ = AsyncMock(return_value=None)
-    begin_ctx.__aexit__ = AsyncMock(return_value=None)
-    mock_db.begin.return_value = begin_ctx
+    """Flush I/O fault reaches real route rollback; durability is not measured."""
+    with _world() as world:
+        before = world.db.snapshot()
+        world.db.flush.side_effect = [None, RuntimeError("State invariant violation")]
+        transaction = world.db.begin()
+        with pytest.raises(RuntimeError, match="State invariant violation"):
+            async with transaction:
+                await _pay(world, Decimal("5000"))
+        assert world.db.writes == ["payment"]
+        assert len(world.db.command_calls) == 1
+        assert transaction.exit_errors == [RuntimeError]
+        assert world.db.rollback_count == 1
+        assert world.db.snapshot() == before
+        world.ledger.assert_not_awaited()
 
-    mock_payment = MagicMock()
-    mock_payment.id = "pay-rollback"
-
-    mock_repo = MagicMock()
-    mock_repo.create = AsyncMock(return_value=mock_payment)
-
-    # Transition raises - entire db.begin() block rolls back
-    mock_transition = AsyncMock(side_effect=Exception("State invariant violation"))
-
-    with pytest.raises(Exception, match="State invariant violation"):
-        async with mock_db.begin():
-            await mock_repo.create(mock_db, order_id="ord-1")
-            await mock_transition("ord-1", "paid")
-
-    # Both create and transition attempted within same tx
-    mock_repo.create.assert_called_once()
-    mock_transition.assert_called_once()
-    # __aexit__ called (transaction rollback)
-    begin_ctx.__aexit__.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# 6. Legacy empty-body pay flow
-# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_legacy_pay_no_body():
-    """Empty body (amount=None) triggers legacy confirmed->paid path."""
+    """Empty schema is representable; actual legacy requests are refused."""
     from schemas.order import PayOrderRequest
-    req = PayOrderRequest()
-    assert req.amount is None
-    # In handler: this branch skips payment creation, goes to legacy transition
-    # target_state = PAID, no payment_record
 
+    assert PayOrderRequest().amount is None
 
-# ---------------------------------------------------------------------------
-# 7. Amount-to-state mapping
-# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_full_amount_maps_to_paid():
-    """Cumulative >= total -> PAID."""
     from core.domain.order_state import OrderState
-    order_total = Decimal("10000")
-    cumulative = Decimal("10000")
-    target = OrderState.PAID if cumulative >= order_total else OrderState.PARTIALLY_PAID
+
+    target = OrderState.PAID if Decimal("10000") >= Decimal("10000") else OrderState.PARTIALLY_PAID
     assert target == OrderState.PAID
 
 
 @pytest.mark.asyncio
 async def test_overpayment_maps_to_paid():
-    """Cumulative > total (e.g. rounding) -> PAID."""
+    """Pure arithmetic only; actual overpayment has exact route refusal tests."""
     from core.domain.order_state import OrderState
-    order_total = Decimal("10000")
-    cumulative = Decimal("10001")
-    target = OrderState.PAID if cumulative >= order_total else OrderState.PARTIALLY_PAID
+
+    target = OrderState.PAID if Decimal("10001") >= Decimal("10000") else OrderState.PARTIALLY_PAID
     assert target == OrderState.PAID
 
 
 @pytest.mark.asyncio
 async def test_underpayment_maps_to_partially_paid():
-    """Cumulative < total -> PARTIALLY_PAID."""
     from core.domain.order_state import OrderState
-    order_total = Decimal("10000")
-    cumulative = Decimal("9999")
-    target = OrderState.PAID if cumulative >= order_total else OrderState.PARTIALLY_PAID
+
+    target = OrderState.PAID if Decimal("9999") >= Decimal("10000") else OrderState.PARTIALLY_PAID
     assert target == OrderState.PARTIALLY_PAID
 
 
-# ---------------------------------------------------------------------------
-# 8. OrderService.transition with real state machine
-# ---------------------------------------------------------------------------
-
 @pytest.mark.asyncio
 async def test_order_service_transition_confirmed_to_paid():
-    """OrderService.transition validates confirmed -> paid."""
+    from core.domain.order_state import InvalidStateTransitionError, OrderState
+    from services.order_command_service import OrderCommandService
     from services.order_service import OrderService
 
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_row = MagicMock()
-    from core.domain.order_state import OrderState as OS
-    mock_row.status = OS.CONFIRMED
-    mock_row.total_amount = Decimal("5000")
-    mock_row.wholesaler_id = "ws-1"
-    mock_row.retailer_id = "rt-1"
-    mock_result.scalar_one_or_none.return_value = mock_row
-    mock_result.scalar.return_value = None
-    mock_db.execute = AsyncMock(return_value=mock_result)
-    mock_db.commit = AsyncMock()
-    mock_db.refresh = AsyncMock()
-
-    # F2: adapter refuses PAID; the payment command is the only writer
-    from core.domain.order_state import InvalidStateTransitionError
-    from services.order_command_service import OrderCommandService
-
+    db = _FixtureSession(_make_mock_order())
     with pytest.raises(InvalidStateTransitionError, match="refuses payment states"):
-        await OrderService(mock_db).transition(
-            order_id="ord-1",
-            target_state=OS.PAID,
-            reason="Test payment",
-            updated_by="user-1",
-        )
-
-    cmd = OrderCommandService(mock_db)
-    result = (await cmd.apply_payment_transition(
-        "ord-1", OS.PAID, payment_method="cash", updated_by="user-1")).order
-    assert result.status == OS.PAID
+        await OrderService(db).transition(ORDER_ID, OrderState.PAID, updated_by=ACTOR_ID)
+    result = await OrderCommandService(db).apply_payment_transition(
+        ORDER_ID, OrderState.PAID, payment_method="cash", updated_by=str(ACTOR_ID))
+    assert result.order.status.value == "paid"
+    assert result.order.updated_by == ACTOR_ID
 
 
 @pytest.mark.asyncio
 async def test_order_service_transition_rejects_invalid():
-    """OrderService.transition rejects draft -> paid."""
+    from core.domain.order_state import InvalidStateTransitionError, OrderState
     from services.order_service import OrderService
-    from core.domain.order_state import InvalidStateTransitionError, OrderState as OS
 
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_row = MagicMock()
-    mock_row.status = OS.DRAFT
-    mock_result.scalar_one_or_none.return_value = mock_row
-    mock_result.scalar.return_value = None
-    mock_db.execute = AsyncMock(return_value=mock_result)
-
-    svc = OrderService(mock_db)
+    db = _FixtureSession(_make_mock_order("draft"))
     with pytest.raises(InvalidStateTransitionError):
-        await svc.transition(
-            order_id="ord-1",
-            target_state=OS.PAID,
-            reason="Test",
-            updated_by="user-1",
-        )
-
-
-# ---------------------------------------------------------------------------
-# 7. Request-level API tests for POST /orders/{order_id}/pay
-#    These call the actual endpoint function (pay_order) with mocked DB,
-#    testing the HTTP contract: status codes, response shape, error detail.
-# ---------------------------------------------------------------------------
-
-class _FakeToken:
-    """Minimal token payload for endpoint calls."""
-    user_id = "test-user-uuid"
-    tenant_id = "test-tenant-uuid"
-    tenant_schema = "tenant_test"
-    role = "wholesaler"
-
-
-def _make_mock_order(order_status="confirmed", order_total=Decimal("5000")):
-    """Build a mock order row."""
-    from core.domain.order_state import OrderState
-    mock_order = MagicMock()
-    mock_order.id = "ord-1"
-    mock_order.status = OrderState(order_status)
-    mock_order.total_amount = order_total
-    mock_order.wholesaler_id = "ws-1"
-    mock_order.retailer_id = "rt-1"
-    mock_order.is_deleted = False
-    return mock_order
-
-
-def _make_mock_db():
-    """Build a mock AsyncSession."""
-    mock_db = AsyncMock()
-
-    # Mock db.begin() context manager (for structured path)
-    mock_begin_ctx = AsyncMock()
-    mock_begin_ctx.__aenter__ = AsyncMock(return_value=mock_db)
-    mock_begin_ctx.__aexit__ = AsyncMock(return_value=False)
-    mock_db.begin = MagicMock(return_value=mock_begin_ctx)
-
-    mock_db.flush = AsyncMock()
-    mock_db.refresh = AsyncMock()
-
-    # SR1: the payment INSERT runs inside a savepoint so a unique-constraint
-    # race can be classified without losing the caller's order lock.
-    mock_savepoint = AsyncMock()
-    mock_savepoint.__aenter__ = AsyncMock(return_value=mock_db)
-    mock_savepoint.__aexit__ = AsyncMock(return_value=False)
-    mock_db.begin_nested = MagicMock(return_value=mock_savepoint)
-
-    # Mock db.execute for get_order_by_id
-    async def fake_execute(stmt, params=None):
-        r = MagicMock()
-        r.scalar_one_or_none.return_value = None
-        return r
-    mock_db.execute = AsyncMock(side_effect=fake_execute)
-
-    return mock_db
+        await OrderService(db).transition(ORDER_ID, OrderState.PAID, updated_by=ACTOR_ID)
+    assert db.order.status.value == "draft"
+    assert db.writes == []
 
 
 @pytest.mark.asyncio
 async def test_api_legacy_pay_empty_body():
-    """Request-level: POST /orders/{id}/pay with no body is rejected."""
     from api.v1.orders import pay_order
     from fastapi import HTTPException
 
-    mock_order = _make_mock_order(order_status="confirmed")
-    mock_db = _make_mock_db()
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.order_command_service.OrderCommandService") as MockOS, \
-         pytest.raises(HTTPException) as exc_info:
-        await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=None,
-        )
-
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail["code"] == "PAYMENT_BODY_REQUIRED"
-    MockOS.assert_not_called()
+    with _world() as world:
+        before = world.db.snapshot()
+        with pytest.raises(HTTPException) as exc:
+            await pay_order(str(ORDER_ID), token=_FakeToken(), db=world.db, payment_input=None)
+        assert exc.value.status_code == 400
+        assert exc.value.detail["code"] == "PAYMENT_BODY_REQUIRED"
+        assert world.db.sql == []
+        _assert_no_economic_io(world, before)
 
 
 @pytest.mark.asyncio
 async def test_api_structured_full_payment():
-    """Request-level: structured payment for full amount returns paid + payment data."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
-    from core.domain.order_state import OrderState
+    """Full receipt, missing/unknown saved currency and harmless trailing zeros."""
+    from fastapi import HTTPException
+    from services.canonical_payment_service import _validate_order_payment_amount
 
-    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
-    mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-1", "amount": Decimal("5000"), "method": "cash"}
-
-    pay_req = PayOrderRequest(amount=5000, method="cash")
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_command_service.OrderCommandService") as MockOS, \
-         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
-         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        repo_instance.create = AsyncMock(return_value=payment_dict)
-        MockRepo.return_value = repo_instance
-
-        svc_instance = AsyncMock()
-        _mock_order = _make_mock_order(order_status="paid",
-                                       order_total=mock_order.total_amount)
-        svc_instance._apply_payment_transition_for_locked = AsyncMock(
-            return_value=SimpleNamespace(order=_mock_order))
-        MockOS.return_value = svc_instance
-
-        resp = await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-full-key",
-        )
-
-    assert resp.success is True
-    assert resp.data["status"] == "paid"
-    assert resp.data["payment_id"] == "pay-1"
-    assert resp.data["payment_amount"] == "5000"
-    assert resp.message == "Payment recorded and order updated"
+    with _world() as world:
+        response = await _pay(world, Decimal("5000"))
+        assert response.success is True
+        assert response.data["status"] == "paid"
+        assert response.data["payment_id"] == str(PAYMENT_ID)
+        assert response.data["payment_amount"] == "5000"
+        assert response.message == "Payment recorded and order updated"
+        assert world.db.order_locks == 1
+        assert world.db.holds[0].status == "settled"
+        assert world.db.holds[0].remaining_amount == Decimal("0")
+        _assert_receipt(world, Decimal("5000"))
+    for currency in (None, "UNKNOWN"):
+        with _world(currency=currency) as world:
+            before = world.db.snapshot()
+            with pytest.raises(HTTPException) as exc:
+                await _pay(world, Decimal("5000"))
+            assert exc.value.status_code == 409
+            assert exc.value.detail["code"] == "PAYMENT_CURRENCY_UNVERIFIED"
+            _assert_no_economic_io(world, before)
+    _validate_order_payment_amount(_make_mock_order(currency="UGX"), Decimal("5000.00"))
+    _validate_order_payment_amount(_make_mock_order(currency="KES"), Decimal("12.3400"))
 
 
 @pytest.mark.asyncio
 async def test_api_structured_partial_payment():
-    """Request-level: partial payment returns partially_paid."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
-    from core.domain.order_state import OrderState
+    """Partial receipt plus actual UGX/KES nonzero excess-precision refusals."""
+    from fastapi import HTTPException
 
-    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
-    mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-1", "amount": Decimal("2000"), "method": "cash"}
-
-    pay_req = PayOrderRequest(amount=2000, method="cash")
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_command_service.OrderCommandService") as MockOS, \
-         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
-         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        repo_instance.create = AsyncMock(return_value=payment_dict)
-        MockRepo.return_value = repo_instance
-
-        svc_instance = AsyncMock()
-        _mock_order = _make_mock_order(order_status="partially_paid",
-                                       order_total=mock_order.total_amount)
-        svc_instance._apply_payment_transition_for_locked = AsyncMock(
-            return_value=SimpleNamespace(order=_mock_order))
-        MockOS.return_value = svc_instance
-
-        resp = await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-partial-key",
-        )
-
-    assert resp.success is True
-    assert resp.data["status"] == "partially_paid"
-    assert resp.data["payment_amount"] == "2000"
+    with _world() as world:
+        response = await _pay(world, Decimal("2000"))
+        assert response.success is True
+        assert response.data["status"] == "partially_paid"
+        assert response.data["payment_amount"] == "2000"
+        assert world.db.holds[0].status == "active"
+        assert world.db.holds[0].remaining_amount == Decimal("3000")
+        assert world.db.balance == Decimal("3000")
+    for currency, amount in (("UGX", Decimal("1.1")), ("KES", Decimal("1.001"))):
+        with _world(currency=currency) as world:
+            before = world.db.snapshot()
+            with pytest.raises(HTTPException) as exc:
+                await _pay(world, amount)
+            assert exc.value.status_code == 400
+            assert exc.value.detail["code"] == "PAYMENT_AMOUNT_PRECISION"
+            _assert_no_economic_io(world, before)
 
 
 @pytest.mark.asyncio
 async def test_api_reject_overpayment():
-    """Request-level: payment exceeding remaining balance returns 400."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
     from fastapi import HTTPException
-    from core.domain.order_state import OrderState
 
-    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
-    mock_db = _make_mock_db()
-
-    # Try to pay 3000 when remaining is only 2000
-    pay_req = PayOrderRequest(amount=3000, method="cash")
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}), \
-         pytest.raises(HTTPException) as exc_info:
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("3000"))
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        MockRepo.return_value = repo_instance
-
-        await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-overpay-key",
-        )
-
-    assert exc_info.value.status_code == 400
-    assert "PAYMENT_EXCEEDS_REMAINING" in str(exc_info.value.detail)
+    with _world(prior_paid=Decimal("3000")) as world:
+        before = world.db.snapshot()
+        with pytest.raises(HTTPException) as exc:
+            await _pay(world, Decimal("3000"))
+        assert exc.value.status_code == 400
+        assert exc.value.detail["code"] == "PAYMENT_EXCEEDS_REMAINING"
+        _assert_no_economic_io(world, before)
 
 
-# ============================================================================
-# 9. Route-Level Tests via TestClient + Monkeypatch Seam
-#
-# APPROACH:
-# 1. Monkeypatch get_auth_context / get_tenant_context in api.middleware.rbac
-#    module (NOT RequirePermission itself). This bypasses RBAC via
-#    is_super_admin=True (H-Fix-01 path).
-# 2. Use dependency_overrides for FastAPI Depends() injections
-#    (get_tenant_db_session, get_current_user_context).
-# 3. Patch OrderService().transition AS A METHOD on the instance so it
-#    returns our controlled mock order directly, bypassing db.execute.
-#
-# This is a TEST-ONLY seam. No production auth/RBAC code is modified.
-# ============================================================================
+class _RouteTestFakeToken(_FakeToken):
+    type = "access"
+    roles = ["orders:update", "orders:read", "orders:write"]
+    is_identity_only = False
+    is_super_admin = True
 
 
-import os
-import uuid
-from decimal import Decimal
+@contextmanager
+def _route_client(world):
+    """Existing TestClient/RBAC dependency seam, not real authentication proof."""
+    from api.dependencies import get_current_user_context, get_tenant_db_session
+    from api.middleware import rbac
+    from fastapi.testclient import TestClient
+    from main import app
 
-os.environ.setdefault("MPANGO_ENV", "test")
-os.environ.setdefault("DATABASE_URL", os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/mpango_erp"))  # pragma: allowlist secret
-os.environ.setdefault("SECRET_KEY", "test-secret-key-for-testing-only-minimum-32-characters-long")
-
-
-class _RouteTestFakeRole:
-    def __init__(self, name: str = "test", permission_codes: list = None):
-        self.name = name
-        self.permissions = [_RouteTestFakePermission(code) for code in (permission_codes or [])]
-
-
-class _RouteTestFakePermission:
-    def __init__(self, code: str):
-        self.code = code
-
-
-class _RouteTestFakeUser:
-    def __init__(self, permission_codes: list = None):
-        self.roles = [_RouteTestFakeRole("wholesaler", permission_codes or [])]
-        self.is_active = True
-
-
-class _RouteTestFakeToken:
-    user_id: str = "00000000-0000-0000-0000-000000000001"
-    tenant_id: str = "00000000-0000-0000-0000-000000000000"
-    tenant_schema: str = "t_test"
-    type: str = "access"
-    roles: list = ["orders:update", "orders:read", "orders:write"]
-
-    @property
-    def is_identity_only(self) -> bool:
-        return False
-
-    @property
-    def is_super_admin(self) -> bool:
-        return True
-
-
-class _RouteTestAuthContext:
-    def __init__(self):
-        self.token = _RouteTestFakeToken()
-
-
-class _RouteTestTenantContext:
-    def __init__(self, db_session):
-        self.tenant_id = _RouteTestFakeToken.tenant_id
-        self.tenant_schema = _RouteTestFakeToken.tenant_schema
-        self.session = db_session
-        self.user = _RouteTestFakeUser(permission_codes=["orders:update", "orders:read", "orders:write"])
-
-
-def _make_route_test_mock_session():
-    mock_db = MagicMock()
-    begin_ctx = MagicMock()
-    begin_ctx.__aenter__ = AsyncMock(return_value=mock_db)
-    begin_ctx.__aexit__ = AsyncMock(return_value=False)
-    mock_db.begin = MagicMock(return_value=begin_ctx)
-    mock_db.flush = AsyncMock()
-    mock_db.refresh = AsyncMock()
-    mock_db.execute = AsyncMock(return_value=MagicMock())
-    mock_db.info = {"tenant_schema": "t_test", "tenant_id": _RouteTestFakeToken.tenant_id}
-    return mock_db
-
-
-def _make_route_test_order_row(order_id: str, status: str, total_amount: Decimal):
-    mock = MagicMock()
-    mock.id = order_id
-    mock.status = type("E", (), {"value": status})()
-    mock.total_amount = total_amount
-    mock.wholesaler_id = uuid.UUID(_RouteTestFakeToken.tenant_id)
-    mock.retailer_id = uuid.uuid4()
-    mock.is_deleted = False
-    return mock
+    codes = ["orders:update", "orders:read", "orders:write", "payments:create"]
+    user = SimpleNamespace(is_active=True, roles=[SimpleNamespace(
+        name="wholesaler", permissions=[SimpleNamespace(code=code) for code in codes])])
+    token = _RouteTestFakeToken()
+    tenant = SimpleNamespace(tenant_id=token.tenant_id, tenant_schema="t_test", session=world.db, user=user)
+    old_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[get_tenant_db_session] = lambda: world.db
+    app.dependency_overrides[get_current_user_context] = lambda: token
+    try:
+        with patch.object(rbac, "get_auth_context", return_value=SimpleNamespace(token=token)), \
+             patch.object(rbac, "get_tenant_context", return_value=tenant):
+            yield TestClient(app, raise_server_exceptions=False)
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(old_overrides)
 
 
 class TestRouteLevelOrderPaymentMonkeypatch:
-    """
-    Route-level tests for POST /api/v1/orders/{order_id}/pay.
-
-    These tests prove TRUE route-level behavior:
-    - URL routing: POST /api/v1/orders/{order_id}/pay resolves to pay_order handler
-    - JSON deserialization: request body parsed from JSON
-    - Response serialization: OrderActionResponse serialized to JSON
-    - HTTP status codes correct
-    - RBAC enforcement via RequirePermission -> patched get_auth/get_tenant
-    - Middleware chain execution (auth -> RBAC -> tenant -> handler)
-
-    Seam: monkeypatch get_auth_context and get_tenant_context in
-    api.middleware.rbac module. Test-only, no production auth changes.
-    """
-
-    def _build_test_client(self):
-        from fastapi.testclient import TestClient
-        from main import app
-        return TestClient(app, raise_server_exceptions=False)
-
     def test_route_legacy_pay_empty_body_returns_400(self):
-        """
-        Route-level: POST /api/v1/orders/{id}/pay with no body is rejected.
-        """
-        pytest.importorskip("httpx", reason="httpx required for TestClient")
-
-        from api.middleware import rbac as rbac_module
-        from api.dependencies import get_tenant_db_session, get_current_user_context
-        from services.order_service import OrderService
-
-        client = self._build_test_client()
-        order_id = str(uuid.uuid4())
-        mock_order = _make_route_test_order_row(order_id, "confirmed", Decimal("5000"))
-        test_db = _make_route_test_mock_session()
-        paid_order = _make_route_test_order_row(order_id, "paid", Decimal("5000"))
-
-        def _fake_auth_context(request):
-            return _RouteTestAuthContext()
-
-        def _fake_tenant_context(request):
-            return _RouteTestTenantContext(test_db)
-
-        def _session_override(request):
-            return test_db
-
-        def _token_override(request):
-            return _RouteTestFakeToken()
-
-        orig_auth = rbac_module.get_auth_context
-        orig_tenant = rbac_module.get_tenant_context
-        rbac_module.get_auth_context = _fake_auth_context
-        rbac_module.get_tenant_context = _fake_tenant_context
-
-        from main import app
-        app.dependency_overrides[get_tenant_db_session] = _session_override
-        app.dependency_overrides[get_current_user_context] = _token_override
-
-        try:
-            with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-                 patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-                 patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={order_id: "Retailer A"}):
-
-                paid_order = _make_route_test_order_row(order_id, "paid", Decimal("5000"))
-                original_init = OrderService.__init__
-
-                def patched_init(self, db):
-                    self.db = test_db
-                    from repositories.payment_repository import PaymentRepository as _PR
-                    self._repo = _PR()
-
-                original_transition = OrderService.transition
-
-                async def patched_transition(self, **kwargs):
-                    return paid_order
-
-                # F2: PARTIALLY_PAID is command-owned; patch the payment
-                # command the canonical service now calls directly.
-                from services.order_command_service import OrderCommandService as _OCS
-                with patch.object(_OCS, "_apply_payment_transition_for_locked", patched_transition):
-                    response = client.post(f"/api/v1/orders/{order_id}/pay?request=test")
-        finally:
-            rbac_module.get_auth_context = orig_auth
-            rbac_module.get_tenant_context = orig_tenant
-            app.dependency_overrides.pop(get_tenant_db_session, None)
-            app.dependency_overrides.pop(get_current_user_context, None)
-
-        assert response.status_code == 400, (
-            f"Expected 400, got {response.status_code}: {response.text}"
-        )
-        assert "PAYMENT_BODY_REQUIRED" in response.text
+        with _world() as world, _route_client(world) as client:
+            before = world.db.snapshot()
+            response = client.post(f"/api/v1/orders/{ORDER_ID}/pay?request=test")
+            assert response.status_code == 400, response.text
+            assert response.json()["code"] == "PAYMENT_BODY_REQUIRED"
+            _assert_no_economic_io(world, before)
 
     def test_route_structured_full_payment_returns_200(self):
-        """
-        Route-level: POST /api/v1/orders/{id}/pay with structured body
-        (full payment) returns 200 with status=paid + payment_id + payment_amount.
-        """
-        pytest.importorskip("httpx", reason="httpx required for TestClient")
-
-        from api.middleware import rbac as rbac_module
-        from api.dependencies import get_tenant_db_session, get_current_user_context
-        from services.order_service import OrderService
-
-        client = self._build_test_client()
-        order_id = str(uuid.uuid4())
-        mock_order = _make_route_test_order_row(order_id, "confirmed", Decimal("5000"))
-        test_db = _make_route_test_mock_session()
-
-        def _fake_auth_context(request):
-            return _RouteTestAuthContext()
-
-        def _fake_tenant_context(request):
-            return _RouteTestTenantContext(test_db)
-
-        def _session_override(request):
-            return test_db
-
-        def _token_override(request):
-            return _RouteTestFakeToken()
-
-        orig_auth = rbac_module.get_auth_context
-        orig_tenant = rbac_module.get_tenant_context
-        rbac_module.get_auth_context = _fake_auth_context
-        rbac_module.get_tenant_context = _fake_tenant_context
-
-        from main import app
-        app.dependency_overrides[get_tenant_db_session] = _session_override
-        app.dependency_overrides[get_current_user_context] = _token_override
-
-        paid_order = _make_route_test_order_row(order_id, "paid", Decimal("5000"))
-        setattr(paid_order, "payment_id", "pay-test-001")
-
-        try:
-            with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-                 patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-                 patch("services.order_command_service.OrderCommandService") as MockOrderCommandService, \
-                 patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-                 patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
-                 patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={order_id: "Retailer A"}):
-
-                repo_instance = AsyncMock()
-                repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-                repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-                repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-                repo_instance.create = AsyncMock(return_value={
-                    "id": "pay-test-001",
-                    "amount": Decimal("5000"),
-                    "method": "cash",
-                })
-                MockRepo.return_value = repo_instance
-
-                command_instance = MagicMock()
-                command_instance.db = test_db
-                command_instance._apply_payment_transition_for_locked = AsyncMock(
-                    return_value=SimpleNamespace(order=paid_order))
-                MockOrderCommandService.return_value = command_instance
-
-                response = client.post(
-                    f"/api/v1/orders/{order_id}/pay?request=test",
-                    json={"amount": 5000, "method": "cash"},
-                    headers={"X-Idempotency-Key": "route-full-key"},
-                )
-        finally:
-            rbac_module.get_auth_context = orig_auth
-            rbac_module.get_tenant_context = orig_tenant
-            app.dependency_overrides.pop(get_tenant_db_session, None)
-            app.dependency_overrides.pop(get_current_user_context, None)
-
-        assert response.status_code == 200, (
-            f"Expected 200, got {response.status_code}: {response.text}"
-        )
-        data = response.json()
-        assert data.get("success") is True
-        assert data["data"]["status"] == "paid"
-        if "payment_id" in data["data"]:
-            assert data["data"]["payment_id"] == "pay-test-001"
+        with _world() as world, _route_client(world) as client:
+            response = client.post(f"/api/v1/orders/{ORDER_ID}/pay?request=test",
+                                   json={"amount": 5000, "method": "cash"},
+                                   headers={"X-Idempotency-Key": "route-full-key"})
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["success"] is True
+            assert data["data"]["status"] == "paid"
+            assert data["data"]["payment_id"] == str(PAYMENT_ID)
             assert data["data"]["payment_amount"] == "5000"
 
     def test_route_partial_payment_returns_partially_paid(self):
-        """
-        Route-level: POST /api/v1/orders/{id}/pay with partial payment
-        returns 200 with status=partially_paid.
-        """
-        pytest.importorskip("httpx", reason="httpx required for TestClient")
+        with _world(total=Decimal("10000")) as world, _route_client(world) as client:
+            response = client.post(f"/api/v1/orders/{ORDER_ID}/pay?request=test",
+                                   json={"amount": 3000, "method": "transfer", "transaction_id": "TX-partial"},
+                                   headers={"X-Idempotency-Key": "route-partial-key"})
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["success"] is True
+            assert data["data"]["status"] == "partially_paid"
+            assert world.db.holds[0].remaining_amount == Decimal("7000")
 
-        from api.middleware import rbac as rbac_module
-        from api.dependencies import get_tenant_db_session, get_current_user_context
-        from services.order_service import OrderService
-
-        client = self._build_test_client()
-        order_id = str(uuid.uuid4())
-        mock_order = _make_route_test_order_row(order_id, "confirmed", Decimal("10000"))
-        test_db = _make_route_test_mock_session()
-        partial_order = _make_route_test_order_row(order_id, "partially_paid", Decimal("10000"))
-
-        def _fake_auth_context(request):
-            return _RouteTestAuthContext()
-
-        def _fake_tenant_context(request):
-            return _RouteTestTenantContext(test_db)
-
-        def _session_override(request):
-            return test_db
-
-        def _token_override(request):
-            return _RouteTestFakeToken()
-
-        orig_auth = rbac_module.get_auth_context
-        orig_tenant = rbac_module.get_tenant_context
-        rbac_module.get_auth_context = _fake_auth_context
-        rbac_module.get_tenant_context = _fake_tenant_context
-
-        from main import app
-        app.dependency_overrides[get_tenant_db_session] = _session_override
-        app.dependency_overrides[get_current_user_context] = _token_override
-
-        try:
-            with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-                 patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-                 patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-                 patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
-                 patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={order_id: "Retailer A"}):
-
-                repo_instance = AsyncMock()
-                repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-                repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-                repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-                repo_instance.create = AsyncMock(return_value={
-                    "id": "pay-test-002",
-                    "amount": Decimal("3000"),
-                    "method": "transfer",
-                })
-                MockRepo.return_value = repo_instance
-
-                partial_order = _make_route_test_order_row(order_id, "partially_paid", Decimal("10000"))
-
-                def patched_init(self, db):
-                    self.db = test_db
-                    from repositories.payment_repository import PaymentRepository as _PR
-                    self._repo = _PR()
-
-                async def patched_transition(self, order_id, target_state, **kwargs):
-                    return SimpleNamespace(order=partial_order)
-
-                # F2: PARTIALLY_PAID is command-owned; patch the payment
-                # command the canonical service now calls directly.
-                from services.order_command_service import OrderCommandService as _OCS
-                with patch.object(_OCS, "_apply_payment_transition_for_locked", patched_transition):
-                    response = client.post(
-                        f"/api/v1/orders/{order_id}/pay?request=test",
-                        json={"amount": 3000, "method": "transfer"},
-                        headers={"X-Idempotency-Key": "route-partial-key"},
-                    )
-        finally:
-            rbac_module.get_auth_context = orig_auth
-            rbac_module.get_tenant_context = orig_tenant
-            app.dependency_overrides.pop(get_tenant_db_session, None)
-            app.dependency_overrides.pop(get_current_user_context, None)
-
-        assert response.status_code == 200, (
-            f"Expected 200, got {response.status_code}: {response.text}"
-        )
-        data = response.json()
-        assert data.get("success") is True
-        assert data["data"]["status"] == "partially_paid"
-
-    @pytest.mark.xfail(reason="Overpayment test blocked by mock complexity: structured path calls PaymentRepository() which must return prior_paid=Decimal('3000') but patch chain OrderService->transition->db.execute is too brittle with MagicMock; seam proves 200-level behavior works for legacy+partial+structured paths, overpayment check logic verified in unit tests")
     def test_route_overpayment_rejected_with_400(self):
-        """
-        Route-level: POST /api/v1/orders/{id}/pay with payment > remaining
-        balance returns HTTP 400 with PAYMENT_EXCEEDS_REMAINING.
-        """
-        pytest.importorskip("httpx", reason="httpx required for TestClient")
-
-        from api.middleware import rbac as rbac_module
-        from api.dependencies import get_tenant_db_session, get_current_user_context
-        from services.order_service import OrderService
-
-        client = self._build_test_client()
-        order_id = str(uuid.uuid4())
-        mock_order = _make_route_test_order_row(order_id, "confirmed", Decimal("5000"))
-        test_db = _make_route_test_mock_session()
-
-        def _fake_auth_context(request):
-            return _RouteTestAuthContext()
-
-        def _fake_tenant_context(request):
-            return _RouteTestTenantContext(test_db)
-
-        def _session_override(request):
-            return test_db
-
-        def _token_override(request):
-            return _RouteTestFakeToken()
-
-        orig_auth = rbac_module.get_auth_context
-        orig_tenant = rbac_module.get_tenant_context
-        rbac_module.get_auth_context = _fake_auth_context
-        rbac_module.get_tenant_context = _fake_tenant_context
-
-        from main import app
-        app.dependency_overrides[get_tenant_db_session] = _session_override
-        app.dependency_overrides[get_current_user_context] = _token_override
-
-        try:
-            with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-                 patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-                 patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-                 patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock):
-
-                repo_instance = AsyncMock()
-                repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("3000"))
-                repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-                MockRepo.return_value = repo_instance
-
-                def patched_init(self, db):
-                    self.db = db
-
-                async def patched_transition(self, **kwargs):
-                    return mock_order
-
-                # F2: PARTIALLY_PAID is command-owned; patch the payment
-                # command the canonical service now calls directly.
-                from services.order_command_service import OrderCommandService as _OCS
-                with patch.object(_OCS, "_apply_payment_transition_for_locked", patched_transition):
-                    response = client.post(
-                        f"/api/v1/orders/{order_id}/pay?request=test",
-                        json={"amount": 5000, "method": "cash"},
-                        headers={"X-Idempotency-Key": "route-overpay-key"},
-                    )
-        finally:
-            rbac_module.get_auth_context = orig_auth
-            rbac_module.get_tenant_context = orig_tenant
-            app.dependency_overrides.pop(get_tenant_db_session, None)
-            app.dependency_overrides.pop(get_current_user_context, None)
-
-        assert response.status_code == 400, (
-            f"Expected 400, got {response.status_code}: {response.text}"
-        )
-        data = response.json()
-        assert "PAYMENT_EXCEEDS_REMAINING" in str(data.get("detail", ""))
-
-
-# ============================================================================
-# 10. Phase 6 — Credit Payment Semantics
-#
-# Tests that credit payment uses method-dependent balance delta:
-#   cash/transfer → delta = -amount  (receivable decreases)
-#   credit        → delta = +amount  (new receivable created)
-#
-# And that get_order_paid_total() excludes credit payments.
-# ============================================================================
-
-
-# ---------------------------------------------------------------------------
-# 10a. Balance delta correctness (method-dependent)
-# ---------------------------------------------------------------------------
+        """CTO removes the sole obsolete xfail; precise 400/code and zero writes."""
+        with _world(prior_paid=Decimal("3000")) as world, _route_client(world) as client:
+            before = world.db.snapshot()
+            response = client.post(f"/api/v1/orders/{ORDER_ID}/pay?request=test",
+                                   json={"amount": 5000, "method": "cash"},
+                                   headers={"X-Idempotency-Key": "route-overpay-key"})
+            assert response.status_code == 400, response.text
+            assert response.json()["code"] == "PAYMENT_EXCEEDS_REMAINING"
+            _assert_no_economic_io(world, before)
 
 
 @pytest.mark.asyncio
 async def test_credit_payment_applies_positive_balance_delta():
-    """Credit via pay_order() must call _apply_outstanding_balance_delta
-    with delta=+amount (increases receivable), NOT -amount."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
-    from core.domain.order_state import OrderState
-
-    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
-    mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-credit-1", "amount": Decimal("5000"), "method": "credit"}
-
-    pay_req = PayOrderRequest(amount=5000, method="credit")
-
-    delta_captured = {}
-
-    async def capture_delta(db, wholesaler_id, retailer_id, delta):
-        delta_captured["delta"] = delta
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_command_service.OrderCommandService") as MockOS, \
-         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
-         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        repo_instance.count_order_payments = AsyncMock(return_value=0)
-        repo_instance.create = AsyncMock(return_value=payment_dict)
-        MockRepo.return_value = repo_instance
-
-        svc_instance = AsyncMock()
-        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
-            id=mock_order.id, status=OrderState.PAID,
-            total_amount=mock_order.total_amount,
-        )))
-        MockOS.return_value = svc_instance
-
-        await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-credit-delta",
-        )
-
-    # R2: credit converts the hold to real exposure — the binding is NOT
-    # incremented again (the confirm-time hold already occupies the cache).
-    assert delta_captured == {}, (
-        f"R2: credit payment must not move the binding, got {delta_captured}")
+    """Retained ID: R2 hold conversion never increments the binding twice."""
+    with _world() as world:
+        before = world.db.balance
+        await _pay(world, Decimal("5000"), "credit")
+        assert world.db.balance == before
+        assert not any(isinstance(event, tuple) and event[0] == "binding" for event in world.db.writes)
+        assert world.db.holds[0].status == "converted"
+        assert world.db.holds[0].remaining_amount == Decimal("0")
 
 
 @pytest.mark.asyncio
 async def test_cash_payment_does_not_apply_balance_delta_for_ordinary_settlement():
-    """Ordinary cash via pay_order() must not decrement credit exposure."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
-    from core.domain.order_state import OrderState
-
-    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
-    mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-cash-1", "amount": Decimal("5000"), "method": "cash"}
-
-    pay_req = PayOrderRequest(amount=5000, method="cash")
-
-    delta_captured = {}
-
-    async def capture_delta(db, wholesaler_id, retailer_id, delta):
-        delta_captured["delta"] = delta
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_command_service.OrderCommandService") as MockOS, \
-         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
-         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        repo_instance.create = AsyncMock(return_value=payment_dict)
-        MockRepo.return_value = repo_instance
-
-        svc_instance = AsyncMock()
-        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
-            id=mock_order.id, status=OrderState.PAID,
-            total_amount=mock_order.total_amount,
-        )))
-        MockOS.return_value = svc_instance
-
-        await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-cash-delta",
-        )
-
-    # R2: cash settlement releases the order's own hold from the cache.
-    assert delta_captured["delta"] == Decimal("-5000"), (
-        f"R2: cash settlement must reduce the hold by the settled amount, "
-        f"got {delta_captured}")
+    """Retained ID: R2 cash releases this hold; no credit double counting."""
+    with _world() as world:
+        await _pay(world, Decimal("5000"))
+        assert ("binding", Decimal("-5000")) in world.db.writes
+        assert world.db.balance == Decimal("0")
 
 
 @pytest.mark.asyncio
 async def test_transfer_payment_does_not_apply_balance_delta_for_ordinary_settlement():
-    """Ordinary transfer via pay_order() must not decrement credit exposure."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
-    from core.domain.order_state import OrderState
-
-    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
-    mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-xfer-1", "amount": Decimal("5000"), "method": "transfer"}
-
-    pay_req = PayOrderRequest(amount=5000, method="transfer", transaction_id="TX-001")
-
-    delta_captured = {}
-
-    async def capture_delta(db, wholesaler_id, retailer_id, delta):
-        delta_captured["delta"] = delta
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_command_service.OrderCommandService") as MockOS, \
-         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
-         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        repo_instance.create = AsyncMock(return_value=payment_dict)
-        MockRepo.return_value = repo_instance
-
-        svc_instance = AsyncMock()
-        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
-            id=mock_order.id, status=OrderState.PAID,
-            total_amount=mock_order.total_amount,
-        )))
-        MockOS.return_value = svc_instance
-
-        await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-transfer-delta",
-        )
-
-    # R2: transfer settlement releases the order's own hold from the cache.
-    assert delta_captured["delta"] == Decimal("-5000"), (
-        f"R2: transfer settlement must reduce the hold by the settled "
-        f"amount, got {delta_captured}")
-
-
-# ---------------------------------------------------------------------------
-# 10b. get_order_paid_total excludes credit
-# ---------------------------------------------------------------------------
+    """Retained ID: R2 transfer releases exactly the settled hold amount."""
+    with _world() as world:
+        await _pay(world, Decimal("5000"), "transfer", reference="TX-001")
+        assert ("binding", Decimal("-5000")) in world.db.writes
+        assert world.db.balance == Decimal("0")
 
 
 @pytest.mark.asyncio
 async def test_get_order_paid_total_sql_excludes_credit():
-    """get_order_paid_total SQL must contain 'AND method IN' filter
-    so credit payments are excluded from the paid-total sum."""
     from repositories.payment_repository import PaymentRepository
 
-    repo = PaymentRepository()
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar.return_value = Decimal("5000")
-    mock_db.execute = AsyncMock(return_value=mock_result)
-
-    await repo.get_order_paid_total(mock_db, order_id="order-123")
-
-    # Inspect the SQL text passed to db.execute
-    call_args = mock_db.execute.call_args
-    stmt = call_args[0][0]  # first positional arg is the text() clause
-    sql_text = str(stmt)
-    assert "method IN" in sql_text, \
-        f"Expected 'method IN' filter in SQL, got: {sql_text}"
-    assert "'cash'" in sql_text and "'transfer'" in sql_text, \
-        f"Expected cash/transfer in method filter, got: {sql_text}"
+    db = _FixtureSession(_make_mock_order(), prior_paid=Decimal("5000"))
+    await PaymentRepository().get_order_paid_total(db, order_id=ORDER_ID)
+    sql = db.sql[0][0]
+    assert "method IN" in sql
+    assert "'cash'" in sql and "'transfer'" in sql
 
 
 @pytest.mark.asyncio
 async def test_get_order_paid_total_only_counts_cash_and_transfer():
-    """get_order_paid_total must sum only cash + transfer, excluding credit."""
     from repositories.payment_repository import PaymentRepository
 
-    repo = PaymentRepository()
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar.return_value = Decimal("7000")
-    mock_db.execute = AsyncMock(return_value=mock_result)
-
-    total = await repo.get_order_paid_total(mock_db, order_id="order-789")
-    assert total == Decimal("7000")
-
-    # Verify the SQL does NOT sum credit
-    stmt = mock_db.execute.call_args[0][0]
-    sql_text = str(stmt)
-    assert "credit" not in sql_text.lower().replace("'cash'", "").replace("'transfer'", ""), \
-        "SQL should not reference credit method in the filter"
-
-
-# ---------------------------------------------------------------------------
-# 10c. Credit payment status and order state
-# ---------------------------------------------------------------------------
+    db = _FixtureSession(_make_mock_order(order_total=Decimal("10000")),
+                         prior_paid=Decimal("7000"), credit_count=1)
+    assert await PaymentRepository().get_order_paid_total(db, order_id=ORDER_ID) == Decimal("7000")
+    sql = db.sql[0][0]
+    assert "credit" not in sql.lower().replace("'cash'", "").replace("'transfer'", "")
 
 
 @pytest.mark.asyncio
 async def test_credit_payment_status_is_pending():
-    """Credit payment record must always be created with status='pending'."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
-    from core.domain.order_state import OrderState
-
-    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
-    mock_db = _make_mock_db()
-
-    create_captured = {}
-
-    async def fake_create(db, **kwargs):
-        create_captured.update(kwargs)
-        return {"id": "pay-credit-st", "amount": kwargs["amount"], "method": kwargs["method"]}
-
-    pay_req = PayOrderRequest(amount=5000, method="credit")
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_command_service.OrderCommandService") as MockOS, \
-         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
-         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        repo_instance.count_order_payments = AsyncMock(return_value=0)
-        repo_instance.create = AsyncMock(side_effect=fake_create)
-        MockRepo.return_value = repo_instance
-
-        svc_instance = AsyncMock()
-        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
-            id=mock_order.id, status=OrderState.PAID,
-            total_amount=mock_order.total_amount,
-        )))
-        MockOS.return_value = svc_instance
-
-        await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-credit-status",
-        )
-
-    assert create_captured["status"] == "pending", \
-        f"Credit payment must be 'pending', got '{create_captured['status']}'"
+    with _world() as world:
+        await _pay(world, Decimal("5000"), "credit")
+        assert world.db.payments[0]["status"] == "pending"
+        assert world.db.payments[0]["method"] == "credit"
 
 
 @pytest.mark.asyncio
 async def test_credit_full_amount_advances_order_to_paid():
-    """CTO correction: credit payment for the full order amount transitions
-    the order to PAID from a lifecycle perspective, even though paid_total
-    (cash+transfer only) remains 0. Credit closes the order lifecycle."""
-    order_total = Decimal("10000")
-    credit_amount = Decimal("10000")
-    paid_total = Decimal("0")  # credit excluded from get_order_paid_total
-
     from core.domain.order_state import OrderState
-    # The endpoint computes: cumulative = paid_total + pay_amount
-    # For credit: cumulative = 0 + 10000 = 10000 >= 10000 -> PAID
-    cumulative = paid_total + credit_amount
-    target = OrderState.PAID if cumulative >= order_total else OrderState.PARTIALLY_PAID
-    assert target == OrderState.PAID, \
-        "Full credit payment MUST close the order lifecycle to PAID"
+
+    total, credit, paid_total = Decimal("10000"), Decimal("10000"), Decimal("0")
+    target = OrderState.PAID if paid_total + credit >= total else OrderState.PARTIALLY_PAID
+    assert target == OrderState.PAID
 
 
 @pytest.mark.asyncio
 async def test_credit_partial_amount_rejected():
-    """Phase 6 MVP: partial credit is rejected. Only full-credit sale allowed."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
     from fastapi import HTTPException
 
-    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("10000"))
-    mock_db = _make_mock_db()
-
-    pay_req = PayOrderRequest(amount=5000, method="credit")
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         pytest.raises(HTTPException) as exc_info:
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        repo_instance.count_order_payments = AsyncMock(return_value=0)
-        MockRepo.return_value = repo_instance
-
-        await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-credit-partial",
-        )
-
-    assert exc_info.value.status_code == 400
-    assert "CREDIT_AMOUNT_MISMATCH" in str(exc_info.value.detail)
+    with _world(total=Decimal("10000")) as world:
+        before = world.db.snapshot()
+        with pytest.raises(HTTPException) as exc:
+            await _pay(world, Decimal("5000"), "credit")
+        assert exc.value.status_code == 400
+        assert exc.value.detail["code"] == "CREDIT_AMOUNT_MISMATCH"
+        _assert_no_economic_io(world, before)
 
 
 @pytest.mark.asyncio
 async def test_credit_rejected_when_prior_cash_exists():
-    """Phase 6 MVP: credit on an order that already has cash/transfer
-    settlement must be rejected with CREDIT_SPLIT_TENDER_UNSUPPORTED.
-    Split tender is not allowed — credit is only for clean orders."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
     from fastapi import HTTPException
 
-    order_total = Decimal("10000")
-    prior_paid = Decimal("5000")
-
-    mock_order = _make_mock_order(order_status="confirmed", order_total=order_total)
-    mock_db = _make_mock_db()
-
-    # Credit for exactly the remaining 5000 — amount matches remaining
-    # but prior_paid > 0, so split-tender guard must reject.
-    pay_req = PayOrderRequest(amount=Decimal("5000"), method="credit")
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         pytest.raises(HTTPException) as exc_info:
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=prior_paid)
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        repo_instance.count_order_payments = AsyncMock(return_value=0)
-        MockRepo.return_value = repo_instance
-
-        await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-credit-split",
-        )
-
-    assert exc_info.value.status_code == 400
-    assert "CREDIT_SPLIT_TENDER_UNSUPPORTED" in str(exc_info.value.detail)
+    with _world(total=Decimal("10000"), prior_paid=Decimal("5000")) as world:
+        before = world.db.snapshot()
+        with pytest.raises(HTTPException) as exc:
+            await _pay(world, Decimal("5000"), "credit")
+        assert exc.value.status_code == 400
+        assert exc.value.detail["code"] == "CREDIT_SPLIT_TENDER_UNSUPPORTED"
+        _assert_no_economic_io(world, before)
 
 
 @pytest.mark.asyncio
 async def test_credit_rejected_when_amount_exceeds_remaining():
-    """Credit amount greater than remaining balance is rejected.
-    Hit by the generic PAYMENT_EXCEEDS_REMAINING guard (runs before
-    the credit-specific checks)."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
     from fastapi import HTTPException
 
-    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
-    mock_db = _make_mock_db()
-
-    # Try credit for 6000 when remaining is 5000
-    pay_req = PayOrderRequest(amount=6000, method="credit")
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         pytest.raises(HTTPException) as exc_info:
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        repo_instance.count_order_payments = AsyncMock(return_value=0)
-        MockRepo.return_value = repo_instance
-
-        await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-credit-overpay",
-        )
-
-    assert exc_info.value.status_code == 400
-    # Exceeding balance is caught by the generic overpayment guard
-    assert "PAYMENT_EXCEEDS_REMAINING" in str(exc_info.value.detail)
-
-
-# ---------------------------------------------------------------------------
-# 10d. PaymentService.create_payment credit semantics
-# ---------------------------------------------------------------------------
+    with _world() as world:
+        before = world.db.snapshot()
+        with pytest.raises(HTTPException) as exc:
+            await _pay(world, Decimal("6000"), "credit")
+        assert exc.value.status_code == 400
+        assert exc.value.detail["code"] == "PAYMENT_EXCEEDS_REMAINING"
+        _assert_no_economic_io(world, before)
 
 
 @pytest.mark.asyncio
 async def test_payment_service_credit_applies_positive_delta():
-    """PaymentService.create_payment with method='credit' must apply
-    delta=+amount to outstanding balance."""
+    """Legacy PaymentService is distinct from canonical's hold conversion."""
     from services.payment_service import PaymentService
-    from decimal import Decimal
 
-    svc = PaymentService()
-    mock_db = AsyncMock()
-
-    # Mock order lookup
-    mock_order = MagicMock()
-    mock_order.retailer_id = uuid.uuid4()
-    mock_order.wholesaler_id = uuid.uuid4()
-
-    async def fake_execute(stmt, params=None):
-        r = MagicMock()
-        r.scalar_one_or_none.return_value = mock_order
-        return r
-
-    mock_db.execute = AsyncMock(side_effect=fake_execute)
-
-    delta_captured = {}
-
-    async def capture_delta(db, wholesaler_id, retailer_id, delta):
-        delta_captured["delta"] = delta
-
-    # Patch repo.create to skip actual DB insert
-    with patch.object(svc._repo, "create", new_callable=AsyncMock) as mock_create, \
-         patch.object(svc._repo, "get_by_idempotency_key", new_callable=AsyncMock, return_value=None), \
-         patch.object(svc, "_apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta):
-
-        mock_create.return_value = {"id": "p1", "amount": Decimal("3000"), "method": "credit"}
-
-        await svc.create_payment(
-            tenant_db=mock_db,
-            order_id=str(uuid.uuid4()),
-            amount=Decimal("3000"),
-            method="credit",
-            transaction_id=None,
-            idempotency_key=None,
-            created_by=None,
-        )
-
-    assert delta_captured["delta"] == Decimal("3000"), \
-        f"PaymentService credit delta should be +3000, got {delta_captured['delta']}"
+    db = _FixtureSession(_make_mock_order(order_total=Decimal("3000")))
+    before = db.balance
+    payment = await PaymentService().create_payment(
+        tenant_db=db, order_id=str(ORDER_ID), amount=Decimal("3000"), method="credit",
+        transaction_id=None, idempotency_key=None, created_by=str(ACTOR_ID))
+    assert payment["id"] == PAYMENT_ID
+    assert ("binding", Decimal("3000")) in db.writes
+    assert db.balance - before == Decimal("3000")
 
 
 @pytest.mark.asyncio
 async def test_payment_service_cash_does_not_apply_balance_delta():
-    """PaymentService.create_payment with method='cash' leaves credit exposure unchanged."""
     from services.payment_service import PaymentService
-    from decimal import Decimal
 
-    svc = PaymentService()
-    mock_db = AsyncMock()
-
-    mock_order = MagicMock()
-    mock_order.retailer_id = uuid.uuid4()
-    mock_order.wholesaler_id = uuid.uuid4()
-
-    async def fake_execute(stmt, params=None):
-        r = MagicMock()
-        r.scalar_one_or_none.return_value = mock_order
-        return r
-
-    mock_db.execute = AsyncMock(side_effect=fake_execute)
-
-    delta_captured = {}
-
-    async def capture_delta(db, wholesaler_id, retailer_id, delta):
-        delta_captured["delta"] = delta
-
-    with patch.object(svc._repo, "create", new_callable=AsyncMock) as mock_create, \
-         patch.object(svc._repo, "get_by_idempotency_key", new_callable=AsyncMock, return_value=None), \
-         patch.object(svc, "_apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta):
-
-        mock_create.return_value = {"id": "p2", "amount": Decimal("7000"), "method": "cash"}
-
-        await svc.create_payment(
-            tenant_db=mock_db,
-            order_id=str(uuid.uuid4()),
-            amount=Decimal("7000"),
-            method="cash",
-            transaction_id=None,
-            idempotency_key=None,
-            created_by=None,
-        )
-
-    assert delta_captured == {}
-
-
-# ---------------------------------------------------------------------------
-# 10e. PayOrderRequest schema accepts credit
-# ---------------------------------------------------------------------------
+    db = _FixtureSession(_make_mock_order(order_total=Decimal("10000")))
+    before = db.balance
+    await PaymentService().create_payment(
+        tenant_db=db, order_id=str(ORDER_ID), amount=Decimal("7000"), method="cash",
+        transaction_id=None, idempotency_key=None, created_by=str(ACTOR_ID))
+    assert db.balance == before
+    assert not any(isinstance(event, tuple) and event[0] == "binding" for event in db.writes)
 
 
 def test_pay_order_request_accepts_credit_method():
-    """PayOrderRequest must accept 'credit' as a valid method value."""
     from schemas.order import PayOrderRequest
-    req = PayOrderRequest(amount=5000, method="credit")
+
+    req = PayOrderRequest(amount=Decimal("5000"), method="credit")
     assert req.method == "credit"
     assert req.amount == Decimal("5000")
 
 
 def test_pay_order_request_accepts_transfer_method():
-    """PayOrderRequest must accept 'transfer' as a valid method value."""
     from schemas.order import PayOrderRequest
-    req = PayOrderRequest(amount=5000, method="transfer", transaction_id="TX-123")
+
+    req = PayOrderRequest(amount=Decimal("5000"), method="transfer", transaction_id="TX-123")
     assert req.method == "transfer"
-
-
-# ---------------------------------------------------------------------------
-# 10f. Duplicate credit prevention regression
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_duplicate_credit_payment_rejected():
-    """Regression: a credit-paid order must not accept a second credit payment.
-    pay_order() queries count_order_payments(method='credit') and raises 409
-    if a credit payment already exists for the order."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
     from fastapi import HTTPException
 
-    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("10000"))
-    mock_db = _make_mock_db()
-
-    pay_req = PayOrderRequest(amount=5000, method="credit")
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         pytest.raises(HTTPException) as exc_info:
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        # Simulate: a credit payment already exists for this order
-        repo_instance.count_order_payments = AsyncMock(return_value=1)
-        MockRepo.return_value = repo_instance
-
-        await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-duplicate-credit",
-        )
-
-    assert exc_info.value.status_code == 409
-    assert "DUPLICATE_CREDIT_PAYMENT" in str(exc_info.value.detail)
+    with _world(total=Decimal("10000"), credit_count=1) as world:
+        before = world.db.snapshot()
+        with pytest.raises(HTTPException) as exc:
+            await _pay(world, Decimal("5000"), "credit")
+        assert exc.value.status_code == 409
+        assert exc.value.detail["code"] == "DUPLICATE_CREDIT_PAYMENT"
+        _assert_no_economic_io(world, before)
 
 
 @pytest.mark.asyncio
 async def test_first_credit_payment_allowed():
-    """First credit payment on an order (count=0) is allowed through."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
-    from core.domain.order_state import OrderState
+    """Real conversion and an explicit mismatched hold, not an always-valid row."""
+    from fastapi import HTTPException
 
-    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
-    mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-credit-first", "amount": Decimal("5000"), "method": "credit"}
-
-    pay_req = PayOrderRequest(amount=5000, method="credit")
-
-    delta_captured = {}
-
-    async def capture_delta(db, wholesaler_id, retailer_id, delta):
-        delta_captured["delta"] = delta
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_command_service.OrderCommandService") as MockOS, \
-         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock, side_effect=capture_delta), \
-         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        repo_instance.count_order_payments = AsyncMock(return_value=0)
-        repo_instance.create = AsyncMock(return_value=payment_dict)
-        MockRepo.return_value = repo_instance
-
-        svc_instance = AsyncMock()
-        svc_instance._apply_payment_transition_for_locked = AsyncMock(return_value=SimpleNamespace(order=MagicMock(
-            id=mock_order.id, status=OrderState.PAID,
-            total_amount=mock_order.total_amount,
-        )))
-        MockOS.return_value = svc_instance
-
-        resp = await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-first-credit",
-        )
-
-    assert resp.success is True
-    assert resp.data["status"] == "paid"
-    # R2: credit conversion is cache-neutral — no binding delta at all.
-    assert delta_captured == {}
-
-
-# ============================================================================
-# 11. Phase 6.1 — Credit Ledger Semantics
-#
-# Tests that pay_order passes payment_method into OrderService.transition
-# so that credit PAID transitions skip cash-settlement ledger entries.
-# ============================================================================
+    with _world() as world:
+        response = await _pay(world, Decimal("5000"), "credit")
+        assert response.success is True
+        assert response.data["status"] == "paid"
+        assert world.db.balance == Decimal("5000")
+        assert world.db.holds[0].status == "converted"
+        world.ledger.assert_not_awaited()
+    with _world() as world:
+        world.db.holds[0].remaining_amount = Decimal("4999")
+        before = world.db.snapshot()
+        with pytest.raises(HTTPException) as exc:
+            await _pay(world, Decimal("5000"), "credit")
+        assert exc.value.status_code == 409
+        assert exc.value.detail["code"] == "CREDIT_HOLD_MISMATCH"
+        _assert_no_economic_io(world, before)
+    with _world() as world:
+        world.db.invalid_history_rows = [{"order_id": ORDER_ID, "invalid_rows": 1}]
+        before = world.db.snapshot()
+        with pytest.raises(HTTPException) as exc:
+            await _pay(world, Decimal("5000"), "credit")
+        assert exc.value.status_code == 409
+        assert exc.value.detail["code"] == "PAYMENT_HISTORY_INTEGRITY"
+        _assert_no_economic_io(world, before)
 
 
 @pytest.mark.asyncio
 async def test_credit_payment_passes_method_to_transition():
-    """Credit via pay_order() must pass payment_method='credit' into
-    OrderService.transition so the ledger layer can skip cash-settlement."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
-    from core.domain.order_state import OrderState
-
-    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
-    mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-cl-1", "amount": Decimal("5000"), "method": "credit"}
-
-    pay_req = PayOrderRequest(amount=5000, method="credit")
-
-    transition_kwargs = {}
-
-    async def capture_transition(self, order_id=None, target_state=None, **kwargs):
-        transition_kwargs.update(
-            {"order_id": order_id, "target_state": target_state, **kwargs})
-        return SimpleNamespace(order=MagicMock(
-            id=mock_order.id, status=OrderState.PAID,
-            total_amount=mock_order.total_amount,
-        ))
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_command_service.OrderCommandService") as MockOS, \
-         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
-         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        repo_instance.count_order_payments = AsyncMock(return_value=0)
-        repo_instance.create = AsyncMock(return_value=payment_dict)
-        MockRepo.return_value = repo_instance
-
-        svc_instance = AsyncMock()
-        svc_instance._apply_payment_transition_for_locked = AsyncMock(side_effect=capture_transition)
-        MockOS.return_value = svc_instance
-
-        await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-credit-transition",
-        )
-
-    assert transition_kwargs.get("payment_method") == "credit", \
-        f"Expected payment_method='credit' passed to transition, got {transition_kwargs.get('payment_method')}"
+    with _world() as world:
+        await _pay(world, Decimal("5000"), "credit")
+        assert len(world.db.command_calls) == 1
+        assert world.db.command_calls[0]["order_id"] == ORDER_ID
+        assert world.db.command_calls[0]["target_state"].value == "paid"
+        assert world.db.command_calls[0]["payment_method"] == "credit"
+        world.ledger.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_cash_payment_passes_method_to_transition():
-    """Cash via pay_order() must pass payment_method='cash' into
-    OrderService.transition so the ledger layer posts cash-settlement."""
-    from api.v1.orders import pay_order
-    from schemas.order import PayOrderRequest
-    from core.domain.order_state import OrderState
-
-    mock_order = _make_mock_order(order_status="confirmed", order_total=Decimal("5000"))
-    mock_db = _make_mock_db()
-    payment_dict = {"id": "pay-cash-ls", "amount": Decimal("5000"), "method": "cash"}
-
-    pay_req = PayOrderRequest(amount=5000, method="cash")
-
-    transition_kwargs = {}
-
-    async def capture_transition(self, order_id=None, target_state=None, **kwargs):
-        transition_kwargs.update(
-            {"order_id": order_id, "target_state": target_state, **kwargs})
-        return SimpleNamespace(order=MagicMock(
-            id=mock_order.id, status=OrderState.PAID,
-            total_amount=mock_order.total_amount,
-        ))
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("repositories.payment_repository.PaymentRepository") as MockRepo, \
-         patch("services.order_command_service.OrderCommandService") as MockOS, \
-         patch("services.payment_service.PaymentService._apply_outstanding_balance_delta", new_callable=AsyncMock), \
-         patch("api.v1.orders.batch_retailer_names", new_callable=AsyncMock, return_value={mock_order.id: "R1"}):
-
-        repo_instance = AsyncMock()
-        repo_instance.get_order_paid_total = AsyncMock(return_value=Decimal("0"))
-        repo_instance.count_payments_with_status_outside = AsyncMock(return_value=0)
-        repo_instance.create = AsyncMock(return_value=payment_dict)
-        MockRepo.return_value = repo_instance
-
-        svc_instance = AsyncMock()
-        svc_instance._apply_payment_transition_for_locked = AsyncMock(side_effect=capture_transition)
-        MockOS.return_value = svc_instance
-
-        await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=pay_req,
-            x_idempotency_key="phase5-cash-transition",
-        )
-
-    assert transition_kwargs.get("payment_method") == "cash", \
-        f"Expected payment_method='cash' passed to transition, got {transition_kwargs.get('payment_method')}"
+    with _world() as world:
+        await _pay(world, Decimal("5000"), "cash")
+        assert len(world.db.command_calls) == 1
+        assert world.db.command_calls[0]["payment_method"] == "cash"
+        _assert_receipt(world, Decimal("5000"))
 
 
 @pytest.mark.asyncio
 async def test_legacy_pay_rejected_before_transition():
-    """Empty-body pay is rejected before payment/order side effects."""
     from api.v1.orders import pay_order
     from fastapi import HTTPException
 
-    mock_order = _make_mock_order(order_status="confirmed")
-    mock_db = _make_mock_db()
-
-    with patch("api.v1.orders.get_order_by_id", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.canonical_payment_service.CanonicalPaymentService._get_order_by_id_for_update", new_callable=AsyncMock, return_value=mock_order), \
-         patch("services.order_command_service.OrderCommandService") as MockOS, \
-         pytest.raises(HTTPException) as exc_info:
-        await pay_order(
-            order_id=str(mock_order.id),
-            token=_FakeToken(),
-            db=mock_db,
-            payment_input=None,
-        )
-
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail["code"] == "PAYMENT_BODY_REQUIRED"
-    MockOS.assert_not_called()
+    with _world() as world:
+        before = world.db.snapshot()
+        with pytest.raises(HTTPException) as exc:
+            await pay_order(str(ORDER_ID), token=_FakeToken(), db=world.db, payment_input=None)
+        assert exc.value.status_code == 400
+        assert exc.value.detail["code"] == "PAYMENT_BODY_REQUIRED"
+        assert world.db.command_calls == []
+        _assert_no_economic_io(world, before)
 
 
-# ============================================================================
-# 12. Phase 6.1 — Credit Ledger Semantics (mock-based unit tests)
-#
-# Mock-based tests verifying _post_ledger_entries behavior without DB.
-# These complement the DB integration tests in test_s5_ledger.py.
-# ============================================================================
+async def _adapter_no_receipt(world, method=None):
+    from core.domain.order_state import OrderState
+    from services.order_service import OrderService
+
+    await OrderService(world.db)._post_ledger_entries(
+        order=world.order, from_state=OrderState.CONFIRMED,
+        to_state=OrderState.PAID, payment_method=method)
+    world.ledger.assert_not_awaited()
+    assert world.db.ledger_calls == []
 
 
 @pytest.mark.asyncio
 async def test_post_ledger_entries_credit_paid_skips_payment_received():
-    """_post_ledger_entries with payment_method='credit' must NOT call
-    post_payment_received — receivable exposure stays on the ledger."""
-    from services.order_service import OrderService
-    from core.domain.order_state import OrderState
-
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_order = MagicMock()
-    mock_order.id = "ord-ledger-1"
-    mock_order.total_amount = Decimal("5000")
-    mock_result.scalar_one_or_none.return_value = mock_order
-    mock_db.execute = AsyncMock(return_value=mock_result)
-    mock_db.flush = AsyncMock()
-    mock_db.refresh = AsyncMock()
-
-    svc = OrderService(mock_db)
-
-    with patch("services.ledger_service.LedgerService") as MockLedgerSvc:
-        ledger_instance = AsyncMock()
-        MockLedgerSvc.return_value = ledger_instance
-
-        await svc._post_ledger_entries(
-            order=mock_order,
-            from_state=OrderState.CONFIRMED,
-            to_state=OrderState.PAID,
-            payment_method="credit",
-        )
-
-        # post_payment_received must NOT be called for credit
-        ledger_instance.post_payment_received.assert_not_called()
-        # post_order_confirmation must NOT be called (target is PAID, not CONFIRMED)
-        ledger_instance.post_order_confirmation.assert_not_called()
+    """Credit adapter zero cash calls, not full credit/recognition acceptance."""
+    with _world() as world:
+        await _adapter_no_receipt(world, "credit")
+        assert world.db.writes == []
 
 
 @pytest.mark.asyncio
 async def test_post_ledger_entries_default_paid_calls_payment_received():
-    """_post_ledger_entries with payment_method=None (default) must call
-    post_payment_received — existing cash/legacy behavior preserved."""
-    from services.order_service import OrderService
-    from core.domain.order_state import OrderState
+    """CTO R1R1 migrates default posting to adapter-zero + missing-method 400."""
+    from api.v1.orders import pay_order
+    from fastapi import HTTPException
+    from schemas.order import PayOrderRequest
 
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_order = MagicMock()
-    mock_order.id = "ord-ledger-2"
-    mock_order.total_amount = Decimal("5000")
-    mock_result.scalar_one_or_none.return_value = mock_order
-    mock_db.execute = AsyncMock(return_value=mock_result)
-    mock_db.flush = AsyncMock()
-    mock_db.refresh = AsyncMock()
-
-    svc = OrderService(mock_db)
-
-    with patch("services.ledger_service.LedgerService") as MockLedgerSvc:
-        ledger_instance = AsyncMock()
-        MockLedgerSvc.return_value = ledger_instance
-
-        await svc._post_ledger_entries(
-            order=mock_order,
-            from_state=OrderState.CONFIRMED,
-            to_state=OrderState.PAID,
-        )
-
-        # post_payment_received MUST be called for default (legacy) PAID
-        ledger_instance.post_payment_received.assert_called_once_with(
-            order_id=mock_order.id,
-            amount=Decimal("5000"),
-            description=f"Payment received for order {mock_order.id} - Amount: {Decimal('5000')}",
-        )
+    with _world() as adapter_world:
+        await _adapter_no_receipt(adapter_world)
+    with _world() as world:
+        before = world.db.snapshot()
+        with pytest.raises(HTTPException) as exc:
+            await pay_order(
+                str(ORDER_ID), token=_FakeToken(), db=world.db,
+                payment_input=PayOrderRequest(amount=Decimal("5000")),
+                x_idempotency_key="phase5-no-method")
+        assert exc.value.status_code == 400
+        assert exc.value.detail["code"] == "PAYMENT_METHOD_REQUIRED"
+        assert world.db.sql == []
+        _assert_no_economic_io(world, before)
 
 
 @pytest.mark.asyncio
 async def test_post_ledger_entries_cash_paid_calls_payment_received():
-    """_post_ledger_entries with payment_method='cash' must call
-    post_payment_received — explicit cash acts like default."""
-    from services.order_service import OrderService
-    from core.domain.order_state import OrderState
-
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_order = MagicMock()
-    mock_order.id = "ord-ledger-3"
-    mock_order.total_amount = Decimal("5000")
-    mock_result.scalar_one_or_none.return_value = mock_order
-    mock_db.execute = AsyncMock(return_value=mock_result)
-    mock_db.flush = AsyncMock()
-    mock_db.refresh = AsyncMock()
-
-    svc = OrderService(mock_db)
-
-    with patch("services.ledger_service.LedgerService") as MockLedgerSvc:
-        ledger_instance = AsyncMock()
-        MockLedgerSvc.return_value = ledger_instance
-
-        await svc._post_ledger_entries(
-            order=mock_order,
-            from_state=OrderState.CONFIRMED,
-            to_state=OrderState.PAID,
-            payment_method="cash",
-        )
-
-        ledger_instance.post_payment_received.assert_called_once()
+    """CTO R1R1: adapter zero; canonical posts final 3000, never full 5000."""
+    with _world() as adapter_world:
+        await _adapter_no_receipt(adapter_world, "cash")
+    with _world(status="partially_paid", prior_paid=Decimal("2000")) as world:
+        requested = Decimal("3000")
+        assert requested != world.order.total_amount
+        response = await _pay(world, requested, "cash", key="ledger-cash-final")
+        assert response.data["status"] == "paid"
+        assert world.db.order_locks == 1
+        _assert_receipt(world, requested)
+        assert world.db.balance == Decimal("0")
+        assert world.db.holds[0].remaining_amount == Decimal("0")
 
 
 @pytest.mark.asyncio
 async def test_post_ledger_entries_transfer_paid_calls_payment_received():
-    """_post_ledger_entries with payment_method='transfer' must call
-    post_payment_received."""
-    from services.order_service import OrderService
-    from core.domain.order_state import OrderState
-
-    mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_order = MagicMock()
-    mock_order.id = "ord-ledger-4"
-    mock_order.total_amount = Decimal("5000")
-    mock_result.scalar_one_or_none.return_value = mock_order
-    mock_db.execute = AsyncMock(return_value=mock_result)
-    mock_db.flush = AsyncMock()
-    mock_db.refresh = AsyncMock()
-
-    svc = OrderService(mock_db)
-
-    with patch("services.ledger_service.LedgerService") as MockLedgerSvc:
-        ledger_instance = AsyncMock()
-        MockLedgerSvc.return_value = ledger_instance
-
-        await svc._post_ledger_entries(
-            order=mock_order,
-            from_state=OrderState.CONFIRMED,
-            to_state=OrderState.PAID,
-            payment_method="transfer",
-        )
-
-        ledger_instance.post_payment_received.assert_called_once()
+    """CTO R1R1: adapter zero; real transfer producer emits one identified receipt."""
+    with _world() as adapter_world:
+        await _adapter_no_receipt(adapter_world, "transfer")
+    with _world(currency="KES") as world:
+        requested = Decimal("5000.00")
+        response = await _pay(world, requested, "transfer",
+                              key="ledger-transfer", reference="TX-ledger-identified")
+        assert response.data["status"] == "paid"
+        _assert_receipt(world, requested)
+        assert world.db.payments[0]["transaction_id"] == "TX-ledger-identified"
+        assert world.db.payments[0]["status"] == "completed"

@@ -714,6 +714,8 @@ def _git_bytes(repo, *argv):
 # CTO fixes the comparison snapshot; this is not overall SOURCE_OK or CI PASS.
 REUSE_477_APPROVED_REF = "47716cdc88451e233c4142e7da0c3d82c368dd22"
 REUSE_APPROVED_REF = "2add5eec0f21e1bc6e505e77e9385e33a105f347"
+# Historical collection remains on 2add; live objects use this CTO-fixed successor.
+REUSE_LIVE_APPROVED_REF = "73d152dfd1cc619304e5e5e7b532ab1df571ebc6"
 REUSE_5033_APPROVED_REF = "5033e2cd039af3b989418ae0a57133a6355ca42c"
 REUSE_PREVIOUS_APPROVED_REF = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
@@ -2943,12 +2945,27 @@ def _reuse_expected_metadata(repo):
     }
     expected["fixed_source_alignment"] = {
         "authority": authorization, "previous_comparison_source": REUSE_477_APPROVED_REF,
-        "whole_backend_frontend_comparison_source": REUSE_APPROVED_REF,
+        "whole_backend_frontend_comparison_source": REUSE_LIVE_APPROVED_REF,
+        "live_comparison_authority": "CTO-AUTH-73D-FIXED-LIVE-SOURCE-CI-ONLY-CODEXL-R1-20261102",
         "historical_bindings_rebound": False, "overall_source_ok": False,
         "OLD_24_HOSTED_FAILURES": "OPEN__NOT_EXECUTED_THIS_TASK",
         "R7_R5_FINAL_SCAN_AND_THREE_RESOURCE_ACTION_GAPS": "RETAINED",
         "CI_SECRET_GATE": "UNADJUDICATED", "hosted_ci": "NOT_RUN",
         "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED",
+    }
+    expected["fixed_live_source"] = {
+        "source_ref": REUSE_LIVE_APPROVED_REF,
+        "backend_tree": _git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + ":backend").decode().strip(),
+        "frontend_tree": _git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + ":frontend").decode().strip(),
+        "historical_collection_ref": REUSE_APPROVED_REF,
+        "historical_field_scope": [
+            "product_anchor", "current_source_intake", "current_collection_binding",
+            "selection_binding", "ordinary_canonical_status",
+        ],
+        "source_interpretation": "LISTED_FIELDS_DESCRIBE_2ADD_INTAKE_NOT_73D_EXECUTION",
+        "current_native_collect": "NOT_RUN",
+        "current_hosted_ci": "NOT_RUN",
+        "claim": "BOUNDED_SOURCE_COMPARISON_ONLY__NOT_BODY_OR_RELEASE_PASS",
     }
     return expected
 
@@ -3081,10 +3098,13 @@ def cmd_verify_reuse(args: argparse.Namespace) -> int:
     except ValueError:
         raise Refused("COVERAGE_NOT_JSON", 5)
     repo = Path(args.repo_root).resolve()
-    if args.approved_ref != REUSE_APPROVED_REF:
+    if args.approved_ref != REUSE_LIVE_APPROVED_REF:
         raise Refused("REUSE_APPROVED_REF_NOT_AUTHORIZED", 5)
     if _git_bytes(repo, "rev-parse", args.approved_ref + "^{commit}").decode().strip() != args.approved_ref:
         raise Refused("REUSE_REF_NOT_FULL_COMMIT", 5)
+    if _git_bytes(repo, "rev-parse", REUSE_APPROVED_REF + "^{commit}").decode().strip() != REUSE_APPROVED_REF:
+        raise Refused("REUSE_REF_NOT_FULL_COMMIT", 5)
+    _git_bytes(repo, "merge-base", "--is-ancestor", REUSE_APPROVED_REF, args.approved_ref)
     _git_bytes(repo, "merge-base", "--is-ancestor", args.approved_ref, "HEAD")
     expected = _reuse_expected_metadata(repo)
     # Node maps are CTO-recovered native results; they do not claim a new run.
@@ -3116,6 +3136,9 @@ def cmd_verify_reuse(args: argparse.Namespace) -> int:
         "release_ready": False,
         "evidence_ready": False,
         "current_source_authority": "AUTHOR_PROPOSAL_PENDING_CTO",
+        "historical_collection_ref": REUSE_APPROVED_REF,
+        "live_object_ref": REUSE_LIVE_APPROVED_REF,
+        "source_match_scope": "BOUNDED_OBJECT_COMPARISON_ONLY",
         "source_objects_checked": object_count,
         "external_source_objects_checked": external_count,
         "problems": sorted(set(problems)),

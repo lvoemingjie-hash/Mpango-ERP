@@ -3097,7 +3097,8 @@
   "fixed_source_alignment": {
     "authority": "CTO-AUTH-2ADD-CI-ALIGNMENT-AND-FIVE-COLLECT-CODEXL-R1-20261101",
     "previous_comparison_source": "47716cdc88451e233c4142e7da0c3d82c368dd22",
-    "whole_backend_frontend_comparison_source": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
+    "whole_backend_frontend_comparison_source": "73d152dfd1cc619304e5e5e7b532ab1df571ebc6",
+    "live_comparison_authority": "CTO-AUTH-73D-FIXED-LIVE-SOURCE-CI-ONLY-CODEXL-R1-20261102",
     "historical_bindings_rebound": false,
     "overall_source_ok": false,
     "OLD_24_HOSTED_FAILURES": "OPEN__NOT_EXECUTED_THIS_TASK",
@@ -3105,6 +3106,23 @@
     "CI_SECRET_GATE": "UNADJUDICATED",
     "hosted_ci": "NOT_RUN",
     "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED"
+  },
+  "fixed_live_source": {
+    "source_ref": "73d152dfd1cc619304e5e5e7b532ab1df571ebc6",
+    "backend_tree": "279f2dfd59aba1b03fb8219b6cf5eca071fb6a2f",
+    "frontend_tree": "0d408ad5c8c621b263c06aa1e7761cf5f0047cb0",
+    "historical_collection_ref": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
+    "historical_field_scope": [
+      "product_anchor",
+      "current_source_intake",
+      "current_collection_binding",
+      "selection_binding",
+      "ordinary_canonical_status"
+    ],
+    "source_interpretation": "LISTED_FIELDS_DESCRIBE_2ADD_INTAKE_NOT_73D_EXECUTION",
+    "current_native_collect": "NOT_RUN",
+    "current_hosted_ci": "NOT_RUN",
+    "claim": "BOUNDED_SOURCE_COMPARISON_ONLY__NOT_BODY_OR_RELEASE_PASS"
   },
   "previous_5033_fixed_source_comparison": {
     "record": "RC4_CTO_FIXED_5033_SOURCE_COMPARISON_V1",

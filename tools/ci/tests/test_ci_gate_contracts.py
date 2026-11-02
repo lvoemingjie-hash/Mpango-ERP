@@ -2278,8 +2278,36 @@ FAKE_POETRY_DISPATCH = r'''#!/usr/bin/env bash
 # "run pytest" to the fake pytest script and everything else to the real
 # interpreter on PATH (the observer heredoc path)
 DIR="${C91_FAKE_DIR:-/tmp}"
-N=$(ls "$DIR" 2>/dev/null | grep -c '^poetry-' || true)
-printf '%s\n' "$*" > "$DIR/poetry-$N.argv"
+RECORDED=0
+# Atomically reserve the numbered file and write through its own descriptor.
+for ((N = 0; N < 1024; N++)); do
+  RECORD_PATH="$DIR/poetry-$N.argv"
+  if [ -L "$RECORD_PATH" ] || { [ -e "$RECORD_PATH" ] && [ ! -f "$RECORD_PATH" ]; }; then
+    echo "FAKE_POETRY_ARGV_RESERVATION_FAILED" >&2
+    exit 73
+  fi
+  if (
+    set -o noclobber
+    { printf '%s\n' "$*" >&3 || exit 74; } 3>"$RECORD_PATH"
+  ) 2>/dev/null; then
+    RECORDED=1
+    break
+  else
+    RECORD_RC=$?
+    if [ "$RECORD_RC" -eq 74 ]; then
+      echo "FAKE_POETRY_ARGV_WRITE_FAILED" >&2
+      exit 74
+    fi
+    if [ ! -f "$RECORD_PATH" ] || [ -L "$RECORD_PATH" ]; then
+      echo "FAKE_POETRY_ARGV_RESERVATION_FAILED" >&2
+      exit 73
+    fi
+  fi
+done
+if [ "$RECORDED" -ne 1 ]; then
+  echo "FAKE_POETRY_ARGV_RESERVATIONS_EXHAUSTED" >&2
+  exit 73
+fi
 if [ "$1" = "run" ] && [ "$2" = "pytest" ]; then
   shift 2
   exec python "${FAKE_PYTEST_SCRIPT:?}" "$@"
@@ -3900,7 +3928,7 @@ class TestR6R5HostedPreconditions:
     def test_e03_helper_and_backend_frozen(self):
         diff = self._git(
             "diff", "--name-only",
-            TestReuseValidityMachineCheck.APPROVED, "HEAD",
+            TestReuseValidityMachineCheck.LIVE_APPROVED, "HEAD",
             "--", "backend",
             cwd=REPO_ROOT,
         )
@@ -4084,6 +4112,7 @@ class TestReuseValidityMachineCheck:
     """Approved Git objects, complete metadata and real admission controls."""
 
     APPROVED = "2add5eec0f21e1bc6e505e77e9385e33a105f347"
+    LIVE_APPROVED = "73d152dfd1cc619304e5e5e7b532ab1df571ebc6"
     PREVIOUS_477_APPROVED = "47716cdc88451e233c4142e7da0c3d82c368dd22"
     PREVIOUS_5033_APPROVED = "5033e2cd039af3b989418ae0a57133a6355ca42c"
     PREVIOUS_APPROVED = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
@@ -4099,7 +4128,7 @@ class TestReuseValidityMachineCheck:
         result = path.with_suffix(".result.json")
         proc = subprocess.run(
             [sys.executable, str(tool), "verify-reuse", "--coverage", str(path),
-             "--repo-root", str(repo), "--approved-ref", self.APPROVED,
+             "--repo-root", str(repo), "--approved-ref", self.LIVE_APPROVED,
              "--result-file", str(result)],
             capture_output=True, text=True,
         )
@@ -4120,6 +4149,10 @@ class TestReuseValidityMachineCheck:
         assert proc.returncode == 0, proc.stdout + proc.stderr
         assert data["all_valid"] and data["source_objects_checked"] > 100
         assert data["external_source_objects_checked"] == 3
+        assert data["historical_collection_ref"] == self.APPROVED
+        assert data["live_object_ref"] == self.LIVE_APPROVED
+        assert data["source_match_scope"] == "BOUNDED_OBJECT_COMPARISON_ONLY"
+        assert not data["release_ready"] and not data["evidence_ready"]
         assert data["full_dedicated_node_coverage"] == "GAP_RCJ_NODE_MAP_NOT_ESTABLISHED"
         assert "candidate" not in proc.stdout
         assert "backend/" not in proc.stdout
@@ -4337,13 +4370,68 @@ PY
 
     def test_unapproved_product_ref_refused(self, tmp_path):
         coverage = self._coverage(tmp_path)
-        for ref in ("fd37acbbd3af8c9d0ed64ecb4ad0849d4ab8c366", self.PREVIOUS_APPROVED,
+        for ref in ("HEAD", self.LIVE_APPROVED[:8], self.APPROVED,
+                    "10f2a46046bed3157bbeeb1b69b2230dfac62850",
+                    "fd37acbbd3af8c9d0ed64ecb4ad0849d4ab8c366", self.PREVIOUS_APPROVED,
                     self.PREVIOUS_5033_APPROVED):
             proc = subprocess.run([
                 sys.executable, str(EVIDENCE_TOOL), "verify-reuse", "--coverage", str(coverage),
                 "--repo-root", str(REPO_ROOT), "--approved-ref", ref], capture_output=True, text=True)
             assert proc.returncode == 5
             assert "REUSE_APPROVED_REF_NOT_AUTHORIZED" in proc.stderr
+
+    @pytest.mark.parametrize("drift", ["phase5", "p10", "phase5_old_blob"])
+    def test_current_approved_test_bytes_remain_load_bearing(self, tmp_path, drift):
+        import hashlib
+        import stat
+
+        repo = self._clone(tmp_path)
+        rel = "backend/tests/" + (
+            "test_platform_p10_contracts.py" if drift == "p10" else "test_phase5_order_payment.py"
+        )
+        target = repo / rel
+        original, mode = target.read_bytes(), stat.S_IMODE(target.stat().st_mode)
+        coverage = self._coverage(tmp_path)
+        try:
+            changed = subprocess.check_output(
+                ["git", "show", self.APPROVED + ":" + rel], cwd=repo
+            ) if drift == "phase5_old_blob" else original + b"\n# unapproved test byte\n"
+            assert changed != original
+            target.write_bytes(changed)
+            proc, data = self._check(repo, coverage)
+            assert proc.returncode == 5 and data["problems"] == ["REUSE_OBJECT_DRIFT"]
+            assert not data["all_valid"]
+        finally:
+            target.write_bytes(original)
+            target.chmod(mode)
+        assert hashlib.sha256(target.read_bytes()).digest() == hashlib.sha256(original).digest()
+        assert stat.S_IMODE(target.stat().st_mode) == mode
+        proc, restored = self._check(repo, coverage)
+        assert proc.returncode == 0 and restored["all_valid"]
+        assert subprocess.check_output(["git", "status", "--porcelain"], cwd=repo) == b""
+
+    @pytest.mark.parametrize("forgery", ["collection_ref", "collection_tree", "live_collect"])
+    def test_history_and_live_claims_cannot_be_rebound_by_coverage(self, tmp_path, forgery):
+        path = self._coverage(tmp_path)
+        data = json.loads(path.read_text())
+        if forgery == "collection_ref":
+            data["current_collection_binding"]["source_ref"] = self.LIVE_APPROVED
+        elif forgery == "collection_tree":
+            data["current_source_intake"]["backend_tree"] = data["fixed_live_source"]["backend_tree"]
+        else:
+            data["fixed_live_source"]["current_native_collect"] = "PASS_4574_AT_73D"
+        path.write_text(json.dumps(data))
+        proc, result = self._check(REPO_ROOT, path)
+        assert proc.returncode == 5 and result["problems"] == ["REUSE_METADATA_PROVENANCE"]
+        assert not result["all_valid"] and not result["release_ready"] and not result["evidence_ready"]
+
+    def test_live_source_must_be_ancestor_of_ci_only_head(self, tmp_path):
+        repo = self._clone(tmp_path)
+        subprocess.run(["git", "checkout", "--detach", self.APPROVED], cwd=repo, check=True,
+                       capture_output=True)
+        proc, result = self._check(repo, self._coverage(tmp_path))
+        assert proc.returncode == 5 and "REUSE_GIT_SOURCE_UNAVAILABLE" in proc.stderr
+        assert result == {}, "ancestry refusal must precede bounded match output"
 
     @pytest.mark.parametrize("forgery", ("comparison_anchor", "reviewed_note"))
     def test_fixed_alignment_metadata_tampering_refused(self, tmp_path, forgery):
@@ -4421,6 +4509,26 @@ PY
             assert coverage[key] == reviewed[key]
         assert coverage["fixed_source_alignment"]["historical_bindings_rebound"] is False
         assert coverage["fixed_source_alignment"]["overall_source_ok"] is False
+        before_live_split = json.loads(subprocess.check_output([
+            "git", "show", self.LIVE_APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+        ], cwd=REPO_ROOT, text=True))
+        preserved = {k: v for k, v in coverage.items() if k not in {"fixed_live_source", "fixed_source_alignment"}}
+        assert preserved == {k: v for k, v in before_live_split.items() if k != "fixed_source_alignment"}
+        alignment = dict(coverage["fixed_source_alignment"])
+        assert alignment.pop("live_comparison_authority") == "CTO-AUTH-73D-FIXED-LIVE-SOURCE-CI-ONLY-CODEXL-R1-20261102"
+        assert alignment.pop("whole_backend_frontend_comparison_source") == self.LIVE_APPROVED
+        old_alignment = dict(before_live_split["fixed_source_alignment"])
+        assert old_alignment.pop("whole_backend_frontend_comparison_source") == self.APPROVED
+        assert alignment == old_alignment
+        live = coverage["fixed_live_source"]
+        assert live["source_ref"] == self.LIVE_APPROVED
+        assert live["historical_collection_ref"] == self.APPROVED
+        assert live["historical_field_scope"] == [
+            "product_anchor", "current_source_intake", "current_collection_binding",
+            "selection_binding", "ordinary_canonical_status",
+        ]
+        assert live["source_interpretation"] == "LISTED_FIELDS_DESCRIBE_2ADD_INTAKE_NOT_73D_EXECUTION"
+        assert live["current_native_collect"] == live["current_hosted_ci"] == "NOT_RUN"
         assert current["profile_transfer"] == {
             "file": "tests/test_pw1r3_rate_limit_context.py",
             "source": "runtime-b", "destination": "invariants-jwt", "nodes": 7,
@@ -4652,7 +4760,8 @@ PY
     def test_real_workflow_admission_before_body(self, tmp_path):
         doc = yaml.safe_load(DEPLOY_WF.read_text())
         gate = self._admission(doc)
-        assert self.APPROVED in gate["run"]
+        assert self.LIVE_APPROVED in gate["run"]
+        assert "--approved-ref " + self.APPROVED not in gate["run"]
         assert doc["jobs"]["test"]["strategy"]["max-parallel"] == 2
 
     @pytest.mark.parametrize("failure", ["partition", "product", "repin", "missing_binding", "wiring", "dedicated_wiring", "reuse_wiring", "condition"])
@@ -5644,6 +5753,147 @@ def exercise():
         assert proof['input_sha256'] == __import__('hashlib').sha256((path/'native.xml').read_bytes()).hexdigest()
         assert proof['derived_output_sha256'] == __import__('hashlib').sha256(out.read_bytes()).hexdigest()
 
+    def test_fake_poetry_atomic_recorder_keeps_concurrent_dispatches(self, tmp_path):
+        import ast
+        from collections import Counter
+        import hashlib
+        import select
+        import time
+
+        source_ref = TestReuseValidityMachineCheck.LIVE_APPROVED
+        source = subprocess.check_output([
+            "git", "show", source_ref + ":tools/ci/tests/test_ci_gate_contracts.py"
+        ], cwd=REPO_ROOT)
+        tree = ast.parse(source)
+        old_fixture = next(ast.literal_eval(n.value) for n in tree.body
+                           if isinstance(n, ast.Assign)
+                           and any(isinstance(t, ast.Name) and t.id == "FAKE_POETRY_DISPATCH" for t in n.targets))
+        branch = 'if [ "$1" = "run" ] && [ "$2" = "pytest" ]; then'
+        assert old_fixture.split(branch, 1)[1] == FAKE_POETRY_DISPATCH.split(branch, 1)[1]
+        barrier = tmp_path / "barrier.py"
+        barrier.write_text('''import json,os,select,sys
+r,w=int(os.environ["ATOMIC_RELEASE_FD"]),int(os.environ["ATOMIC_READY_FD"])
+def event(kind):
+    os.write(w,(json.dumps({"event":kind,"role":os.environ["ATOMIC_ROLE"],"pid":os.getpid()})+"\\n").encode())
+event("arrived")
+if not select.select([r],[],[],8)[0] or os.read(r,1)!=b"G":
+    sys.exit("ATOMIC_CONTROL_BARRIER_FAILED")
+event("released")
+''')
+        inserted = '''if [ "$N" -eq 0 ]; then
+  "$ATOMIC_CONTROL_PYTHON" "$ATOMIC_CONTROL_BARRIER" || exit 79
+fi
+'''
+        observations = []
+        for label, fixture in (("old", old_fixture), ("atomic", FAKE_POETRY_DISPATCH)):
+            case = tmp_path / label
+            case.mkdir()
+            records = case / "records"
+            records.mkdir()
+            anchor = next(line for line in fixture.splitlines() if line.startswith("printf ")
+                          and "poetry-$N.argv" in line) if label == "old" else "  if (\n"
+            assert fixture.count(anchor) == 1
+            instrumented = fixture.replace(anchor, inserted + anchor, 1)
+            script = case / "poetry"
+            script.write_text(instrumented)
+            dispatch = case / "dispatch.py"
+            dispatch.write_text('''import json,os,pathlib,sys
+pathlib.Path(os.environ["DISPATCH_RECEIPT"]).write_text(json.dumps(sys.argv[1:]))
+sys.exit(int(os.environ["DISPATCH_RC"]))
+''')
+            arguments = {"observer": ["run", "python", str(dispatch), "with space"],
+                         "pytest": ["run", "pytest", "tests/synthetic.py", "-q", "--junitxml=case.xml"]}
+            expected = Counter(" ".join(a) + "\n" for a in arguments.values())
+            ready_r, ready_w = os.pipe()
+            release_r, release_w = os.pipe()
+            processes, identities, events = {}, [], []
+            pending = b""
+
+            def await_events(kind):
+                nonlocal pending
+                deadline = time.monotonic() + 8
+                while {e["role"] for e in events if e["event"] == kind} != set(arguments):
+                    remaining = deadline - time.monotonic()
+                    assert remaining > 0 and select.select([ready_r], [], [], remaining)[0], "ATOMIC_CONTROL_BARRIER_TIMEOUT"
+                    data = os.read(ready_r, 8192)
+                    assert data, "ATOMIC_CONTROL_BARRIER_EOF"
+                    pending += data
+                    while b"\n" in pending:
+                        line, pending = pending.split(b"\n", 1)
+                        event = json.loads(line)
+                        assert event["role"] in arguments and event["event"] in {"arrived", "released"}
+                        assert not any(e["role"] == event["role"] and e["event"] == event["event"] for e in events)
+                        events.append(event)
+
+            try:
+                for role, argv in arguments.items():
+                    env = dict(os.environ, C91_FAKE_DIR=str(records), FAKE_PYTEST_SCRIPT=str(dispatch),
+                               DISPATCH_RECEIPT=str(case / (role + ".dispatch.json")),
+                               DISPATCH_RC="0" if role == "observer" else "124",
+                               ATOMIC_ROLE=role, ATOMIC_READY_FD=str(ready_w), ATOMIC_RELEASE_FD=str(release_r),
+                               ATOMIC_CONTROL_PYTHON=sys.executable, ATOMIC_CONTROL_BARRIER=str(barrier))
+                    process = subprocess.Popen([BASH, str(script), *argv], env=env,
+                                               pass_fds=(ready_w, release_r), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    processes[role] = process
+                    tail = Path(f"/proc/{process.pid}/stat").read_text().rsplit(")", 1)[1].split()
+                    identities.append({"role": role, "pid": process.pid, "start_ticks": int(tail[19]),
+                                       "argv": [BASH, str(script), *argv]})
+                await_events("arrived")
+                assert len(events) == 2 and not list(records.glob("poetry-*.argv"))
+                os.write(release_w, b"GG")
+                await_events("released")
+                returns = {}
+                for role, process in processes.items():
+                    stdout, stderr = process.communicate(timeout=10)
+                    assert stdout == b"" and stderr == b""
+                    assert process.returncode == (0 if role == "observer" else 124)
+                    expected_dispatch = arguments[role][2:] if role == "pytest" else arguments[role][3:]
+                    assert json.loads((case / (role + ".dispatch.json")).read_text()) == expected_dispatch
+                    returns[role] = process.returncode
+            finally:
+                for process in processes.values():
+                    if process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=3)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait(timeout=3)
+                for fd in (ready_r, ready_w, release_r, release_w):
+                    os.close(fd)
+            paths = sorted(records.glob("poetry-*.argv"))
+            actual = Counter(path.read_text() for path in paths)
+            marker = "ATOMIC_FAKE_POETRY_TWO_DISPATCHES_MUST_RETAIN_BOTH_ARGV"
+            if label == "old":
+                assert len(paths) == 1 and actual != expected
+                with pytest.raises(AssertionError, match=marker):
+                    assert actual == expected, marker
+            else:
+                assert [p.name for p in paths] == ["poetry-0.argv", "poetry-1.argv"]
+                assert actual == expected, marker
+            observations.append({"variant": label, "source_ref": source_ref,
+                                 "fixture_sha256": hashlib.sha256(fixture.encode()).hexdigest(),
+                                 "instrumented_sha256": hashlib.sha256(instrumented.encode()).hexdigest(),
+                                 "instrumented_path": str(script), "barrier_path": str(barrier),
+                                 "barrier_sha256": hashlib.sha256(barrier.read_bytes()).hexdigest(),
+                                 "insertion_anchor": anchor, "barrier_events": events,
+                                 "both_arrived_before_any_record": True, "release_bytes": 2,
+                                 "processes": identities, "returncodes": returns,
+                                 "record_paths": [str(p) for p in paths],
+                                 "expected_argv_multiset": dict(expected), "actual_argv_multiset": dict(actual),
+                                 "named_loss_oracle": marker, "no_overwrite": actual == expected})
+        missing_env = dict(os.environ, C91_FAKE_DIR=str(tmp_path / "absent" / "records"))
+        uninstrumented = tmp_path / "atomic-poetry-uninstrumented"
+        uninstrumented.write_text(FAKE_POETRY_DISPATCH)
+        refusal = subprocess.run([BASH, str(uninstrumented), "run", "pytest"], env=missing_env,
+                                 capture_output=True, timeout=10)
+        assert refusal.returncode == 73 and b"FAKE_POETRY_ARGV_RESERVATION_FAILED" in refusal.stderr
+        assert not (tmp_path / "absent").exists()
+        (tmp_path / "atomic-poetry-recorder-proof.json").write_text(json.dumps({
+            "variants": observations, "dispatch_branches_unchanged": True,
+            "missing_directory_named_refusal": True, "historical_interleaving_recovered": False,
+        }, indent=2) + "\n")
+
     def test_workflow_only_runtime_a_loads_observer_preserving_rc(self, tmp_path):
         helper = TestR6R1FragmentControls()
         doc = yaml.safe_load(DEPLOY_WF.read_text())
@@ -5923,10 +6173,11 @@ class TestCurrentPreparationContract:
         # This phase permits CI-only edits, never a different product/test source.
         module = TestR6R4RealGeneratorControls._evidence_module()
         assert module.REUSE_APPROVED_REF == probe.APPROVED
-        problems, count = module._reuse_object_problems(REPO_ROOT, probe.APPROVED)
+        assert module.REUSE_LIVE_APPROVED_REF == probe.LIVE_APPROVED
+        problems, count = module._reuse_object_problems(REPO_ROOT, probe.LIVE_APPROVED)
         assert problems == [] and count > 100
         changed = subprocess.check_output(
-            ['git', 'diff', '--name-only', probe.APPROVED], cwd=REPO_ROOT, text=True).splitlines()
+            ['git', 'diff', '--name-only', probe.LIVE_APPROVED], cwd=REPO_ROOT, text=True).splitlines()
         assert set(changed) <= {
             '.github/workflows/deploy-staging.yml', 'tools/ci/prepare_test_evidence.py',
             'tools/ci/tests/test_ci_gate_contracts.py', '.secrets.baseline',

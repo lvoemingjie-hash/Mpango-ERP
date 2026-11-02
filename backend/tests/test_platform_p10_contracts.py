@@ -18,8 +18,11 @@ Test IDs align with PLATFORM_PRODUCT_P10A_TEST_PLAN.md categories:
   RO-xxx: Read-Only behavior tests
 """
 import pytest
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -1855,16 +1858,109 @@ class TestBearerSuperAdminAccess:
 # ===============================================================
 
 
+_BEARER_TENANT_ID = UUID("00000000-0000-4000-8000-000000000010")
+_BEARER_USER_ID = UUID("00000000-0000-4000-8000-000000000020")
+
+
+class _BearerIdentityRow(NamedTuple):
+    id: UUID
+    name: str | None = None
+
+
+class _BearerIdentityResult:
+    def __init__(self, rows: tuple[_BearerIdentityRow, ...]):
+        self.rows = rows
+
+    def first(self):
+        return self.rows[0] if self.rows else None
+
+    def all(self):
+        return list(self.rows)
+
+
+class _BearerIdentityIO:
+    """Only the two declared identity-authority reads, not an auth substitute."""
+
+    def __init__(self):
+        self.tenant_id = _BEARER_TENANT_ID
+        self.user_id = _BEARER_USER_ID
+        self.wholesaler_live = True
+        self.user_live = True
+        self.roles = ("super_admin",)
+        self.opened = 0
+        self.closed = 0
+        self.nested = 0
+        self.query_log: list[tuple[str, UUID]] = []
+
+    @asynccontextmanager
+    async def __call__(self):
+        assert self.opened == self.closed
+        self.opened += 1
+        try:
+            yield self
+        finally:
+            assert self.nested == 0
+            self.closed += 1
+
+    @asynccontextmanager
+    async def begin_nested(self):
+        assert self.opened == self.closed + 1 and self.nested == 0
+        self.nested += 1
+        try:
+            yield
+        finally:
+            self.nested -= 1
+
+    async def execute(self, statement, params):
+        from sqlalchemy.sql.elements import TextClause
+
+        assert self.opened == self.closed + 1
+        assert isinstance(statement, TextClause)
+        sql = str(statement)
+        live_sql = (
+            "SELECT id FROM public.wholesalers WHERE id=:tid "
+            "AND is_deleted IS FALSE AND status='active'"
+        )
+        schema = "t_" + self.tenant_id.hex
+        roles_sql = (
+            f'SELECT u.id, r.name FROM "{schema}".users u '
+            f'LEFT JOIN "{schema}".user_roles ur ON ur.user_id=u.id '
+            f'LEFT JOIN "{schema}".roles r ON r.id=ur.role_id AND r.is_deleted IS FALSE '
+            "WHERE u.id=:uid AND u.is_active IS TRUE AND u.is_deleted IS FALSE"
+        )
+        if sql == live_sql:
+            assert self.nested == 0 and set(params) == {"tid"}
+            assert isinstance(params["tid"], UUID)
+            self.query_log.append(("wholesaler", params["tid"]))
+            rows = (
+                (_BearerIdentityRow(self.tenant_id),)
+                if params["tid"] == self.tenant_id and self.wholesaler_live
+                else ()
+            )
+        elif sql == roles_sql:
+            assert self.nested == 1 and set(params) == {"uid"}
+            assert isinstance(params["uid"], UUID)
+            self.query_log.append(("user_roles", params["uid"]))
+            rows = (
+                tuple(_BearerIdentityRow(self.user_id, role) for role in self.roles)
+                or (_BearerIdentityRow(self.user_id),)
+                if params["uid"] == self.user_id and self.user_live
+                else ()
+            )
+        else:
+            raise AssertionError("Undeclared bearer-authority SQL")
+        return _BearerIdentityResult(rows)
+
+
 def _make_app_with_real_middleware(mock_db):
     """
     Build a test app with the REAL AuthenticationMiddleware + JwtAuthStrategy.
 
-    Uses create_identity_token / create_contextual_token to generate
-    valid JWTs that go through the actual decode pipeline.
+    Identity authority has a separate, locally scoped session fixture.
+    The endpoint overrides below supply only the handler's data reads.
     """
     from api.middleware.auth import AuthenticationMiddleware
     from auth.strategies.jwt import JwtAuthStrategy
-    from core.config import get_settings
 
     app = FastAPI()
     app.include_router(p10_router)
@@ -1885,17 +1981,25 @@ def _make_app_with_real_middleware(mock_db):
     app.dependency_overrides[db_get_db] = override
 
     # Use the real JWT auth middleware
-    settings = get_settings()
     strategy = JwtAuthStrategy()
     app.add_middleware(AuthenticationMiddleware, strategy=strategy)
 
     return app
 
 
-def _create_real_identity_token(roles):
-    """Create a real JWT identity token using the app's SECRET_KEY."""
+def _create_real_identity_token(
+    roles, *, user_id=str(_BEARER_USER_ID), tenant_user_map=None,
+    include_binding=True,
+):
+    """Sign requested claims; independently declared I/O rows supply authority."""
     from core.security import create_identity_token
-    return create_identity_token(user_id="user-real-123", roles=roles)
+
+    if include_binding and tenant_user_map is None:
+        tenant_user_map = {str(_BEARER_TENANT_ID): str(_BEARER_USER_ID)}
+    return create_identity_token(
+        user_id=user_id, roles=roles,
+        tenant_user_map=tenant_user_map if include_binding else None,
+    )
 
 
 def _create_real_contextual_token(roles):
@@ -1914,51 +2018,107 @@ class TestBearerRealMiddleware:
     P11-B0-R1: Real Bearer-through-middleware tests.
 
     These tests use the real AuthenticationMiddleware + JwtAuthStrategy
-    with actual JWT tokens (not mocked auth context). This proves the
-    full auth pipeline works end-to-end for P10 platform access.
+    with actual JWT tokens and controlled, typed database I/O. The real
+    current_identity algorithm and guard run, but login/password issuance,
+    real database authority and revocation APIs are not integrated here.
     """
 
-    def test_real_identity_super_admin_allowed(self, monkeypatch):
-        """Real JWT identity token with super_admin -> 200."""
+    @pytest.fixture
+    def identity_io(self, monkeypatch):
+        from database import session
+
+        original = session.AsyncSessionLocal
+        authority = _BearerIdentityIO()
+        try:
+            with monkeypatch.context() as scoped:
+                scoped.setattr(session, "AsyncSessionLocal", authority)
+                yield authority
+        finally:
+            assert session.AsyncSessionLocal is original
+            assert authority.opened == authority.closed
+            assert authority.nested == 0
+
+    def test_real_identity_super_admin_allowed(self, monkeypatch, identity_io):
+        """Live super_admin -> 200; the same old JWT loses a withdrawn role."""
         monkeypatch.delenv("MPANGO_ENV", raising=False)
         monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
         monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
-        app = _make_app_with_real_middleware(None)
+        endpoint_db = _mock_db_for_list([])
+        app = _make_app_with_real_middleware(endpoint_db)
         token = _create_real_identity_token(roles=["super_admin"])
-        client = TestClient(app)
-        resp = client.get(
-            "/api/v1/platform/p10/tenants",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert resp.status_code == 200
+        headers = {"Authorization": f"Bearer {token}"}
+        with TestClient(app) as client:
+            resp = client.get("/api/v1/platform/p10/tenants", headers=headers)
+            assert resp.status_code == 200
+            assert resp.json()["items"] == [] and resp.json()["total"] == 0
+            assert identity_io.opened == identity_io.closed == 1
+            assert endpoint_db.execute.await_count == 2
 
-    def test_real_identity_admin_denied(self, monkeypatch):
-        """Real JWT identity token with admin role -> denied."""
+            identity_io.roles = ("admin",)
+            revoked = client.get("/api/v1/platform/p10/tenants", headers=headers)
+            assert revoked.status_code == 401
+            assert revoked.json() == {
+                "code": "PLATFORM_ROLE_REVOKED",
+                "message": "Identity is no longer authorized; sign in again",
+            }
+            assert identity_io.opened == identity_io.closed == 2
+            assert identity_io.query_log == [
+                ("wholesaler", _BEARER_TENANT_ID), ("user_roles", _BEARER_USER_ID),
+                ("wholesaler", _BEARER_TENANT_ID), ("user_roles", _BEARER_USER_ID),
+            ]
+            assert endpoint_db.execute.await_count == 2
+
+    def test_real_identity_admin_denied(self, monkeypatch, identity_io):
+        """Valid admin is denied; old claims cannot acquire a new platform role."""
         monkeypatch.delenv("MPANGO_ENV", raising=False)
         monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
         monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
         app = _make_app_with_real_middleware(None)
         token = _create_real_identity_token(roles=["admin"])
-        client = TestClient(app)
-        resp = client.get(
-            "/api/v1/platform/p10/tenants",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert resp.status_code == 401
+        identity_io.roles = ("admin",)
+        with TestClient(app) as client:
+            for current_roles in (("admin",), ("super_admin",)):
+                identity_io.roles = current_roles
+                resp = client.get(
+                    "/api/v1/platform/p10/tenants",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                assert resp.status_code == 401
+                assert resp.json()["detail"]["code"] == "PLATFORM_ACCESS_REQUIRED"
+        assert identity_io.opened == identity_io.closed == 2
+        assert len(identity_io.query_log) == 4
 
-    def test_real_identity_user_denied(self, monkeypatch):
-        """Real JWT identity token with user role -> denied."""
+    def test_real_identity_user_denied(self, monkeypatch, identity_io):
+        """Valid user fails the guard; an absent bound user fails authority."""
         monkeypatch.delenv("MPANGO_ENV", raising=False)
         monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
         monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
         app = _make_app_with_real_middleware(None)
+        identity_io.roles = ("user",)
         token = _create_real_identity_token(roles=["user"])
-        client = TestClient(app)
-        resp = client.get(
-            "/api/v1/platform/p10/tenants",
-            headers={"Authorization": f"Bearer {token}"},
+        absent_uid = UUID("00000000-0000-4000-8000-000000000030")
+        absent_token = _create_real_identity_token(
+            roles=["user"], user_id=str(absent_uid),
+            tenant_user_map={str(_BEARER_TENANT_ID): str(absent_uid)},
         )
-        assert resp.status_code == 401
+        with TestClient(app) as client:
+            resp = client.get(
+                "/api/v1/platform/p10/tenants",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 401
+            assert resp.json()["detail"]["code"] == "PLATFORM_ACCESS_REQUIRED"
+            absent = client.get(
+                "/api/v1/platform/p10/tenants",
+                headers={"Authorization": f"Bearer {absent_token}"},
+            )
+            assert absent.status_code == 401
+            assert absent.json() == {
+                "code": "IDENTITY_REVOKED",
+                "message": "Identity is no longer authorized; sign in again",
+            }
+        assert identity_io.opened == identity_io.closed == 2
+        assert identity_io.query_log[-1] == ("user_roles", absent_uid)
 
     def test_contextual_super_admin_denied_with_auth_context(self, monkeypatch):
         """Manual auth-context injection: contextual super_admin -> DENIED.
@@ -1969,8 +2129,8 @@ class TestBearerRealMiddleware:
         live DB for contextual tokens, so we use manual injection to prove
         the guard rejects contextual super_admin tokens at the guard level.
 
-        The real middleware pipeline is proven by the 5 tests above.
-        Contextual denial is additionally proven by
+        The other real-middleware nodes use controlled identity database I/O;
+        this node remains only a guard-level check. Denial also appears in
         test_contextual_super_admin_denied in TestBearerSuperAdminAccess.
         """
         monkeypatch.delenv("MPANGO_ENV", raising=False)
@@ -1979,33 +2139,62 @@ class TestBearerRealMiddleware:
         # Use the manual auth injection to avoid tenant resolution crash
         app = _make_app_with_auth(None, user_roles=["super_admin"],
                                    identity_only=False)
-        client = TestClient(app)
-        resp = client.get("/api/v1/platform/p10/tenants")
-        assert resp.status_code in (401, 403)
+        with TestClient(app) as client:
+            resp = client.get("/api/v1/platform/p10/tenants")
+            assert resp.status_code == 401
+            assert resp.json()["detail"]["code"] == "PLATFORM_ACCESS_REQUIRED"
 
-    def test_real_no_auth_denied(self, monkeypatch):
-        """No Authorization header -> denied."""
+    def test_real_no_auth_denied(self, monkeypatch, identity_io):
+        """No auth or malformed signed bindings fail before any authority SQL."""
         monkeypatch.delenv("MPANGO_ENV", raising=False)
         monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
         monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
         app = _make_app_with_real_middleware(None)
-        client = TestClient(app)
-        resp = client.get("/api/v1/platform/p10/tenants")
-        assert resp.status_code == 401
+        with TestClient(app) as client:
+            resp = client.get("/api/v1/platform/p10/tenants")
+            assert resp.status_code == 401
+            assert resp.json()["detail"]["code"] == "PLATFORM_ACCESS_REQUIRED"
+            assert identity_io.opened == identity_io.closed == 0
+            malformed = (
+                {"include_binding": False},
+                {"user_id": "not-a-uuid"},
+                {"tenant_user_map": {"not-a-uuid": str(_BEARER_USER_ID)}},
+                {"tenant_user_map": {str(_BEARER_TENANT_ID): "not-a-uuid"}},
+            )
+            for inputs in malformed:
+                token = _create_real_identity_token(roles=["super_admin"], **inputs)
+                denied = client.get(
+                    "/api/v1/platform/p10/tenants",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                assert denied.status_code == 401
+                assert denied.json() == {
+                    "code": "IDENTITY_BINDING_REQUIRED",
+                    "message": "Identity is no longer authorized; sign in again",
+                }
+        assert identity_io.opened == identity_io.closed == 4
+        assert identity_io.query_log == []
 
-    def test_real_identity_super_admin_system_health(self, monkeypatch):
-        """Real JWT identity super_admin -> system health 200."""
+    def test_real_identity_super_admin_system_health(self, monkeypatch, identity_io):
+        """Real JWT/authority/guard -> health 200; no handler DB work is needed."""
         monkeypatch.delenv("MPANGO_ENV", raising=False)
         monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
         monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
-        app = _make_app_with_real_middleware(None)
+        endpoint_db = _mock_db_for_list([])
+        app = _make_app_with_real_middleware(endpoint_db)
         token = _create_real_identity_token(roles=["super_admin"])
-        client = TestClient(app)
-        resp = client.get(
-            "/api/v1/platform/p10/system/health",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert resp.status_code == 200
+        with TestClient(app) as client:
+            resp = client.get(
+                "/api/v1/platform/p10/system/health",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["overall_status"] == "unknown"
+        assert identity_io.opened == identity_io.closed == 1
+        assert identity_io.query_log == [
+            ("wholesaler", _BEARER_TENANT_ID), ("user_roles", _BEARER_USER_ID),
+        ]
+        assert endpoint_db.execute.await_count == 0
 
 
 # ===============================================================

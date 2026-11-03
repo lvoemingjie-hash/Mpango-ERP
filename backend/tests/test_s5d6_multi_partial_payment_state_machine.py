@@ -22,6 +22,7 @@ class _Token:
 
 
 async def _seed_confirmed_order(async_session, *, total: Decimal):
+    """Ugandan order with its own UGX snapshot, not a live-setting fallback."""
     tenant_id = uuid.UUID(async_session.info["tenant_id"])
     user_id = uuid.uuid4()
     retailer_id = uuid.uuid4()
@@ -68,8 +69,8 @@ async def _seed_confirmed_order(async_session, *, total: Decimal):
     await async_session.execute(
         text(
             """
-            INSERT INTO orders (id, wholesaler_id, retailer_id, status, total_amount)
-            VALUES (:order_id, :tenant_id, :retailer_id, 'confirmed', :total)
+            INSERT INTO orders (id, wholesaler_id, retailer_id, status, total_amount, currency_snapshot)
+            VALUES (:order_id, :tenant_id, :retailer_id, 'confirmed', :total, 'UGX')
             """
         ),
         {"order_id": order_id, "tenant_id": tenant_id, "retailer_id": retailer_id, "total": total},

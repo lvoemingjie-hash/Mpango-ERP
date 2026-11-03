@@ -142,8 +142,8 @@ async def test_settle_update_leaves_credit_rows_pending(async_session):
     await async_session.execute(
         text(
             """
-            INSERT INTO orders (id, wholesaler_id, retailer_id, status, total_amount)
-            VALUES (:order_id, :wholesaler_id, :retailer_id, 'paid', 5000.00)
+            INSERT INTO orders (id, wholesaler_id, retailer_id, status, total_amount, currency_snapshot)
+            VALUES (:order_id, :wholesaler_id, :retailer_id, 'paid', 5000.00, 'UGX')
             """
         ),
         {
@@ -201,10 +201,12 @@ class _FakeToken:
 
 
 def _make_mock_order(order_status="confirmed", order_total=Decimal("5000")):
+    """Ugandan shilling order, independent of current tenant settings."""
     mock_order = MagicMock()
     mock_order.id = "ord-1"
     mock_order.status = OrderState(order_status)
     mock_order.total_amount = order_total
+    mock_order.currency_snapshot = "UGX"
     mock_order.wholesaler_id = "ws-1"
     mock_order.retailer_id = "rt-1"
     mock_order.is_deleted = False
@@ -681,8 +683,8 @@ async def test_route_settlement_failure_rolls_back_payment_order_balance_and_led
     await async_session.execute(
         text(
             """
-            INSERT INTO orders (id, wholesaler_id, retailer_id, status, total_amount)
-            VALUES (:order_id, :tenant_id, :retailer_id, 'confirmed', 100.00)
+            INSERT INTO orders (id, wholesaler_id, retailer_id, status, total_amount, currency_snapshot)
+            VALUES (:order_id, :tenant_id, :retailer_id, 'confirmed', 100.00, 'UGX')
             """
         ),
         {"order_id": order_id, "tenant_id": tenant_id, "retailer_id": retailer_id},
@@ -747,6 +749,10 @@ async def test_route_settlement_failure_rolls_back_payment_order_balance_and_led
                         (SELECT status FROM payments WHERE id = :payment_id) AS existing_payment_status,
                         (SELECT outstanding_balance FROM public.wholesaler_retailer_bindings
                          WHERE wholesaler_id = :tenant_id AND retailer_id = :retailer_id) AS balance,
+                        (SELECT amount FROM order_credit_holds WHERE order_id = :order_id) AS hold_amount,
+                        (SELECT remaining_amount FROM order_credit_holds WHERE order_id = :order_id) AS hold_remaining,
+                        (SELECT status FROM order_credit_holds WHERE order_id = :order_id) AS hold_status,
+                        (SELECT COUNT(*) FROM ledger_entries) AS all_ledger_count,
                         (SELECT COUNT(*) FROM ledger_entries WHERE reference_id = :order_id) AS ledger_count,
                         (SELECT COALESCE(SUM(amount), 0) FROM ledger_entries WHERE reference_id = :order_id) AS ledger_sum
                     """
@@ -817,6 +823,10 @@ async def test_route_settlement_failure_rolls_back_payment_order_balance_and_led
                         (SELECT COUNT(*) FROM payments WHERE order_id = :order_id AND amount = 60.00) AS new_payment_count,
                         (SELECT outstanding_balance FROM public.wholesaler_retailer_bindings
                          WHERE wholesaler_id = :tenant_id AND retailer_id = :retailer_id) AS balance,
+                        (SELECT amount FROM order_credit_holds WHERE order_id = :order_id) AS hold_amount,
+                        (SELECT remaining_amount FROM order_credit_holds WHERE order_id = :order_id) AS hold_remaining,
+                        (SELECT status FROM order_credit_holds WHERE order_id = :order_id) AS hold_status,
+                        (SELECT COUNT(*) FROM ledger_entries) AS all_ledger_count,
                         (SELECT COUNT(*) FROM ledger_entries WHERE reference_id = :order_id) AS ledger_count,
                         (SELECT COALESCE(SUM(amount), 0) FROM ledger_entries WHERE reference_id = :order_id) AS ledger_sum
                     """
@@ -838,6 +848,10 @@ async def test_route_settlement_failure_rolls_back_payment_order_balance_and_led
         "payment_count": 1,
         "existing_payment_status": "pending",
         "balance": seeded_balance,
+        "hold_amount": Decimal("100.00"),
+        "hold_remaining": Decimal("60.00"),
+        "hold_status": "active",
+        "all_ledger_count": 2,
         "ledger_count": 2,
         "ledger_sum": Decimal("0.0000"),
     }
@@ -846,5 +860,9 @@ async def test_route_settlement_failure_rolls_back_payment_order_balance_and_led
     assert after_snapshot["existing_payment_status"] == "pending"
     assert after_snapshot["new_payment_count"] == 0
     assert after_snapshot["balance"] == before_snapshot["balance"]
+    assert after_snapshot["hold_amount"] == before_snapshot["hold_amount"]
+    assert after_snapshot["hold_remaining"] == before_snapshot["hold_remaining"]
+    assert after_snapshot["hold_status"] == before_snapshot["hold_status"]
+    assert after_snapshot["all_ledger_count"] == before_snapshot["all_ledger_count"]
     assert after_snapshot["ledger_count"] == before_snapshot["ledger_count"]
     assert after_snapshot["ledger_sum"] == before_snapshot["ledger_sum"]

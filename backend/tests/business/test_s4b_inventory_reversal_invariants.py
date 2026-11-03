@@ -18,6 +18,7 @@ from models.order import Order, OrderItem, OrderStatus
 from models.sku import SKU
 from tests.catalog_identity_helpers import create_sku_with_catalog, stable_order_items
 from tests.order_state_r2.contract_helpers import ensure_binding as _r2_ensure_binding
+from tests.rc2_current_contract_support import current_trading_session as async_session
 
 
 def _tenant_id(async_session) -> uuid.UUID:

@@ -10,6 +10,7 @@ import { can } from '@/utils/permissions';
 import { Link } from 'react-router-dom';
 import { CardGridSkeleton } from '@/components/skeletons/CardGridSkeleton';
 import { CubeIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { CsvExportButton } from '@/components/ui/CsvExportButton';
 
 export function InventoryPage() {
   const user = useAuthStore((s) => s.user);
@@ -40,7 +41,8 @@ export function InventoryPage() {
         title="Stock"
         description={loading ? 'Loading stock...' : `${stocks.length} SKU${stocks.length !== 1 ? 's' : ''} in stock`}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <CsvExportButton kind="inventory" />
             <Link to="/inventory/logs" className="btn-secondary text-sm">
               View Logs
             </Link>

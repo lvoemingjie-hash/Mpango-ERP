@@ -139,7 +139,7 @@ async def test_inventory_csv_full_app_two_batches_and_foreign_sentinel(inventory
         before = await vectors(w, 'B02-before-native-inventory-export')
         response = await w.client.get('/api/v1/inventory/export')
         assert response.status_code == 200, response.text
-        rows = list(csv.reader(io.StringIO(response.text)))
+        rows = list(csv.reader(io.StringIO(response.content.decode('utf-8-sig'))))
         assert len(rows) == 503, 'B02-CSV-MUST-CONSUME-MORE-THAN-ONE-500-ROW-BATCH'
         assert rows[0][0] == 'Stock ID'
         assert {r[0] for r in rows[1:]} == expected_ids, 'B02-CSV-MUST-CONTAIN-EXACTLY-THIS-TENANTS-STOCK-IDS'

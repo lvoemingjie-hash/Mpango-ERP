@@ -20,12 +20,14 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime
+from decimal import Decimal
 from typing import AsyncGenerator, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,16 +44,35 @@ router = APIRouter()
 
 # ── Constants ──────────────────────────────────────────────────────────────
 _BATCH_SIZE = 500  # rows per DB round-trip
+_FORMULA_PREFIX = re.compile(r"^[\s\ufeff\x00-\x1f]*[=+\-@]")
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 def _csv_row(row: list) -> str:
-    """Serialise a single CSV row to string (including newline)."""
+    """Quote CSV normally and neutralize spreadsheet formulas in text cells."""
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(row)
+    writer.writerow([
+        "'" + value
+        if isinstance(value, str)
+        and (_FORMULA_PREFIX.match(value) or value.startswith(("\t", "\r", "\n")))
+        else value
+        for value in row
+    ])
     return buf.getvalue()
+
+
+def _validate_export_query(request: Request | None, allowed: set[str]) -> None:
+    """Never silently broaden an export by ignoring unsupported filters."""
+    if request is None:  # Compatibility for internal direct-call lifecycle tests.
+        return
+    keys = list(request.query_params.keys())
+    if any(key not in allowed or len(request.query_params.getlist(key)) != 1 for key in keys):
+        raise HTTPException(status_code=400, detail={
+            "code": "INVALID_EXPORT_FILTER",
+            "message": "An export filter is unsupported or repeated.",
+        })
 
 
 # ============================================================================
@@ -78,6 +99,7 @@ async def export_orders_csv(
     ),
     token: TokenPayload = Depends(RequirePermission("exports:create")),
     db: AsyncSession = Depends(get_tenant_db_session),
+    request: Request = None,
 ):
     """
     Stream all orders as a CSV download.
@@ -90,9 +112,8 @@ async def export_orders_csv(
 
     Permission: exports:create
     """
+    _validate_export_query(request, {"format", "status"})
     if format != "csv":
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
@@ -101,9 +122,19 @@ async def export_orders_csv(
             },
         )
 
+    order_status = None
+    if status_filter is not None:
+        try:
+            order_status = OrderStatus(status_filter)
+        except ValueError:
+            raise HTTPException(status_code=400, detail={
+                "code": "INVALID_STATUS_FILTER",
+                "message": "The order status filter is invalid.",
+            }) from None
+
     async def _generate_rows(export_db: AsyncSession) -> AsyncGenerator[str, None]:
         # Header row
-        yield _csv_row([
+        yield "\ufeff" + _csv_row([
             "Order ID",
             "Status",
             "Total Amount",
@@ -122,16 +153,12 @@ async def export_orders_csv(
                 .where(Order.is_deleted.is_(False))
                 .where(Order.wholesaler_id == UUID(token.tenant_id))
                 .options(selectinload(Order.items))
-                .order_by(Order.created_at.desc())
+                .order_by(Order.created_at.desc(), Order.id)
                 .offset(offset)
                 .limit(_BATCH_SIZE)
             )
-            if status_filter:
-                try:
-                    enum_val = OrderStatus(status_filter)
-                    stmt = stmt.where(Order.status == enum_val)
-                except ValueError:
-                    pass  # ignore invalid filter; return all
+            if order_status is not None:
+                stmt = stmt.where(Order.status == order_status)
 
             result = await export_db.execute(stmt)
             rows = result.scalars().all()
@@ -143,11 +170,11 @@ async def export_orders_csv(
                 yield _csv_row([
                     str(order.id),
                     order.status.value,
-                    f"{order.total_amount:f}",
+                    Decimal(f"{order.total_amount:f}"),
                     order.currency_snapshot or 'LEGACY_CURRENCY_UNVERIFIED',
                     str(order.retailer_id) if order.retailer_id else "",
                     (order.notes or "").replace("\n", " "),
-                    str(len(order.items)),
+                    len(order.items),
                     order.created_at.isoformat() if order.created_at else "",
                     order.updated_at.isoformat() if order.updated_at else "",
                 ])
@@ -191,7 +218,8 @@ async def export_orders_csv(
         media_type="text/csv",
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
         },
     )
 
@@ -215,6 +243,7 @@ async def export_inventory_csv(
     format: str = Query("csv", description="Export format (only csv supported)"),
     token: TokenPayload = Depends(RequirePermission("exports:create")),
     db: AsyncSession = Depends(get_tenant_db_session),
+    request: Request = None,
 ):
     """
     Stream all inventory stock records as a CSV download.
@@ -227,9 +256,8 @@ async def export_inventory_csv(
 
     Permission: exports:create
     """
+    _validate_export_query(request, {"format"})
     if format != "csv":
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
@@ -240,7 +268,7 @@ async def export_inventory_csv(
 
     async def _generate_rows(export_db: AsyncSession) -> AsyncGenerator[str, None]:
         # Header row
-        yield _csv_row([
+        yield "\ufeff" + _csv_row([
             "Stock ID",
             "SKU Code",
             "SKU Name",
@@ -259,7 +287,7 @@ async def export_inventory_csv(
                 select(InventoryStock)
                 .where(InventoryStock.is_deleted.is_(False))
                 .options(selectinload(InventoryStock.sku))
-                .order_by(InventoryStock.created_at.desc())
+                .order_by(InventoryStock.created_at.desc(), InventoryStock.id)
                 .offset(offset)
                 .limit(_BATCH_SIZE)
             )
@@ -278,9 +306,9 @@ async def export_inventory_csv(
                     sku.name if sku else "",
                     sku.category or "" if sku else "",
                     sku.unit if sku else "",
-                    f"{stock.quantity_on_hand:.2f}",
-                    f"{stock.quantity_reserved:.2f}",
-                    f"{available:.2f}",
+                    Decimal(f"{stock.quantity_on_hand:.2f}"),
+                    Decimal(f"{stock.quantity_reserved:.2f}"),
+                    Decimal(f"{available:.2f}"),
                     str(sku.is_active) if sku else "",
                     stock.updated_at.isoformat() if stock.updated_at else "",
                 ])
@@ -322,6 +350,7 @@ async def export_inventory_csv(
         media_type="text/csv",
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
         },
     )

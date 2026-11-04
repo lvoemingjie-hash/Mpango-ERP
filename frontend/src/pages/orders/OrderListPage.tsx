@@ -21,6 +21,7 @@ import { PrinterIcon } from '@heroicons/react/24/outline';
 import type { PaymentData } from '@/services/paymentService';
 import { OrderNegotiationPanel } from '@/components/orders/OrderNegotiationPanel';
 import { Modal } from '@/components/ui/Modal';
+import { CsvExportButton } from '@/components/ui/CsvExportButton';
 
 function buildFinanceCollectionReturnPath(returnPath: string, orderId: string): string {
   const [path, query = ''] = returnPath.split('?');
@@ -372,7 +373,8 @@ export function OrderListPage() {
         title="Sales"
         description={loading ? 'Loading orders...' : `${orders.length} order${orders.length !== 1 ? 's' : ''} found`}
         action={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <CsvExportButton kind="orders" />
             <button onClick={load} disabled={loading} className="btn-secondary text-sm">
               Refresh
             </button>

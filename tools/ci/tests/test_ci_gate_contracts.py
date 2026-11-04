@@ -416,7 +416,7 @@ class TestDeployWorkflowContract:
         selection = json.loads((REPO_ROOT / 'docs/releases/mvp-20261031/RC4-TEST-SELECTION.json').read_text())
         expected = {
             "runtime-a": (50, "40m", "96", str(selection['shards']['runtime-a']['node_count'])),
-            "runtime-b": (25, "18m", "95", str(selection['shards']['runtime-b']['node_count'])),
+            "runtime-b": (25, "18m", "96", str(selection['shards']['runtime-b']['node_count'])),
             "topology": (35, "25m", "39", str(selection['shards']['topology']['node_count'])),
             "invariants-jwt": (30, "20m", "20", str(selection['shards']['invariants-jwt']['node_count'])),
             "task-managed-pg": (20, "13m", "4", str(selection['shards']['task-managed-pg']['node_count'])),
@@ -1224,10 +1224,10 @@ class TestTopologyHelperClassification:
         assert self.TARGET in plan["profiles"]["topology"]["files"]
         assert self.TARGET not in plan["profiles"]["runtime"]["files"]
         assert plan["profiles"]["topology"]["count"] == 39
-        assert plan["profiles"]["runtime"]["count"] == 191
+        assert plan["profiles"]["runtime"]["count"] == 192
         assert "tests/test_pw1r3_rate_limit_context.py" in plan["profiles"]["invariants-jwt"]["files"]
         assert "tests/test_pw1r3_rate_limit_context.py" not in plan["profiles"]["runtime"]["files"]
-        assert plan["selection_counts"]["partition_total"] == 254
+        assert plan["selection_counts"]["partition_total"] == 255
         # pytest_plugins STRING references do not move a file (R4 evidence:
         # both files passed under the runtime profile)
         for non_importer in (
@@ -1255,7 +1255,7 @@ class TestTopologyHelperClassification:
             "pre-fix bytes must classify the importer as runtime (control RED direction)"
         )
         assert self.TARGET not in plan["profiles"]["topology"]["files"]
-        assert plan["profiles"]["runtime"]["count"] == 192
+        assert (plan["profiles"]["runtime"]["count"], plan["profiles"]["topology"]["count"], plan["selection_counts"]["partition_total"]) == (193, 38, 255)
 
     def test_runtime_negative_without_topology_imports(self, tmp_path):
         plan = self._preflight_plan(tmp_path, BOOTSTRAP)
@@ -1317,7 +1317,7 @@ class TestR6ShardPlanControls:
         ).hexdigest()
 
     def test_canonical_constants_equal_cto_table(self):
-        """Retain the profile transfer and bind four native readonly replacements."""
+        """Bind one new native leg without rebinding the preserved five-leg history."""
         import importlib.util
         spec = importlib.util.spec_from_file_location("pte_r6r1", EVIDENCE_TOOL)
         module = importlib.util.module_from_spec(spec)
@@ -1326,12 +1326,30 @@ class TestR6ShardPlanControls:
         assert module.CANONICAL_NODEID_SHA256 == {
             shard: row['canonical_sha256'] for shard, row in selection['shards'].items()
         }
-        assert selection['source_ref'] == TestReuseValidityMachineCheck.APPROVED
-        assert selection['all_native_collect_rc_zero'] is True
+        assert selection['source_ref'] == TestReuseValidityMachineCheck.LIVE_APPROVED
+        assert selection['all_native_collect_rc_zero'] is None
         assert module.CURRENT_COLLECTION_COUNTS == {
             shard: row['node_count'] for shard, row in selection['shards'].items()
         }
-        assert sum(module.CURRENT_COLLECTION_COUNTS.values()) == selection['total_nodes']
+        assert [selection['shards'][s]['file_count'] for s in module.SHARD_NAMES] == [96, 96, 39, 20, 4]
+        assert len({p for row in selection['shards'].values() for p in row['files']}) == 255
+        old_native = json.loads(subprocess.check_output([
+            'git', 'show', TestReuseValidityMachineCheck.LIVE_APPROVED
+            + ':docs/releases/mvp-20261031/RC4-TEST-SELECTION.json'
+        ], cwd=REPO_ROOT, text=True))
+        assert selection['previous_selection'] == old_native
+        selection = selection['previous_selection']
+        historical_counts = dict(module.CURRENT_COLLECTION_COUNTS, **{'runtime-b': 1630})
+        historical_canonical = dict(module.CANONICAL_NODEID_SHA256, **{
+            'runtime-b': '03ad53c5359e0848a2afd21202a72450419014a8623c6da5e463e610f84ef7fe',
+        })
+        assert historical_canonical == {s: row['canonical_sha256'] for s, row in selection['shards'].items()}
+        assert selection['source_ref'] == TestReuseValidityMachineCheck.APPROVED
+        assert selection['all_native_collect_rc_zero'] is True
+        assert historical_counts == {
+            shard: row['node_count'] for shard, row in selection['shards'].items()
+        }
+        assert sum(historical_counts.values()) == selection['total_nodes']
         assert [selection['shards'][s]['file_count'] for s in module.SHARD_NAMES] == [96, 95, 39, 20, 4]
         # Keep the reviewed prior transfer/replacement proof at its original bytes.
         prior_selection = json.loads(subprocess.check_output([
@@ -3978,8 +3996,8 @@ class TestDedicatedEvidencePartition:
         assert proc.returncode == 0, proc.stderr
         assert "registry exact (21 files)" in proc.stdout
         assert "unknown=0" in proc.stdout
-        assert plan["selection_counts"]["selected"] == 275
-        assert plan["selection_counts"]["ordinary"] == 254
+        assert plan["selection_counts"]["selected"] == 276
+        assert plan["selection_counts"]["ordinary"] == 255
         families = plan["dedicated_evidence"]["families"]
         assert {k: len(v) for k, v in families.items()} == {
             "s1_pricing_quote": 6, "s2_reorder": 4,
@@ -4112,7 +4130,8 @@ class TestReuseValidityMachineCheck:
     """Approved Git objects, complete metadata and real admission controls."""
 
     APPROVED = "2add5eec0f21e1bc6e505e77e9385e33a105f347"
-    LIVE_APPROVED = "73d152dfd1cc619304e5e5e7b532ab1df571ebc6"
+    LIVE_APPROVED = "0da4c8502928933bb61ba07b784206dec3a03bdc"
+    PREVIOUS_LIVE_APPROVED = "73d152dfd1cc619304e5e5e7b532ab1df571ebc6"
     PREVIOUS_477_APPROVED = "47716cdc88451e233c4142e7da0c3d82c368dd22"
     PREVIOUS_5033_APPROVED = "5033e2cd039af3b989418ae0a57133a6355ca42c"
     PREVIOUS_APPROVED = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
@@ -4246,11 +4265,11 @@ class TestReuseValidityMachineCheck:
             return json.loads(plan.read_text())
 
         first = prepare()
-        assert first['selection_counts']['collected_test_files'] == 281
+        assert first['selection_counts']['collected_test_files'] == 282
         assert 'tests/test_aa_rc4_untracked_control.py' not in first['profiles']['runtime']['files']
         subprocess.run(['git', 'add', str(future.relative_to(repo))], cwd=repo, check=True)
         second = prepare()
-        assert second['selection_counts']['collected_test_files'] == 282
+        assert second['selection_counts']['collected_test_files'] == 283
         assert 'tests/test_aa_rc4_untracked_control.py' in second['profiles']['runtime']['files']
         subprocess.run([sys.executable, str(EVIDENCE_TOOL), 'shard-plan', '--plan', str(plan),
                         '--profile-dir', str(tmp_path / 'profiles')], check=True, capture_output=True)
@@ -4272,7 +4291,7 @@ class TestReuseValidityMachineCheck:
         assert required.isdisjoint(plan['dedicated_evidence']['files'])
         assert plan['profiles']['invariants-jwt']['count'] == 20
         assert 'tests/test_pw1r3_rate_limit_context.py' not in plan['profiles']['runtime']['files']
-        assert plan['selection_counts']['ordinary'] == 254
+        assert plan['selection_counts']['ordinary'] == 255
         assert len(plan['frozen_ignores']) == 6
 
     def test_actual_native_shell_case_supplies_only_same_app_and_private_outputs(self, tmp_path):
@@ -4371,6 +4390,7 @@ PY
     def test_unapproved_product_ref_refused(self, tmp_path):
         coverage = self._coverage(tmp_path)
         for ref in ("HEAD", self.LIVE_APPROVED[:8], self.APPROVED,
+                    self.PREVIOUS_LIVE_APPROVED,
                     "10f2a46046bed3157bbeeb1b69b2230dfac62850",
                     "fd37acbbd3af8c9d0ed64ecb4ad0849d4ab8c366", self.PREVIOUS_APPROVED,
                     self.PREVIOUS_5033_APPROVED):
@@ -4379,6 +4399,67 @@ PY
                 "--repo-root", str(REPO_ROOT), "--approved-ref", ref], capture_output=True, text=True)
             assert proc.returncode == 5
             assert "REUSE_APPROVED_REF_NOT_AUTHORIZED" in proc.stderr
+
+    def test_current_runtime_b_binding_rejects_old_and_same_count_forged_nodes(self, tmp_path):
+        """Run the real default canonical consumer on the one newly collected leg."""
+        import hashlib
+
+        selection = json.loads((REPO_ROOT / 'docs/releases/mvp-20261031/RC4-TEST-SELECTION.json').read_text())
+        row = selection['shards']['runtime-b']
+        nodes = row['nodeids']
+        assert len(nodes) == len(set(nodes)) == 1636
+        additions = selection['runtime_b_identity_delta']['added']
+        assert len(additions) == 6
+        assert len(set(nodes) - set(additions)) == 1630
+        assert hashlib.sha256(('\n'.join(sorted(nodes)) + '\n').encode()).hexdigest() == row['canonical_sha256']
+        plan = {'profiles': {
+            'runtime': {'files': selection['shards']['runtime-a']['files'] + row['files']},
+        }}
+        plan_path, argfile, collect = tmp_path/'plan.json', tmp_path/'runtime-b.tests', tmp_path/'collect.txt'
+        plan_path.write_text(json.dumps(plan))
+        argfile.write_text('\n'.join(row['files']) + '\n')
+        argv = [sys.executable, str(EVIDENCE_TOOL), 'shard-verify', '--plan', str(plan_path),
+                '--shard', 'runtime-b', '--argfile', str(argfile), '--expected-files', '96',
+                '--collect', str(collect), '--expected-nodes', '1636']
+        wrong_identity = list(nodes)
+        wrong_identity[-1] = nodes[-1].split('::', 1)[0] + '::test_unapproved_identity'
+        steps = []
+        for label, values, rc, marker in (
+            ('honest_current', nodes, 0, None),
+            ('old1630', [n for n in nodes if n not in additions], 3, 'SHARD_NODE_COUNT_MISMATCH'),
+            ('same_count_different_identity', wrong_identity, 3, 'CANONICAL_NODEID_HASH_MISMATCH'),
+        ):
+            collect.write_text('\n'.join(values) + '\n')
+            proc = subprocess.run(argv, capture_output=True, text=True)
+            steps.append({'case': label, 'argv': argv, 'rc': proc.returncode,
+                          'stdout_sha256': hashlib.sha256(proc.stdout.encode()).hexdigest(),
+                          'stderr_sha256': hashlib.sha256(proc.stderr.encode()).hexdigest()})
+            assert proc.returncode == rc, label
+            if marker is not None:
+                assert marker in proc.stderr, label
+        (tmp_path/'current-runtime-b-counter-proof.json').write_text(json.dumps(steps, indent=2))
+
+    def test_current_alignment_cannot_self_approve_old_source_or_execution_claims(self, tmp_path):
+        """Current live authority and bounded evidence stay fail-closed."""
+        path = self._coverage(tmp_path)
+        original = json.loads(path.read_text())
+        assert original['previous_73d_live_source_comparison']['fixed_live_source']['source_ref'] == self.PREVIOUS_LIVE_APPROVED
+        assert original['current_ci_alignment']['new_business_accepted_total'] is None
+        assert original['current_ci_alignment']['backend_body'] == 'NOT_RUN'
+        good, data = self._check(REPO_ROOT, path)
+        assert good.returncode == 0 and data['all_valid'] and not data['release_ready']
+        stale = subprocess.run([sys.executable, str(EVIDENCE_TOOL), 'verify-reuse',
+            '--coverage', str(path), '--repo-root', str(REPO_ROOT),
+            '--approved-ref', self.PREVIOUS_LIVE_APPROVED], capture_output=True, text=True)
+        assert stale.returncode == 5 and 'REUSE_APPROVED_REF_NOT_AUTHORIZED' in stale.stderr
+        for key, value in (('backend_body', 'PASS'), ('new_business_accepted_total', 55),
+                           ('other_four_legs', 'CURRENT_FIVE_NATIVE_COLLECT_PASS')):
+            changed = json.loads(json.dumps(original))
+            changed['current_ci_alignment'][key] = value
+            path.write_text(json.dumps(changed))
+            proc, result = self._check(REPO_ROOT, path)
+            assert proc.returncode == 5 and result['problems'] == ['REUSE_METADATA_PROVENANCE']
+            assert not result['all_valid'] and not result['release_ready']
 
     @pytest.mark.parametrize("drift", ["phase5", "p10", "phase5_old_blob"])
     def test_current_approved_test_bytes_remain_load_bearing(self, tmp_path, drift):
@@ -4509,19 +4590,31 @@ PY
             assert coverage[key] == reviewed[key]
         assert coverage["fixed_source_alignment"]["historical_bindings_rebound"] is False
         assert coverage["fixed_source_alignment"]["overall_source_ok"] is False
-        before_live_split = json.loads(subprocess.check_output([
+        prior_metadata = json.loads(subprocess.check_output([
             "git", "show", self.LIVE_APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
         ], cwd=REPO_ROOT, text=True))
-        preserved = {k: v for k, v in coverage.items() if k not in {"fixed_live_source", "fixed_source_alignment"}}
+        prior_metadata.pop("recovered_native_node_maps")
+        prior_live = coverage["previous_73d_live_source_comparison"]
+        assert prior_live == prior_metadata
+        assert coverage['current_ci_alignment']['fixed_source'] == self.LIVE_APPROVED
+        assert coverage['current_ci_alignment']['runtime_b']['node_count'] == 1636
+        assert coverage['fixed_live_source']['source_ref'] == self.LIVE_APPROVED
+        assert coverage['fixed_live_source']['current_hosted_ci'] == 'NOT_RUN'
+        assert coverage['fixed_source_alignment']['live_comparison_authority'] == 'CTO-AUTH-0DA4-CI-ONLY-ALIGNMENT-CODEXL-R1-20261103'
+        before_live_split = json.loads(subprocess.check_output([
+            "git", "show", self.PREVIOUS_LIVE_APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+        ], cwd=REPO_ROOT, text=True))
+        preserved = {k: v for k, v in prior_live.items() if k not in {"fixed_live_source", "fixed_source_alignment"}}
+        preserved["recovered_native_node_maps"] = coverage["recovered_native_node_maps"]
         assert preserved == {k: v for k, v in before_live_split.items() if k != "fixed_source_alignment"}
-        alignment = dict(coverage["fixed_source_alignment"])
+        alignment = dict(prior_live["fixed_source_alignment"])
         assert alignment.pop("live_comparison_authority") == "CTO-AUTH-73D-FIXED-LIVE-SOURCE-CI-ONLY-CODEXL-R1-20261102"
-        assert alignment.pop("whole_backend_frontend_comparison_source") == self.LIVE_APPROVED
+        assert alignment.pop("whole_backend_frontend_comparison_source") == self.PREVIOUS_LIVE_APPROVED
         old_alignment = dict(before_live_split["fixed_source_alignment"])
         assert old_alignment.pop("whole_backend_frontend_comparison_source") == self.APPROVED
         assert alignment == old_alignment
-        live = coverage["fixed_live_source"]
-        assert live["source_ref"] == self.LIVE_APPROVED
+        live = prior_live["fixed_live_source"]
+        assert live["source_ref"] == self.PREVIOUS_LIVE_APPROVED
         assert live["historical_collection_ref"] == self.APPROVED
         assert live["historical_field_scope"] == [
             "product_anchor", "current_source_intake", "current_collection_binding",
@@ -5186,7 +5279,7 @@ class TestThreeFamilyFiniteCloseout:
         assert route["source_ref"] == coverage["previous_rc3_source_intake"]["source_ref"]
         assert not route["new_independent_v3"] and route["added_business_accepted_nodes"] == 0
         assert coverage["previous_3a26_fixed_source_comparison"]["intake_version"] == 9
-        assert coverage["intake_version"] == 12
+        assert (coverage["intake_version"], coverage["previous_73d_live_source_comparison"]["intake_version"]) == (13, 12)
         previous = coverage["previous_route_contract_closeout"]
         assert previous["source_ref"] == "9e2221393f0a8c3da493ea32d4a3d93e41f4fa33"
         assert coverage["previous_route_contract_source_intake"]["source_ref"] == previous["source_ref"]
@@ -5387,18 +5480,18 @@ class TestRC4CurrentReadOnlyAndDependencyContracts:
         consumer = TestR6ShardPlanControls().test_canonical_constants_equal_cto_table
         consumer()  # The same real consumer must first accept the unmodified input.
         original = copy.deepcopy(data)
-        replacement = data["previous_selection"]["readonly_node_replacement"]
+        replacement = data["previous_selection"]["previous_selection"]["readonly_node_replacement"]
         if corruption == "historical_digest":
             field = ("historical_snapshot", "collect_stdout_sha256")
             replacement[field[0]][field[1]] = data["shards"]["task-managed-pg"]["collect_stdout_sha256"]
         else:
             field = ("current_snapshot", "collect_stdout_reference")
             replacement[field[0]][field[1]] = "nodeids-task-managed-pg.raw.txt"
-        before = original["previous_selection"]["readonly_node_replacement"][field[0]][field[1]]
+        before = original["previous_selection"]["previous_selection"]["readonly_node_replacement"][field[0]][field[1]]
         after = replacement[field[0]][field[1]]
         assert before != after, 'HISTORY_CORRUPTION_MUST_CHANGE_TARGET'
         restored = copy.deepcopy(data)
-        restored["previous_selection"]["readonly_node_replacement"][field[0]][field[1]] = before
+        restored["previous_selection"]["previous_selection"]["readonly_node_replacement"][field[0]][field[1]] = before
         assert restored == original, 'HISTORY_CORRUPTION_MUST_ONLY_CHANGE_TARGET'
         read = Path.read_text
         def changed(self, *args, **kwargs):
@@ -5408,10 +5501,10 @@ class TestRC4CurrentReadOnlyAndDependencyContracts:
             consumer()
         frames = traceback.extract_tb(refusal.value.__traceback__)
         intended_comparison = any(f.name == 'test_canonical_constants_equal_cto_table'
-            and f.line == "assert selection['previous_selection'] == prior_selection" for f in frames)
+            and f.line == "assert selection['previous_selection'] == old_native" for f in frames)
         assert intended_comparison, 'HISTORY_MUST_REFUSE_AT_FIXED_SNAPSHOT_COMPARISON'
         TestThreeGapOfflineCloseout._observe('history-' + corruption, {
-            'positive_same_consumer': True, 'changed_field': ['previous_selection', 'readonly_node_replacement', *field],
+            'positive_same_consumer': True, 'changed_field': ['previous_selection', 'previous_selection', 'readonly_node_replacement', *field],
             'before': before, 'after': after, 'one_field_changed': True,
             'intended_snapshot_comparison_refused': intended_comparison})
 
@@ -5760,7 +5853,7 @@ def exercise():
         import select
         import time
 
-        source_ref = TestReuseValidityMachineCheck.LIVE_APPROVED
+        source_ref = TestReuseValidityMachineCheck.PREVIOUS_LIVE_APPROVED
         source = subprocess.check_output([
             "git", "show", source_ref + ":tools/ci/tests/test_ci_gate_contracts.py"
         ], cwd=REPO_ROOT)
@@ -5871,7 +5964,7 @@ sys.exit(int(os.environ["DISPATCH_RC"]))
             else:
                 assert [p.name for p in paths] == ["poetry-0.argv", "poetry-1.argv"]
                 assert actual == expected, marker
-            observations.append({"variant": label, "source_ref": source_ref,
+            observations.append({"variant": label, "source_ref": source_ref if label == "old" else TestReuseValidityMachineCheck.LIVE_APPROVED,
                                  "fixture_sha256": hashlib.sha256(fixture.encode()).hexdigest(),
                                  "instrumented_sha256": hashlib.sha256(instrumented.encode()).hexdigest(),
                                  "instrumented_path": str(script), "barrier_path": str(barrier),
@@ -6066,8 +6159,8 @@ class TestCurrentPreparationContract:
             assert path in plan['profiles']['invariants-jwt']['files'], 'CONTEXT_CLIENT_REAL_JWT_PROFILE'
             assert path not in plan['profiles']['runtime']['files']
         counts = plan['selection_counts']
-        assert (counts['collected_test_files'], counts['ordinary'], counts['dedicated']) == (281, 254, 21)
-        assert [plan['profiles'][p]['count'] for p in ('runtime', 'topology', 'invariants-jwt', 'task-managed-pg')] == [191, 39, 20, 4]
+        assert (counts['collected_test_files'], counts['ordinary'], counts['dedicated']) == (282, 255, 21)
+        assert [plan['profiles'][p]['count'] for p in ('runtime', 'topology', 'invariants-jwt', 'task-managed-pg')] == [192, 39, 20, 4]
 
     def _supply(self, tmp_path, *, explicit_db15=False, overrides=None, refusal=None):
         """Real wrapper, fake tools; TCP probe intercepted before any socket."""

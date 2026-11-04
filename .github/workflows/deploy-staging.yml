@@ -52,8 +52,8 @@ jobs:
           - shard: runtime-b
             job-timeout-minutes: 25
             pytest-timeout: 18m
-            expected-files: "95"
-            expected-nodes: "1630"
+            expected-files: "96"
+            expected-nodes: "1636"
           - shard: topology
             job-timeout-minutes: 35
             pytest-timeout: 25m
@@ -344,8 +344,8 @@ jobs:
             echo "dedicated-verify REFUSED"
             exit 1
           fi
-          # Fixed live objects at 73d; historical collect stays at 2add, never HEAD.
-          if ! python tools/ci/prepare_test_evidence.py verify-reuse --coverage docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json --repo-root . --approved-ref 73d152dfd1cc619304e5e5e7b532ab1df571ebc6 --result-file "$RUNNER_TEMP/reuse-result.json" > "$RUNNER_TEMP/reuse.log" 2>&1; then
+          # Fixed live objects at 0da4; historical collect/73d layers stay preserved.
+          if ! python tools/ci/prepare_test_evidence.py verify-reuse --coverage docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json --repo-root . --approved-ref 0da4c8502928933bb61ba07b784206dec3a03bdc --result-file "$RUNNER_TEMP/reuse-result.json" > "$RUNNER_TEMP/reuse.log" 2>&1; then
             echo "verify-reuse REFUSED"
             exit 1
           fi

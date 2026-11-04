@@ -109,7 +109,7 @@ _HISTORICAL_CANONICAL_DIGEST_INTS = {
 # Historical canonical tables remain in the preserved selection/intake layer.
 CANONICAL_NODEID_SHA256 = {
     "runtime-a": "1adc9dfae7a3bb2aee326d638f589eda941fa8911858bae75f7828476e2aa246",
-    "runtime-b": "03ad53c5359e0848a2afd21202a72450419014a8623c6da5e463e610f84ef7fe",
+    "runtime-b": "c5fa0f72a6780a39012b4df2e3725a24bb9f742c83752513b012f4034e656dc7",
     "topology": "c5b860246b7e6829d45924e4f608da4250e27ad519d2fae00eea11a268a38200",
     "invariants-jwt": "ba8abeac874542d1521818b8e94723239de9801401b7c07e724c2107c4447644",
     "task-managed-pg": "fb07315c5fa8c89517191a1df66db7f7447b0ec76cd8953c9715474544098d20",
@@ -118,7 +118,7 @@ CANONICAL_NODEID_SHA256 = {
 # Populated only from the five authorized native collect originals.
 CURRENT_COLLECTION_COUNTS = {
     "runtime-a": 1702,
-    "runtime-b": 1630,
+    "runtime-b": 1636,
     "topology": 798,
     "invariants-jwt": 352,
     "task-managed-pg": 92,
@@ -715,12 +715,12 @@ def _git_bytes(repo, *argv):
 REUSE_477_APPROVED_REF = "47716cdc88451e233c4142e7da0c3d82c368dd22"
 REUSE_APPROVED_REF = "2add5eec0f21e1bc6e505e77e9385e33a105f347"
 # Historical collection remains on 2add; live objects use this CTO-fixed successor.
-REUSE_LIVE_APPROVED_REF = "73d152dfd1cc619304e5e5e7b532ab1df571ebc6"
+REUSE_LIVE_APPROVED_REF = "0da4c8502928933bb61ba07b784206dec3a03bdc"
 REUSE_5033_APPROVED_REF = "5033e2cd039af3b989418ae0a57133a6355ca42c"
 REUSE_PREVIOUS_APPROVED_REF = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
 # Rebuild inputs/recipe are declared in intake_sources and the delivery receipt.
-REUSE_INTAKE_VERSION = 12
+REUSE_INTAKE_VERSION = 13
 REUSE_EXPECTED_METADATA = json.loads(r'''
 {
   "record": "RC2_VERSIONED_DEDICATED_ACCEPTANCE_INTAKE_V1",
@@ -2905,10 +2905,15 @@ def _reuse_expected_metadata(repo):
         )
     }))
     authorization = "CTO-AUTH-2ADD-CI-ALIGNMENT-AND-FIVE-COLLECT-CODEXL-R1-20261101"
+    historical_counts = dict(CURRENT_COLLECTION_COUNTS, **{"runtime-b": 1630})
+    historical_canonical = dict(CANONICAL_NODEID_SHA256, **{
+        "runtime-b": "03ad53c5359e0848a2afd21202a72450419014a8623c6da5e463e610f84ef7fe",
+    })
+    previous_live_ref = "73d152dfd1cc619304e5e5e7b532ab1df571ebc6"
     # The existing fixed object, never HEAD or a caller's coverage, is authority.
     def fixed_oid(suffix):
         return _git_bytes(repo, "rev-parse", REUSE_APPROVED_REF + suffix).decode().strip()
-    expected.update(record="CURRENT_2ADD_CI_ONLY_INTAKE_V1", intake_version=REUSE_INTAKE_VERSION,
+    expected.update(record="CURRENT_2ADD_CI_ONLY_INTAKE_V1", intake_version=12,
                     authorization=authorization, product_anchor=REUSE_APPROVED_REF,
                     intake_status="AUTHOR_CI_ONLY_INTAKE_PENDING_CTO")
     current.update(authorization=authorization, source_ref=REUSE_APPROVED_REF,
@@ -2920,7 +2925,7 @@ def _reuse_expected_metadata(repo):
                    independent_v3_this_intake="NOT_RUN", hosted_ci_this_intake="NOT_RUN")
     current["ordinary_definition"] = {
         "files": 254, "dedicated_files": 21, "ignores": 6,
-        "nodes": sum(CURRENT_COLLECTION_COUNTS.values()),
+        "nodes": sum(historical_counts.values()),
         "canonical_definition_changed": True, "global_node_set_changed": True,
         "profile_membership_changed": True,
     }
@@ -2939,13 +2944,13 @@ def _reuse_expected_metadata(repo):
         "No hosted CI, independent V3, full backend pass or release readiness is established here.",
     ]
     expected["current_collection_binding"] = {
-        "source_ref": REUSE_APPROVED_REF, "node_counts": CURRENT_COLLECTION_COUNTS,
-        "canonical_sha256": CANONICAL_NODEID_SHA256,
+        "source_ref": REUSE_APPROVED_REF, "node_counts": historical_counts,
+        "canonical_sha256": historical_canonical,
         "claim": "AUTHOR_NATIVE_COLLECT_ONLY__NOT_BUSINESS_OR_CI_PASS",
     }
     expected["fixed_source_alignment"] = {
         "authority": authorization, "previous_comparison_source": REUSE_477_APPROVED_REF,
-        "whole_backend_frontend_comparison_source": REUSE_LIVE_APPROVED_REF,
+        "whole_backend_frontend_comparison_source": previous_live_ref,
         "live_comparison_authority": "CTO-AUTH-73D-FIXED-LIVE-SOURCE-CI-ONLY-CODEXL-R1-20261102",
         "historical_bindings_rebound": False, "overall_source_ok": False,
         "OLD_24_HOSTED_FAILURES": "OPEN__NOT_EXECUTED_THIS_TASK",
@@ -2954,9 +2959,9 @@ def _reuse_expected_metadata(repo):
         "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED",
     }
     expected["fixed_live_source"] = {
-        "source_ref": REUSE_LIVE_APPROVED_REF,
-        "backend_tree": _git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + ":backend").decode().strip(),
-        "frontend_tree": _git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + ":frontend").decode().strip(),
+        "source_ref": previous_live_ref,
+        "backend_tree": _git_bytes(repo, "rev-parse", previous_live_ref + ":backend").decode().strip(),
+        "frontend_tree": _git_bytes(repo, "rev-parse", previous_live_ref + ":frontend").decode().strip(),
         "historical_collection_ref": REUSE_APPROVED_REF,
         "historical_field_scope": [
             "product_anchor", "current_source_intake", "current_collection_binding",
@@ -2966,6 +2971,42 @@ def _reuse_expected_metadata(repo):
         "current_native_collect": "NOT_RUN",
         "current_hosted_ci": "NOT_RUN",
         "claim": "BOUNDED_SOURCE_COMPARISON_ONLY__NOT_BODY_OR_RELEASE_PASS",
+    }
+    # Preserve the complete prior metadata layer before admitting this fixed
+    # test successor. The four uncollected legs retain historical evidence.
+    expected["previous_73d_live_source_comparison"] = json.loads(json.dumps(expected))
+    authority = "CTO-AUTH-0DA4-CI-ONLY-ALIGNMENT-CODEXL-R1-20261103"
+    expected.update(record="CURRENT_0DA4_CI_ONLY_ALIGNMENT_V1", authorization=authority,
+                    intake_version=REUSE_INTAKE_VERSION)
+    expected["fixed_source_alignment"].update(
+        whole_backend_frontend_comparison_source=REUSE_LIVE_APPROVED_REF,
+        live_comparison_authority=authority)
+    expected["fixed_live_source"].update(
+        source_ref=REUSE_LIVE_APPROVED_REF,
+        backend_tree=_git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + ":backend").decode().strip(),
+        frontend_tree=_git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + ":frontend").decode().strip(),
+        source_interpretation="LISTED_FIELDS_DESCRIBE_2ADD_INTAKE_NOT_CURRENT_EXECUTION")
+    expected["current_ci_alignment"] = {
+        "authority": authority, "fixed_source": REUSE_LIVE_APPROVED_REF,
+        "previous_live_source": previous_live_ref,
+        "selection_counts": {"tracked": 282, "ordinary": 255, "dedicated": 21, "ignored": 6},
+        "runtime_b": {
+            "files": 96, "node_count": CURRENT_COLLECTION_COUNTS["runtime-b"],
+            "canonical_sha256": CANONICAL_NODEID_SHA256["runtime-b"],
+            "collection_kind": "ONE_CURRENT_NATIVE_RUNTIME_B_COLLECTION__NO_BODY",
+            "old_identities_retained": 1630, "added_identities": 6,
+            "source_ref": REUSE_LIVE_APPROVED_REF,
+        },
+        "other_four_legs": "HISTORICAL_2ADD_NATIVE_ARRAYS_AND_SOURCE_IDENTITY_CONTINUITY__NOT_NEW_COLLECT",
+        "mixed_node_counts": CURRENT_COLLECTION_COUNTS,
+        "mixed_canonical_sha256": CANONICAL_NODEID_SHA256,
+        "independent30": "CTO_BOUNDED_ACCEPTED_AT_0DA4__KNOWN_ORDERED_ANCHOR_SCOPE_ONLY",
+        "author25": "CTO_BOUNDED_ACCEPTED_AT_AC0__DEVIATION_RETAINED__NOT_INDEPENDENT_V3",
+        "old_hosted": "79F5_RUN41439997645__4490P_24F_46SKIP_14XFAIL__NOT_REWRITTEN",
+        "retained_gaps": ["PUBLIC_FINAL_TRUE_VALUE_SCAN", "LOCK_RAW_RECEIPTS", "METADATA_AGGREGATE",
+                          "B1_EXECUTION_DEVIATION", "R7_R5_AND_THREE_RESOURCE_ACTIONS", "RCJ_NODE_MAP", "CI_SECRET_GATE"],
+        "current_hosted_ci": "NOT_RUN", "backend_body": "NOT_RUN", "release_ready": False,
+        "historical_results_rebound": False, "new_business_accepted_total": None,
     }
     return expected
 

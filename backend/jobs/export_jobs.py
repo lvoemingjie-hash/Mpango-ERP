@@ -18,10 +18,10 @@ Context Propagation:
             -> builder.execute(stmt)  # SET LOCAL search_path enforced
             -> stream rows -> write CSV/XLSX to disk
 
-Memory Safety:
-    - Uses yield_per(STREAM_BATCH_SIZE) to stream rows from the database.
-    - Never loads the full result set into RAM.
-    - Writes to disk in batches via csv.writer / openpyxl streaming.
+File Safety:
+    - Writes batches from the result proxy; this does not promise server-side streaming.
+    - Publishes only closed files and then an identity/digest sidecar.
+    - Does not implement queue shutdown, crash recovery or concurrent-writer fencing.
 
 Security:
     - Worker REJECTS payloads with empty tenant_id (ExportJobPayload validator).
@@ -29,12 +29,19 @@ Security:
     - SET LOCAL search_path is enforced by SemanticQueryBuilder before any query.
 """
 import csv
+import codecs
+import hashlib
+import math
 import os
 import re
+import tempfile
 import uuid
+import zipfile
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+from xml.etree import ElementTree
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,6 +76,118 @@ STREAM_BATCH_SIZE = 1000
 
 # Maximum rows per export (hard safety cap, overrides payload.limit)
 MAX_EXPORT_ROWS = 500_000
+
+_FORMULA_PREFIX = re.compile(r"^[\s\ufeff\x00-\x1f]*[=+\-@]")
+_FORMULA_SIGNS = str.maketrans("＝＋－＠", "=+-@")
+_INVALID_XML = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+
+
+class ExportFileError(ValueError):
+    """Fixed public error category, without source values or runtime credentials."""
+
+
+def require_xlsx_dependency():
+    """Both admission and execution must refuse, never substitute another format."""
+    try:
+        from openpyxl import Workbook
+    except ImportError:
+        raise ExportFileError("EXPORT_XLSX_DEPENDENCY_UNAVAILABLE") from None
+    return Workbook
+
+
+def _csv_value(value: Any) -> Any:
+    # Detect on a copy, preserving original glyphs and leading data characters.
+    if isinstance(value, str):
+        if (_FORMULA_PREFIX.match(value.translate(_FORMULA_SIGNS))
+                or value.startswith(("\t", "\r", "\n"))):
+            return "'" + value
+        return value
+    return _serialize_value(value)
+
+
+@contextmanager
+def _atomic_export_path(file_path: Path):
+    """The only cleanup target is the unique part allocated by this invocation."""
+    fd, name = tempfile.mkstemp(prefix=file_path.name + ".part.", dir=file_path.parent)
+    os.close(fd)
+    temporary = Path(name)
+    try:
+        yield temporary
+        with temporary.open("rb") as handle:
+            os.fsync(handle.fileno())
+        os.replace(temporary, file_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _file_digest(file_path: Path) -> str:
+    digest = hashlib.sha256()
+    with file_path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def validate_export_file(file_path: Path, fmt: str) -> None:
+    """Check actual bytes, not just an extension; never execute spreadsheet content."""
+    try:
+        if fmt == "csv":
+            with file_path.open("rb") as handle:
+                if handle.read(3) != codecs.BOM_UTF8:
+                    raise ExportFileError("EXPORT_CSV_ENCODING_INVALID")
+                decoder = codecs.getincrementaldecoder("utf-8")()
+                for chunk in iter(lambda: handle.read(65536), b""):
+                    decoder.decode(chunk)
+                decoder.decode(b"", final=True)
+            return
+        if fmt != "xlsx":
+            raise ExportFileError("EXPORT_FORMAT_INVALID")
+        with zipfile.ZipFile(file_path) as archive:
+            names = archive.namelist()
+            required = {"[Content_Types].xml", "xl/workbook.xml", "xl/worksheets/sheet1.xml"}
+            if not required.issubset(names) or len(names) != len(set(names)):
+                raise ExportFileError("EXPORT_XLSX_FORMAT_INVALID")
+            if len(names) > 1024 or sum(i.file_size for i in archive.infolist()) > 128 * 1024 * 1024:
+                raise ExportFileError("EXPORT_XLSX_FORMAT_INVALID")
+            main_content_type = False
+            expected_roots = {
+                "[Content_Types].xml": "{http://schemas.openxmlformats.org/package/2006/content-types}Types",
+                "xl/workbook.xml": "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}workbook",
+                "xl/worksheets/sheet1.xml": "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}worksheet",
+            }
+            for item in archive.infolist():
+                name = item.filename
+                if (item.flag_bits & 1 or item.file_size > 64 * 1024 * 1024
+                        or name.startswith("/") or ".." in Path(name).parts
+                        or "vbaproject" in name.lower() or "externallinks/" in name.lower()):
+                    raise ExportFileError("EXPORT_XLSX_FORMAT_INVALID")
+                if name.endswith((".xml", ".rels")):
+                    with archive.open(item) as handle:
+                        first = True
+                        for event, element in ElementTree.iterparse(handle, events=("start", "end")):
+                            if first:
+                                first = False
+                                if name in expected_roots and element.tag != expected_roots[name]:
+                                    raise ExportFileError("EXPORT_XLSX_FORMAT_INVALID")
+                            if event != "end":
+                                continue
+                            tag = element.tag.rsplit("}", 1)[-1]
+                            if tag == "f" or element.attrib.get("TargetMode", "").lower() == "external":
+                                raise ExportFileError("EXPORT_XLSX_UNSAFE_CONTENT")
+                            if "macroenabled" in element.attrib.get("ContentType", "").lower():
+                                raise ExportFileError("EXPORT_XLSX_UNSAFE_CONTENT")
+                            if (name == "[Content_Types].xml"
+                                    and element.attrib.get("PartName") == "/xl/workbook.xml"
+                                    and element.attrib.get("ContentType") ==
+                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"):
+                                main_content_type = True
+                            element.clear()
+            if not main_content_type:
+                raise ExportFileError("EXPORT_XLSX_FORMAT_INVALID")
+    except ExportFileError:
+        raise
+    except (OSError, UnicodeError, zipfile.BadZipFile, ElementTree.ParseError, RuntimeError):
+        raise ExportFileError("EXPORT_FILE_FORMAT_INVALID") from None
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +283,10 @@ async def export_report_worker(payload: dict) -> None:
     if not job_payload.file_id:
         raise ValueError("Export job has no persisted file identity; submit a new export")
     file_id = _validate_file_id(job_payload.file_id)
+    if job_payload.format not in ("csv", "xlsx"):
+        raise ExportFileError("EXPORT_FORMAT_INVALID")
+    if job_payload.format == "xlsx":
+        require_xlsx_dependency()
 
     # --- Step 3: Build query via SemanticQueryBuilder ---
     #[Constraint Check] Rule #1: tenant_id flows from payload -> builder constructor
@@ -209,15 +332,18 @@ async def export_report_worker(payload: dict) -> None:
     # The S4 queue updates sys_jobs.status to "completed" automatically.
     # We store file metadata so the status endpoint can return download info.
     file_size = file_path.stat().st_size
+    validate_export_file(file_path, job_payload.format)
 
     # Update the job payload with result metadata.
     # We write a small metadata sidecar file that the status endpoint reads.
     _write_metadata(file_id, {
+        "metadata_version": 1,
         "file_id": file_id,
         "file_path": str(file_path),
         "file_name": file_path.name,
         "row_count": row_count,
         "file_size_bytes": file_size,
+        "content_sha256": _file_digest(file_path),
         "format": job_payload.format,
         "tenant_id": job_payload.tenant_id,
         "user_id": job_payload.user_id,
@@ -251,21 +377,18 @@ async def _write_csv_streaming(result, columns: list[str], file_path: Path) -> i
     """
     row_count = 0
 
-    with open(file_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(columns)  # Header
-
-        while True:
-            # Fetch a batch of rows (memory-bounded)
-            batch = result.fetchmany(STREAM_BATCH_SIZE)
-            if not batch:
-                break
-
-            for row in batch:
-                writer.writerow([
-                    _serialize_value(val) for val in row
-                ])
-                row_count += 1
+    with _atomic_export_path(file_path) as temporary:
+        with temporary.open("w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.writer(f)
+            writer.writerow([_csv_value(str(column)) for column in columns])
+            while True:
+                batch = result.fetchmany(STREAM_BATCH_SIZE)
+                if not batch:
+                    break
+                for row in batch:
+                    writer.writerow([_csv_value(val) for val in row])
+                    row_count += 1
+        validate_export_file(temporary, "csv")
 
     return row_count
 
@@ -277,40 +400,45 @@ async def _write_xlsx_streaming(result, columns: list[str], file_path: Path) -> 
     Memory Safety: openpyxl's write_only=True mode streams rows to disk
     without keeping the full worksheet in memory.
 
-    Falls back to CSV if openpyxl is not installed.
+    Missing dependencies and invalid text are explicit failures, never CSV fallbacks.
 
     Returns:
         Number of rows written.
     """
-    try:
-        from openpyxl import Workbook
-    except ImportError:
-        logger.warning(
-            "openpyxl not installed, falling back to CSV for XLSX export"
-        )
-        csv_path = file_path.with_suffix(".csv")
-        count = await _write_csv_streaming(result, columns, csv_path)
-        # Rename so the caller still finds the file at the expected path
-        csv_path.rename(file_path)
-        return count
-
+    Workbook = require_xlsx_dependency()
+    from openpyxl.cell import WriteOnlyCell
     row_count = 0
     wb = Workbook(write_only=True)
     ws = wb.create_sheet("Export")
-
-    # Header row
-    ws.append(columns)
-
-    while True:
-        batch = result.fetchmany(STREAM_BATCH_SIZE)
-        if not batch:
-            break
-
-        for row in batch:
-            ws.append([_serialize_value(val) for val in row])
-            row_count += 1
-
-    wb.save(str(file_path))
+    def cells(values):
+        for value in values:
+            value = _serialize_value(value)
+            if isinstance(value, str) and (_INVALID_XML.search(value) or len(value) > 32767):
+                raise ExportFileError("EXPORT_XLSX_TEXT_INVALID")
+            cell = WriteOnlyCell(ws, value=value)
+            if isinstance(value, str):
+                cell.data_type = "s"
+            yield cell
+    try:
+        with _atomic_export_path(file_path) as temporary:
+            ws.append(list(cells(str(column) for column in columns)))
+            while True:
+                batch = result.fetchmany(STREAM_BATCH_SIZE)
+                if not batch:
+                    break
+                for row in batch:
+                    ws.append(list(cells(row)))
+                    row_count += 1
+            wb.save(str(temporary))
+            validate_export_file(temporary, "xlsx")
+    finally:
+        # Write-only workbooks may have an allocated worksheet temp on failure.
+        # It belongs to this worksheet; never enumerate or remove other temp files.
+        if ws._writer is not None and not ws.closed:
+            ws.close()
+        if ws._writer is not None and os.path.exists(ws._writer.out):
+            ws._writer.cleanup()
+        wb.close()
     return row_count
 
 
@@ -394,9 +522,13 @@ def _serialize_value(val: Any) -> Any:
     if val is None:
         return ""
     if isinstance(val, Decimal):
-        return float(val)
+        if not val.is_finite():
+            raise ExportFileError("EXPORT_NONFINITE_VALUE")
+        return format(val, "f")
+    if isinstance(val, float) and not math.isfinite(val):
+        raise ExportFileError("EXPORT_NONFINITE_VALUE")
     if isinstance(val, (date, datetime)):
         return val.isoformat()
-    if hasattr(val, "hex"):  # UUID
+    if isinstance(val, uuid.UUID):
         return str(val)
     return val

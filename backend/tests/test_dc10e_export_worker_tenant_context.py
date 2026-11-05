@@ -229,6 +229,14 @@ async def test_valid_tenant_export_creates_metadata_and_downloads(
         metadata = json.loads(metadata_files[0].read_text(encoding="utf-8"))
         assert metadata["tenant_id"] == TENANT_A_ID
         assert metadata["row_count"] == 1
+        import hashlib
+        result_file = Path(metadata["file_path"])
+        assert metadata["metadata_version"] == 1
+        assert metadata["user_id"] == payload["user_id"]
+        assert metadata["file_id"] == payload["file_id"]
+        assert metadata["format"] == payload["format"]
+        assert metadata["file_size_bytes"] == result_file.stat().st_size
+        assert metadata["content_sha256"] == hashlib.sha256(result_file.read_bytes()).hexdigest()
 
         # The actual queue completion writes the same persisted job row.
         await queue._execute_job(queue.jobs[str(job_id)])
@@ -272,7 +280,7 @@ async def test_tenant_a_export_does_not_include_tenant_b_rows(
         await export_report_worker(payload)
         csv_files = list(Path(tmp_path).glob("*.csv"))
         assert len(csv_files) == 1
-        csv_text = csv_files[0].read_text(encoding="utf-8")
+        csv_text = csv_files[0].read_text(encoding="utf-8-sig")
         assert "111" in csv_text
         assert "999" not in csv_text
     finally:

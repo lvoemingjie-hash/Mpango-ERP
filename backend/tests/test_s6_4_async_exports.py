@@ -402,7 +402,7 @@ class TestCsvStreaming:
         assert file_path.exists()
 
         # Verify CSV content
-        with open(file_path, "r") as f:
+        with open(file_path, "r", encoding="utf-8-sig") as f:
             lines = f.readlines()
         assert len(lines) == 3  # header + 2 data rows
         assert "transaction_date" in lines[0]
@@ -423,7 +423,7 @@ class TestCsvStreaming:
 
         assert row_count == 0
         assert file_path.exists()
-        with open(file_path, "r") as f:
+        with open(file_path, "r", encoding="utf-8-sig") as f:
             lines = f.readlines()
         assert len(lines) == 1  # header only
 
@@ -689,7 +689,8 @@ class TestValueSerialization:
 
     def test_serialize_decimal(self):
         from jobs.export_jobs import _serialize_value
-        assert _serialize_value(Decimal("1234.5678")) == 1234.5678
+        assert _serialize_value(Decimal("1234.5678")) == "1234.5678"
+        assert _serialize_value(Decimal("1234567890123456.1234")) == "1234567890123456.1234"
 
     def test_serialize_date(self):
         from jobs.export_jobs import _serialize_value

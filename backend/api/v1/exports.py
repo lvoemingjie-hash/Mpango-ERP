@@ -154,6 +154,20 @@ async def create_export(
                     ),
                 )
 
+    if body.format.value == "xlsx":
+        from jobs.export_jobs import ExportFileError, require_xlsx_dependency
+
+        try:
+            require_xlsx_dependency()
+        except ExportFileError:
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content=make_error(
+                    "EXPORT_XLSX_DEPENDENCY_UNAVAILABLE",
+                    "XLSX export is unavailable. Please try again after support restores it.",
+                ),
+            )
+
     # --- Build serializable payload with tenant context ---
     #[Constraint Check] Rule #1: tenant_id serialized from request.state into payload
     job_payload = ExportJobPayload.from_request(
@@ -328,6 +342,8 @@ async def download_export(
     - Only serves completed exports
     - File path is derived from metadata, never from user input
     """
+    from jobs.export_jobs import ExportFileError
+
     tenant_ctx: TenantContext = _extract_tenant(request)
     parsed_job_id = _parse_export_job_id(job_id)
     if parsed_job_id is None:
@@ -369,11 +385,11 @@ async def download_export(
             )
 
         # Find the file via metadata
-        meta = _find_job_metadata(job_id, job.payload)
+        meta = _find_job_metadata(job_id, job.payload, strict=True)
         if not meta or not meta.get("file_path"):
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
-                content=make_error("EXPORT_FILE_MISSING", "Export file not found on disk"),
+                content=make_error("EXPORT_FILE_MISSING", "Export file unavailable. Please request a new export."),
             )
 
         file_path = Path(meta["file_path"])
@@ -396,6 +412,14 @@ async def download_export(
             filename=meta.get("file_name", f"export.{fmt}"),
         )
 
+    except ExportFileError:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=make_error(
+                "EXPORT_FILE_INVALID",
+                "Export integrity or format check failed. Please request a new export.",
+            ),
+        )
     except Exception as e:
         logger.error(
             f"Failed to download export: {e}",
@@ -414,13 +438,15 @@ async def download_export(
 # Helpers
 # ============================================================================
 
-def _find_job_metadata(job_id: str, payload: Optional[dict]) -> Optional[dict]:
+def _find_job_metadata(job_id: str, payload: Optional[dict], *, strict: bool = False) -> Optional[dict]:
     """Resolve only the file identity persisted in this job's database row.
 
     Legacy jobs without a mapping fail closed; a different same-tenant file
     is never a substitute for a missing result.
     """
-    from jobs.export_jobs import EXPORT_DIR, read_metadata
+    from jobs.export_jobs import (
+        EXPORT_DIR, ExportFileError, _file_digest, read_metadata, validate_export_file,
+    )
     if _parse_export_job_id(job_id) is None or not payload:
         return None
     file_id = payload.get("file_id")
@@ -433,14 +459,31 @@ def _find_job_metadata(job_id: str, payload: Optional[dict]) -> Optional[dict]:
         if meta.get("file_id") != file_id or meta.get("tenant_id") != payload["tenant_id"]:
             return None
         fmt = meta.get("format")
-        if fmt not in ("csv", "xlsx"):
-            return None
+        if fmt not in ("csv", "xlsx") or fmt != payload.get("format"):
+            raise ExportFileError("EXPORT_METADATA_FORMAT_INVALID")
         expected = EXPORT_DIR.resolve() / f"{file_id}.{fmt}"
         if (expected.is_symlink() or not expected.is_file()
                 or Path(meta.get("file_path", "")).resolve() != expected
                 or meta.get("file_name") != expected.name):
             return None
+        digest = meta.get("content_sha256")
+        if (meta.get("metadata_version") != 1
+                or not isinstance(digest, str) or len(digest) != 64
+                or any(c not in "0123456789abcdef" for c in digest)
+                or not isinstance(payload.get("user_id"), str)
+                or meta.get("user_id") != payload["user_id"]
+                or not isinstance(meta.get("completed_at"), str)
+                or type(meta.get("row_count")) is not int or meta["row_count"] < 0
+                or type(meta.get("file_size_bytes")) is not int
+                or meta["file_size_bytes"] != expected.stat().st_size
+                or digest != _file_digest(expected)):
+            raise ExportFileError("EXPORT_METADATA_INTEGRITY_INVALID")
+        validate_export_file(expected, fmt)
         return meta
+    except ExportFileError:
+        if strict:
+            raise
+        return None
     except (OSError, ValueError, TypeError):
         return None
     return None

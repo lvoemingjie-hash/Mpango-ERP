@@ -53,10 +53,13 @@ def _csv_row(row: list) -> str:
     """Quote CSV normally and neutralize spreadsheet formulas in text cells."""
     buf = io.StringIO()
     writer = csv.writer(buf)
+    # Normalize only a detection copy; preserve the exported text's glyphs.
+    formula_signs = str.maketrans("＝＋－＠", "=+-@")
     writer.writerow([
         "'" + value
         if isinstance(value, str)
-        and (_FORMULA_PREFIX.match(value) or value.startswith(("\t", "\r", "\n")))
+        and (_FORMULA_PREFIX.match(value.translate(formula_signs))
+             or value.startswith(("\t", "\r", "\n")))
         else value
         for value in row
     ])

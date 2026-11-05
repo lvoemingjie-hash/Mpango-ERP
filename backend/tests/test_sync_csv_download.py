@@ -131,6 +131,66 @@ async def test_bom_headers_and_empty_export_have_no_extra_data(world, kind):
     assert not world.request_db.calls
 
 
+@pytest.mark.parametrize('sign,ascii_sign', [
+    pytest.param('＝', '=', id='equals'),
+    pytest.param('＋', '+', id='plus'),
+    pytest.param('－', '-', id='minus'),
+    pytest.param('＠', '@', id='at'),
+])
+def test_r2_fullwidth_and_ascii_formula_signs_preserve_original_glyphs(sign, ascii_sign):
+    for prefix in ('', ' ', '\t', '\r', '\n', '\ufeff', '\x00\x1f ', '\u00a0', '\u3000'):
+        for marker in (sign, ascii_sign):
+            text = prefix + marker + 'SUM(1,2);"产品"'
+            actual = next(csv.reader(io.StringIO(data_export._csv_row([text]))))
+            assert actual == ["'" + text], 'CSV_R2_FULLWIDTH_FORMULA_NOT_NEUTRALIZED'
+
+
+def test_r2_comma_csv_keeps_delimiters_quotes_and_newlines_inside_cells():
+    values = ['plain,=1', 'plain;＋1', '"quoted",@1', 'line one\n=1',
+              '=SUM(1,2);"quoted"\nnext', '  +1,2;"x"', '普通,文本;"字符"']
+    expected = values[:4] + ["'" + text for text in values[4:6]] + values[6:]
+    encoded = data_export._csv_row(values).encode('utf-8')
+    rows = list(csv.reader(io.StringIO(encoded.decode('utf-8'), newline=''), delimiter=','))
+    assert rows == [expected], 'CSV_R2_DELIMITER_CREATED_EXTRA_CELL_OR_ROW'
+    assert len(rows[0]) == len(values)
+
+
+def test_r2_safe_unicode_ids_leading_zeros_and_typed_negatives_are_unchanged():
+    values = ['产品＝新品＋大号－蓝色＠店铺', '0000123', str(TID), '', "'already text",
+              Decimal('-12.30'), -2, Decimal('0.00')]
+    actual = next(csv.reader(io.StringIO(data_export._csv_row(values))))
+    assert actual == values[:5] + ['-12.30', '-2', '0.00']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind', ['orders', 'inventory'])
+async def test_r2_route_bytes_keep_fullwidth_formulas_in_one_safe_cell(world, kind):
+    payloads = ['＝SUM(1,2);"quoted"\nnext', ' ＋1,2;"x"',
+                '\x01－1+2,"x";next', '\u3000＠SUM(1,2);"x"']
+    if kind == 'orders':
+        world.export_db.rows = [order(i, notes=value) for i, value in enumerate(payloads, 1)]
+        expected_payloads = [value.replace('\n', ' ') for value in payloads]
+        column, width = 5, 9
+    else:
+        world.export_db.rows = [stock(i) for i in range(1, len(payloads) + 1)]
+        for row, value in zip(world.export_db.rows, payloads):
+            row.sku.sku_code = value
+        expected_payloads = payloads
+        column, width = 1, 10
+    async with AsyncClient(transport=ASGITransport(app=world.app), base_url='http://csv.test') as client:
+        response = await client.get('/api/v1/' + kind + '/export')
+    assert response.status_code == 200
+    assert response.content.startswith(b'\xef\xbb\xbf')
+    assert response.content.count(b'\xef\xbb\xbf') == 1
+    assert response.headers['content-type'].lower() == 'text/csv; charset=utf-8'
+    rows = list(csv.reader(io.StringIO(response.content.decode('utf-8-sig'), newline=''), delimiter=','))
+    assert len(rows) == len(payloads) + 1 and all(len(row) == width for row in rows)
+    assert [row[column] for row in rows[1:]] == ["'" + value for value in expected_payloads], (
+        'CSV_R2_ROUTE_FULLWIDTH_FORMULA_NOT_NEUTRALIZED')
+    assert world.opened == world.closed == ['t_csv_contract'] and world.export_db.closed
+    assert not world.request_db.calls
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('kind', ['orders', 'inventory'])
 async def test_two_batches_use_only_token_schema_and_keep_all_rows(world, kind):

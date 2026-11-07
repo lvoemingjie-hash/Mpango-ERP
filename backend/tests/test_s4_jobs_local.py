@@ -42,6 +42,8 @@ async def test_enqueue_job():
     await queue.start()
 
     try:
+        await queue.semaphore.acquire()
+        await queue.semaphore.acquire()
         # Register a test handler
         @job_handler("test_enqueue")
         async def test_handler(payload: dict):
@@ -62,6 +64,8 @@ async def test_enqueue_job():
         assert job["status"] == "pending"
 
     finally:
+        queue.semaphore.release()
+        queue.semaphore.release()
         await queue.stop()
 
 
@@ -271,9 +275,7 @@ async def test_graceful_shutdown():
     # Stop queue (should wait for jobs to complete)
     await queue.stop()
 
-    # Verify jobs completed (may not be all 3 due to timeout)
-    # The important thing is that stop() was called and didn't crash
-    assert len(executed) >= 0  # At least some jobs may have completed
+    assert len(executed) == 3
 
 
 @pytest.mark.asyncio

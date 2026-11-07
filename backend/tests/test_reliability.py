@@ -495,10 +495,15 @@ class TestGracefulShutdown:
     async def test_graceful_shutdown_closes_connections(self):
         """Test that graceful shutdown closes database and Redis connections."""
         from main import graceful_shutdown
+        import main
 
         # Mock database engine
-        with patch('database.session.async_engine') as mock_engine:
+        with patch.object(main, '_job_queue', None), patch.object(main, '_shutdown_task', None), \
+             patch.object(main, '_shutdown_loop', None), \
+             patch('database.reporting_session.reporting_engine') as mock_reporting, \
+             patch('database.session.async_engine') as mock_engine:
             mock_engine.dispose = AsyncMock()
+            mock_reporting.dispose = AsyncMock()
 
             # Mock rate limiter
             with patch('core.rate_limiter.close_rate_limiter') as mock_close_limiter:
@@ -510,6 +515,7 @@ class TestGracefulShutdown:
 
                 # Verify connections were closed
                 mock_engine.dispose.assert_called_once()
+                mock_reporting.dispose.assert_called_once()
                 mock_close_limiter.assert_called_once()
 
 

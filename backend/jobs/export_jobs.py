@@ -21,7 +21,7 @@ Context Propagation:
 File Safety:
     - Writes batches from the result proxy; this does not promise server-side streaming.
     - Publishes only closed files and then an identity/digest sidecar.
-    - Does not implement queue shutdown, crash recovery or concurrent-writer fencing.
+    - File work is serial, tracked and cooperatively stopped; no cross-host fencing.
 
 Security:
     - Worker REJECTS payloads with empty tenant_id (ExportJobPayload validator).
@@ -29,15 +29,19 @@ Security:
     - SET LOCAL search_path is enforced by SemanticQueryBuilder before any query.
 """
 import csv
+import asyncio
 import codecs
+import contextvars
 import hashlib
 import math
 import os
 import re
 import tempfile
+import threading
 import uuid
 import zipfile
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -84,6 +88,163 @@ _INVALID_XML = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff
 
 class ExportFileError(ValueError):
     """Fixed public error category, without source values or runtime credentials."""
+
+
+_IO_OWNER = contextvars.ContextVar("export_io_owner", default=None)
+_FILE_WORK = set()
+
+
+@contextmanager
+def export_io_scope(owner):
+    token = _IO_OWNER.set(owner)
+    try:
+        yield
+    finally:
+        _IO_OWNER.reset(token)
+
+
+def export_io_pending(owners):
+    for work in list(_FILE_WORK):
+        if work.closed():
+            _FILE_WORK.discard(work)
+    return [work for work in _FILE_WORK if work.owner in owners]
+
+
+def request_export_io_stop(owners):
+    for work in export_io_pending(owners):
+        work.cancel.set()
+
+
+async def wait_export_io(owners, timeout):
+    deadline = asyncio.get_running_loop().time() + max(0, timeout)
+    while export_io_pending(owners):
+        if asyncio.get_running_loop().time() >= deadline:
+            return False
+        await asyncio.sleep(0.005)
+    return True
+
+
+class _ExportFileWork:
+    """One serial file worker, not an executor for the database handler.
+
+    Every future, cleanup task and actual thread remains owned until closed.
+    Cancelling an await never means that a thread has stopped.
+    """
+    def __init__(self):
+        self.owner = _IO_OWNER.get()
+        self.cancel = threading.Event()
+        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mpango-export-file")
+        self.futures = set()
+        self.close_task = None
+        self.context = self.handle = self.book = self.sheet = None
+        self.temporary = None
+        self.fmt = None
+        _FILE_WORK.add(self)
+
+    def _check(self):
+        if self.cancel.is_set():
+            raise ExportFileError("EXPORT_WRITE_CANCELLED")
+
+    async def call(self, function, *args):
+        future = asyncio.get_running_loop().run_in_executor(self.executor, function, *args)
+        self.futures.add(future)
+        def finished(done):
+            self.futures.discard(done)
+            if not done.cancelled():
+                done.exception()
+        future.add_done_callback(finished)
+        try:
+            return await asyncio.shield(future)
+        except BaseException:
+            self.cancel.set()
+            raise
+
+    def begin(self, file_path, fmt, columns):
+        self._check()
+        self.context = _atomic_export_path(file_path)
+        self.temporary = self.context.__enter__()
+        self.fmt = fmt
+        if fmt == "csv":
+            self.handle = self.temporary.open("w", newline="", encoding="utf-8-sig")
+            self.csv = csv.writer(self.handle)
+            self.csv.writerow([_csv_value(str(column)) for column in columns])
+        else:
+            self.book = require_xlsx_dependency()(write_only=True)
+            self.sheet = self.book.create_sheet("Export")
+            self.append([list(str(column) for column in columns)])
+
+    def append(self, batch):
+        for row in batch:
+            self._check()
+            if self.fmt == "csv":
+                self.csv.writerow([_csv_value(value) for value in row])
+            else:
+                from openpyxl.cell import WriteOnlyCell
+                cells = []
+                for value in row:
+                    value = _serialize_value(value)
+                    if isinstance(value, str) and (_INVALID_XML.search(value) or len(value) > 32767):
+                        raise ExportFileError("EXPORT_XLSX_TEXT_INVALID")
+                    cell = WriteOnlyCell(self.sheet, value=value)
+                    if isinstance(value, str):
+                        cell.data_type = "s"
+                    cells.append(cell)
+                self.sheet.append(cells)
+
+    def finish(self):
+        self._check()
+        if self.handle is not None:
+            self.handle.close(); self.handle = None
+        if self.book is not None:
+            self.book.save(str(self.temporary))
+        validate_export_file(self.temporary, self.fmt)
+        self._check()
+        self.context.__exit__(None, None, None)
+        self.context = None
+
+    def _cleanup(self):
+        try:
+            if self.handle is not None:
+                self.handle.close(); self.handle = None
+            if self.sheet is not None and self.sheet._writer is not None:
+                if not self.sheet.closed:
+                    self.sheet.close()
+                if os.path.exists(self.sheet._writer.out):
+                    self.sheet._writer.cleanup()
+            if self.book is not None:
+                self.book.close()
+        finally:
+            if self.context is not None:
+                error = ExportFileError("EXPORT_WRITE_CANCELLED")
+                self.context.__exit__(ExportFileError, error, None)
+                self.context = None
+
+    async def _close(self):
+        try:
+            await self.call(self._cleanup)
+        finally:
+            self.executor.shutdown(wait=False)
+        while any(thread.is_alive() for thread in self.executor._threads):
+            await asyncio.sleep(0.005)
+        _FILE_WORK.discard(self)
+
+    async def close(self):
+        if self.close_task is None:
+            self.close_task = asyncio.create_task(self._close())
+        await asyncio.shield(self.close_task)
+
+    def closed(self):
+        return (self.close_task is not None and self.close_task.done() and not self.close_task.cancelled()
+                and self.close_task.exception() is None and not self.futures
+                and not any(thread.is_alive() for thread in self.executor._threads))
+
+
+async def run_export_file_operation(function, *args):
+    work = _ExportFileWork()
+    try:
+        return await work.call(function, work.cancel, *args)
+    finally:
+        await work.close()
 
 
 def require_xlsx_dependency():
@@ -331,24 +492,31 @@ async def export_report_worker(payload: dict) -> None:
     # --- Step 6: Record result metadata in payload ---
     # The S4 queue updates sys_jobs.status to "completed" automatically.
     # We store file metadata so the status endpoint can return download info.
-    file_size = file_path.stat().st_size
-    validate_export_file(file_path, job_payload.format)
+    def publish_metadata(cancel):
+        file_size = file_path.stat().st_size
+        validate_export_file(file_path, job_payload.format)
+        content_digest = _file_digest(file_path)
 
-    # Update the job payload with result metadata.
-    # We write a small metadata sidecar file that the status endpoint reads.
-    _write_metadata(file_id, {
-        "metadata_version": 1,
-        "file_id": file_id,
-        "file_path": str(file_path),
-        "file_name": file_path.name,
-        "row_count": row_count,
-        "file_size_bytes": file_size,
-        "content_sha256": _file_digest(file_path),
-        "format": job_payload.format,
-        "tenant_id": job_payload.tenant_id,
-        "user_id": job_payload.user_id,
-        "completed_at": datetime.now(timezone.utc).isoformat(),
-    })
+        # Update the job payload with result metadata.
+        # We write a small metadata sidecar file that the status endpoint reads.
+        if cancel.is_set():
+            raise ExportFileError("EXPORT_WRITE_CANCELLED")
+        _write_metadata(file_id, {
+            "metadata_version": 1,
+            "file_id": file_id,
+            "file_path": str(file_path),
+            "file_name": file_path.name,
+            "row_count": row_count,
+            "file_size_bytes": file_size,
+            "content_sha256": content_digest,
+            "format": job_payload.format,
+            "tenant_id": job_payload.tenant_id,
+            "user_id": job_payload.user_id,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return file_path.stat().st_size
+
+    file_size = await run_export_file_operation(publish_metadata)
 
     logger.info(
         "Export job completed",
@@ -365,81 +533,32 @@ async def export_report_worker(payload: dict) -> None:
 # Streaming Writers
 # ---------------------------------------------------------------------------
 
+async def _write_rows(result, columns, file_path, fmt):
+    if fmt == "xlsx":
+        require_xlsx_dependency()
+    work = _ExportFileWork()
+    count = 0
+    try:
+        await work.call(work.begin, file_path, fmt, columns)
+        while True:
+            # The result proxy and async database session stay on their owner loop.
+            batch = result.fetchmany(STREAM_BATCH_SIZE)
+            if not batch:
+                break
+            await work.call(work.append, batch)
+            count += len(batch)
+        await work.call(work.finish)
+        return count
+    finally:
+        await work.close()
+
+
 async def _write_csv_streaming(result, columns: list[str], file_path: Path) -> int:
-    """
-    Write query results to CSV in streaming batches.
-
-    Memory Safety: Only STREAM_BATCH_SIZE rows are in RAM at any time.
-    The result proxy is iterated via fetchmany() to avoid loading all rows.
-
-    Returns:
-        Number of rows written.
-    """
-    row_count = 0
-
-    with _atomic_export_path(file_path) as temporary:
-        with temporary.open("w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.writer(f)
-            writer.writerow([_csv_value(str(column)) for column in columns])
-            while True:
-                batch = result.fetchmany(STREAM_BATCH_SIZE)
-                if not batch:
-                    break
-                for row in batch:
-                    writer.writerow([_csv_value(val) for val in row])
-                    row_count += 1
-        validate_export_file(temporary, "csv")
-
-    return row_count
+    return await _write_rows(result, columns, file_path, "csv")
 
 
 async def _write_xlsx_streaming(result, columns: list[str], file_path: Path) -> int:
-    """
-    Write query results to XLSX using openpyxl write-only mode.
-
-    Memory Safety: openpyxl's write_only=True mode streams rows to disk
-    without keeping the full worksheet in memory.
-
-    Missing dependencies and invalid text are explicit failures, never CSV fallbacks.
-
-    Returns:
-        Number of rows written.
-    """
-    Workbook = require_xlsx_dependency()
-    from openpyxl.cell import WriteOnlyCell
-    row_count = 0
-    wb = Workbook(write_only=True)
-    ws = wb.create_sheet("Export")
-    def cells(values):
-        for value in values:
-            value = _serialize_value(value)
-            if isinstance(value, str) and (_INVALID_XML.search(value) or len(value) > 32767):
-                raise ExportFileError("EXPORT_XLSX_TEXT_INVALID")
-            cell = WriteOnlyCell(ws, value=value)
-            if isinstance(value, str):
-                cell.data_type = "s"
-            yield cell
-    try:
-        with _atomic_export_path(file_path) as temporary:
-            ws.append(list(cells(str(column) for column in columns)))
-            while True:
-                batch = result.fetchmany(STREAM_BATCH_SIZE)
-                if not batch:
-                    break
-                for row in batch:
-                    ws.append(list(cells(row)))
-                    row_count += 1
-            wb.save(str(temporary))
-            validate_export_file(temporary, "xlsx")
-    finally:
-        # Write-only workbooks may have an allocated worksheet temp on failure.
-        # It belongs to this worksheet; never enumerate or remove other temp files.
-        if ws._writer is not None and not ws.closed:
-            ws.close()
-        if ws._writer is not None and os.path.exists(ws._writer.out):
-            ws._writer.cleanup()
-        wb.close()
-    return row_count
+    return await _write_rows(result, columns, file_path, "xlsx")
 
 
 # ---------------------------------------------------------------------------

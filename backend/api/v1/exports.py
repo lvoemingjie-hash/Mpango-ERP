@@ -38,6 +38,7 @@ from api.context.tenant import TenantContext, get_tenant_context
 from api.middleware.rbac import RequirePermission
 from api.schemas.dashboard import make_success, make_error
 from core.security import TokenPayload
+from core.jobs.base import JobQueueNotAccepting
 from api.schemas.jobs import (
     ExportRequest,
     ExportJobPayload,
@@ -186,6 +187,11 @@ async def create_export(
             job_name="export_report",
             payload=job_payload.model_dump(),
             max_retries=2,
+        )
+    except JobQueueNotAccepting as error:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=make_error(error.code, "Export queue is not accepting work. Please try again later."),
         )
     except Exception as e:
         logger.error(

@@ -12,20 +12,23 @@ async def main():
     from database.reporting_session import reporting_engine
     from models.job import Job
     jid = UUID(sys.argv[1])
+    queue = None
     try:
         async with AsyncSessionLocal() as db:
             db.info['tenant_schema'] = 'public'
             job = (await db.execute(select(Job).where(Job.id == jid))).scalar_one()
             assert job.job_name == 'export_report' and job.status == 'pending'
-            record = {'job_id': str(jid), 'job_name': job.job_name, 'payload': job.payload,
-                      'delay_seconds': 0, 'max_retries': 0}
         queue = LocalJobQueue(max_workers=1)
-        await queue._execute_job(record)
+        await queue.start()
+        await asyncio.wait_for(queue.queue.join(), 25)
+        await queue.stop()
         async with AsyncSessionLocal() as db:
             db.info['tenant_schema'] = 'public'
             status = (await db.execute(select(Job.status).where(Job.id == jid))).scalar_one()
             assert status == 'completed', 'PRODUCTION_WORKER_DID_NOT_COMPLETE'
     finally:
+        if queue is not None:
+            await queue.stop()
         await reporting_engine.dispose()
         await async_engine.dispose()
 

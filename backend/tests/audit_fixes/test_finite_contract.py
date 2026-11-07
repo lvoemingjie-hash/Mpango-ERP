@@ -263,35 +263,52 @@ async def test_persisted_jobs_distinct_worker_processes_and_restart():
             json={'amount': '40', 'method': 'cash'})
         assert response.status_code == 200, response.text
         import jobs.export_jobs  # registers the actual production handler
-        main._job_queue = LocalJobQueue(max_workers=2)
         today = datetime.now(timezone.utc).date()
         ids = []
-        for day in (today, today-timedelta(days=2)):
-            response = await w.client.post('/api/v1/exports', json={'view': 'cash_flow_daily',
-                'metrics': ['net_cash_change'], 'format': 'csv',
-                'date_from': day.isoformat(), 'date_to': day.isoformat()})
-            assert response.status_code == 202, response.text
-            ids.append(response.json()['data']['job_id'])
+        worker_pids = []
         private = Path(os.environ['AUDIT_FINITE_PRIVATE'])
+        from tests.async_export_process_probe import private_json
         async def execute(jid):
-            stdout = (private / ('worker-'+jid+'.stdout')).open('xb')
-            stderr = (private / ('worker-'+jid+'.stderr')).open('xb')
-            try:
-                process = await asyncio.create_subprocess_exec(sys.executable, '-B', '-m',
-                    'tests.audit_fixes.worker_once', jid, stdout=stdout, stderr=stderr)
-                try:
-                    rc = await asyncio.wait_for(process.wait(), 40)
-                except asyncio.TimeoutError:
-                    process.kill()
-                    await process.wait()
-                    raise
-                assert rc == 0, 'FINITE-WORKER-PROCESS-FAILED'
-                retain('worker-process', {'pid': process.pid, 'rc': rc, 'job_id': jid})
-            finally:
-                stdout.close()
-                stderr.close()
+            root = private / ('worker-' + jid)
+            root.mkdir(mode=0o700)
+            env = json.loads(Path(os.environ['ASYNC_QUEUE_RUNTIME_ENV']).read_text())
+            env.update(JOB_QUEUE_RECOVERY_CONFIRMED='1', EXPORT_DIR=os.environ['EXPORT_DIR'],
+                PYTHONPATH=str(Path(__file__).resolve().parents[2]),
+                ASYNC_QUEUE_PROBE_ROOT=os.environ['ASYNC_QUEUE_PROBE_ROOT'])
+            env.pop('JOB_QUEUE_RECOVERY_PROOF_FILE', None)
+            envfile = root / 'env.json'; private_json(envfile, env, input_file=True)
+            command = dict(id='worker', argv=[sys.executable, '-B', '-m', 'tests.audit_fixes.worker_once', jid],
+                cwd=str(Path(__file__).resolve().parents[2]), native_timeout_seconds=40,
+                invocation_id='A2-audit-worker:' + jid)
+            command.update({key + '_path': str(root / (key + ext)) for key, ext in
+                [('stdout', '.txt'), ('stderr', '.txt'), ('intent', '.json'), ('record', '.json')]})
+            plan = root / 'plan.json'; private_json(plan, {'commands': [command]}, input_file=True)
+            process = await asyncio.create_subprocess_exec(sys.executable, '-B',
+                os.environ['ASYNC_QUEUE_NATIVE_CAPTURE'], str(plan), 'worker', str(envfile),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            await asyncio.wait_for(process.communicate(), 75)
+            record = json.loads((root / 'record.json').read_text())
+            assert record['native_rc'] == 0 and not record['timed_out'], 'FINITE-WORKER-PROCESS-FAILED'
+            worker_pids.append(record['pid'])
+            retain('worker-process', {'pid': record['pid'], 'start_ticks': record['start_ticks'],
+                'rc': record['native_rc'], 'job_id': jid})
+        producer = None
         try:
-            await asyncio.gather(*(execute(jid) for jid in ids))
+            for day in (today, today-timedelta(days=2)):
+                producer = LocalJobQueue(max_workers=1)
+                main._job_queue = producer
+                await producer.start()
+                await producer.semaphore.acquire()
+                response = await w.client.post('/api/v1/exports', json={'view': 'cash_flow_daily',
+                    'metrics': ['net_cash_change'], 'format': 'csv',
+                    'date_from': day.isoformat(), 'date_to': day.isoformat()})
+                assert response.status_code == 202, response.text
+                jid = response.json()['data']['job_id']; ids.append(jid)
+                producer.drain_seconds = 0.01
+                await producer.stop()
+                assert producer.close_report['deferred'] == 1
+                await execute(jid)
+            assert len(set(worker_pids)) == 2, 'FINITE-WORKERS-MUST-BE-DISTINCT-PROCESSES'
             # Fresh queue has no old in-memory job map: downloads must use sys_jobs.
             main._job_queue = LocalJobQueue(max_workers=1)
             contents = []
@@ -328,5 +345,7 @@ async def test_persisted_jobs_distinct_worker_processes_and_restart():
             denied = await w.client.get('/api/v1/exports/'+str(jobs[1]['id'])+'/download')
             assert denied.status_code == 404, 'FINITE-MISSING-FILE-NO-FALLBACK'
         finally:
+            if producer is not None:
+                await producer.stop()
             main._job_queue = None
             await reporting_engine.dispose()

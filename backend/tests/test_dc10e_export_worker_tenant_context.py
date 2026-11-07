@@ -107,20 +107,36 @@ async def _submitted_payload(monkeypatch, *, tenant_id=TENANT_A_ID):
     from models.job import Job
     from sqlalchemy import select
     queue = LocalJobQueue(max_workers=1)
-    monkeypatch.setattr("main.get_job_queue", lambda: queue)
-    request = _request_with_context(tenant_id)
-    token = await _exports_create_token(request)
-    response = await create_export(request, ExportRequest(view="sales_daily",
-        metrics=["revenue", "transaction_count"], dimensions=["date"], format="csv", limit=100), token)
-    assert response.status_code == 202
-    job_id = uuid.UUID(json.loads(response.body)["data"]["job_id"])
-    async with AsyncSessionLocal() as db:
-        db.info["tenant_schema"] = "public"
-        row = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one()
-        payload = dict(row.payload)
-    assert payload["file_id"] and payload["tenant_id"] == tenant_id
-    assert payload == queue.jobs[str(job_id)]["payload"]
-    return job_id, payload, queue
+    await queue.start()
+    await queue.semaphore.acquire()
+    try:
+        monkeypatch.setattr("main.get_job_queue", lambda: queue)
+        request = _request_with_context(tenant_id)
+        token = await _exports_create_token(request)
+        response = await create_export(request, ExportRequest(view="sales_daily",
+            metrics=["revenue", "transaction_count"], dimensions=["date"], format="csv", limit=100), token)
+        assert response.status_code == 202
+        job_id = uuid.UUID(json.loads(response.body)["data"]["job_id"])
+        async with AsyncSessionLocal() as db:
+            db.info["tenant_schema"] = "public"
+            row = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one()
+            payload = dict(row.payload)
+        assert payload["file_id"] and payload["tenant_id"] == tenant_id
+        assert payload == queue.jobs[str(job_id)]["payload"]
+        return job_id, payload, queue
+    except BaseException:
+        queue.semaphore.release()
+        await queue.stop()
+        raise
+
+
+
+async def _finish_queue(queue):
+    if queue is None:
+        return
+    if queue.semaphore.locked():
+        queue.semaphore.release()
+    await queue.stop()
 
 
 async def _exports_create_token(request: StarletteRequest) -> TokenPayload:
@@ -187,11 +203,13 @@ async def test_worker_real_reporting_session_has_required_tenant_context(
 
     await _create_reporting_table(TENANT_A_SCHEMA, "123.4500")
     monkeypatch.setattr(export_jobs, "EXPORT_DIR", tmp_path)
+    queue = None
 
     try:
         job_id, payload, queue = await _submitted_payload(monkeypatch)
         await export_report_worker(payload)
     finally:
+        await _finish_queue(queue)
         await _drop_reporting_schema(TENANT_A_SCHEMA)
 
 
@@ -208,6 +226,7 @@ async def test_worker_sets_tenant_context_before_first_sql(tmp_path, monkeypatch
     await export_report_worker(payload)
 
     assert session.execute_count >= 1
+    await _finish_queue(queue)
 
 
 @pytest.mark.asyncio
@@ -220,6 +239,7 @@ async def test_valid_tenant_export_creates_metadata_and_downloads(
 
     await _create_reporting_table(TENANT_A_SCHEMA, "123.4500")
     monkeypatch.setattr(export_jobs, "EXPORT_DIR", tmp_path)
+    queue = None
 
     try:
         job_id, payload, queue = await _submitted_payload(monkeypatch)
@@ -239,7 +259,9 @@ async def test_valid_tenant_export_creates_metadata_and_downloads(
         assert metadata["content_sha256"] == hashlib.sha256(result_file.read_bytes()).hexdigest()
 
         # The actual queue completion writes the same persisted job row.
-        await queue._execute_job(queue.jobs[str(job_id)])
+        queue.semaphore.release()
+        import asyncio
+        await asyncio.wait_for(queue.queue.join(), 10)
         assert queue.jobs[str(job_id)]["status"].value == "completed"
         request = _request_with_context(TENANT_A_ID)
         token = await _exports_create_token(request)
@@ -261,6 +283,7 @@ async def test_valid_tenant_export_creates_metadata_and_downloads(
         assert _find_job_metadata(str(job_id), payload) is None
         export_jobs._write_metadata(payload["file_id"], metadata)
     finally:
+        await _finish_queue(queue)
         await _drop_reporting_schema(TENANT_A_SCHEMA)
 
 
@@ -274,6 +297,7 @@ async def test_tenant_a_export_does_not_include_tenant_b_rows(
     await _create_reporting_table(TENANT_A_SCHEMA, "111.0000")
     await _create_reporting_table(TENANT_B_SCHEMA, "999.0000")
     monkeypatch.setattr(export_jobs, "EXPORT_DIR", tmp_path)
+    queue = None
 
     try:
         job_id, payload, queue = await _submitted_payload(monkeypatch)
@@ -284,6 +308,7 @@ async def test_tenant_a_export_does_not_include_tenant_b_rows(
         assert "111" in csv_text
         assert "999" not in csv_text
     finally:
+        await _finish_queue(queue)
         await _drop_reporting_schema(TENANT_A_SCHEMA)
         await _drop_reporting_schema(TENANT_B_SCHEMA)
 
@@ -311,6 +336,7 @@ async def test_retry_does_not_lose_tenant_context(
 
     await _create_reporting_table(TENANT_A_SCHEMA, "123.4500")
     monkeypatch.setattr(export_jobs, "EXPORT_DIR", tmp_path)
+    queue = None
 
     try:
         job_id, payload, queue = await _submitted_payload(monkeypatch)
@@ -321,6 +347,7 @@ async def test_retry_does_not_lose_tenant_context(
         assert (tmp_path / (payload["file_id"] + ".csv")).read_bytes() == before
         assert export_jobs.read_metadata(payload["file_id"])["tenant_id"] == TENANT_A_ID
     finally:
+        await _finish_queue(queue)
         await _drop_reporting_schema(TENANT_A_SCHEMA)
 
 

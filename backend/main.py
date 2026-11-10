@@ -125,6 +125,7 @@ async def lifespan(app: FastAPI):
     import jobs.reporting_jobs  # noqa: F401  # S6-2: MV refresh handler
     import jobs.export_jobs  # noqa: F401  # S6-4: Export worker
     _job_queue = LocalJobQueue(max_workers=5)
+    primary_error = None
     try:
         await _job_queue.start()
         logger.info("Job queue started")
@@ -138,9 +139,20 @@ async def lifespan(app: FastAPI):
         logger.info("DbAssetResolver registered for tenant asset resolution")
 
         yield
+    except BaseException as error:
+        primary_error = error
+        raise
     finally:
         logger.info("Mpango ERP Backend shutting down")
-        await graceful_shutdown()
+        try:
+            await graceful_shutdown()
+        except BaseException as error:
+            if primary_error is None:
+                raise
+            code = getattr(error, 'code', None)
+            detail = (':' + code if isinstance(code, str) and len(code) <= 80
+                      and code.isascii() and code.replace('_', '').isalnum() and code.isupper() else '')
+            primary_error.add_note('Queue cleanup failed: ' + type(error).__name__ + detail)
 
 
 # Create FastAPI app

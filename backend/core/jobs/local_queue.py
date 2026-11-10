@@ -4,6 +4,7 @@ An advisory lock excludes another owner, but is never proof that an old
 process or writer has exited. Recovery requires independent local evidence.
 """
 import asyncio
+import base64
 import copy
 import fcntl
 import hashlib
@@ -11,13 +12,14 @@ import json
 import os
 from pathlib import Path
 import socket
+import stat
 import uuid
 from contextlib import nullcontext, asynccontextmanager
 from datetime import datetime
 from enum import Enum
 
 from prometheus_client import Counter, Gauge, Histogram
-from sqlalchemy import select, text, update
+from sqlalchemy import or_, select, text, update
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.pool import NullPool
@@ -37,6 +39,126 @@ CLOSE_SECONDS = 5.0
 # being mistaken for a fresh queue after a process or owner connection dies.
 OWNER_ROW_ID = uuid.uuid5(uuid.NAMESPACE_URL, 'mpango/local-queue-owner/v2')
 OWNER_ROW_NAME = '__local_queue_owner_v2__'
+
+# This file is provisioned by a trusted infrastructure operator, not by the
+# application user. The Windows/VM identity source is not deployed by A2.
+REBOOT_AUTHORITY_PATH = Path('/etc/mpango/queue-reboot/authority.json')
+
+
+def _canonical_reboot(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'),
+                      ensure_ascii=True, allow_nan=False).encode('utf-8')
+
+
+def _strict_reboot_json(data):
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('duplicate key')
+            result[key] = value
+        return result
+    value = json.loads(data, object_pairs_hook=unique,
+                       parse_constant=lambda _: (_ for _ in ()).throw(ValueError('nonfinite')))
+    if not isinstance(value, dict):
+        raise ValueError('object required')
+    return value
+
+
+def _read_protected_reboot_file(path, uid, *, private):
+    """Read via verified directory descriptors, without following any symlink."""
+    path = Path(path)
+    if not path.is_absolute() or '..' in path.parts or path.name in ('', '.', '..'):
+        raise ValueError('unsafe path')
+    directory = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for component in path.parts[1:-1]:
+            st = os.fstat(directory)
+            if st.st_uid not in (0, uid) or st.st_mode & 0o022:
+                raise ValueError('unsafe parent')
+            next_directory = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+            os.close(directory)
+            directory = next_directory
+        st = os.fstat(directory)
+        if st.st_uid not in (0, uid) or st.st_mode & 0o022:
+            raise ValueError('unsafe parent')
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)
+        try:
+            st = os.fstat(fd)
+            if (not stat.S_ISREG(st.st_mode) or st.st_uid != uid or st.st_size > 65536
+                    or st.st_mode & (0o077 if private else 0o022)):
+                raise ValueError('unsafe file')
+            with os.fdopen(fd, 'rb') as stream:
+                fd = -1
+                data = stream.read(65537)
+            if len(data) > 65536:
+                raise ValueError('unsafe file')
+            return data
+        finally:
+            if fd != -1:
+                os.close(fd)
+    finally:
+        os.close(directory)
+
+
+def _legacy_journal_missing(path):
+    """Establish absence without following symlinks, including a dangling one."""
+    path = Path(path)
+    if not path.is_absolute() or '..' in path.parts or not path.name:
+        raise ValueError('unsafe journal path')
+    directory = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for component in path.parts[1:-1]:
+            try:
+                nxt = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+            except FileNotFoundError:
+                return True
+            os.close(directory)
+            directory = nxt
+        try:
+            os.stat(path.name, dir_fd=directory, follow_symlinks=False)
+        except FileNotFoundError:
+            return True
+        return False
+    finally:
+        os.close(directory)
+
+
+def _observe_reboot_authority():
+    """Read a root-owned protected attestation; no environment fallback."""
+    authority = _strict_reboot_json(_read_protected_reboot_file(REBOOT_AUTHORITY_PATH, 0, private=False))
+    required = ('vm_id', 'deployment_id', 'pg_system_identifier', 'database_name',
+                'database_oid', 'pg_storage_id', 'export_storage_id', 'export_root',
+                'pg_data_root', 'pg_container_id', 'pg_image_id', 'pg_device',
+                'export_device', 'boot', 'signing_public_key', 'app_uid', 'issuer_uid')
+    if set(authority) != set(required):
+        raise ValueError('incomplete authority')
+    if any(type(authority[k]) is not int or authority[k] <= 0
+           for k in ('database_oid', 'pg_device', 'export_device', 'app_uid')):
+        raise ValueError('invalid authority identity')
+    if type(authority['issuer_uid']) is not int or authority['issuer_uid'] != 0:
+        raise ValueError('invalid issuer identity')
+    if authority['app_uid'] == authority['issuer_uid']:
+        raise ValueError('issuer and application identities must differ')
+    if any(not isinstance(authority[k], str) or not authority[k] or len(authority[k]) > 4096
+           for k in required if k not in ('database_oid', 'pg_device', 'export_device', 'app_uid', 'issuer_uid')):
+        raise ValueError('invalid authority field')
+    if authority['boot'] != Path('/proc/sys/kernel/random/boot_id').read_text().strip():
+        raise ValueError('authority boot mismatch')
+    if os.stat(authority['export_root']).st_dev != authority['export_device']:
+        raise ValueError('export mount mismatch')
+    return authority
+
+
+def _verify_signed_reboot_permit(path, authority, *, file_uid=None):
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    raw = _read_protected_reboot_file(path, os.getuid() if file_uid is None else file_uid, private=True)
+    envelope = _strict_reboot_json(raw)
+    if set(envelope) != {'payload', 'signature'} or not isinstance(envelope['payload'], dict):
+        raise ValueError('invalid envelope')
+    key = Ed25519PublicKey.from_public_bytes(base64.b64decode(authority['signing_public_key'], validate=True))
+    key.verify(base64.b64decode(envelope['signature'], validate=True), _canonical_reboot(envelope['payload']))
+    return envelope['payload'], hashlib.sha256(raw).hexdigest()
 
 
 class JobStatus(str, Enum):
@@ -93,6 +215,8 @@ class LocalJobQueue(JobQueue):
         self._previous_receipt = None
         self._marker_generation = None
         self._generation_claimed = False
+        self._planned_reboot_handoff = None
+        self._planned_reboot_complete = False
         # Same configuration/default as the file writer, captured once for
         # this queue instance. A per-operation writer-directory replacement
         # is not an ownership-state relocation.
@@ -115,22 +239,188 @@ class LocalJobQueue(JobQueue):
     def _receipt_path(self):
         return self._owner_state_root / '.queue-owner.json'
 
-    def _generation_fact(self, closed):
-        return dict(version=2, host=socket.gethostname(), boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+    def _generation_fact(self, closed, *, published_state=None):
+        fact = dict(version=2, host=socket.gethostname(), boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
             pid=os.getpid(), start_ticks=self._ticks(os.getpid()), database=self._database_identity(),
             generation=self._generation, state_path=str(self._receipt_path().resolve()),
-            owner_backend=self._owner_backend, closed=closed, state='CLOSED' if closed else self.state.value,
+            owner_backend=self._owner_backend, closed=closed, state='CLOSED' if closed else (published_state or self.state.value),
             active_handlers=0 if closed else len(self.workers), active_io=0 if closed else None,
             active_admissions=0 if closed else len(self._admissions))
+        if self._planned_reboot_handoff is not None:
+            fact['planned_reboot_handoff'] = copy.deepcopy(self._planned_reboot_handoff)
+        return fact
 
-    def _read_generation(self):
+    def _reboot_seal_path(self, generation):
+        if not isinstance(generation, str) or len(generation) != 32 or any(c not in '0123456789abcdef' for c in generation):
+            raise ValueError('invalid generation')
+        return self._owner_state_root / ('.queue-reboot-complete-' + generation + '.json')
+
+    def _read_reboot_journal(self, *, file_uid=None):
+        path = self._owner_state_root / '.queue-reboot-handoff.json'
+        uid = os.getuid() if file_uid is None else file_uid
+        try:
+            # Absence must be established through no-follow directory handles.
+            # The legacy path may have a group-writable ancestor; a present
+            # journal is always reopened using the stricter protected reader.
+            if _legacy_journal_missing(path):
+                return None
+            raw = _read_protected_reboot_file(path, uid, private=True)
+        except (OSError, ValueError):
+            raise JobRecoveryRequired('JOB_RECOVERY_HANDOFF_INCOMPLETE') from None
+        try:
+            journal = _strict_reboot_json(raw)
+            if (set(journal) != {'version', 'phase', 'generation', 'handoff'}
+                    or journal['version'] != 1 or journal['phase'] not in ('INCOMPLETE', 'COMPLETE')
+                    or not isinstance(journal['handoff'], dict)):
+                raise ValueError('invalid journal')
+            self._reboot_seal_path(journal['generation'])
+            if journal['phase'] == 'COMPLETE':
+                self._check_reboot_handoff({'generation': journal['generation'], 'state': 'ACCEPTING',
+                                             'planned_reboot_handoff': journal['handoff']}, file_uid=uid)
+            return journal
+        except (OSError, ValueError, TypeError, KeyError, JobRecoveryRequired):
+            raise JobRecoveryRequired('JOB_RECOVERY_HANDOFF_INCOMPLETE') from None
+
+    def _write_reboot_journal(self, phase, expected_marker, cancel):
+        path = self._owner_state_root / '.queue-reboot-handoff.json'
+        temporary = path.with_name(path.name + '.' + self._generation + '.tmp')
+        lock = os.open(self._owner_state_root / '.queue-owner.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        created = False
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            previous = self._read_reboot_journal()
+            if phase == 'INCOMPLETE':
+                if previous is not None and previous['phase'] != 'COMPLETE':
+                    raise JobRecoveryRequired('JOB_RECOVERY_HANDOFF_INCOMPLETE')
+                if self._read_generation() != expected_marker:
+                    raise JobQueueShutdownIncomplete()
+            elif previous is None or previous['phase'] != 'INCOMPLETE' or previous['generation'] != self._generation:
+                raise JobRecoveryRequired('JOB_RECOVERY_HANDOFF_INCOMPLETE')
+            journal = {'version': 1, 'phase': phase, 'generation': self._generation,
+                       'handoff': copy.deepcopy(self._planned_reboot_handoff)}
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            created = True
+            with os.fdopen(fd, 'wb') as stream:
+                stream.write(_canonical_reboot(journal))
+                stream.flush()
+                os.fsync(stream.fileno())
+            if cancel.is_set():
+                raise JobQueueShutdownIncomplete()
+            os.replace(temporary, path)
+            directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            if created:
+                temporary.unlink(missing_ok=True)
+            fcntl.flock(lock, fcntl.LOCK_UN)
+            os.close(lock)
+
+    async def _publish_reboot_journal(self, phase, expected_marker=None):
+        from jobs.export_jobs import export_io_scope, run_export_file_operation
+        with export_io_scope((self._generation, 'owner-receipt')):
+            await run_export_file_operation(lambda cancel: self._write_reboot_journal(phase, expected_marker, cancel))
+
+    def _check_reboot_handoff(self, fact, *, file_uid=None):
+        if not isinstance(fact, dict) or 'planned_reboot_handoff' not in fact:
+            return
+        handoff = fact['planned_reboot_handoff']
+        try:
+            if (not isinstance(handoff, dict) or handoff.get('phase') != 'COMPLETE'
+                    or fact.get('state') == 'STARTING'):
+                raise ValueError('handoff not complete')
+            seal = _strict_reboot_json(_read_protected_reboot_file(
+                self._reboot_seal_path(fact.get('generation')), os.getuid() if file_uid is None else file_uid, private=True))
+            if seal != {'generation': fact['generation'], 'handoff': handoff}:
+                raise ValueError('completion seal mismatch')
+        except (OSError, ValueError, TypeError, KeyError):
+            raise JobRecoveryRequired('JOB_RECOVERY_HANDOFF_INCOMPLETE') from None
+
+    def _write_reboot_seal(self, receipt, cancel):
+        # The same filesystem lock prevents a stale writer sealing a later owner.
+        lock = os.open(self._owner_state_root / '.queue-owner.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if cancel.is_set() or self._read_generation() != receipt:
+                raise JobQueueShutdownIncomplete()
+            path = self._reboot_seal_path(self._generation)
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, 'wb') as stream:
+                stream.write(_canonical_reboot({'generation': self._generation,
+                                                'handoff': receipt['planned_reboot_handoff']}))
+                stream.flush()
+                os.fsync(stream.fileno())
+            directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+            os.close(lock)
+
+    async def _planned_reboot_proven(self, db, old):
+        try:
+            authority = _observe_reboot_authority()
+            if authority['app_uid'] != os.getuid():
+                raise ValueError('application uid mismatch')
+            permit_path = os.environ.get('JOB_QUEUE_PLANNED_REBOOT_PROOF_FILE')
+            if not permit_path:
+                raise JobRecoveryRequired('JOB_RECOVERY_REBOOT_PROOF_REQUIRED')
+            permit, permit_sha = _verify_signed_reboot_permit(permit_path, authority)
+            expected = {'kind', 'old_owner_sha256', 'old_generation', 'old_boot', 'new_boot', 'authority'}
+            if set(permit) != expected or permit['kind'] != 'planned_clean_reboot_v1':
+                raise ValueError('invalid permit fields')
+            if (permit['authority'] != authority or permit['old_generation'] != old['generation']
+                    or permit['old_boot'] != old['boot'] or permit['new_boot'] != authority['boot']
+                    or permit['old_boot'] == permit['new_boot']
+                    or permit['old_owner_sha256'] != hashlib.sha256(_canonical_reboot(old)).hexdigest()
+                    or authority['export_root'] != str(self._owner_state_root)):
+                raise ValueError('stale or mismatched permit')
+            if (old.get('state') != 'CLOSED' or old.get('closed') is not True
+                    or any(type(old.get(k)) is not int or old[k] != 0
+                           for k in ('active_handlers', 'active_io', 'active_admissions'))):
+                raise JobRecoveryRequired('JOB_RECOVERY_REBOOT_NOT_CLEAN')
+            database = (await db.execute(text('SELECT current_database(), oid FROM pg_database WHERE datname=current_database()'))).one()
+            if database[0] != authority['database_name'] or database[1] != authority['database_oid']:
+                raise ValueError('database identity mismatch')
+            duplicate = (await db.execute(select(Job.id).where(Job.id != OWNER_ROW_ID, Job.job_name == OWNER_ROW_NAME).limit(1))).first()
+            unsettled = (await db.execute(select(Job.id).where(Job.id != OWNER_ROW_ID,
+                or_(Job.status.is_(None), Job.status.notin_(['completed', 'failed']))).limit(1))).first()
+            if duplicate or unsettled:
+                raise JobRecoveryRequired('JOB_RECOVERY_REBOOT_UNSETTLED')
+            return {'phase': 'INCOMPLETE', 'old_generation': old['generation'],
+                    'old_owner_sha256': permit['old_owner_sha256'], 'permit_sha256': permit_sha}
+        except JobRecoveryRequired:
+            raise
+        except Exception:
+            raise JobRecoveryRequired('JOB_RECOVERY_REBOOT_PROOF_INVALID') from None
+
+    def _read_generation(self, *, file_uid=None):
         path = self._receipt_path()
-        if not path.exists():
+        try:
+            if file_uid is not None:
+                raw = _read_protected_reboot_file(path, file_uid, private=False)
+            else:
+                fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+                with os.fdopen(fd, 'rb') as stream:
+                    st = os.fstat(stream.fileno())
+                    if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_mode & 0o022:
+                        raise ValueError('unsafe owner marker')
+                    raw = stream.read()
+        except FileNotFoundError:
             return None
-        if path.is_symlink() or path.stat().st_uid != os.getuid() or path.stat().st_mode & 0o022:
+        except (ValueError, OSError):
             raise JobRecoveryRequired('JOB_RECOVERY_STATE_PATH_INVALID')
         try:
-            return json.loads(path.read_text())
+            fact = _strict_reboot_json(raw)
+            if file_uid is None and 'planned_reboot_handoff' in fact:
+                protected = _read_protected_reboot_file(path, os.getuid(), private=False)
+                if raw != protected:
+                    raise ValueError('owner marker changed')
+            return fact
         except (ValueError, OSError):
             raise JobRecoveryRequired('JOB_RECOVERY_STATE_PATH_INVALID') from None
 
@@ -159,10 +449,10 @@ class LocalJobQueue(JobQueue):
             temporary.unlink(missing_ok=True)
             fcntl.flock(fd, fcntl.LOCK_UN); os.close(fd)
 
-    async def _persist_receipt(self, closed):
+    async def _persist_receipt(self, closed, *, published_state=None):
         from jobs.export_jobs import export_io_scope, run_export_file_operation
         async with self._owner_transaction() as db:
-            receipt = self._generation_fact(closed)
+            receipt = self._generation_fact(closed, published_state=published_state)
             with export_io_scope((self._generation, 'owner-receipt')):
                 await run_export_file_operation(lambda cancel: self._write_receipt(receipt, cancel))
             await db.execute(update(Job).where(Job.id == OWNER_ROW_ID).values(payload=receipt))
@@ -255,23 +545,48 @@ class LocalJobQueue(JobQueue):
         # DB/file marker write is deliberately fail-closed, not "fresh".
         async with self._owner_transaction(claimed=False) as db:
             row = (await db.execute(select(Job).where(Job.id == OWNER_ROW_ID))).scalar_one_or_none()
+            journal = self._read_reboot_journal()
+            if journal is not None and journal['phase'] != 'COMPLETE':
+                raise JobRecoveryRequired('JOB_RECOVERY_HANDOFF_INCOMPLETE')
+            if row is not None:
+                self._check_reboot_handoff(row.payload)
             marker = self._read_generation()
+            self._check_reboot_handoff(marker)
+            if os.environ.get('JOB_QUEUE_PLANNED_REBOOT_PROOF_FILE') and marker is not None:
+                try:
+                    protected_marker = _strict_reboot_json(_read_protected_reboot_file(
+                        self._receipt_path(), os.getuid(), private=False))
+                    if protected_marker != marker:
+                        raise ValueError('owner marker changed')
+                except (OSError, ValueError, TypeError):
+                    raise JobRecoveryRequired('JOB_RECOVERY_HANDOFF_INCOMPLETE') from None
             if row is None:
+                if os.environ.get('JOB_QUEUE_PLANNED_REBOOT_PROOF_FILE'):
+                    raise JobRecoveryRequired('JOB_RECOVERY_REBOOT_PROOF_STALE')
                 history = (await db.execute(select(Job.id).limit(1))).first()
                 if history is not None or marker is not None:
                     raise JobRecoveryRequired('JOB_RECOVERY_GENERATION_MISSING')
             else:
                 fact = row.payload
+                # A visible COMPLETE is insufficient after an uncertain directory
+                # fsync. Only a later real durable close permits legacy recovery.
+                if isinstance(fact, dict) and 'planned_reboot_handoff' in fact and fact.get('closed') is not True:
+                    raise JobRecoveryRequired('JOB_RECOVERY_HANDOFF_INCOMPLETE')
                 if (row.job_name != OWNER_ROW_NAME or row.status != 'completed' or row.is_deleted
                         or not isinstance(fact, dict) or fact.get('version') != 2
                         or fact.get('database') != self._database_identity()
                         or fact.get('state_path') != str(self._receipt_path().resolve())
                         or marker != fact):
                     raise JobRecoveryRequired('JOB_RECOVERY_STATE_PATH_MISMATCH')
-                if fact.get('host') != socket.gethostname() or fact.get('boot') != Path('/proc/sys/kernel/random/boot_id').read_text().strip():
+                if fact.get('host') != socket.gethostname():
                     raise JobRecoveryRequired('JOB_RECOVERY_OWNER_EXIT_UNPROVEN')
+                if fact.get('boot') != Path('/proc/sys/kernel/random/boot_id').read_text().strip():
+                    self._planned_reboot_handoff = await self._planned_reboot_proven(db, fact)
+                    await self._publish_reboot_journal('INCOMPLETE', fact)
+                elif os.environ.get('JOB_QUEUE_PLANNED_REBOOT_PROOF_FILE'):
+                    raise JobRecoveryRequired('JOB_RECOVERY_REBOOT_PROOF_STALE')
                 self._previous_receipt = fact
-                if fact.get('closed') is not True and not self._recovery_proven():
+                if self._planned_reboot_handoff is None and fact.get('closed') is not True and not self._recovery_proven():
                     raise JobRecoveryRequired('JOB_RECOVERY_OWNER_EXIT_UNPROVEN')
             self._marker_generation = marker.get('generation') if marker else None
             receipt = self._generation_fact(False)
@@ -312,10 +627,10 @@ class LocalJobQueue(JobQueue):
             self._owner_engine = None
 
     async def enqueue(self, job_name, payload, delay_seconds=0, max_retries=3):
-        if self.state != QueueState.ACCEPTING:
+        if self.state != QueueState.ACCEPTING or (self._planned_reboot_handoff is not None and not self._planned_reboot_complete):
             raise JobQueueNotAccepting('JOB_QUEUE_OWNER_LOST' if self._owner_lost else 'JOB_QUEUE_NOT_ACCEPTING')
         await self._ensure_owner()
-        if self.state != QueueState.ACCEPTING:
+        if self.state != QueueState.ACCEPTING or (self._planned_reboot_handoff is not None and not self._planned_reboot_complete):
             raise JobQueueNotAccepting()
         get_job_handler(job_name)
         task = asyncio.create_task(self._persist_accept(job_name, copy.deepcopy(payload), delay_seconds, max_retries))
@@ -492,6 +807,8 @@ class LocalJobQueue(JobQueue):
 
     async def start(self):
         if self.state == QueueState.ACCEPTING:
+            if self._planned_reboot_handoff is not None and not self._planned_reboot_complete:
+                raise JobQueueNotAccepting()
             return
         if self.state not in (QueueState.CLOSED,):
             raise JobQueueNotAccepting()
@@ -500,20 +817,36 @@ class LocalJobQueue(JobQueue):
             self.queue = asyncio.Queue()
             self.jobs = {}; self._owned.clear(); self._recovery_ids.clear()
             self._generation = uuid.uuid4().hex
+            self._planned_reboot_handoff = None
+            self._planned_reboot_complete = False
         self.state = QueueState.STARTING
         try:
             await self._acquire_owner()
             await self._claim_generation()
             await self._recover()
             await self._ensure_owner()
+            if self._planned_reboot_handoff is not None:
+                from jobs.export_jobs import export_io_scope, run_export_file_operation
+                self._planned_reboot_handoff['phase'] = 'COMPLETE'
+                await self._persist_receipt(False, published_state=QueueState.ACCEPTING.value)
+                await self._ensure_owner()
+                receipt = self._generation_fact(False, published_state=QueueState.ACCEPTING.value)
+                with export_io_scope((self._generation, 'owner-receipt')):
+                    await run_export_file_operation(lambda cancel: self._write_reboot_seal(receipt, cancel))
+                await self._publish_reboot_journal('COMPLETE')
+                self._planned_reboot_complete = True
+            else:
+                await self._persist_receipt(False, published_state=QueueState.ACCEPTING.value)
             self.state = QueueState.ACCEPTING
-            await self._persist_receipt(False)
             self.running = True
             self.workers = [asyncio.create_task(self._worker(i)) for i in range(self.max_workers)]
             self._monitor = asyncio.create_task(self._watch_owner())
         except BaseException:
             from jobs.export_jobs import export_io_pending
             if export_io_pending(self._io_keys()):
+                self.state = QueueState.INCOMPLETE
+            elif self._planned_reboot_handoff is not None and not self._planned_reboot_complete:
+                await self._release_owner()
                 self.state = QueueState.INCOMPLETE
             else:
                 if self._generation_claimed and not self._owner_lost and not self._owned and self.queue.empty():
@@ -563,6 +896,9 @@ class LocalJobQueue(JobQueue):
         self.state = QueueState.CLOSED
 
     async def _close(self):
+        if self._planned_reboot_handoff is not None and not self._planned_reboot_complete:
+            self.state = QueueState.INCOMPLETE
+            raise JobRecoveryRequired('JOB_RECOVERY_HANDOFF_INCOMPLETE')
         if self.state == QueueState.CLOSED and self._owner_connection is None:
             return
         self.state = QueueState.DRAINING

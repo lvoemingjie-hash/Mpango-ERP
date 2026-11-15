@@ -1,11 +1,40 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { paymentService, type PaymentData } from '@/services/paymentService';
+import { paymentService, type PaymentListItem } from '@/services/paymentService';
+import { formatMoney } from '@/utils/printFormat';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
 import { BanknotesIcon } from '@heroicons/react/24/outline';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
+
+/** Sum exact decimal amounts digit-for-digit via BigInt; no float
+ * arithmetic anywhere, so the page total equals the received values exactly.
+ * Returns '' for any malformed input (caller then shows no total). */
+function sumExactAmounts(values: Array<string | number>): string {
+  type Part = { negative: boolean; digits: bigint; fracLen: number };
+  const parts: Part[] = [];
+  let scale = 0;
+  for (const value of values) {
+    const match = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(String(value ?? '').trim());
+    if (!match || (match[2] === '' && !match[3])) return '';
+    const negative = match[1] === '-';
+    const intPart = match[2] || '0';
+    const frac = match[3] ?? '';
+    parts.push({ negative, digits: BigInt(intPart + frac || '0'), fracLen: frac.length });
+    scale = Math.max(scale, frac.length);
+  }
+  let total = 0n;
+  for (const part of parts) {
+    const scaled = part.digits * 10n ** BigInt(scale - part.fracLen);
+    total += part.negative ? -scaled : scaled;
+  }
+  const negative = total < 0n;
+  if (negative) total = -total;
+  const digits = total.toString().padStart(scale + 1, '0');
+  const plain = scale === 0 ? digits : `${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
+  return negative ? `-${plain}` : plain;
+}
 
 /** Parse and clamp the `page` query param. Invalid/missing -> 1. */
 function parsePage(value: string | null): number {
@@ -19,7 +48,7 @@ export function PaymentListPage() {
   const page = parsePage(searchParams.get('page'));
   const searchKey = searchParams.toString();
 
-  const [payments, setPayments] = useState<PaymentData[]>([]);
+  const [payments, setPayments] = useState<PaymentListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [size] = useState(20);
@@ -71,12 +100,18 @@ export function PaymentListPage() {
     setSearchParams(next);
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES',
-    }).format(amount);
-  };
+  // Currency comes only from each payment's order snapshot. A page total is
+  // shown only when every row is a verified KES/UGX snapshot AND exactly one
+  // currency is present; any unverified or mixed page shows no total rather
+  // than a misleading single-currency sum.
+  const allCurrenciesVerified = payments.length > 0 && payments.every(
+    (p) => p.currency_status === 'KNOWN' && (p.currency === 'KES' || p.currency === 'UGX'),
+  );
+  const distinctCurrencies = new Set(payments.map((p) => p.currency));
+  const exactTotal = allCurrenciesVerified && distinctCurrencies.size === 1
+    ? sumExactAmounts(payments.map((p) => p.amount))
+    : '';
+  const pageTotal = exactTotal !== '' ? formatMoney(exactTotal, payments[0].currency) : null;
 
   return (
     <div>
@@ -119,7 +154,9 @@ export function PaymentListPage() {
             <span className="text-gray-300">|</span>
             <span>{total} records</span>
             <span className="text-gray-300">|</span>
-            <span>Page total: {formatCurrency(payments.reduce((s, p) => s + p.amount, 0))}</span>
+            {pageTotal
+              ? <span>Page total: {pageTotal}</span>
+              : <span>Page total: not shown (unverified or mixed-currency page)</span>}
             <span className="text-gray-300">|</span>
             <span className="text-green-700">{payments.filter(p => p.status === 'completed').length} completed</span>
             <span className="text-yellow-700">{payments.filter(p => p.status === 'pending').length} pending</span>
@@ -164,7 +201,7 @@ export function PaymentListPage() {
                       {p.transaction_id || '-'}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-right text-gray-900">
-                      {formatCurrency(p.amount)}
+                      {formatMoney(p.amount, p.currency)}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm">
                       <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${

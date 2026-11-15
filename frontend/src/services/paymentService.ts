@@ -13,8 +13,17 @@ export interface PaymentData {
   updated_at: string;
 }
 
+export type PaymentCurrencyStatus = 'KNOWN' | 'LEGACY_CURRENCY_UNVERIFIED';
+
+/** List-GET only: PaymentData plus the paying order's currency snapshot.
+ *  Detail GET and POST responses do not carry these fields. */
+export interface PaymentListItem extends PaymentData {
+  currency: string | null;
+  currency_status: PaymentCurrencyStatus;
+}
+
 export interface PaymentListData {
-  items: PaymentData[];
+  items: PaymentListItem[];
   pagination: {
     page: number;
     size: number;

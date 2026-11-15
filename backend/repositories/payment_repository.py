@@ -5,8 +5,46 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Mapping
 
+import re
+
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+_TENANT_SCHEMA_RE = re.compile(r"^t_[0-9a-f]{32}$")
+
+
+class TenantSchemaContextError(ValueError):
+    """Named refusal raised BEFORE any payment query when the authenticated
+    session is not bound to a valid tenant schema.  ``code`` is the existing
+    401 wire code the API may map; every other exception keeps its own
+    identity, so database faults are never turned into 401."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+def _require_tenant_schema(db: AsyncSession) -> str:
+    """Read the tenant binding from the certified session itself and accept
+    only tenant-format schemas (t_ + 32 lowercase hex).  R4R2 strict form:
+    the RAW session value is used with no str() coercion — a missing binding
+    stays TENANT_CONTEXT_MISSING; anything that is not a str, or that does
+    not FULLY match the tenant format (no trimming, no fallback, trailing
+    whitespace and other non-canonical values included), is
+    INVALID_TENANT_SCHEMA.  Both refusals happen BEFORE a single payment
+    query runs; a generic SQL identifier check is NOT a substitute for this."""
+    schema = db.info.get("tenant_schema")
+    if schema is None:
+        raise TenantSchemaContextError(
+            "TENANT_CONTEXT_MISSING",
+            "Tenant schema unavailable for the payments list",
+        )
+    if not isinstance(schema, str) or _TENANT_SCHEMA_RE.fullmatch(schema) is None:
+        raise TenantSchemaContextError(
+            "INVALID_TENANT_SCHEMA",
+            "Tenant schema is not a tenant-format identifier",
+        )
+    return schema
 
 
 class PaymentRepository:
@@ -79,22 +117,30 @@ class PaymentRepository:
         method: str | None = None,
         status: str | None = None,
     ) -> tuple[list[Mapping[str, Any]], int]:
-        filters = ["is_deleted IS FALSE"]
+        # R4R1: the tenant binding is read from the authenticated session
+        # itself (create_tenant_session stores it on db.info after validating
+        # the token's tenant) and must be a tenant-format schema.  Missing or
+        # non-tenant values are refused with a named context error before any
+        # payment query; every relation — payments, orders, and the count —
+        # stays schema-qualified in SQL text.  No public-schema fallback, and
+        # the schema is never taken from request parameters.
+        safe_schema = _require_tenant_schema(db).replace('"', '""')
+        filters = ["p.is_deleted IS FALSE"]
         params: dict[str, Any] = {}
         if order_id:
-            filters.append("order_id = :order_id")
+            filters.append("p.order_id = :order_id")
             params["order_id"] = uuid.UUID(order_id)
         if method:
-            filters.append("method = :method")
+            filters.append("p.method = :method")
             params["method"] = method
         if status:
-            filters.append("status = :pstatus")
+            filters.append("p.status = :pstatus")
             params["pstatus"] = status
 
         where = " AND ".join(filters)
 
         count_result = await db.execute(
-            text(f"SELECT COUNT(*) FROM payments WHERE {where}"),
+            text(f'SELECT COUNT(*) FROM "{safe_schema}".payments p WHERE {where}'),
             params,
         )
         total = int(count_result.scalar() or 0)
@@ -102,12 +148,19 @@ class PaymentRepository:
         offset = (page - 1) * size
         params["limit"] = size
         params["offset"] = offset
+        # The paying order's currency_snapshot (same validated tenant schema)
+        # is the only currency authority.  LEFT JOIN on purpose: a missing
+        # order or legacy NULL snapshot keeps the payment row and is surfaced
+        # as unverified upstream — never drops the row, never guesses.
         result = await db.execute(
             text(
-                f"SELECT id, order_id, retailer_id, transaction_id, "
-                f"idempotency_key, amount, method, status, created_at, updated_at "
-                f"FROM payments WHERE {where} "
-                f"ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
+                f"SELECT p.id, p.order_id, p.retailer_id, p.transaction_id, "
+                f"p.idempotency_key, p.amount, p.method, p.status, p.created_at, p.updated_at, "
+                f"o.currency_snapshot "
+                f'FROM "{safe_schema}".payments p '
+                f'LEFT JOIN "{safe_schema}".orders o ON o.id = p.order_id '
+                f"WHERE {where} "
+                f"ORDER BY p.created_at DESC LIMIT :limit OFFSET :offset"
             ),
             params,
         )

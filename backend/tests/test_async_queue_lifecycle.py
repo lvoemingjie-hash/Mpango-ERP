@@ -1,8 +1,11 @@
 """Finite A2 lifecycle controls; the two BASE controls use shared public APIs."""
 import asyncio
 from contextlib import suppress
+import hashlib
 import json
 import os
+import re
+import stat
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -687,16 +690,261 @@ async def test_state_write_error_still_balances_task_done(monkeypatch):
         monkeypatch.setattr(queue, '_write_job', original); await queue.stop(); await remove(ids)
 
 
-@pytest.mark.asyncio
-async def test_second_owner_and_lost_lock_refuse_acceptance():
+async def _owner_isolation_snapshot():
+    """Read the real task scope; a pool dispose is not an Owner cleanup."""
+    from core.jobs.local_queue import OWNER_KEYS, OWNER_ROW_ID, _strict_reboot_json
+
+    directory = Path(os.environ['EXPORT_DIR'])
+    info = directory.lstat()
+    assert directory.is_absolute() and not directory.is_symlink(), 'OWNER_ISOLATION_EXPORT_PATH'
+    assert stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and not info.st_mode & 0o077, 'OWNER_ISOLATION_EXPORT_PERMISSIONS'
+    vector = await public_job_vector()
+    owner = vector.pop(str(OWNER_ROW_ID), None)
+    marker_path = directory / '.queue-owner.json'
+    assert not marker_path.is_symlink(), 'OWNER_ISOLATION_MARKER_SYMLINK'
+    marker = _strict_reboot_json(marker_path.read_bytes()) if marker_path.exists() else None
+    journal = directory / '.queue-reboot-handoff.json'
+    assert not journal.is_symlink(), 'OWNER_ISOLATION_JOURNAL_SYMLINK'
+    if journal.exists():
+        assert _strict_reboot_json(journal.read_bytes())['phase'] == 'COMPLETE', 'OWNER_ISOLATION_HANDOFF_INCOMPLETE'
+    artifacts = {}
+    for path in directory.iterdir():
+        assert not path.is_symlink() and path.is_file(), 'OWNER_ISOLATION_UNEXPECTED_ARTIFACT_TYPE'
+        if not path.name.startswith('.queue-'):
+            with path.open('rb') as handle:
+                artifacts[path.name] = hashlib.file_digest(handle, 'sha256').hexdigest()
+    assert owner is None or isinstance(owner['payload'], dict), 'OWNER_ISOLATION_OWNER_PAYLOAD'
+    backend = owner['payload'].get('owner_backend') if owner else None
+    async with AsyncSessionLocal() as db:
+        db.info['tenant_schema'] = 'public'
+        name, role, oid = (await db.execute(text(
+            'SELECT current_database(), current_user, oid FROM pg_database WHERE datname=current_database()'
+        ))).one()
+        locks = (await db.execute(text(
+            "SELECT pid FROM pg_locks WHERE locktype='advisory' AND classid=:a AND objid=:b "
+            'AND objsubid=2 AND granted AND database=:oid ORDER BY pid'
+        ), dict(a=OWNER_KEYS[0], b=OWNER_KEYS[1], oid=oid))).scalars().all()
+        present = (await db.execute(text(
+            'SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datid=:oid AND pid=:pid)'
+        ), dict(oid=oid, pid=backend))).scalar_one()
+    return dict(owner=owner, marker=marker, ordinary=vector, artifacts=artifacts,
+        state_path=str(marker_path.resolve()), owner_backend_present=present,
+        lock_backends=list(locks), database=dict(name=name, role=role, oid=oid,
+            identity=process_fact()['database']))
+
+
+def _require_owner_isolation_precondition(observed):
+    assert observed['database']['role'] == 'mpango_app', 'OWNER_ISOLATION_RUNTIME_ROLE'
+    assert re.fullmatch(r'(?:test|pytest|ci)[_-][a-z0-9_-]+', observed['database']['name']), 'OWNER_ISOLATION_TEST_DATABASE'
+    assert not observed['lock_backends'] and observed['owner_backend_present'] is False, 'OWNER_ISOLATION_PREDECESSOR_BUSY'
+    assert not any(row['status'] not in ('completed', 'failed') and not row['is_deleted']
+        for row in observed['ordinary'].values()), 'OWNER_ISOLATION_ORDINARY_BACKLOG'
+    if observed['owner'] is None:
+        assert observed['marker'] is None and not observed['ordinary'], 'OWNER_ISOLATION_NOT_FRESH'
+    else:
+        row = observed['owner']; fact = row['payload']
+        assert row['job_name'] == '__local_queue_owner_v2__' and row['status'] == 'completed' and not row['is_deleted'], 'OWNER_ISOLATION_OWNER_ROW'
+        parent = process_fact()
+        assert fact.get('version') == 2 and all(fact[key] == parent[key]
+            for key in ('host', 'boot', 'database')), 'OWNER_ISOLATION_PREDECESSOR_SCOPE'
+        assert observed['marker'] == fact and fact['state_path'] == observed['state_path'], 'OWNER_ISOLATION_PREDECESSOR_MAPPING'
+        assert fact['closed'] is True and fact['state'] == 'CLOSED' and all(
+            type(fact[key]) is int and fact[key] == 0
+            for key in ('active_handlers', 'active_io', 'active_admissions')
+        ), 'OWNER_ISOLATION_PREDECESSOR_NOT_CLOSED'
+        assert fact['database'] == observed['database']['identity'], 'OWNER_ISOLATION_DATABASE_MISMATCH'
+
+
+async def _exercise_owner_loss_refusal():
+    """The original fault body, executed once by the explicit probe child."""
+    before = await _owner_isolation_snapshot()
+    _require_owner_isolation_precondition(before)
     from core.jobs.base import JobQueueNotAccepting, JobQueueShutdownIncomplete
     queue = LocalJobQueue(1); await queue.start()
+    claimed = await _owner_isolation_snapshot()
     with pytest.raises(JobQueueNotAccepting, match='JOB_QUEUE_OWNER_BUSY'): await LocalJobQueue(1).start()
     async with queue._owner_query_lock:
         await queue._owner_connection.execute(text('SELECT pg_advisory_unlock(742019,5106)'))
     with pytest.raises(JobQueueNotAccepting): await queue.enqueue('export_report', {})
     with pytest.raises(JobQueueShutdownIncomplete): await queue.stop()
     assert queue._owner_connection is None and all(t.done() for t in queue.workers)
+    after = await _owner_isolation_snapshot()
+    assert queue.state.value == 'INCOMPLETE', 'OWNER_ISOLATION_FAULT_STATE'
+    assert after['owner'] == claimed['owner'] and after['marker'] == claimed['marker'], 'OWNER_ISOLATION_FAULT_RECEIPT_REWRITTEN'
+    assert after['ordinary'] == before['ordinary'] and after['artifacts'] == before['artifacts'], 'OWNER_ISOLATION_FAULT_BUSINESS_DRIFT'
+    return dict(before=before, claimed=claimed, open_owner=after,
+        fault_state=queue.state.value, owner_connection_released=True,
+        workers_done=True, busy_assertion_passed=True,
+        enqueue_refusal_assertion_passed=True, incomplete_stop_assertion_passed=True)
+
+
+async def _recover_exited_owner_and_close(fact, root, before, monkeypatch, evidence):
+    """Only a proven exited child can precede the real recovery/close APIs."""
+    from core.jobs.base import JobRecoveryRequired
+    from core.jobs.local_queue import _strict_reboot_json
+
+    root = Path(root)
+    declared_probe_root = Path(os.environ['ASYNC_QUEUE_PROBE_ROOT'])
+    assert declared_probe_root.is_absolute() and not declared_probe_root.is_symlink(), 'OWNER_ISOLATION_PROBE_SCOPE'
+    probe_root = declared_probe_root.resolve()
+    assert root.is_absolute() and not root.is_symlink() and root.parent.resolve() == probe_root, 'OWNER_ISOLATION_PROBE_SCOPE'
+    info = root.lstat()
+    assert stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and not info.st_mode & 0o077, 'OWNER_ISOLATION_PROBE_PERMISSIONS'
+    def read(name):
+        path = root / name
+        info = path.lstat()
+        assert stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1 and not info.st_mode & 0o077, 'OWNER_ISOLATION_NATIVE_FILE'
+        return _strict_reboot_json(path.read_bytes())
+    plan = read('plan.json'); record = read('record.json'); controller = read('capture-result.json')
+    intent = read('intent.json'); process = read('intent.process.json')
+    plan_bytes = (root / 'plan.json').read_bytes()
+    assert len(plan['commands']) == 1, 'OWNER_ISOLATION_NATIVE_PLAN'
+    call = plan['commands'][0]
+    backend = str(Path(__file__).resolve().parents[1])
+    expected_argv = [sys.executable, '-B', '-m', 'tests.async_export_process_probe',
+        'owner-loss-refusal', str(root / 'input.json'), str(root / 'facts.json')]
+    assert call['id'] == 'probe' and call['argv'] == expected_argv and call['cwd'] == backend, 'OWNER_ISOLATION_NATIVE_COMMAND'
+    assert call['native_timeout_seconds'] == 40 and call['invocation_id'] == 'A2-probe:' + root.name, 'OWNER_ISOLATION_NATIVE_PLAN'
+    assert all(call[key + '_path'] == str(root / (key + suffix)) for key, suffix in
+        [('stdout', '.txt'), ('stderr', '.txt'), ('intent', '.json'), ('record', '.json')]), 'OWNER_ISOLATION_NATIVE_PATHS'
+    assert record['plan_sha256'] == hashlib.sha256(plan_bytes).hexdigest(), 'OWNER_ISOLATION_PLAN_DIGEST'
+    assert all(record[key] == call[key] for key in ('id', 'argv', 'cwd', 'invocation_id')), 'OWNER_ISOLATION_NATIVE_BINDING'
+    assert all(intent[key] == record[key] for key in
+        ('id', 'plan_sha256', 'argv', 'cwd', 'env_key_names', 'invocation_id', 'timeout_seconds', 'started_at')) and intent.get('metadata_errors') == [], 'OWNER_ISOLATION_INTENT_BINDING'
+    assert type(record.get('native_rc')) is int and record['native_rc'] == 0 and record.get('timed_out') is False and record.get('metadata_errors') == [], 'OWNER_ISOLATION_NATIVE_FAILED'
+    assert record['timeout_seconds'] == 40 and type(controller.get('rc')) is int and controller['rc'] == 0, 'OWNER_ISOLATION_CONTROLLER_FAILED'
+    assert all(type(record.get(key)) is int and record[key] > 0 for key in ('pid', 'pgid', 'start_ticks')), 'OWNER_ISOLATION_NATIVE_IDENTITY'
+    assert all(process[key] == record[key] for key in
+        ('id', 'pid', 'pgid', 'start_ticks', 'started_at')) and process.get('metadata_errors') == [], 'OWNER_ISOLATION_PROCESS_BINDING'
+    assert type(controller.get('pid')) is int and controller['pid'] > 0 and controller['pid'] != os.getpid(), 'OWNER_ISOLATION_CONTROLLER_IDENTITY'
+    assert record['pid'] == record['pgid'] and record['pid'] not in (os.getpid(), controller['pid']), 'OWNER_ISOLATION_CHILD_IDENTITY'
+    for kind in ('stdout', 'stderr'):
+        path = root / (kind + '.txt')
+        info = path.lstat()
+        assert stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1 and not info.st_mode & 0o077, 'OWNER_ISOLATION_NATIVE_FILE'
+        output = record['outputs'][kind]; raw = path.read_bytes()
+        assert output == dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest()), 'OWNER_ISOLATION_OUTPUT_BINDING'
+    assert fact == read('facts.json') and fact['mode'] == 'owner-loss-refusal', 'OWNER_ISOLATION_FACT_BINDING'
+    assert fact['pid'] == record['pid'] and fact['start_ticks'] == record['start_ticks'] and type(fact.get('version')) is int and fact['version'] == 1, 'OWNER_ISOLATION_FACT_IDENTITY'
+    parent = process_fact()
+    assert all(fact[key] == parent[key] for key in ('host', 'boot', 'database')), 'OWNER_ISOLATION_PROCESS_SCOPE'
+    try:
+        alive = LocalJobQueue._ticks(fact['pid']) == fact['start_ticks']
+    except FileNotFoundError:
+        alive = False
+    assert not alive, 'OWNER_ISOLATION_CHILD_STILL_ALIVE'
+    assert all(fact['before'][key] == before[key] for key in
+        ('owner', 'marker', 'ordinary', 'artifacts', 'state_path', 'database')), 'OWNER_ISOLATION_PRESTATE_DRIFT'
+    async def quiet_snapshot(expected, label):
+        # Only catalog absence is polled. Persisted identity/business changes
+        # fail immediately; no business API is retried or state repaired.
+        last = None
+        async def observe():
+            nonlocal last
+            while True:
+                last = await _owner_isolation_snapshot()
+                assert all(last[key] == expected[key] for key in
+                    ('owner', 'marker', 'ordinary', 'artifacts', 'state_path', 'database')), 'OWNER_ISOLATION_CHILD_OBSERVATION_DRIFT'
+                if not last['lock_backends'] and last['owner_backend_present'] is False:
+                    return last
+                await asyncio.sleep(0.005)
+        try:
+            return await asyncio.wait_for(observe(), 5)
+        except asyncio.TimeoutError:
+            primary = AssertionError(label)
+            try:
+                private_json(evidence / (label + '.json'), last)
+            except BaseException as secondary:
+                primary.add_note('OWNER_ISOLATION_SECONDARY_RECORD:' + type(secondary).__name__)
+            raise primary from None
+    observed = await quiet_snapshot(fact['open_owner'], 'OWNER_ISOLATION_OWNER_BACKEND_PRESENT')
+    owner = observed['owner']['payload']
+    assert observed['owner']['job_name'] == '__local_queue_owner_v2__' and observed['owner']['status'] == 'completed' and not observed['owner']['is_deleted'], 'OWNER_ISOLATION_OWNER_ROW'
+    assert observed['marker'] == owner and owner['version'] == 2 and owner['closed'] is False, 'OWNER_ISOLATION_OPEN_OWNER'
+    assert all(owner[key] == fact[key] for key in ('host', 'boot', 'database', 'pid', 'start_ticks')), 'OWNER_ISOLATION_OWNER_IDENTITY'
+    assert owner['state_path'] == observed['state_path'] and re.fullmatch(r'[0-9a-f]{32}', owner['generation']), 'OWNER_ISOLATION_OWNER_MAPPING'
+    assert type(owner['owner_backend']) is int and owner['owner_backend'] > 0, 'OWNER_ISOLATION_OWNER_BACKEND'
+    assert not observed['lock_backends'] and observed['owner_backend_present'] is False, 'OWNER_ISOLATION_OWNER_BACKEND_PRESENT'
+    assert fact['fault_state'] == 'INCOMPLETE' and all(fact[key] is True for key in
+        ('owner_connection_released', 'workers_done', 'busy_assertion_passed',
+         'enqueue_refusal_assertion_passed', 'incomplete_stop_assertion_passed')), 'OWNER_ISOLATION_FAULT_ORACLE'
+    assert observed['ordinary'] == before['ordinary'] and observed['artifacts'] == before['artifacts'], 'OWNER_ISOLATION_BUSINESS_DRIFT'
+    assert not any(row['status'] not in ('completed', 'failed') and not row['is_deleted']
+        for row in observed['ordinary'].values()), 'OWNER_ISOLATION_ORDINARY_BACKLOG'
+    private_json(evidence / 'child-open-observed.json', observed)
+    proof_keys = ('version', 'host', 'boot', 'database', 'pid', 'start_ticks')
+    wrong = root / 'negative-mismatched-owner-proof.json'
+    private_json(wrong, {key: parent[key] for key in proof_keys}, input_file=True)
+    with monkeypatch.context() as scope:
+        scope.setenv('JOB_QUEUE_RECOVERY_CONFIRMED', '1')
+        scope.setenv('JOB_QUEUE_RECOVERY_PROOF_FILE', str(wrong))
+        with pytest.raises(JobRecoveryRequired, match='JOB_RECOVERY_OWNER_EXIT_UNPROVEN'):
+            await LocalJobQueue(1).start()
+    assert await quiet_snapshot(observed, 'OWNER_ISOLATION_MISMATCH_BACKEND_PRESENT') == observed, 'OWNER_ISOLATION_MISMATCH_MUTATED_STATE'
+    # Identity mismatch is rejected before the live-owner check. It is not
+    # evidence that the matching-live-Owner branch was exercised.
+    private_json(evidence / 'mismatched-owner-proof.json', dict(
+        result='MISMATCHED_OWNER_PROOF_REJECTED',
+        proof_identity_matches_owner=all(parent[key] == owner[key] for key in
+            ('host', 'boot', 'database', 'pid', 'start_ticks')),
+        matching_live_owner_branch='NOT_VERIFIED'))
+    proof = root / 'exited-child-proof.json'
+    private_json(proof, {key: fact[key] for key in proof_keys}, input_file=True)
+    queue = LocalJobQueue(1)
+    started = stop_attempted = False
+    try:
+        with monkeypatch.context() as scope:
+            scope.setenv('JOB_QUEUE_RECOVERY_CONFIRMED', '1')
+            scope.setenv('JOB_QUEUE_RECOVERY_PROOF_FILE', str(proof))
+            await queue.start()
+            started = True
+            assert queue.recovery['found'] == queue.recovery['replayed'] == 0 and not queue.jobs, 'OWNER_ISOLATION_RECOVERY_TOUCHED_BACKLOG'
+            stop_attempted = True
+            await queue.stop()
+        closed = await _owner_isolation_snapshot()
+        private_json(evidence / 'parent-close-observed.json', closed)
+        closed = await quiet_snapshot(closed, 'OWNER_ISOLATION_CLOSED_BACKEND_PRESENT')
+        _require_owner_isolation_precondition(closed)
+        current = closed['owner']['payload']
+        assert current['generation'] != owner['generation'] and all(
+            current[key] == parent[key] for key in ('host', 'boot', 'database', 'pid', 'start_ticks')
+        ), 'OWNER_ISOLATION_CLOSED_GENERATION'
+        assert closed['ordinary'] == before['ordinary'] and closed['artifacts'] == before['artifacts'], 'OWNER_ISOLATION_RECOVERY_BUSINESS_DRIFT'
+        assert queue.state.value == 'CLOSED' and queue._owner_connection is None and all(task.done() for task in queue.workers), 'OWNER_ISOLATION_CLOSE_NOT_COMPLETE'
+        private_json(evidence / 'parent-close-verified.json', closed)
+    except BaseException as primary:
+        if started and not stop_attempted:
+            try:
+                await queue.stop()
+            except BaseException as secondary:
+                primary.add_note('OWNER_ISOLATION_SECONDARY_CLOSE:' + type(secondary).__name__)
+        raise
+
+
+@pytest.mark.asyncio
+async def test_second_owner_and_lost_lock_refuse_acceptance(monkeypatch):
+    """Preserve the fault oracle; recover only after its real child exited."""
+    evidence = Path(os.environ['ASYNC_QUEUE_PROBE_ROOT']) / ('owner-loss-parent-' + uuid4().hex)
+    evidence.mkdir(mode=0o700)
+    phase = 'precondition'
+    try:
+        before = await _owner_isolation_snapshot()
+        _require_owner_isolation_precondition(before)
+        private_json(evidence / 'parent-before.json', before)
+        phase = 'child-launch'
+        fact, root = await launch_probe('owner-loss-refusal', {})
+        private_json(evidence / 'child-binding.json', dict(root=str(root), pid=fact['pid'], start_ticks=fact['start_ticks']))
+        phase = 'exit-proof-and-recovery'
+        await _recover_exited_owner_and_close(fact, root, before, monkeypatch, evidence)
+    except BaseException as primary:
+        try:
+            private_json(evidence / 'parent-result.json', dict(success=False, phase=phase,
+                exception_class=type(primary).__name__, exception_code=getattr(primary, 'code', None)))
+        except BaseException as secondary:
+            primary.add_note('OWNER_ISOLATION_SECONDARY_RECORD:' + type(secondary).__name__)
+        raise
+    private_json(evidence / 'parent-result.json', dict(success=True, phase='closed',
+        matching_live_owner_branch='NOT_VERIFIED'))
 
 
 @pytest.mark.asyncio

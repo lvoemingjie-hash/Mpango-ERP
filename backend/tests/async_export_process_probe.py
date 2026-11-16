@@ -219,9 +219,51 @@ async def controlled_main(mode, identity, target):
     os._exit(0)
 
 
+async def _owner_loss_main(target):
+    """One explicit fault scenario; never enter the generic export enqueue."""
+    engines = []
+    primary = None
+    secondary = []
+    result = None
+    try:
+        from database.session import async_engine
+        engines.append(async_engine)
+        from database.reporting_session import reporting_engine
+        engines.append(reporting_engine)
+        from tests.test_async_queue_lifecycle import _exercise_owner_loss_refusal
+        result = await _exercise_owner_loss_refusal()
+    except BaseException as error:
+        primary = error
+    for engine in engines:
+        try:
+            await engine.dispose()
+        except BaseException as error:
+            if primary is None:
+                primary = error
+            else:
+                secondary.append(type(error).__name__)
+    try:
+        private_json(target.parent / 'owner-loss-operation-result.json', dict(
+            success=primary is None, exception_class=type(primary).__name__ if primary else None,
+            exception_code=getattr(primary, 'code', None), secondary_errors=secondary,
+            matching_live_owner_branch='NOT_VERIFIED'))
+    except BaseException as error:
+        if primary is None:
+            primary = error
+        else:
+            primary.add_note('OWNER_ISOLATION_SECONDARY_RECORD:' + type(error).__name__)
+    if primary is not None:
+        if secondary:
+            primary.add_note('OWNER_ISOLATION_SECONDARY_DISPOSE:' + ','.join(secondary))
+        raise primary
+    private_json(target, dict(process_fact(), mode='owner-loss-refusal', **result))
+
+
 async def main():
     mode, source, target = sys.argv[1:]
     identity = json.loads(Path(source).read_text())
+    if mode == 'owner-loss-refusal':
+        return await _owner_loss_main(Path(target))
     if mode.startswith('control-'):
         return await controlled_main(mode[len('control-'):], identity, Path(target))
     from core.jobs.base import get_job_registry

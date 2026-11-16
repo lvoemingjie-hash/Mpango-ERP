@@ -47,28 +47,28 @@ jobs:
           - shard: runtime-a
             job-timeout-minutes: 50
             pytest-timeout: 40m
-            expected-files: "96"
-            expected-nodes: "1702"
+            expected-files: "99"
+            expected-nodes: ""
           - shard: runtime-b
             job-timeout-minutes: 25
             pytest-timeout: 18m
-            expected-files: "96"
-            expected-nodes: "1636"
+            expected-files: "98"
+            expected-nodes: ""
           - shard: topology
             job-timeout-minutes: 35
             pytest-timeout: 25m
             expected-files: "39"
-            expected-nodes: "798"
+            expected-nodes: ""
           - shard: invariants-jwt
             job-timeout-minutes: 30
             pytest-timeout: 20m
             expected-files: "20"
-            expected-nodes: "352"
+            expected-nodes: ""
           - shard: task-managed-pg
             job-timeout-minutes: 20
             pytest-timeout: 13m
             expected-files: "4"
-            expected-nodes: "92"
+            expected-nodes: ""
     env:
       CI_OWNER_LABEL: zcode-mvp-invariants-ci-deploy-staging-r6
       # R6R1 (F-01) intended ONE credential-store path visible to the supply
@@ -99,6 +99,10 @@ jobs:
             exit 1
           fi
           echo "git baseline 6a8ddcf3... resolvable (full history present)"
+
+      - name: Require a separately frozen current five-leg collection
+        run: |
+          test -n "${{ matrix.expected-nodes }}" || { echo "CURRENT_COLLECTION_NOT_FROZEN: no resource or dependency setup authorized by unknown counts"; exit 1; }
 
       # setup-python's Poetry cache queries Poetry before restoring the venv.
       - name: Install Poetry
@@ -258,6 +262,19 @@ jobs:
         run: |
           python tools/ci/prepare_test_evidence.py shard-plan --plan "$RUNNER_TEMP/supply-plan.json" --profile-dir "$RUNNER_TEMP"
 
+      - name: Assemble task-private queue child inputs
+        id: queue-inputs
+        if: steps.provision.outcome == 'success' && (matrix.shard == 'runtime-a' || matrix.shard == 'runtime-b' || matrix.shard == 'invariants-jwt')
+        run: |
+          set -euo pipefail
+          umask 077
+          set -a; . "$RUNNER_TEMP/c91-test-env.sh"; set +a
+          case "${{ matrix.shard }}" in
+            runtime-a|runtime-b) export MPANGO_ENV=test ;;
+            invariants-jwt) export MPANGO_ENV=staging ;;
+          esac
+          python tools/ci/prepare_test_evidence.py queue-runtime-env --mode create --repo-root "$GITHUB_WORKSPACE" --task-root "$RUNNER_TEMP/rc4-queue-private" --shard "${{ matrix.shard }}" --github-env "$GITHUB_ENV" > "$RUNNER_TEMP/queue-inputs.log" 2>&1
+
       - name: Pre-pull exact postgres:16 image for the task-owned helper (R6R5 E-03)
         if: steps.provision.outcome == 'success' && (matrix.shard == 'topology' || matrix.shard == 'task-managed-pg')
         run: |
@@ -288,8 +305,13 @@ jobs:
           echo "postgres:16 local image precondition satisfied (id + digest recorded for later reconciliation)"
 
       - name: Shard gate (argfile + collect-only membership check)
-        if: steps.provision.outcome == 'success'
+        if: steps.provision.outcome == 'success' && ((matrix.shard != 'runtime-a' && matrix.shard != 'runtime-b' && matrix.shard != 'invariants-jwt') || steps.queue-inputs.outcome == 'success')
         run: |
+          set -euo pipefail
+          umask 077
+          # Offline C alignment has no fresh node universe. Fail before collect
+          # until a separately authorized five-leg measurement is CTO-frozen.
+          test -n "${{ matrix.expected-nodes }}" || { echo "CURRENT_COLLECTION_NOT_FROZEN"; exit 1; }
           test -s "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests" || { echo "shard ${{ matrix.shard }} argfile missing/empty; refusing to fall back to full collection"; exit 1; }
           # F-02 (R6R2): shard-verify refusals echo identities (nodeid/file
           # examples) — raw stdout/stderr goes to private runner staging; the
@@ -308,14 +330,16 @@ jobs:
             invariants-jwt)
               export MPANGO_ENV=staging EMAIL_PROVIDER=dev_sink EMAIL_DELIVERY_MODE=dev_sink
               export AUDIT_FINITE_APP_URL="$DATABASE_URL"
-              export AUDIT_FINITE_PRIVATE="$RUNNER_TEMP/rc4-audit-private" EXPORT_DIR="$RUNNER_TEMP/rc4-exports"
-              export STAFF_M1_PRIVATE_DIR="$RUNNER_TEMP/rc4-staff-private"
-              mkdir -p "$AUDIT_FINITE_PRIVATE/facts" "$EXPORT_DIR" "$STAFF_M1_PRIVATE_DIR"
-              chmod 700 "$AUDIT_FINITE_PRIVATE" "$AUDIT_FINITE_PRIVATE/facts" "$EXPORT_DIR" "$STAFF_M1_PRIVATE_DIR"
+              : "${AUDIT_FINITE_PRIVATE:?queue input producer missing}" "${STAFF_M1_PRIVATE_DIR:?queue input producer missing}"
               ;;
           esac
           case "${{ matrix.shard }}" in
             task-managed-pg) export C91_R3_RESOURCE_ROOT="$RUNNER_TEMP/c91-resource-root"; mkdir -p "$C91_R3_RESOURCE_ROOT"; chmod 700 "$C91_R3_RESOURCE_ROOT" ;;
+          esac
+          case "${{ matrix.shard }}" in
+            runtime-a|runtime-b|invariants-jwt)
+              python ../tools/ci/prepare_test_evidence.py queue-runtime-env --mode verify --repo-root "$GITHUB_WORKSPACE" --task-root "$RUNNER_TEMP/rc4-queue-private" --shard "${{ matrix.shard }}"
+              ;;
           esac
           # R6R4: backend/pytest.ini addopts carries -v, so a single CLI -q
           # cancels to verbosity 0 and --collect-only emits the verbose tree
@@ -344,18 +368,19 @@ jobs:
             echo "dedicated-verify REFUSED"
             exit 1
           fi
-          # Fixed live objects at 0da4; historical collect/73d layers stay preserved.
-          if ! python tools/ci/prepare_test_evidence.py verify-reuse --coverage docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json --repo-root . --approved-ref 0da4c8502928933bb61ba07b784206dec3a03bdc --result-file "$RUNNER_TEMP/reuse-result.json" > "$RUNNER_TEMP/reuse.log" 2>&1; then
+          # Existing S is whole-source authority; historical layers are unchanged.
+          if ! python tools/ci/prepare_test_evidence.py verify-reuse --coverage docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json --repo-root . --approved-ref aa19b49fad2618b1e01d071860f847cfbefb384b --result-file "$RUNNER_TEMP/reuse-result.json" > "$RUNNER_TEMP/reuse.log" 2>&1; then
             echo "verify-reuse REFUSED"
             exit 1
           fi
           echo "reuse admission accepted in bounded scope; rcj full node coverage remains GAP"
 
       - name: Run shard test body (single pytest invocation)
-        if: steps.provision.outcome == 'success' && steps.reuse-admission.outcome == 'success'
+        if: steps.provision.outcome == 'success' && steps.reuse-admission.outcome == 'success' && ((matrix.shard != 'runtime-a' && matrix.shard != 'runtime-b' && matrix.shard != 'invariants-jwt') || steps.queue-inputs.outcome == 'success')
         working-directory: backend
         run: |
           set -euo pipefail
+          umask 077
           python ../tools/ci/prepare_test_evidence.py shard-verify --plan "$RUNNER_TEMP/supply-plan.json" --shard "${{ matrix.shard }}" --argfile "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests" --expected-files "${{ matrix.expected-files }}" > "$RUNNER_TEMP/body-file-gate.log" 2>&1
           mapfile -t TEST_FILES < "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests"
           test "${#TEST_FILES[@]}" -gt 0 || exit 1
@@ -365,14 +390,16 @@ jobs:
             invariants-jwt)
               export MPANGO_ENV=staging EMAIL_PROVIDER=dev_sink EMAIL_DELIVERY_MODE=dev_sink
               export AUDIT_FINITE_APP_URL="$DATABASE_URL"
-              export AUDIT_FINITE_PRIVATE="$RUNNER_TEMP/rc4-audit-private" EXPORT_DIR="$RUNNER_TEMP/rc4-exports"
-              export STAFF_M1_PRIVATE_DIR="$RUNNER_TEMP/rc4-staff-private"
-              mkdir -p "$AUDIT_FINITE_PRIVATE/facts" "$EXPORT_DIR" "$STAFF_M1_PRIVATE_DIR"
-              chmod 700 "$AUDIT_FINITE_PRIVATE" "$AUDIT_FINITE_PRIVATE/facts" "$EXPORT_DIR" "$STAFF_M1_PRIVATE_DIR"
+              : "${AUDIT_FINITE_PRIVATE:?queue input producer missing}" "${STAFF_M1_PRIVATE_DIR:?queue input producer missing}"
               ;;
           esac
           case "${{ matrix.shard }}" in
             task-managed-pg) export C91_R3_RESOURCE_ROOT="$RUNNER_TEMP/c91-resource-root"; mkdir -p "$C91_R3_RESOURCE_ROOT"; chmod 700 "$C91_R3_RESOURCE_ROOT" ;;
+          esac
+          case "${{ matrix.shard }}" in
+            runtime-a|runtime-b|invariants-jwt)
+              python ../tools/ci/prepare_test_evidence.py queue-runtime-env --mode verify --repo-root "$GITHUB_WORKSPACE" --task-root "$RUNNER_TEMP/rc4-queue-private" --shard "${{ matrix.shard }}"
+              ;;
           esac
           poetry run python - "$RUNNER_TEMP/connections-${{ matrix.shard }}.csv" <<'PYOBS' &
           import csv, os, sys, time
@@ -435,6 +462,14 @@ jobs:
             echo "reconcile REFUSED: $(grep -oE 'REFUSED: [A-Z_]+' "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.log" | head -1 | cut -d' ' -f2 || echo category-unavailable) — recording an evidence gap"
             echo "reconcile_refused" > "$RUNNER_TEMP/GAP-reconcile.txt"
           fi
+
+      - name: Close registered queue input files after native children
+        id: queue-closeout
+        if: always() && steps.queue-inputs.outcome == 'success'
+        run: |
+          set -euo pipefail
+          umask 077
+          python tools/ci/prepare_test_evidence.py queue-runtime-env --mode closeout --repo-root "$GITHUB_WORKSPACE" --task-root "$RUNNER_TEMP/rc4-queue-private" --shard "${{ matrix.shard }}" --receipt "$RUNNER_TEMP/rc4-queue-closeout.json" > "$RUNNER_TEMP/queue-closeout.log" 2>&1
 
       - name: Sanitize shard evidence for publication (fail-closed)
         if: always()
@@ -527,6 +562,8 @@ jobs:
           sanitize "$RUNNER_TEMP/gate-verify-files.diag.json" "gate-verify-files-${{ matrix.shard }}.sanitized.diag.json" optional allow-empty
           sanitize "$RUNNER_TEMP/gate-verify-nodes.diag.json" "gate-verify-nodes-${{ matrix.shard }}.sanitized.diag.json" optional allow-empty
           sanitize "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.diag.json" "reconcile-${{ matrix.shard }}.sanitized.diag.json" optional allow-empty
+          sanitize "$RUNNER_TEMP/rc4-queue-private/receipt.json" "queue-inputs-${{ matrix.shard }}.sanitized.json" optional
+          sanitize "$RUNNER_TEMP/rc4-queue-closeout.json" "queue-closeout-${{ matrix.shard }}.sanitized.json" optional
           cp "$RUNNER_TEMP"/GAP-*.txt "$PUB"/ 2>/dev/null || true
 
       - name: Upload sanitized shard evidence (never masks the test rc)
@@ -541,6 +578,11 @@ jobs:
         if: always()
         run: |
           set -u
+          if [ "${{ steps.queue-inputs.outcome }}" = success ] && [ "${{ steps.queue-closeout.outcome }}" != success ]; then
+            echo "queue_child_or_input_closeout_unproven" > "$RUNNER_TEMP/GAP-queue-closeout.txt"
+            echo "QUEUE_CLOSEOUT_UNPROVEN: preserve registered resources and private inputs; no guessed process cleanup"
+            exit 1
+          fi
           fail=0
           for cid_name in CI_PG_CONTAINER_ID CI_REDIS_CONTAINER_ID; do
             cid="${!cid_name:-}"

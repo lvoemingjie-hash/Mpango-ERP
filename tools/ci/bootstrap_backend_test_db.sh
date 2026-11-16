@@ -262,14 +262,19 @@ NATIVE_JWT_MODULES = {
 TASKMANAGED_MODULES = {"task_owned_pg_resources"}
 PROFILE_ORDER = ["task-managed-pg", "topology", "invariants-jwt", "runtime"]
 PROFILE_ENV = {
-    "runtime": [],
+    "runtime": ["queue-runtime-env create after supply, before collect (runtime-a/runtime-b)",
+                "EXPORT_DIR and ASYNC_QUEUE_PROBE_ROOT (0700 task roots)",
+                "ASYNC_QUEUE_RUNTIME_ENV (0600 app/reporting child JSON; no privileged URL/proof)",
+                "ASYNC_QUEUE_NATIVE_CAPTURE (versioned original; fixed content digest)"],
     "topology": ["MPANGO_ALLOW_TEMP_DB_CREATE=1"],
     "invariants-jwt": ["MPANGO_ENV=staging (real JwtAuthStrategy)",
                        "EMAIL_PROVIDER=EMAIL_DELIVERY_MODE=dev_sink",
                        "AUDIT_FINITE_APP_URL=DATABASE_URL (same minimum-privilege app)",
                        "AUDIT_FINITE_PRIVATE (0700 task evidence directory)",
                        "STAFF_M1_PRIVATE_DIR (0700 task staff/migration evidence directory)",
-                       "EXPORT_DIR (task-owned output directory)"],
+                       "EXPORT_DIR (task-owned output directory)",
+                       "queue-runtime-env create with staging/dev_sink profile before collect",
+                       "ASYNC_QUEUE_PROBE_ROOT / ASYNC_QUEUE_RUNTIME_ENV / ASYNC_QUEUE_NATIVE_CAPTURE"],
     "task-managed-pg": ["C91_R3_RESOURCE_ROOT (0700 private root)"],
 }
 

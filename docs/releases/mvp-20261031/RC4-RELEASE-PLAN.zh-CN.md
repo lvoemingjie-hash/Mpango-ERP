@@ -1,3 +1,21 @@
+# AA19 C层离线接线：等待五腿真实采集
+
+授权 CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116。固定已存在S `aa19b49fad2618b1e01d071860f847cfbefb384b`，backend/frontend逐对象等于S，不排除测试路径。历史2add/73d/0da4来源和原生证据仍在previous层，拒绝算法不放宽。
+
+当前静态287文件：260 ordinary、21 dedicated、6 frozen ignore；五腿文件99/98/39/20/4。当前nodeid数、canonical、collect rc均未知，JSON使用null；旧4580/4574/4505只留历史，不作为当前声明。workflow在准备资源前拒绝空的当前节点绑定；本草案不得直接dispatch。
+
+三个需要子进程的profile为runtime-a/test、runtime-b/test、invariants-jwt/staging，均dev_sink。五阶段供给输出通过原生shell source交给窄生产者。父进程保留原测试角色通道；业务child仅app/reporting/Redis/独立SECRET_KEY与必要OS白名单，无特权URL或预存proof。REPORTING_DATABASE_URL精确取TEST_REPORTING_DATABASE_URL；四路径在GITHUB_ENV注册并由collect/body验证。Owner状态根对同库世代保持一致，子环境与原捕获器不可由历史任务路径兜底。
+
+原捕获器只原字节版本化，固定完整SHA在工具和selection内绑定；生产者同时核实际CI Git对象，不接受工件自报摘要为权威。核销只处理已登记布局和已退出的真实native child；缺件/活PID/未知身份则留GAP、不发信号，容器收尾不掩盖它。取消/硬超时仍可能无法收尾，不能声称平台销毁已逐项核验。
+
+后续须另批一次fresh准备/每腿一次collect，逐名守恒冻结，再另批全工具门与源码审阅。当前只有有限离线控制，不补跑作者3P、浏览器或业务体，不提交、不hosted CI。精确五腿提案见本任务delivery。
+
+现有job caps 50/25/35/30/20总160，body caps 40m/18m/25m/20m/13m，max-parallel=2/fail-fast=false全部不变；这不是新预算。publish=false与build/deploy门保留，镜像、发布双标签/先push顺序和部署未覆盖仍为GAP，不在本轮顺修。baseline及产品、两份S附件、依赖、迁移保护；baseline需要变更则停报。
+
+---
+
+以下为原历史计划全文，仅保留原时点和授权，不是AA19当前计数/时限/验收声明。
+
 # RC4 当前候选本地准入与发布待决计划
 
 授权 CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024。本文是实现者方案，非 CTO 源码接受、独立验收、全量或发布 PASS。

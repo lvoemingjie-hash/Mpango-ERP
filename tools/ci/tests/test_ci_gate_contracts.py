@@ -415,11 +415,11 @@ class TestDeployWorkflowContract:
         include = strategy["matrix"]["include"]
         selection = json.loads((REPO_ROOT / 'docs/releases/mvp-20261031/RC4-TEST-SELECTION.json').read_text())
         expected = {
-            "runtime-a": (50, "40m", "96", str(selection['shards']['runtime-a']['node_count'])),
-            "runtime-b": (25, "18m", "96", str(selection['shards']['runtime-b']['node_count'])),
-            "topology": (35, "25m", "39", str(selection['shards']['topology']['node_count'])),
-            "invariants-jwt": (30, "20m", "20", str(selection['shards']['invariants-jwt']['node_count'])),
-            "task-managed-pg": (20, "13m", "4", str(selection['shards']['task-managed-pg']['node_count'])),
+            "runtime-a": (50, "40m", "99", ""),
+            "runtime-b": (25, "18m", "98", ""),
+            "topology": (35, "25m", "39", ""),
+            "invariants-jwt": (30, "20m", "20", ""),
+            "task-managed-pg": (20, "13m", "4", ""),
         }
         assert {leg["shard"] for leg in include} == set(expected)
         for leg in include:
@@ -1331,16 +1331,19 @@ class TestR6ShardPlanControls:
         assert module.CURRENT_COLLECTION_COUNTS == {
             shard: row['node_count'] for shard, row in selection['shards'].items()
         }
-        assert [selection['shards'][s]['file_count'] for s in module.SHARD_NAMES] == [96, 96, 39, 20, 4]
-        assert len({p for row in selection['shards'].values() for p in row['files']}) == 255
+        assert [selection['shards'][s]['file_count'] for s in module.SHARD_NAMES] == [99, 98, 39, 20, 4]
+        assert len({p for row in selection['shards'].values() for p in row['files']}) == 260
         old_native = json.loads(subprocess.check_output([
             'git', 'show', TestReuseValidityMachineCheck.LIVE_APPROVED
             + ':docs/releases/mvp-20261031/RC4-TEST-SELECTION.json'
         ], cwd=REPO_ROOT, text=True))
         assert selection['previous_selection'] == old_native
         selection = selection['previous_selection']
-        historical_counts = dict(module.CURRENT_COLLECTION_COUNTS, **{'runtime-b': 1630})
-        historical_canonical = dict(module.CANONICAL_NODEID_SHA256, **{
+        assert selection['source_ref'] == TestReuseValidityMachineCheck.HISTORICAL_LIVE_APPROVED
+        assert {s: row['node_count'] for s, row in selection['shards'].items()} == module.HISTORICAL_COLLECTION_COUNTS
+        selection = selection['previous_selection']
+        historical_counts = dict(module.HISTORICAL_COLLECTION_COUNTS, **{'runtime-b': 1630})
+        historical_canonical = dict(module.HISTORICAL_CANONICAL_NODEID_SHA256, **{
             'runtime-b': '03ad53c5359e0848a2afd21202a72450419014a8623c6da5e463e610f84ef7fe',
         })
         assert historical_canonical == {s: row['canonical_sha256'] for s, row in selection['shards'].items()}
@@ -2409,9 +2412,24 @@ class TestR6R1FragmentControls:
             target = bin_dir / name
             target.write_text(body, encoding="utf-8", newline="\n")
             os.chmod(target, 0o755)
+        if poetry:
+            # These pre-existing controls isolate dispatch/rc/console I/O, not
+            # task provisioning. The real queue command is exercised separately
+            # by test_aa19_queue_runtime_contract below; no production bypass.
+            wrapper = bin_dir / "python"
+            wrapper.write_text("#!/usr/bin/env bash\n"
+                "if [[ \"${1:-}\" == *prepare_test_evidence.py && \"${2:-}\" == queue-runtime-env ]]; then\n"
+                "  printf '%s\\n' \"$*\" >> \"$C91_FAKE_DIR/queue-verify-boundary.argv\"\n"
+                "  exit 0\nfi\nexec " + __import__('shlex').quote(sys.executable) + ' "$@"\n')
+            wrapper.chmod(0o755)
         return bin_dir
 
     def _run_script(self, script, env, cwd):
+        if env.get("FAKE_PYTEST_SCRIPT"):
+            env = dict(env)
+            root = Path(env["RUNNER_TEMP"]) / "rc4-queue-private"
+            env.setdefault("AUDIT_FINITE_PRIVATE", str(root / "audit"))
+            env.setdefault("STAFF_M1_PRIVATE_DIR", str(root / "staff"))
         return subprocess.run(
             [BASH, "-c", script], capture_output=True, text=True,
             encoding="utf-8", errors="replace", env=env, cwd=cwd,
@@ -4126,11 +4144,167 @@ class TestWrapperWrongHeadRefusal:
         assert not any("bootstrap_tenant_schema.py" in t for t in argv_texts)
 
 
+AA19_QUEUE_CASES = (
+    'legal-runtime-a', 'legal-runtime-b', 'legal-invariants-jwt',
+    'missing-reporting', 'wrong-app-role', 'wrong-reporting-role', 'wrong-root',
+    'wrong-profile', 'wrong-task', 'source-ref-mismatch', 'source-file-omitted',
+    'capture-missing', 'capture-drift', 'capture-object-drift', 'preexisting-proof',
+    'second-write-fails', 'duplicate-capsule-key', 'privileged-capsule-forgery',
+    'live-child-closeout-refused',
+)
+
+
+def test_aa19_queue_runtime_contract(tmp_path):
+    """Actual main/producer/parent consumer/closeout; only CI-object I/O is synthetic.
+
+    S backend/frontend objects and workspace bytes use the real refusal algorithm.
+    A future C capture object cannot exist before its separately authorized commit;
+    its Git read boundary is supplied here, never reported as a real C acceptance.
+    """
+    import contextlib
+    import hashlib
+    import importlib.util
+    import io
+    spec = importlib.util.spec_from_file_location('aa19_actual_evidence_tool', EVIDENCE_TOOL)
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    real_git, real_read, real_is_file, real_write = module._git_bytes, Path.read_bytes, Path.is_file, module._queue_write
+    capture = REPO_ROOT/'tools/ci/native_capture.py'
+    capture_bytes = capture.read_bytes()
+    assert hashlib.sha256(capture_bytes).hexdigest() == module.QUEUE_CAPTURE_SHA256
+    # The source is immutable across these cases. Cache actual Git hash-object
+    # reads by the current raw bytes; the real source-refusal algorithm still
+    # walks every path and mode on every call. Changed bytes miss this cache.
+    source_hash_reads = {}
+    def source_git(repo, *args):
+        if len(args) == 3 and args[:2] == ('hash-object', '--'):
+            raw = (repo / args[2]).read_bytes()
+            key = (str(repo), args[2], hashlib.sha256(raw).hexdigest())
+            if key not in source_hash_reads:
+                source_hash_reads[key] = real_git(repo, *args)
+            return source_hash_reads[key]
+        return real_git(repo, *args)
+    results = []
+    def private(path, value):
+        path.write_text(json.dumps(value)); path.chmod(0o600)
+    for label in AA19_QUEUE_CASES:
+        case = tmp_path/label; case.mkdir(mode=0o700)
+        temp = case/'runner'; temp.mkdir(mode=0o700)
+        (temp/'c91-pytest-tmp').mkdir(mode=0o700)
+        github = temp/'github-env'; github.write_text(''); github.chmod(0o600)
+        shard = label.removeprefix('legal-') if label.startswith('legal-') else 'runtime-a'
+        profile = module.QUEUE_PROFILES[shard]
+        password = secrets.token_hex(16)
+        url = lambda role: 'postgresql://' + role + ':' + password + '@127.0.0.1:15432/test_offline_ci'
+        env = dict(RUNNER_TEMP=str(temp), GITHUB_WORKSPACE=str(REPO_ROOT), GITHUB_SHA='f'*40,
+            GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='1', CI_TASK_LABEL='rc4-123-1-'+shard,
+            CI_OWNER_LABEL='offline-ci-owner', CI_PG_PORT='15432', CI_REDIS_PORT='16379',
+            CI_TEST_DB='test_offline_ci', DATABASE_URL=url('mpango_app'),
+            TEST_REPORTING_DATABASE_URL=url('reporting_user'),
+            REDIS_URL='redis://:'+password+'@127.0.0.1:16379/0', SECRET_KEY=secrets.token_hex(32),
+            MPANGO_ENV=profile, TMPDIR=str(temp/'c91-pytest-tmp'), GITHUB_ENV=str(github),
+            TEST_ADMIN_DATABASE_URL=url('postgres'), TEST_MIGRATION_DATABASE_URL=url('mpango_migrate'),
+            TEST_OPERATOR_DATABASE_URL=url('ci_r3_operator'))
+        expected = None
+        if label=='missing-reporting': env.pop('TEST_REPORTING_DATABASE_URL'); expected='QUEUE_MISSING_KEY_TEST_REPORTING_DATABASE_URL'
+        if label=='wrong-app-role': env['DATABASE_URL']=url('postgres'); expected='QUEUE_ROLE_MISMATCH'
+        if label=='wrong-reporting-role': env['TEST_REPORTING_DATABASE_URL']=url('mpango_app'); expected='QUEUE_ROLE_MISMATCH'
+        if label=='wrong-profile': env['MPANGO_ENV']='production'; expected='QUEUE_PROFILE_MISMATCH'
+        if label=='wrong-task': env['CI_TASK_LABEL']='old-task'; expected='QUEUE_TASK_BINDING'
+        if label=='source-ref-mismatch': expected='QUEUE_CI_REF_MISMATCH'
+        if label=='source-file-omitted': expected='QUEUE_SOURCE_OBJECT_MISMATCH'
+        if label=='capture-missing': expected='QUEUE_CAPTURE_MISSING'
+        if label=='capture-drift': expected='QUEUE_CAPTURE_DRIFT'
+        if label=='capture-object-drift': expected='QUEUE_CAPTURE_SOURCE_BINDING'
+        if label=='preexisting-proof': env['JOB_QUEUE_RECOVERY_PROOF_FILE']='/old/proof'; expected='QUEUE_PREEXISTING_PROOF'
+        if label=='second-write-fails': expected='QUEUE_INPUT_IO_OR_SHAPE_OSError'
+        root=temp/'rc4-queue-private'
+        requested_root=temp/'wrong-root' if label=='wrong-root' else root
+        if label=='wrong-root': expected='QUEUE_ROOT_MISMATCH'
+        def git_boundary(repo, *args):
+            if args==('rev-parse','HEAD'): return (('e' if label=='source-ref-mismatch' else 'f')*40+'\n').encode()
+            if args==('show','f'*40+':tools/ci/native_capture.py'):
+                return b'wrong object' if label=='capture-object-drift' else capture_bytes
+            if args==('ls-tree','-z','f'*40,'--','tools/ci/native_capture.py'):
+                return b'100644 blob fixture\ttools/ci/native_capture.py\0'
+            raw=source_git(repo,*args)
+            if label=='source-file-omitted' and args[:2]==('ls-tree','-rz'):
+                return b'\0'.join(raw.split(b'\0')[1:])
+            return raw
+        def read_boundary(path):
+            return b'changed capture' if label=='capture-drift' and path==capture else real_read(path)
+        def exists_boundary(path):
+            return False if label=='capture-missing' and path==capture else real_is_file(path)
+        write_calls=[]
+        def write_boundary(path, value):
+            write_calls.append(str(path))
+            if label=='second-write-fails' and len(write_calls)==2: raise OSError('synthetic write failure')
+            return real_write(path,value)
+        with pytest.MonkeyPatch.context() as patch:
+            for key in ('JOB_QUEUE_RECOVERY_CONFIRMED','JOB_QUEUE_RECOVERY_PROOF_FILE','JOB_QUEUE_PLANNED_REBOOT_PROOF_FILE'):
+                patch.delenv(key,raising=False)
+            for key,value in env.items(): patch.setenv(key,value)
+            patch.setattr(module,'_git_bytes',git_boundary);patch.setattr(Path,'read_bytes',read_boundary)
+            patch.setattr(Path,'is_file',exists_boundary);patch.setattr(module,'_queue_write',write_boundary)
+            argv=['queue-runtime-env','--mode','create','--repo-root',str(REPO_ROOT),'--task-root',str(requested_root),
+                  '--shard',shard,'--github-env',str(github)]
+            out,err=io.StringIO(),io.StringIO()
+            with contextlib.redirect_stdout(out),contextlib.redirect_stderr(err): rc=module.main(argv)
+            if expected:
+                assert rc==3 and expected in err.getvalue(), (label,rc,err.getvalue())
+                assert not root.exists() and github.read_text()==''
+                assert not list(temp.glob('.rc4-queue-stage-*'))
+                results.append(dict(case=label,rc=rc,category=expected,refused=True,partial_output=False));continue
+            assert rc==0, (label,err.getvalue())
+            child=json.loads((root/'runtime-env.json').read_text())
+            assert child['DATABASE_URL']==env['DATABASE_URL'] and child['REPORTING_DATABASE_URL']==env['TEST_REPORTING_DATABASE_URL']
+            assert child['MPANGO_ENV']==profile and child['EMAIL_PROVIDER']==child['EMAIL_DELIVERY_MODE']=='dev_sink'
+            assert not any('ADMIN' in k or 'MIGRATION' in k or 'OPERATOR' in k or 'RECOVERY' in k for k in child)
+            bindings=json.loads((root/'parent-bindings.json').read_text())
+            assert dict(line.split('=',1) for line in github.read_text().splitlines())==bindings
+            for key,value in bindings.items():patch.setenv(key,value)
+            if label=='duplicate-capsule-key':
+                p=root/'runtime-env.json';p.write_text(p.read_text().rstrip()[:-1]+',"MPANGO_ENV":"test"}\n')
+                expected='QUEUE_DUPLICATE_JSON_KEY'
+            if label=='privileged-capsule-forgery':
+                child['TEST_ADMIN_DATABASE_URL']=env['TEST_ADMIN_DATABASE_URL'];private(root/'runtime-env.json',child)
+                receipt=json.loads((root/'receipt.json').read_text());receipt['child_env_sha256']=hashlib.sha256((root/'runtime-env.json').read_bytes()).hexdigest();private(root/'receipt.json',receipt)
+                expected='QUEUE_CHILD_KEY_WHITELIST'
+            check=argv.copy();check[2]='verify';out,err=io.StringIO(),io.StringIO()
+            with contextlib.redirect_stdout(out),contextlib.redirect_stderr(err):rc=module.main(check)
+            if expected:
+                assert rc==3 and expected in err.getvalue(),(label,rc,err.getvalue())
+                assert (root/'runtime-env.json').exists();results.append(dict(case=label,rc=rc,category=expected,refused=True));continue
+            assert rc==0,(label,err.getvalue())
+            if label=='live-child-closeout-refused':
+                folder=root/'probes'/('a'*32);folder.mkdir(mode=0o700)
+                native={'id':'probe','argv':['synthetic-worker'],'record_path':str(folder/'record.json'),'intent_path':str(folder/'intent.json')}
+                private(folder/'plan.json',{'commands':[native]})
+                pid=os.getpid();ticks=int(Path('/proc/self/stat').read_text().rsplit(')',1)[1].split()[19])
+                rec=dict(id='probe',argv=native['argv'],plan_sha256=hashlib.sha256((folder/'plan.json').read_bytes()).hexdigest(),
+                    pid=pid,pgid=pid,start_ticks=ticks,native_rc=0,metadata_errors=[])
+                private(folder/'record.json',rec);private(folder/'intent.process.json',{'pid':pid,'pgid':pid,'start_ticks':ticks});private(folder/'env.json',child)
+                expected='QUEUE_CHILD_STILL_ALIVE'
+            close=argv.copy();close[2]='closeout';close+=['--receipt',str(temp/'closeout.json')];out,err=io.StringIO(),io.StringIO()
+            with contextlib.redirect_stdout(out),contextlib.redirect_stderr(err):rc=module.main(close)
+            if expected:
+                assert rc==3 and expected in err.getvalue(),(label,rc,err.getvalue())
+                assert (root/'runtime-env.json').exists() and not (temp/'closeout.json').exists()
+            else:
+                assert rc==0,(label,err.getvalue())
+                assert not (root/'runtime-env.json').exists() and (temp/'closeout.json').is_file()
+            assert env['SECRET_KEY'] not in out.getvalue()+err.getvalue() and password not in out.getvalue()+err.getvalue()
+            results.append(dict(case=label,rc=rc,category=expected,refused=bool(expected),actual_main=True,
+                real_database_or_network_connections=0,matching_live_owner_branch='NOT_TESTED'))
+    (tmp_path/'queue-control-results.json').write_text(json.dumps(results,indent=2)+'\n')
+    assert len(results)==len(AA19_QUEUE_CASES)
+
+
 class TestReuseValidityMachineCheck:
     """Approved Git objects, complete metadata and real admission controls."""
 
     APPROVED = "2add5eec0f21e1bc6e505e77e9385e33a105f347"
-    LIVE_APPROVED = "0da4c8502928933bb61ba07b784206dec3a03bdc"
+    HISTORICAL_LIVE_APPROVED = "0da4c8502928933bb61ba07b784206dec3a03bdc"
+    LIVE_APPROVED = "aa19b49fad2618b1e01d071860f847cfbefb384b"
     PREVIOUS_LIVE_APPROVED = "73d152dfd1cc619304e5e5e7b532ab1df571ebc6"
     PREVIOUS_477_APPROVED = "47716cdc88451e233c4142e7da0c3d82c368dd22"
     PREVIOUS_5033_APPROVED = "5033e2cd039af3b989418ae0a57133a6355ca42c"
@@ -4401,10 +4575,11 @@ PY
             assert "REUSE_APPROVED_REF_NOT_AUTHORIZED" in proc.stderr
 
     def test_current_runtime_b_binding_rejects_old_and_same_count_forged_nodes(self, tmp_path):
-        """Run the real default canonical consumer on the one newly collected leg."""
+        """Retain the old native counter at its old explicit canonical, not as current collection."""
         import hashlib
 
         selection = json.loads((REPO_ROOT / 'docs/releases/mvp-20261031/RC4-TEST-SELECTION.json').read_text())
+        selection = selection['previous_selection']
         row = selection['shards']['runtime-b']
         nodes = row['nodeids']
         assert len(nodes) == len(set(nodes)) == 1636
@@ -4420,7 +4595,7 @@ PY
         argfile.write_text('\n'.join(row['files']) + '\n')
         argv = [sys.executable, str(EVIDENCE_TOOL), 'shard-verify', '--plan', str(plan_path),
                 '--shard', 'runtime-b', '--argfile', str(argfile), '--expected-files', '96',
-                '--collect', str(collect), '--expected-nodes', '1636']
+                '--collect', str(collect), '--expected-nodes', '1636', '--canonical-hash', row['canonical_sha256']]
         wrong_identity = list(nodes)
         wrong_identity[-1] = nodes[-1].split('::', 1)[0] + '::test_unapproved_identity'
         steps = []
@@ -4582,7 +4757,7 @@ PY
             assert prior_5033[key] == reviewed[key]
         assert prior_5033['intake_version'] == 10
         assert prior_5033['product_anchor'] == self.PREVIOUS_5033_APPROVED
-        assert coverage['selection_binding']['source_ref'] == self.APPROVED
+        assert coverage['selection_binding']['source_ref'] == self.LIVE_APPROVED
         assert prior_comparison["product_anchor"] == self.PREVIOUS_APPROVED
         assert coverage["rc4_7692_local_contract_repair"] == reviewed["rc4_7692_local_contract_repair"]
         for key in ("bindings", "recovered_native_node_maps", "current_attachment_deltas",
@@ -4591,16 +4766,18 @@ PY
         assert coverage["fixed_source_alignment"]["historical_bindings_rebound"] is False
         assert coverage["fixed_source_alignment"]["overall_source_ok"] is False
         prior_metadata = json.loads(subprocess.check_output([
-            "git", "show", self.LIVE_APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
+            "git", "show", self.HISTORICAL_LIVE_APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
         ], cwd=REPO_ROOT, text=True))
         prior_metadata.pop("recovered_native_node_maps")
         prior_live = coverage["previous_73d_live_source_comparison"]
         assert prior_live == prior_metadata
         assert coverage['current_ci_alignment']['fixed_source'] == self.LIVE_APPROVED
-        assert coverage['current_ci_alignment']['runtime_b']['node_count'] == 1636
+        assert coverage['current_ci_alignment']['node_counts'] == dict.fromkeys(
+            ('runtime-a', 'runtime-b', 'topology', 'invariants-jwt', 'task-managed-pg'))
+        assert coverage['previous_0da4_ci_alignment']['current_ci_alignment']['runtime_b']['node_count'] == 1636
         assert coverage['fixed_live_source']['source_ref'] == self.LIVE_APPROVED
         assert coverage['fixed_live_source']['current_hosted_ci'] == 'NOT_RUN'
-        assert coverage['fixed_source_alignment']['live_comparison_authority'] == 'CTO-AUTH-0DA4-CI-ONLY-ALIGNMENT-CODEXL-R1-20261103'
+        assert coverage['fixed_source_alignment']['live_comparison_authority'] == 'CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116'
         before_live_split = json.loads(subprocess.check_output([
             "git", "show", self.PREVIOUS_LIVE_APPROVED + ":docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json"
         ], cwd=REPO_ROOT, text=True))
@@ -5988,17 +6165,91 @@ sys.exit(int(os.environ["DISPATCH_RC"]))
         }, indent=2) + "\n")
 
     def test_workflow_only_runtime_a_loads_observer_preserving_rc(self, tmp_path):
+        import ast
+        import hashlib
+        import shlex
+        import time
+        from types import SimpleNamespace
         helper = TestR6R1FragmentControls()
         doc = yaml.safe_load(DEPLOY_WF.read_text())
         body = helper._step(doc,'Run shard test body')['run']
         collect = helper._step(doc,'Shard gate')['run']
         assert 'rc4_staff_credential_observer' not in collect and 'OBSERVER_ARGS' not in collect
+        capture = REPO_ROOT/'tools/ci/native_capture.py'
+        # This is a model of the future uncommitted C object's three Git reads,
+        # not source admission for a real commit. All other Git reads and the
+        # full S source-refusal algorithm execute unchanged in the actual tool.
+        adapter = '''import importlib.util,os,pathlib,sys
+tool=pathlib.Path(sys.argv[1]).resolve()
+if tool.name != 'prepare_test_evidence.py' or sys.argv[2:3] != ['queue-runtime-env']:
+    os.execv(sys.executable,[sys.executable,*sys.argv[1:]])
+spec=importlib.util.spec_from_file_location('actual_dispatch_queue_tool',tool)
+m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+actual=m._git_bytes
+future=os.environ['GITHUB_SHA']
+def git_read(repo,*args):
+    if args==('rev-parse','HEAD'):return (future+'\\n').encode()
+    if args==('show',future+':tools/ci/native_capture.py'):
+        return (repo/'tools/ci/native_capture.py').read_bytes()
+    if args==('ls-tree','-z',future,'--','tools/ci/native_capture.py'):
+        return b'100644 blob fixture\\ttools/ci/native_capture.py\\0'
+    return actual(repo,*args)
+m._git_bytes=git_read
+sys.exit(m.main(sys.argv[2:]))
+'''
+        def private(path, value):
+            with path.open('x') as handle:
+                json.dump(value,handle,indent=2);handle.write('\n')
+            path.chmod(0o600)
+        def native(case, name, argv, environment, timeout):
+            """Original capture owns PID/wait/streams, including nonzero/timeout."""
+            plan=case/(name+'.plan.json');envfile=case/(name+'.env.json')
+            call=dict(id=name,argv=argv,cwd=str(REPO_ROOT/'backend'),
+                      native_timeout_seconds=timeout,invocation_id=case.name+':'+name)
+            for key,suffix in [('stdout','.stdout.txt'),('stderr','.stderr.txt'),
+                               ('intent','.intent.json'),('record','.record.json')]:
+                call[key+'_path']=str(case/(name+suffix))
+            private(plan,{'commands':[call]});private(envfile,environment)
+            controller=[sys.executable,'-B',str(capture),str(plan),name,str(envfile)]
+            began=time.monotonic()
+            try:
+                proc=subprocess.run(controller,env=environment,cwd=str(REPO_ROOT/'backend'),
+                                    capture_output=True,timeout=timeout+30)
+            except BaseException as error:
+                private(case/(name+'.capture-exception.json'),dict(category=type(error).__name__,
+                    argv=controller,cwd=str(REPO_ROOT/'backend'),elapsed_seconds=time.monotonic()-began,
+                    original_record=str(call['record_path'])))
+                raise
+            for stream,data in [('stdout',proc.stdout),('stderr',proc.stderr)]:
+                with (case/(name+'.capture-'+stream+'.txt')).open('xb') as handle:handle.write(data)
+            record=json.loads(Path(call['record_path']).read_text())
+            for key in ('stdout','stderr'):
+                raw=Path(record['outputs'][key]['path']).read_bytes()
+                assert hashlib.sha256(raw).hexdigest()==record['outputs'][key]['sha256']
+            assert record['argv']==argv and record['cwd']==str(REPO_ROOT/'backend')
+            assert record['metadata_errors']==[] and not record['timed_out']
+            assert all(type(record[k]) is int and record[k]>0 for k in ('pid','pgid','start_ticks'))
+            assert record['pid']==record['pgid'] and proc.returncode==record['native_rc']
+            return record
+        tool_ast=ast.parse(EVIDENCE_TOOL.read_bytes())
+        context=next(n for n in tool_ast.body if isinstance(n,ast.FunctionDef) and n.name=='_queue_context')
+        required=next(ast.literal_eval(n.value) for n in context.body if isinstance(n,ast.Assign)
+                      and any(isinstance(t,ast.Name) and t.id=='required' for t in n.targets))
+        consumed=sorted(set(re.findall(r'\$\{?([A-Z][A-Z0-9_]*)',body)))
+        summaries=[]
         for leg in ('runtime-a','runtime-b','topology','invariants-jwt','task-managed-pg'):
             for rc in (0,1,124):
-                case=tmp_path/(leg+'-'+str(rc));case.mkdir()
+                case=tmp_path/(leg+'-'+str(rc));case.mkdir(mode=0o700)
                 bin_dir=helper._bin_dir(case,timeout=True,poetry=True,docker=False)
-                rt=case/'rt';rt.mkdir();rec=case/'records';rec.mkdir()
-                (rt/'c91-test-env.sh').write_text("export TEST_ADMIN_DATABASE_URL=''\nexport DATABASE_URL='synthetic-app-no-connection'\n")
+                # Replace this case's old unconditional verify stub with the real
+                # main/producer/verify, keeping only the explicit Git-object I/O seam.
+                (bin_dir/'python').write_text('#!'+sys.executable+'\n'+adapter)
+                (bin_dir/'python').chmod(0o755)
+                rt=case/'rt';rt.mkdir(mode=0o700);rec=case/'records';rec.mkdir(mode=0o700)
+                (rt/'c91-pytest-tmp').mkdir(mode=0o700)
+                (rt/'github-env').write_text('');(rt/'github-env').chmod(0o600)
+                (rt/'c91-test-env.sh').write_text("export TEST_ADMIN_DATABASE_URL=''\n")
+                (rt/'c91-test-env.sh').chmod(0o600)
                 runtime = ['tests/synthetic.py', 'tests/test_platform_p12_support_console.py', 'tests/test_z9.py']
                 members = runtime[:2] if leg == 'runtime-a' else runtime[2:] if leg == 'runtime-b' else ['tests/synthetic.py']
                 (rt/('profile-'+leg+'.tests')).write_text('\n'.join(members) + '\n')
@@ -6007,19 +6258,66 @@ sys.exit(int(os.environ["DISPATCH_RC"]))
                     **{p: {'files': ['tests/synthetic.py']} for p in ('topology', 'invariants-jwt', 'task-managed-pg')},
                 }}))
                 fake=case/'fake-pytest.py'
-                fake.write_text('import os,sys,json,pathlib\npathlib.Path(os.environ["ARGV_RECORD"]).write_text(json.dumps(sys.argv[1:]))\nsys.exit(int(os.environ["FAKE_PYTEST_RC"]))\n')
-                env=dict(os.environ,PATH=str(bin_dir)+os.pathsep+os.environ['PATH'],
+                fake.write_text('import os,sys,json,pathlib\nwith pathlib.Path(os.environ["ARGV_RECORD"]).open("x") as f:json.dump(sys.argv[1:],f)\nsys.exit(int(os.environ["FAKE_PYTEST_RC"]))\n')
+                profile='staging' if leg=='invariants-jwt' else 'test'
+                os_path=str(Path(sys.executable).parent)+os.pathsep+'/usr/bin:/bin'
+                # No host GITHUB_*, DSN, Redis, SECRET or recovery-proof inheritance.
+                env=dict(HOME=str(case),USER='offline',LOGNAME='offline',LANG='C.UTF-8',
+                    PATH=str(bin_dir)+os.pathsep+os_path,PYTHONDONTWRITEBYTECODE='1',GIT_OPTIONAL_LOCKS='0',
                     RUNNER_TEMP=str(rt),C91_FAKE_DIR=str(rec),FAKE_PYTEST_SCRIPT=str(fake),
-                    FAKE_PYTEST_RC=str(rc),ARGV_RECORD=str(case/'argv.json'))
+                    FAKE_PYTEST_RC=str(rc),ARGV_RECORD=str(case/'argv.json'),
+                    GITHUB_WORKSPACE=str(REPO_ROOT),GITHUB_SHA='f'*40,GITHUB_RUN_ID='123',GITHUB_RUN_ATTEMPT='1',
+                    GITHUB_ENV=str(rt/'github-env'),CI_TASK_LABEL='rc4-123-1-'+leg,CI_OWNER_LABEL='offline-dispatch',
+                    CI_PG_PORT='15432',CI_REDIS_PORT='16379',CI_TEST_DB='test_offline_dispatch',
+                    DATABASE_URL='postgresql://mpango_app:'+secrets.token_hex(16)+'@127.0.0.1:15432/test_offline_dispatch',
+                    TEST_REPORTING_DATABASE_URL='postgresql://reporting_user:'+secrets.token_hex(16)+'@127.0.0.1:15432/test_offline_dispatch',
+                    REDIS_URL='redis://:'+secrets.token_hex(16)+'@127.0.0.1:16379/0',SECRET_KEY=secrets.token_hex(32),
+                    MPANGO_ENV=profile,EMAIL_PROVIDER='dev_sink',EMAIL_DELIVERY_MODE='dev_sink',
+                    TEST_ADMIN_DATABASE_URL='',TMPDIR=str(rt/'c91-pytest-tmp'))
+                assert set(required)<=set(env)
+                producer=None
+                if leg in ('runtime-a','runtime-b','invariants-jwt'):
+                    create=[str(bin_dir/'python'),str(EVIDENCE_TOOL),'queue-runtime-env','--mode','create',
+                        '--repo-root',str(REPO_ROOT),'--task-root',str(rt/'rc4-queue-private'),
+                        '--shard',leg,'--github-env',str(rt/'github-env')]
+                    producer=native(case,'queue-create',create,env,30)
+                    assert producer['native_rc']==0
+                    bindings=json.loads((rt/'rc4-queue-private/parent-bindings.json').read_text())
+                    actual_bindings=dict(line.split('=',1) for line in (rt/'github-env').read_text().splitlines())
+                    assert bindings==actual_bindings
+                    env.update(actual_bindings)
+                    child=json.loads(Path(env['ASYNC_QUEUE_RUNTIME_ENV']).read_text())
+                    assert child['DATABASE_URL']==env['DATABASE_URL']
+                    assert child['REPORTING_DATABASE_URL']==env['TEST_REPORTING_DATABASE_URL']
+                    assert child['MPANGO_ENV']==profile
+                    assert not any('ADMIN' in k or 'MIGRATION' in k or 'OPERATOR' in k or 'RECOVERY' in k for k in child)
                 script=body.replace('${{ matrix.shard }}',leg).replace('${{ matrix.pytest-timeout }}','1m')
                 script=script.replace('${{ matrix.expected-files }}', str(len(members)))
-                proc=helper._run_script(script,env,str(REPO_ROOT/'backend'))
-                assert proc.returncode == rc and (rt/'pytest-rc.txt').read_text().strip()==str(rc)
+                private(case/'input-dependencies.json',dict(workflow_consumed=consumed,
+                    producer_required=list(required),provided_keys=sorted(env),profile=profile,
+                    future_C_Git_object='SYNTHETIC_BOUNDARY__NOT_REAL_COMMIT_ADMISSION',
+                    child_producer='ACTUAL_TOOL_MAIN' if producer else 'NOT_APPLICABLE',host_business_env_inherited=False))
+                result=native(case,'body',[BASH,'-c',script],env,30)
+                assert result['native_rc'] == rc and (rt/'pytest-rc.txt').read_text().strip()==str(rc)
                 argv=json.loads((case/'argv.json').read_text())
                 assert ('rc4_staff_credential_observer' in argv) == (leg=='runtime-a')
                 assert argv.count('-p') == int(leg=='runtime-a')
+                assert argv==(['-p','rc4_staff_credential_observer'] if leg=='runtime-a' else [])+members+[
+                    '-q','--tb=short','--junitxml=../junit-'+leg+'.xml']
                 calls=[p.read_text() for p in rec.glob('poetry-*.argv')]
                 assert sum(c.startswith('run pytest ') for c in calls)==1
+                gate=(rt/'body-file-gate.log').read_text()
+                assert 'membership exact vs plan' in gate
+                if producer:
+                    assert 'QUEUE_RUNTIME_PARENT_AND_CHILD_BOUND' in (case/'body.stdout.txt').read_text()
+                summaries.append(dict(shard=leg,expected_simulated_pytest_rc=rc,body_native_rc=result['native_rc'],
+                    actual_queue_producer_rc=producer['native_rc'] if producer else None,
+                    actual_queue_verify=bool(producer),file_membership_passed=True,
+                    observer_loaded=leg=='runtime-a',pytest_dispatches=1,actual_business_pytest=False,
+                    native_record=str(case/'body.record.json')))
+                private(case/'case-result.json',summaries[-1])
+        assert len(summaries)==15
+        private(tmp_path/'dispatch-results.json',summaries)
 
     def test_missing_installation_mutant_is_semantic_red_and_restored(self, tmp_path):
         import hashlib
@@ -6273,7 +6571,8 @@ class TestCurrentPreparationContract:
             ['git', 'diff', '--name-only', probe.LIVE_APPROVED], cwd=REPO_ROOT, text=True).splitlines()
         assert set(changed) <= {
             '.github/workflows/deploy-staging.yml', 'tools/ci/prepare_test_evidence.py',
-            'tools/ci/tests/test_ci_gate_contracts.py', '.secrets.baseline',
+            'tools/ci/tests/test_ci_gate_contracts.py', 'tools/ci/native_capture.py',
+            'tools/ci/bootstrap_backend_test_db.sh', 'docs/releases/mvp-20261031/RC4-RELEASE-PLAN.zh-CN.md',
             'docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json',
             'docs/releases/mvp-20261031/RC4-TEST-SELECTION.json',
         }

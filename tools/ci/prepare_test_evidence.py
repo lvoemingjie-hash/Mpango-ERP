@@ -43,6 +43,10 @@ import json
 import os
 import re
 import sys
+import stat
+import tempfile
+import shutil
+import ctypes
 import urllib.parse
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -107,7 +111,7 @@ _HISTORICAL_CANONICAL_DIGEST_INTS = {
 }
 # Fixed 2add: all five native collections, in one fresh task environment.
 # Historical canonical tables remain in the preserved selection/intake layer.
-CANONICAL_NODEID_SHA256 = {
+HISTORICAL_CANONICAL_NODEID_SHA256 = {
     "runtime-a": "1adc9dfae7a3bb2aee326d638f589eda941fa8911858bae75f7828476e2aa246",
     "runtime-b": "c5fa0f72a6780a39012b4df2e3725a24bb9f742c83752513b012f4034e656dc7",
     "topology": "c5b860246b7e6829d45924e4f608da4250e27ad519d2fae00eea11a268a38200",
@@ -116,13 +120,18 @@ CANONICAL_NODEID_SHA256 = {
 }
 
 # Populated only from the five authorized native collect originals.
-CURRENT_COLLECTION_COUNTS = {
+HISTORICAL_COLLECTION_COUNTS = {
     "runtime-a": 1702,
     "runtime-b": 1636,
     "topology": 798,
     "invariants-jwt": 352,
     "task-managed-pg": 92,
 }
+
+# No current collection is authorized by this offline alignment. The old
+# maps above describe their original native runs, never this S source.
+CANONICAL_NODEID_SHA256 = dict.fromkeys(SHARD_NAMES)
+CURRENT_COLLECTION_COUNTS = dict.fromkeys(SHARD_NAMES)
 
 # F-01 (R6R1): the task credential store is a single private store shared by
 # the supply and the publication steps; a store that lacks any required key
@@ -588,7 +597,7 @@ def cmd_reconcile_junit(args: argparse.Namespace) -> int:
         "canonical_expected": CANONICAL_NODEID_SHA256.get(args.shard),
         "canonical_match": (
             _canonical_nodeid_sha256(nodeids) == CANONICAL_NODEID_SHA256.get(args.shard)
-            if args.shard in CANONICAL_NODEID_SHA256 else None
+            if CANONICAL_NODEID_SHA256.get(args.shard) is not None else None
         ),
         "mapping_rule": mapping_rule,
         "junit_entries": entries,
@@ -715,12 +724,13 @@ def _git_bytes(repo, *argv):
 REUSE_477_APPROVED_REF = "47716cdc88451e233c4142e7da0c3d82c368dd22"
 REUSE_APPROVED_REF = "2add5eec0f21e1bc6e505e77e9385e33a105f347"
 # Historical collection remains on 2add; live objects use this CTO-fixed successor.
-REUSE_LIVE_APPROVED_REF = "0da4c8502928933bb61ba07b784206dec3a03bdc"
+REUSE_0DA4_APPROVED_REF = "0da4c8502928933bb61ba07b784206dec3a03bdc"
+REUSE_LIVE_APPROVED_REF = "aa19b49fad2618b1e01d071860f847cfbefb384b"
 REUSE_5033_APPROVED_REF = "5033e2cd039af3b989418ae0a57133a6355ca42c"
 REUSE_PREVIOUS_APPROVED_REF = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
 # Rebuild inputs/recipe are declared in intake_sources and the delivery receipt.
-REUSE_INTAKE_VERSION = 13
+REUSE_INTAKE_VERSION = 14
 REUSE_EXPECTED_METADATA = json.loads(r'''
 {
   "record": "RC2_VERSIONED_DEDICATED_ACCEPTANCE_INTAKE_V1",
@@ -2905,8 +2915,8 @@ def _reuse_expected_metadata(repo):
         )
     }))
     authorization = "CTO-AUTH-2ADD-CI-ALIGNMENT-AND-FIVE-COLLECT-CODEXL-R1-20261101"
-    historical_counts = dict(CURRENT_COLLECTION_COUNTS, **{"runtime-b": 1630})
-    historical_canonical = dict(CANONICAL_NODEID_SHA256, **{
+    historical_counts = dict(HISTORICAL_COLLECTION_COUNTS, **{"runtime-b": 1630})
+    historical_canonical = dict(HISTORICAL_CANONICAL_NODEID_SHA256, **{
         "runtime-b": "03ad53c5359e0848a2afd21202a72450419014a8623c6da5e463e610f84ef7fe",
     })
     previous_live_ref = "73d152dfd1cc619304e5e5e7b532ab1df571ebc6"
@@ -2977,29 +2987,29 @@ def _reuse_expected_metadata(repo):
     expected["previous_73d_live_source_comparison"] = json.loads(json.dumps(expected))
     authority = "CTO-AUTH-0DA4-CI-ONLY-ALIGNMENT-CODEXL-R1-20261103"
     expected.update(record="CURRENT_0DA4_CI_ONLY_ALIGNMENT_V1", authorization=authority,
-                    intake_version=REUSE_INTAKE_VERSION)
+                    intake_version=13)
     expected["fixed_source_alignment"].update(
-        whole_backend_frontend_comparison_source=REUSE_LIVE_APPROVED_REF,
+        whole_backend_frontend_comparison_source=REUSE_0DA4_APPROVED_REF,
         live_comparison_authority=authority)
     expected["fixed_live_source"].update(
-        source_ref=REUSE_LIVE_APPROVED_REF,
-        backend_tree=_git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + ":backend").decode().strip(),
-        frontend_tree=_git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + ":frontend").decode().strip(),
+        source_ref=REUSE_0DA4_APPROVED_REF,
+        backend_tree=_git_bytes(repo, "rev-parse", REUSE_0DA4_APPROVED_REF + ":backend").decode().strip(),
+        frontend_tree=_git_bytes(repo, "rev-parse", REUSE_0DA4_APPROVED_REF + ":frontend").decode().strip(),
         source_interpretation="LISTED_FIELDS_DESCRIBE_2ADD_INTAKE_NOT_CURRENT_EXECUTION")
     expected["current_ci_alignment"] = {
-        "authority": authority, "fixed_source": REUSE_LIVE_APPROVED_REF,
+        "authority": authority, "fixed_source": REUSE_0DA4_APPROVED_REF,
         "previous_live_source": previous_live_ref,
         "selection_counts": {"tracked": 282, "ordinary": 255, "dedicated": 21, "ignored": 6},
         "runtime_b": {
-            "files": 96, "node_count": CURRENT_COLLECTION_COUNTS["runtime-b"],
-            "canonical_sha256": CANONICAL_NODEID_SHA256["runtime-b"],
+            "files": 96, "node_count": HISTORICAL_COLLECTION_COUNTS["runtime-b"],
+            "canonical_sha256": HISTORICAL_CANONICAL_NODEID_SHA256["runtime-b"],
             "collection_kind": "ONE_CURRENT_NATIVE_RUNTIME_B_COLLECTION__NO_BODY",
             "old_identities_retained": 1630, "added_identities": 6,
-            "source_ref": REUSE_LIVE_APPROVED_REF,
+            "source_ref": REUSE_0DA4_APPROVED_REF,
         },
         "other_four_legs": "HISTORICAL_2ADD_NATIVE_ARRAYS_AND_SOURCE_IDENTITY_CONTINUITY__NOT_NEW_COLLECT",
-        "mixed_node_counts": CURRENT_COLLECTION_COUNTS,
-        "mixed_canonical_sha256": CANONICAL_NODEID_SHA256,
+        "mixed_node_counts": HISTORICAL_COLLECTION_COUNTS,
+        "mixed_canonical_sha256": HISTORICAL_CANONICAL_NODEID_SHA256,
         "independent30": "CTO_BOUNDED_ACCEPTED_AT_0DA4__KNOWN_ORDERED_ANCHOR_SCOPE_ONLY",
         "author25": "CTO_BOUNDED_ACCEPTED_AT_AC0__DEVIATION_RETAINED__NOT_INDEPENDENT_V3",
         "old_hosted": "79F5_RUN41439997645__4490P_24F_46SKIP_14XFAIL__NOT_REWRITTEN",
@@ -3008,6 +3018,54 @@ def _reuse_expected_metadata(repo):
         "current_hosted_ci": "NOT_RUN", "backend_body": "NOT_RUN", "release_ready": False,
         "historical_results_rebound": False, "new_business_accepted_total": None,
     }
+    expected["previous_0da4_ci_alignment"] = json.loads(json.dumps(expected))
+    authority = "CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116"
+    expected.update(record="CURRENT_AA19_OFFLINE_CI_ALIGNMENT_V1", authorization=authority,
+                    intake_version=REUSE_INTAKE_VERSION, product_anchor=REUSE_LIVE_APPROVED_REF,
+                    intake_status="OFFLINE_CANDIDATE__FIVE_FRESH_COLLECTS_REQUIRED")
+    expected["fixed_source_alignment"].update(
+        whole_backend_frontend_comparison_source=REUSE_LIVE_APPROVED_REF,
+        live_comparison_authority=authority)
+    expected["fixed_live_source"] = {
+        "source_ref": REUSE_LIVE_APPROVED_REF,
+        "backend_tree": _git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + ":backend").decode().strip(),
+        "frontend_tree": _git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + ":frontend").decode().strip(),
+        "historical_collection_ref": REUSE_APPROVED_REF,
+        "current_native_collect": "NOT_RUN", "current_hosted_ci": "NOT_RUN",
+        "claim": "WHOLE_BACKEND_FRONTEND_SOURCE_COMPARISON_ONLY",
+    }
+    expected["current_source_intake"] = dict(expected["fixed_live_source"],
+        authorization=authority, source_tree=_git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + "^{tree}").decode().strip(),
+        source_parent=_git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + "^").decode().strip(),
+        source_contract_commit=REUSE_LIVE_APPROVED_REF, independent_v3_this_intake="NOT_RUN")
+    expected["selection_binding"] = {
+        "authority": authority, "source_ref": REUSE_LIVE_APPROVED_REF,
+        "discovered_files": 287, "ordinary_files": 260, "dedicated_files": 21,
+        "ignores": 6, "union": 281, "intersection": 0, "unknown": 0,
+    }
+    expected["current_collection_binding"] = {
+        "source_ref": REUSE_LIVE_APPROVED_REF, "node_counts": CURRENT_COLLECTION_COUNTS,
+        "canonical_sha256": CANONICAL_NODEID_SHA256, "claim": "NOT_COLLECTED_THIS_ROUND",
+    }
+    expected["ordinary_canonical_status"] = "NOT_COLLECTED_THIS_ROUND"
+    expected["current_ci_alignment"] = {
+        "authority": authority, "fixed_source": REUSE_LIVE_APPROVED_REF,
+        "previous_live_source": REUSE_0DA4_APPROVED_REF,
+        "selection_counts": {"tracked": 287, "ordinary": 260, "dedicated": 21, "ignored": 6},
+        "file_counts": dict(zip(SHARD_NAMES, (99, 98, 39, 20, 4))),
+        "node_counts": CURRENT_COLLECTION_COUNTS, "canonical_sha256": CANONICAL_NODEID_SHA256,
+        "current_collect": "NOT_RUN", "current_hosted_ci": "NOT_RUN", "backend_body": "NOT_RUN",
+        "author_three_nodes": "ACCEPTED_BYTES_ONLY__NOT_RERUN_OR_INDEPENDENT_ACCEPTANCE",
+        "matching_live_owner_branch": "NOT_VERIFIED", "historical_results_rebound": False,
+        "release_ready": False, "new_business_accepted_total": None,
+        "required_next_gate": "FIVE_ONCE_ONLY_FRESH_NATIVE_COLLECTS_THEN_CTO_FREEZE",
+    }
+    expected["explicit_non_claims"] = [
+        "S is an existing source authority, not a new CI or business pass.",
+        "Current nodes and canonical are unknown; old native results remain in previous_0da4_ci_alignment.",
+        "Whole backend/frontend and external-path refusal algorithms remain authoritative, including tests.",
+        "No new collect, full tool gate, hosted CI, independent acceptance or release is claimed.",
+    ]
     return expected
 
 
@@ -3580,9 +3638,250 @@ SYNTHETIC_IDENTITY_VALUES = frozenset(
 )
 
 
+QUEUE_CAPTURE_SHA256 = "0c926de0958bbf72f658efec4512adfb234488086f78a406c08769a34d32e492"
+QUEUE_PROFILES = {"runtime-a": "test", "runtime-b": "test", "invariants-jwt": "staging"}
+QUEUE_OS_KEYS = ("HOME", "PATH", "LANG", "USER", "LOGNAME", "VIRTUAL_ENV",
+                 "PYTHONUNBUFFERED", "PYTHONNOUSERSITE")
+
+
+def _queue_require(condition, category):
+    if not condition:
+        raise Refused("QUEUE_" + category, 3)
+
+
+def _queue_pairs(items):
+    result = {}
+    for key, value in items:
+        _queue_require(key not in result, "DUPLICATE_JSON_KEY")
+        result[key] = value
+    return result
+
+
+def _queue_path(path, directory=False):
+    path = Path(path)
+    _queue_require(path.is_absolute() and path.resolve() == path, "PATH_SCOPE")
+    info = path.lstat()
+    _queue_require(info.st_uid == os.getuid() and not path.is_symlink(), "PATH_OWNER")
+    _queue_require(stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode), "PATH_TYPE")
+    _queue_require(stat.S_IMODE(info.st_mode) == (0o700 if directory else 0o600), "PATH_MODE")
+    if not directory:
+        _queue_require(info.st_nlink == 1, "FILE_HARDLINK")
+    return path
+
+
+def _queue_read(path):
+    try:
+        return json.loads(_queue_path(path).read_bytes(), object_pairs_hook=_queue_pairs)
+    except (ValueError, UnicodeError):
+        raise Refused("QUEUE_JSON_INVALID", 3) from None
+
+
+def _queue_write(path, value):
+    data = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode()
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb") as handle:
+        handle.write(data); handle.flush(); os.fsync(handle.fileno())
+    return _sha256_bytes(data)
+
+
+def _queue_publish(stage, root):
+    library = ctypes.CDLL(None, use_errno=True)
+    rename = getattr(library, "renameat2", None)
+    _queue_require(rename is not None, "ATOMIC_PUBLISH_UNAVAILABLE")
+    rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    rename.restype = ctypes.c_int
+    _queue_require(rename(-100, os.fsencode(stage), -100, os.fsencode(root), 1) == 0, "ATOMIC_PUBLISH_REFUSED")
+
+
+def _queue_context(args):
+    env = os.environ
+    required = ("RUNNER_TEMP", "GITHUB_WORKSPACE", "GITHUB_SHA", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT",
+                "CI_TASK_LABEL", "CI_OWNER_LABEL", "CI_PG_PORT", "CI_REDIS_PORT", "CI_TEST_DB",
+                "DATABASE_URL", "TEST_REPORTING_DATABASE_URL", "REDIS_URL", "SECRET_KEY", "MPANGO_ENV", "TMPDIR")
+    for key in required:
+        _queue_require(bool(env.get(key)), "MISSING_KEY_" + key)
+    _queue_require(not any(key in env for key in ("JOB_QUEUE_RECOVERY_CONFIRMED", "JOB_QUEUE_RECOVERY_PROOF_FILE",
+        "JOB_QUEUE_PLANNED_REBOOT_PROOF_FILE")), "PREEXISTING_PROOF")
+    _queue_require(args.shard in QUEUE_PROFILES, "SHARD_REFUSED")
+    _queue_require(env["GITHUB_RUN_ID"].isdigit() and env["GITHUB_RUN_ATTEMPT"].isdigit()
+        and bool(re.fullmatch(r"[A-Za-z0-9_.-]+", env["CI_OWNER_LABEL"])), "TASK_IDENTITY_SHAPE")
+    _queue_require(env["CI_TASK_LABEL"] == "rc4-" + env["GITHUB_RUN_ID"] + "-" + env["GITHUB_RUN_ATTEMPT"] + "-" + args.shard, "TASK_BINDING")
+    _queue_require(env["MPANGO_ENV"] == QUEUE_PROFILES[args.shard], "PROFILE_MISMATCH")
+    repo = Path(args.repo_root)
+    temp = Path(env["RUNNER_TEMP"])
+    _queue_require(repo.is_absolute() and repo.resolve() == repo == Path(env["GITHUB_WORKSPACE"]), "REPO_SCOPE")
+    _queue_require(temp.is_absolute() and temp.resolve() == temp and temp.is_dir() and temp.stat().st_uid == os.getuid(), "RUNNER_ROOT")
+    root = Path(args.task_root)
+    _queue_require(root == temp / "rc4-queue-private", "ROOT_MISMATCH")
+    ci = env["GITHUB_SHA"]
+    _queue_require(bool(re.fullmatch(r"[0-9a-f]{40}", ci)), "CI_REF_INVALID")
+    _queue_require(_git_bytes(repo, "rev-parse", "HEAD").decode().strip() == ci, "CI_REF_MISMATCH")
+    problems, _ = _reuse_object_problems(repo, REUSE_LIVE_APPROVED_REF)
+    _queue_require(not problems, "SOURCE_OBJECT_MISMATCH")
+    capture = repo / "tools/ci/native_capture.py"
+    _queue_require(capture.is_file() and not capture.is_symlink(), "CAPTURE_MISSING")
+    _queue_require(_sha256_file(capture) == QUEUE_CAPTURE_SHA256, "CAPTURE_DRIFT")
+    frozen = _git_bytes(repo, "show", ci + ":tools/ci/native_capture.py")
+    mode = _git_bytes(repo, "ls-tree", "-z", ci, "--", "tools/ci/native_capture.py").split(b" ", 1)[0]
+    _queue_require(mode == b"100644" and _sha256_bytes(frozen) == QUEUE_CAPTURE_SHA256 and frozen == capture.read_bytes(), "CAPTURE_SOURCE_BINDING")
+    def url(key, schemes):
+        try:
+            item = urllib.parse.urlsplit(env[key])
+            _queue_require(item.scheme in schemes and item.hostname == "127.0.0.1" and item.port is not None
+                and 0 < item.port < 65536 and item.password and not item.query and not item.fragment, "URL_SCOPE")
+            return item
+        except ValueError:
+            raise Refused("QUEUE_URL_SCOPE", 3) from None
+    app = url("DATABASE_URL", ("postgresql", "postgresql+asyncpg"))
+    reporting = url("TEST_REPORTING_DATABASE_URL", ("postgresql", "postgresql+asyncpg"))
+    redis = url("REDIS_URL", ("redis",))
+    _queue_require(app.username == "mpango_app" and reporting.username == "reporting_user", "ROLE_MISMATCH")
+    _queue_require(bool(re.fullmatch(r"(?:test|pytest|ci)[_-][a-z0-9_-]+", env["CI_TEST_DB"]))
+        and app.path == reporting.path == "/" + env["CI_TEST_DB"]
+        and app.port == reporting.port == int(env["CI_PG_PORT"]), "DATABASE_SCOPE")
+    _queue_require(redis.path == "/0" and redis.port == int(env["CI_REDIS_PORT"]), "REDIS_SCOPE")
+    _queue_require(len(env["SECRET_KEY"]) >= 32, "SECRET_KEY_SHAPE")
+    tmp = _queue_path(Path(env["TMPDIR"]), True)
+    _queue_require(tmp == temp / "c91-pytest-tmp", "TMP_SCOPE")
+    return repo, root, capture, tmp
+
+
+def cmd_queue_runtime_env(args):
+    """One finite task capsule, its actual parent consumer check and closeout."""
+    try:
+        repo, root, capture, tmp = _queue_context(args)
+        bindings = dict(EXPORT_DIR=str(root / "exports"), ASYNC_QUEUE_PROBE_ROOT=str(root / "probes"),
+            ASYNC_QUEUE_RUNTIME_ENV=str(root / "runtime-env.json"), ASYNC_QUEUE_NATIVE_CAPTURE=str(capture),
+            MPANGO_ENV=QUEUE_PROFILES[args.shard], EMAIL_PROVIDER="dev_sink", EMAIL_DELIVERY_MODE="dev_sink")
+        if args.shard == "invariants-jwt":
+            bindings.update(AUDIT_FINITE_PRIVATE=str(root / "audit"), STAFF_M1_PRIVATE_DIR=str(root / "staff"))
+        _queue_require(all("\n" not in value and "\r" not in value for value in bindings.values()), "ENV_BINDING_NEWLINE")
+        if args.mode == "create":
+            _queue_require(not root.exists() and not root.is_symlink(), "OUTPUT_EXISTS")
+            _queue_require(args.github_env and args.github_env == os.environ.get("GITHUB_ENV"), "GITHUB_ENV_BINDING")
+            destination = Path(args.github_env)
+            _queue_require(destination.is_file() and not destination.is_symlink()
+                and destination.stat().st_uid == os.getuid() and destination.resolve().is_relative_to(root.parent), "GITHUB_ENV_SCOPE")
+            child = {key: os.environ[key] for key in QUEUE_OS_KEYS if key in os.environ}
+            child.update(DATABASE_URL=os.environ["DATABASE_URL"],
+                REPORTING_DATABASE_URL=os.environ["TEST_REPORTING_DATABASE_URL"],
+                REDIS_URL=os.environ["REDIS_URL"], SECRET_KEY=os.environ["SECRET_KEY"],
+                MPANGO_ENV=QUEUE_PROFILES[args.shard], EMAIL_PROVIDER="dev_sink", EMAIL_DELIVERY_MODE="dev_sink",
+                EXPORT_DIR=bindings["EXPORT_DIR"], ASYNC_QUEUE_PROBE_ROOT=bindings["ASYNC_QUEUE_PROBE_ROOT"],
+                TMPDIR=str(tmp), TMP=str(tmp), TEMP=str(tmp), PYTHONPATH=str(repo / "backend"), PYTHONDONTWRITEBYTECODE="1")
+            stage = Path(tempfile.mkdtemp(prefix=".rc4-queue-stage-", dir=root.parent))
+            try:
+                for name in ("exports", "probes", "audit", "staff"):
+                    (stage / name).mkdir(mode=0o700)
+                (stage / "audit/facts").mkdir(mode=0o700)
+                digest = _queue_write(stage / "runtime-env.json", child)
+                _queue_write(stage / "parent-bindings.json", bindings)
+                _queue_write(stage / "receipt.json", dict(task=os.environ["CI_TASK_LABEL"], owner=os.environ["CI_OWNER_LABEL"],
+                    shard=args.shard, profile=QUEUE_PROFILES[args.shard], source_ref=REUSE_LIVE_APPROVED_REF,
+                    ci_ref=os.environ["GITHUB_SHA"], capture_sha256=QUEUE_CAPTURE_SHA256,
+                    child_env_sha256=digest, child_keys=sorted(child), parent_keys=sorted(bindings),
+                    tmp=str(tmp), tmp_inode=tmp.stat().st_ino, tmp_dev=tmp.stat().st_dev,
+                    database_checks="FORMAT_AND_SUPPLY_CHANNEL_ONLY__NOT_LIVE_PRIVILEGE_PROOF"))
+                # The hosted task is single-writer and the target was required absent.
+                # Refuse an intervening creation rather than merge into an old capsule.
+                _queue_require(not root.exists() and not root.is_symlink(), "OUTPUT_EXISTS")
+                _queue_publish(stage, root)
+                with destination.open("a", encoding="utf-8") as handle:
+                    for key, value in bindings.items():
+                        handle.write(key + "=" + value + "\n")
+            finally:
+                if stage.exists():
+                    shutil.rmtree(stage)
+            print("QUEUE_RUNTIME_INPUTS_CREATED")
+            return 0
+        _queue_path(root, True)
+        receipt = _queue_read(root / "receipt.json")
+        _queue_require(receipt["task"] == os.environ["CI_TASK_LABEL"] and receipt["owner"] == os.environ["CI_OWNER_LABEL"]
+            and receipt["shard"] == args.shard and receipt["profile"] == QUEUE_PROFILES[args.shard], "REGISTRATION_MISMATCH")
+        _queue_require(receipt["source_ref"] == REUSE_LIVE_APPROVED_REF and receipt["ci_ref"] == os.environ["GITHUB_SHA"]
+            and receipt["capture_sha256"] == QUEUE_CAPTURE_SHA256, "REGISTRATION_SOURCE_MISMATCH")
+        for directory in ("exports", "probes", "audit", "audit/facts", "staff"):
+            _queue_path(root / directory, True)
+        _queue_require(receipt["tmp"] == str(tmp) and receipt["tmp_inode"] == tmp.stat().st_ino
+            and receipt["tmp_dev"] == tmp.stat().st_dev, "TMP_IDENTITY")
+        capsule = _queue_read(root / "runtime-env.json")
+        _queue_require(_sha256_file(root / "runtime-env.json") == receipt["child_env_sha256"], "CAPSULE_DRIFT")
+        _queue_require(_queue_read(root / "parent-bindings.json") == bindings, "PARENT_BINDING_DRIFT")
+        _queue_require(all(os.environ.get(key) == value for key, value in bindings.items()), "PARENT_CONSUMER_MISMATCH")
+        _queue_require(capsule["DATABASE_URL"] == os.environ["DATABASE_URL"]
+            and capsule["REPORTING_DATABASE_URL"] == os.environ["TEST_REPORTING_DATABASE_URL"]
+            and capsule["SECRET_KEY"] == os.environ["SECRET_KEY"], "PARENT_CHILD_SOURCE_MISMATCH")
+        required_child = {"DATABASE_URL", "REPORTING_DATABASE_URL", "REDIS_URL", "SECRET_KEY", "MPANGO_ENV",
+            "EMAIL_PROVIDER", "EMAIL_DELIVERY_MODE", "EXPORT_DIR", "ASYNC_QUEUE_PROBE_ROOT", "TMPDIR", "TMP", "TEMP",
+            "PYTHONPATH", "PYTHONDONTWRITEBYTECODE"}
+        _queue_require(required_child <= set(capsule) <= required_child | set(QUEUE_OS_KEYS), "CHILD_KEY_WHITELIST")
+        _queue_require(capsule["REDIS_URL"] == os.environ["REDIS_URL"] and capsule["MPANGO_ENV"] == QUEUE_PROFILES[args.shard]
+            and capsule["EXPORT_DIR"] == bindings["EXPORT_DIR"] and capsule["ASYNC_QUEUE_PROBE_ROOT"] == bindings["ASYNC_QUEUE_PROBE_ROOT"]
+            and capsule["PYTHONPATH"] == str(repo / "backend")
+            and capsule["EMAIL_PROVIDER"] == capsule["EMAIL_DELIVERY_MODE"] == "dev_sink", "CHILD_BINDING_DRIFT")
+        if args.mode == "verify":
+            print("QUEUE_RUNTIME_PARENT_AND_CHILD_BOUND")
+            return 0
+        _queue_require(args.receipt and Path(args.receipt).parent == root.parent
+            and not Path(args.receipt).exists() and not Path(args.receipt).is_symlink(), "CLOSEOUT_RECEIPT_SCOPE")
+        # Only the three existing native-child producer layouts are admitted.
+        folders = [p for p in (root / "probes").iterdir() if re.fullmatch(r"[0-9a-f]{32}", p.name)]
+        folders += [p for p in (root / "audit").iterdir() if p.name.startswith("worker-")]
+        folders += [p for p in tmp.rglob("child-*") if re.fullmatch(r"child-[0-9a-f]{32}", p.name)]
+        retire = [root / "runtime-env.json"]
+        process_facts = []
+        for folder in folders:
+            _queue_path(folder, True)
+            plan = _queue_read(folder / "plan.json")
+            _queue_require(len(plan["commands"]) == 1, "CHILD_PLAN")
+            call = plan["commands"][0]
+            record_path = Path(call["record_path"])
+            process_path = Path(call["intent_path"]).with_suffix(".process.json")
+            _queue_require(record_path.parent == process_path.parent == folder, "CHILD_RECORD_SCOPE")
+            record = _queue_read(record_path); process = _queue_read(process_path)
+            _queue_require(record["plan_sha256"] == _sha256_file(folder / "plan.json")
+                and record["argv"] == call["argv"] and record["id"] == call["id"]
+                and record["metadata_errors"] == [] and type(record["native_rc"]) is int
+                and all(record[key] == process[key] for key in ("pid", "pgid", "start_ticks")), "CHILD_NATIVE_BINDING")
+            _queue_require(all(type(record[key]) is int and record[key] > 0 for key in ("pid", "pgid", "start_ticks")), "CHILD_IDENTITY")
+            _queue_require(record["pid"] == record["pgid"], "CHILD_PROCESS_GROUP")
+            try:
+                alive = int(Path("/proc/" + str(record["pid"]) + "/stat").read_text().rsplit(")", 1)[1].split()[19]) == record["start_ticks"]
+            except FileNotFoundError:
+                alive = False
+            _queue_require(not alive, "CHILD_STILL_ALIVE")
+            candidates = [p for p in (folder / "env.json", folder / "environment.json") if p.exists()]
+            _queue_require(len(candidates) == 1, "CHILD_ENV_MAPPING")
+            _queue_read(candidates[0]); retire.extend(candidates)
+            process_facts.append(dict(pid=record["pid"], start_ticks=record["start_ticks"], ended=True, native_rc=record["native_rc"]))
+        identities = [(p, p.stat().st_dev, p.stat().st_ino, _sha256_file(p)) for p in retire]
+        for path, dev, inode, digest in identities:
+            _queue_path(path)
+            _queue_require((path.stat().st_dev, path.stat().st_ino) == (dev, inode) and _sha256_file(path) == digest, "RETIREMENT_DRIFT")
+        for path, _, _, _ in identities:
+            path.unlink()
+        _queue_write(Path(args.receipt), dict(task=receipt["task"], shard=args.shard,
+            retired=[dict(path=str(p), sha256=digest, absent=not p.exists()) for p, _, _, digest in identities],
+            child_exit_facts=process_facts, controller_ticks="NOT_ADDED_TO_FROZEN_CAPTURE_PROTOCOL",
+            retained_private="native outputs, identity proofs and artifacts; no broad deletion",
+            no_signal_or_database_write=True))
+        print("QUEUE_RUNTIME_REGISTERED_SECRET_INPUTS_RETIRED")
+        return 0
+    except (OSError, ValueError, KeyError) as error:
+        raise Refused("QUEUE_INPUT_IO_OR_SHAPE_" + type(error).__name__, 3) from None
+
+
 def main(argv: list) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p_queue = sub.add_parser("queue-runtime-env", help="finite task child capsule / parent verification / exact input closeout")
+    p_queue.add_argument("--mode", choices=("create", "verify", "closeout"), required=True)
+    p_queue.add_argument("--repo-root", required=True)
+    p_queue.add_argument("--task-root", required=True)
+    p_queue.add_argument("--shard", choices=tuple(QUEUE_PROFILES), required=True)
+    p_queue.add_argument("--github-env")
+    p_queue.add_argument("--receipt")
+    p_queue.set_defaults(func=cmd_queue_runtime_env)
 
     p_plan = sub.add_parser("shard-plan", help="cut frozen runtime shard argfiles")
     p_plan.add_argument("--plan", required=True)

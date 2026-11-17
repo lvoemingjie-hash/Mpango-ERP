@@ -228,6 +228,51 @@ async def _enumerate_active_tenant_users(
     )
 
 
+async def replace_active_password_copies(db, copies, password_hash: str, *, preserve_status: bool = False) -> int:
+    """Strict shared fan-out. Caller holds the complete credential domain to commit.
+
+    Recovery changes only password/updated_at. The existing personal-reset
+    assignment is kept byte-for-byte in its branch, including its refusal and
+    affected-row checks. No savepoint or partial commit is introduced.
+    """
+    updated = 0
+    for schema, uid in copies:
+        try:
+            validate_identifier(schema)
+        except Exception:
+            raise PasswordResetApplyFailedError(
+                updated_count=updated,
+                remaining_copy_count=len(copies) - updated,
+            ) from None
+        try:
+            await assert_managed_credential_write_allowed(db,schema,uid)
+            result = await db.execute(
+                text(
+                    f'UPDATE "{schema}".users '
+                    + ("SET password_hash = :password_hash, updated_at = now() "
+                       "WHERE id = :user_id AND is_active = true AND is_deleted = false"
+                       if preserve_status else
+                       "SET password_hash = :password_hash, is_active = true, "
+                       "is_deleted = false, deleted_at = NULL, updated_at = now() "
+                       "WHERE id = :user_id AND is_active = true")
+                ),
+                {"password_hash": password_hash, "user_id": uid},
+            )
+        except Exception:
+            raise PasswordResetApplyFailedError(
+                updated_count=updated,
+                remaining_copy_count=len(copies) - updated,
+            ) from None
+        if result.rowcount != 1:
+            raise PasswordResetApplyFailedError(
+                updated_count=updated,
+                remaining_copy_count=len(copies) - updated,
+            )
+        updated += 1
+
+    return updated
+
+
 class PasswordResetService:
     """Issue and consume password reset tokens with multi-tenant fan-out."""
 
@@ -368,37 +413,7 @@ class PasswordResetService:
         # never marked used. There is deliberately NO best-effort path and
         # NO per-copy SAVEPOINT isolation here — failure must abort the
         # whole consume, not be skipped past.
-        updated = 0
-        for schema, uid in copies:
-            try:
-                validate_identifier(schema)
-            except Exception:
-                raise PasswordResetApplyFailedError(
-                    updated_count=updated,
-                    remaining_copy_count=len(copies) - updated,
-                ) from None
-            try:
-                await assert_managed_credential_write_allowed(self.db,schema,uid)
-                result = await self.db.execute(
-                    text(
-                        f'UPDATE "{schema}".users '
-                        "SET password_hash = :password_hash, is_active = true, "
-                        "is_deleted = false, deleted_at = NULL, updated_at = now() "
-                        "WHERE id = :user_id AND is_active = true"
-                    ),
-                    {"password_hash": password_hash, "user_id": uid},
-                )
-            except Exception:
-                raise PasswordResetApplyFailedError(
-                    updated_count=updated,
-                    remaining_copy_count=len(copies) - updated,
-                ) from None
-            if result.rowcount != 1:
-                raise PasswordResetApplyFailedError(
-                    updated_count=updated,
-                    remaining_copy_count=len(copies) - updated,
-                )
-            updated += 1
+        updated = await replace_active_password_copies(self.db, copies, password_hash)
 
         # Mark used only after EVERY copy updated exactly one row.
         now = datetime.now(timezone.utc)

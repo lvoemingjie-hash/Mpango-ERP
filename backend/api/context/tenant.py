@@ -7,7 +7,7 @@ from fastapi import HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.security import TokenPayload
+from core.security import TokenPayload, credential_epoch_matches
 from db.sql_safety import validate_identifier
 
 _TENANT_CONTEXT_ATTR = "tenant_context"
@@ -129,6 +129,10 @@ async def resolve_tenant_context(token: TokenPayload) -> TenantContext:
             raise _http_exc("USER_DELETED", "User account has been deleted")
         if not getattr(user, "is_active", True):
             raise _http_exc("USER_INACTIVE", "User account is inactive")
+        if token.sv != 2 or not credential_epoch_matches(
+            token.credential_epoch, user.credential_epoch
+        ):
+            raise _http_exc("SESSION_REVOKED", "Session revoked; sign in again")
         await assert_tenant_active(session, token.tenant_id)
 
         return TenantContext(

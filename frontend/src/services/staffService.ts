@@ -10,6 +10,11 @@ export const staffService = {
     (await api.patch<{data:StaffMember}>(`/staff/${member.id}`,{...body,expected_version:member.version})).data.data,
   invite: async (member:StaffMember,password:string) =>
     (await api.post(`/staff/${member.id}/credential-setup`,{expected_version:member.version,owner_password:password})).data,
+  requestRecovery: async (member:StaffMember,password:string) =>
+    (await api.post(`/staff/${member.id}/credential-recovery`,{expected_version:member.version,owner_password:password})).data,
+  recover: async (token:string,newPassword:string) =>
+    (await api.post('/auth/staff/recover-credential',{recovery_token:token,new_password:newPassword},
+      {headers:{Authorization:''},skipAuthInterceptors:true})).data,
   editTemplate: async (template:StaffTemplate,codes:string[]) =>
     (await api.put('/staff/role-templates/'+template.key,{expected_version:template.version,permission_codes:codes})).data,
   consume: async (token:string,password:string) =>

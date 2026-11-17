@@ -701,6 +701,10 @@ class Provisioner:
                         f'ON public.staff_stock_audit_events FROM "{self.app_role}"'
                     )
                     await migrate.execute('REVOKE ALL ON public.staff_stock_audit_events FROM PUBLIC')
+                if await migrate.fetchval("SELECT to_regclass('public.staff_credential_recovery_tokens')"):
+                    await migrate.execute('REVOKE DELETE, TRUNCATE, REFERENCES, TRIGGER '
+                        f'ON public.staff_credential_recovery_tokens FROM "{self.app_role}"')
+                    await migrate.execute('REVOKE ALL ON public.staff_credential_recovery_tokens FROM PUBLIC, reporting_user, reporting_role')
             print(
                 f"[grants] {len(statements)} minimum grants applied as "
                 f"{self.migrate_role}"
@@ -899,7 +903,7 @@ class Provisioner:
                 _record('staff_audit_append_only_privileges', bool(
                     audit and audit['owner'] == self.migrate_role and audit['can_read']
                     and audit['can_append'] and not audit['can_rewrite']), **dict(audit or {}))
-            if await migrate.fetchval("SELECT EXISTS(SELECT 1 FROM public.alembic_version WHERE version_num='044_inventory_adjustment_approval')"):
+            if await migrate.fetchval("SELECT EXISTS(SELECT 1 FROM public.alembic_version WHERE version_num IN ('044_inventory_adjustment_approval','045_owner_staff_recovery','046_staff_credential_recovery'))"):
                 # Tenant objects are app-owned under the existing tenant DDL
                 # contract: no public-schema or role capability is added.
                 schemas = await migrate.fetch("SELECT nspname FROM pg_namespace WHERE nspname ~ '^t_[0-9a-f]{32}$'")
@@ -919,6 +923,33 @@ class Provisioner:
                         "JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND NOT t.tgisinternal "
                         "AND t.tgenabled='O' AND t.tgname IN ('stock_revision_monotonic','adjustment_request_immutable','manual_movement_immutable')", name)
                     _record('stock_approval_guards_'+name, guards==3, schema=name, guards=guards)
+            if await migrate.fetchval("SELECT EXISTS(SELECT 1 FROM public.alembic_version WHERE version_num IN ('045_owner_staff_recovery','046_staff_credential_recovery'))"):
+                # Reuse the independent read-only catalog verifier, not a
+                # second weaker guard. All existing 044 checks above remain.
+                from scripts.bootstrap_tenant_schema import _assert_credential_epoch_catalog
+                from sqlalchemy.ext.asyncio import create_async_engine
+                from sqlalchemy.pool import NullPool
+                from sqlalchemy import text
+
+                epoch_engine = create_async_engine(
+                    self.app_url.replace('postgresql://', 'postgresql+asyncpg://', 1),
+                    poolclass=NullPool,
+                )
+                try:
+                    async with epoch_engine.connect() as connection:
+                        names = list((await connection.execute(text(
+                            "SELECT n.nspname FROM pg_namespace n JOIN pg_class c ON c.relnamespace=n.oid "
+                            "WHERE c.relname='users' AND n.nspname LIKE 't\\_%' ESCAPE '\\' ORDER BY n.nspname"
+                        ))).scalars())
+                        for name in names:
+                            await _assert_credential_epoch_catalog(connection, name)
+                            _record('credential_epoch_guard_'+name, True, schema=name)
+                        if await migrate.fetchval("SELECT EXISTS(SELECT 1 FROM public.alembic_version WHERE version_num='046_staff_credential_recovery')"):
+                            from scripts.bootstrap_tenant_schema import _assert_staff_recovery_contract
+                            await _assert_staff_recovery_contract(connection)
+                            _record('staff_recovery_public_contract', True)
+                finally:
+                    await epoch_engine.dispose()
             app_create_on_public = await migrate.fetchval(
                 "SELECT has_schema_privilege($1, 'public', 'CREATE')",
                 self.app_role,

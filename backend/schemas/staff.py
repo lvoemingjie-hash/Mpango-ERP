@@ -40,3 +40,15 @@ class StaffCredentialConsume(BaseModel):
     model_config=ConfigDict(extra='forbid')
     setup_token: SecretStr
     password: SecretStr
+
+
+class StaffRecoveryRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    expected_version: int=Field(strict=True,gt=0)
+    owner_password: SecretStr=Field(min_length=1,max_length=256)
+
+
+class StaffRecoveryConsume(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    recovery_token: SecretStr=Field(min_length=1,max_length=512)
+    new_password: SecretStr=Field(min_length=8,max_length=256)

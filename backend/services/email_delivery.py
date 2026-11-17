@@ -66,6 +66,29 @@ class StaffCredentialEmailDelivery:
 
 _DEV_STAFF_EMAIL_DELIVERIES: list[StaffCredentialEmailDelivery] = []
 
+_DEV_STAFF_RECOVERY_DELIVERIES: list[StaffCredentialEmailDelivery] = []
+
+
+def record_staff_recovery_email(*, settings: Settings, to_email: str, token: str, link: str) -> None:
+    """Same delivery abstraction, separate purpose; never returned to Owner."""
+    if not is_verification_email_delivery_configured(settings=settings):
+        raise EmailDeliveryNotConfiguredError('EMAIL_DELIVERY_NOT_CONFIGURED')
+    if settings.MPANGO_ENV == 'production':
+        _send_smtp_email(settings=settings, to_email=to_email,
+            subject='Reset your Mpango ERP password',
+            body='Your team Owner requested password recovery. Only you can choose your password.\n\n'
+                 +link+'\n\nThis link expires in 15 minutes. Employment and permissions are unchanged. '
+                 'Ignore this message if unexpected.')
+    else:
+        _DEV_STAFF_RECOVERY_DELIVERIES.append(StaffCredentialEmailDelivery(
+            to_email,link,token,datetime.now(timezone.utc),'staff_credential_recovery'))
+
+
+def get_dev_staff_recovery_deliveries(email: str) -> list[StaffCredentialEmailDelivery]:
+    """Test-only memory sink; never a public HTTP endpoint."""
+    normalized=email.strip().lower()
+    return [d for d in _DEV_STAFF_RECOVERY_DELIVERIES if d.to_email==normalized]
+
 
 def record_staff_setup_email(*, settings: Settings, to_email: str, token: str, link: str) -> None:
     if not is_verification_email_delivery_configured(settings=settings):

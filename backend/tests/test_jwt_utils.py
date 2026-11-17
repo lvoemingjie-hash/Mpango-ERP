@@ -24,9 +24,9 @@ def test_create_access_token_returns_valid_jwt():
     """Test that create_access_token returns a valid JWT string."""
     user_id = "123e4567-e89b-12d3-a456-426614174000"
     tenant_id = "223e4567-e89b-12d3-a456-426614174000"
-    tenant_schema = "t_abc123"
+    tenant_schema = "t_" + tenant_id.replace("-", "")
 
-    token = create_access_token(user_id, tenant_id, tenant_schema)
+    token = create_access_token(user_id, tenant_id, tenant_schema, credential_epoch=1)
 
     assert isinstance(token, str)
     assert len(token) > 0
@@ -38,15 +38,16 @@ def test_create_access_token_returns_valid_jwt():
     assert payload["tenant_id"] == tenant_id
     assert payload["tenant_schema"] == tenant_schema
     assert payload["type"] == "access"
+    assert payload["credential_epoch"] == 1
 
 
 def test_create_refresh_token_returns_valid_jwt():
     """Test that create_refresh_token returns a valid JWT string."""
     user_id = "123e4567-e89b-12d3-a456-426614174000"
     tenant_id = "223e4567-e89b-12d3-a456-426614174000"
-    tenant_schema = "t_abc123"
+    tenant_schema = "t_" + tenant_id.replace("-", "")
 
-    token = create_refresh_token(user_id, tenant_id, tenant_schema)
+    token = create_refresh_token(user_id, tenant_id, tenant_schema, credential_epoch=1)
 
     assert isinstance(token, str)
     assert len(token) > 0
@@ -58,15 +59,16 @@ def test_create_refresh_token_returns_valid_jwt():
     assert payload["tenant_id"] == tenant_id
     assert payload["tenant_schema"] == tenant_schema
     assert payload["type"] == "refresh"
+    assert payload["credential_epoch"] == 1
 
 
 def test_decode_token_with_valid_token():
     """Test that decode_token successfully decodes a valid token."""
     user_id = "123e4567-e89b-12d3-a456-426614174000"
     tenant_id = "223e4567-e89b-12d3-a456-426614174000"
-    tenant_schema = "t_abc123"
+    tenant_schema = "t_" + tenant_id.replace("-", "")
 
-    token = create_access_token(user_id, tenant_id, tenant_schema)
+    token = create_access_token(user_id, tenant_id, tenant_schema, credential_epoch=1)
     payload = decode_token(token)
 
     assert isinstance(payload, TokenPayload)
@@ -83,12 +85,12 @@ def test_decode_token_raises_expired_token_error():
     """
     user_id = "123e4567-e89b-12d3-a456-426614174000"
     tenant_id = "223e4567-e89b-12d3-a456-426614174000"
-    tenant_schema = "t_abc123"
+    tenant_schema = "t_" + tenant_id.replace("-", "")
 
     # Create token that expired 1 second ago
     token = create_access_token(
         user_id, tenant_id, tenant_schema,
-        expires_delta=timedelta(seconds=-1)
+        expires_delta=timedelta(seconds=-1), credential_epoch=1
     )
 
     with pytest.raises(ExpiredTokenError):
@@ -111,9 +113,9 @@ def test_token_type_validation_access():
     """
     user_id = "123e4567-e89b-12d3-a456-426614174000"
     tenant_id = "223e4567-e89b-12d3-a456-426614174000"
-    tenant_schema = "t_abc123"
+    tenant_schema = "t_" + tenant_id.replace("-", "")
 
-    token = create_access_token(user_id, tenant_id, tenant_schema)
+    token = create_access_token(user_id, tenant_id, tenant_schema, credential_epoch=1)
     payload = decode_token(token)
 
     assert payload.type == "access"
@@ -126,9 +128,9 @@ def test_token_type_validation_refresh():
     """
     user_id = "123e4567-e89b-12d3-a456-426614174000"
     tenant_id = "223e4567-e89b-12d3-a456-426614174000"
-    tenant_schema = "t_abc123"
+    tenant_schema = "t_" + tenant_id.replace("-", "")
 
-    token = create_refresh_token(user_id, tenant_id, tenant_schema)
+    token = create_refresh_token(user_id, tenant_id, tenant_schema, credential_epoch=1)
     payload = decode_token(token)
 
     assert payload.type == "refresh"
@@ -141,10 +143,10 @@ def test_token_roundtrip_integrity():
     """
     user_id = "123e4567-e89b-12d3-a456-426614174000"
     tenant_id = "223e4567-e89b-12d3-a456-426614174000"
-    tenant_schema = "t_abc123def456"
+    tenant_schema = "t_" + tenant_id.replace("-", "")
 
     # Test access token
-    access_token = create_access_token(user_id, tenant_id, tenant_schema)
+    access_token = create_access_token(user_id, tenant_id, tenant_schema, credential_epoch=1)
     access_payload = decode_token(access_token)
 
     assert access_payload.user_id == user_id
@@ -153,7 +155,7 @@ def test_token_roundtrip_integrity():
     assert access_payload.type == "access"
 
     # Test refresh token
-    refresh_token = create_refresh_token(user_id, tenant_id, tenant_schema)
+    refresh_token = create_refresh_token(user_id, tenant_id, tenant_schema, credential_epoch=1)
     refresh_payload = decode_token(refresh_token)
 
     assert refresh_payload.user_id == user_id

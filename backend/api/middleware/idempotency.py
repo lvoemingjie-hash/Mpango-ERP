@@ -86,7 +86,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         path = request.url.path.rstrip('/')
         if (path=='/api/v1/staff' or path.startswith('/api/v1/staff/') or
             path=='/api/v1/users' or path.startswith('/api/v1/users/') or
-            path=='/api/v1/auth/staff/setup-credential' or path=='/api/v1/inventory/adjust' or
+            path in {'/api/v1/auth/staff/setup-credential','/api/v1/auth/staff/recover-credential'} or path=='/api/v1/inventory/adjust' or
             path in {'/api/v1/inventory/adjustment-policy', '/api/v1/inventory/adjustment-requests',
                      '/api/v1/inventory/owner-adjustments'} or path.startswith('/api/v1/inventory/adjustment-requests/')):
             return await call_next(request)

@@ -69,6 +69,33 @@ class StaffMembership(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text('now()'))
 
 
+class StaffCredentialRecoveryToken(Base):
+    __tablename__ = 'staff_credential_recovery_tokens'
+    __table_args__ = (
+        CheckConstraint("purpose='staff_credential_recovery'"),
+        CheckConstraint('membership_version>0 AND target_credential_epoch>0'),
+        CheckConstraint('used_at IS NULL OR revoked_at IS NULL'),
+        CheckConstraint('expires_at>created_at'),
+        CheckConstraint("email=lower(btrim(email)) AND email NOT LIKE '% %'"),
+        Index('ux_staff_recovery_active', 'tenant_id', 'user_id', unique=True,
+              postgresql_where=text('used_at IS NULL AND revoked_at IS NULL')),
+        {'schema': 'public'},
+    )
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4, server_default=text('gen_random_uuid()'))
+    tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey('public.wholesalers.id', ondelete='RESTRICT'))
+    user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
+    initiator_user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
+    email: Mapped[str] = mapped_column(String(255))
+    membership_version: Mapped[int] = mapped_column(BigInteger)
+    target_credential_epoch: Mapped[int] = mapped_column(BigInteger)
+    token_hash: Mapped[str] = mapped_column(String(128), unique=True)
+    purpose: Mapped[str] = mapped_column(String(32), server_default=text("'staff_credential_recovery'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text('now()'))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class StaffCredentialSetupToken(Base):
     __tablename__ = 'staff_credential_setup_tokens'
     __table_args__ = (

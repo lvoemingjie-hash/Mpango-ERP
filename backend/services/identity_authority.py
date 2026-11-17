@@ -5,13 +5,16 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy import text
 
-from core.security import TokenPayload
+from core.security import (
+    InvalidTokenError, TokenPayload, credential_epoch_matches, validate_session_claims,
+)
 
 
 @dataclass(frozen=True)
 class CurrentIdentity:
     roles: list[str]
     tenant_user_map: dict[str, str]
+    tenant_credential_epochs: dict[str, int]
 
 
 def _refuse(code: str = "IDENTITY_REVOKED") -> HTTPException:
@@ -25,7 +28,13 @@ async def current_identity(db, token: TokenPayload) -> CurrentIdentity:
     missing primary subject or lost platform role revokes both token uses.
     Legacy unbound identity tokens must authenticate again.
     """
-    if token.tenant_id is not None or token.tenant_schema is not None or not token.tmap:
+    try:
+        validate_session_claims(token)
+    except InvalidTokenError:
+        raise _refuse("IDENTITY_BINDING_REQUIRED") from None
+    if (token.tenant_id is not None or token.tenant_schema is not None
+            or token.sv != 2 or not token.tmap or not token.tver
+            or set(token.tmap) != set(token.tver)):
         raise _refuse("IDENTITY_BINDING_REQUIRED")
     try:
         primary = UUID(token.user_id)
@@ -34,6 +43,7 @@ async def current_identity(db, token: TokenPayload) -> CurrentIdentity:
         raise _refuse("IDENTITY_BINDING_REQUIRED")
 
     current_map = {}
+    current_versions = {}
     roles = set()
     primary_live = False
     from api.context.tenant import _is_missing_tenant_resource_error
@@ -50,7 +60,7 @@ async def current_identity(db, token: TokenPayload) -> CurrentIdentity:
             # A missing bound schema must not abort checks of other bindings.
             async with db.begin_nested():
                 rows = (await db.execute(text(
-                    f'SELECT u.id, r.name FROM "{schema}".users u '
+                    f'SELECT u.id, u.credential_epoch, r.name FROM "{schema}".users u '
                     f'LEFT JOIN "{schema}".user_roles ur ON ur.user_id=u.id '
                     f'LEFT JOIN "{schema}".roles r ON r.id=ur.role_id AND r.is_deleted IS FALSE '
                     "WHERE u.id=:uid AND u.is_active IS TRUE AND u.is_deleted IS FALSE"
@@ -61,8 +71,12 @@ async def current_identity(db, token: TokenPayload) -> CurrentIdentity:
             raise
         if not rows:
             continue
+        epoch = token.tver[str(tenant)]
+        if any(not credential_epoch_matches(epoch, row.credential_epoch) for row in rows):
+            raise _refuse("SESSION_REVOKED")
         primary_live |= uid == primary
         current_map[str(tenant)] = str(uid)
+        current_versions[str(tenant)] = epoch
         roles.update(row.name for row in rows if row.name)
 
     if not primary_live:
@@ -70,4 +84,4 @@ async def current_identity(db, token: TokenPayload) -> CurrentIdentity:
     if token.is_super_admin and "super_admin" not in roles:
         raise _refuse("PLATFORM_ROLE_REVOKED")
     # Existing tokens cannot acquire a newly granted role without a new login.
-    return CurrentIdentity(sorted(roles.intersection(token.roles)), current_map)
+    return CurrentIdentity(sorted(roles.intersection(token.roles)), current_map, current_versions)

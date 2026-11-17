@@ -219,7 +219,7 @@ async def retailer_login(
     # --- 7. Query only the single wholesaler tenant schema (live user) -----
     user_row = await db.execute(
         text(
-            f'SELECT id, email, full_name, password_hash, is_active '
+            f'SELECT id, email, full_name, password_hash, is_active, credential_epoch '
             f'FROM "{tenant_schema}".users '
             f'WHERE email = :email '
             f'  AND is_deleted IS FALSE '
@@ -323,6 +323,7 @@ async def retailer_login(
         tenant_id=wholesaler_id,
         tenant_schema=tenant_schema,
         token_type="access",
+        credential_epoch=user.credential_epoch,
     )
     refresh_token = create_contextual_token(
         user_id=tenant_user_id,
@@ -330,6 +331,7 @@ async def retailer_login(
         tenant_id=wholesaler_id,
         tenant_schema=tenant_schema,
         token_type="refresh",
+        credential_epoch=user.credential_epoch,
     )
 
     # --- 12. Build response -------------------------------------------------

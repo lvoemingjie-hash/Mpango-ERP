@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { AxiosError } from 'axios';
 import { staffService } from '@/services/staffService';
 import type { StaffMember, StaffTemplateKey } from '@/types/staff';
 
@@ -15,6 +16,7 @@ export function StaffPage() {
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
   const [invite,setInvite]=useState<StaffMember|null>(null);
+  const [recovery,setRecovery]=useState<StaffMember|null>(null);
   const [password,setPassword]=useState('');
   const key=useRef(crypto.randomUUID());
   async function load(){ setMembers((await staffService.list()).items); }
@@ -23,6 +25,26 @@ export function StaffPage() {
     setBusy(true);setMessage('');
     try{await action();await load();setMessage(success);}catch{setMessage('Action not completed. Reload current permissions and versions before retrying.');}
     finally{setBusy(false);setPassword('');}
+  }
+  async function requestRecovery(member:StaffMember){
+    if(busy)return;
+    setBusy(true);setMessage('');
+    try{
+      // Recovery does not change employment/version/roles. Do not let an
+      // unrelated follow-up list read hide an already-confirmed 202.
+      await staffService.requestRecovery(member,password);setRecovery(null);
+      setMessage('Recovery request accepted. The employee must use their own email link within 15 minutes. Delivery to their inbox is not confirmed. Employment and permissions are unchanged.');
+    }catch(error){
+      const body:unknown=error instanceof AxiosError?error.response?.data:undefined;
+      const code=body&&typeof body==='object'&&'code' in body&&typeof body.code==='string'?body.code:'';
+      const messages:Record<string,string>={
+        OWNER_REAUTHENTICATION_REQUIRED:'Your current Owner password was not accepted. No recovery request was accepted.',
+        STAFF_RECOVERY_RESEND_TOO_SOON:'Wait at least 60 seconds between recovery requests. Only the latest accepted link works.',
+        STALE_STAFF_VERSION:'The employee record changed. Reload the current record before requesting recovery.',
+        STAFF_RECOVERY_NOT_ELIGIBLE:'This employee is not currently eligible for password recovery. Recovery cannot restore employment.',
+      };
+      setMessage(messages[code]||'Recovery request could not be confirmed. Refresh current permissions and employee details before retrying; inbox delivery is not confirmed.');
+    }finally{setBusy(false);setPassword('');}
   }
   return <main className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
     <header><p className="text-sm text-gray-500">Team access</p><h1 className="text-2xl font-semibold">Employees</h1>
@@ -47,7 +69,9 @@ export function StaffPage() {
         <p className="text-sm">{member.employment_state} · {member.credential_state==='ready'?'Identity verified':'Waiting for employee proof'} · version {member.version}</p>
         <label className="block">Current job<select className={field} value={member.template_key} disabled={busy} onChange={e=>void act(()=>staffService.edit(member,{template_key:e.target.value as StaffTemplateKey}),'Role updated. Current permissions apply to new requests.')}><option value="warehouse">Warehouse</option><option value="sales">Sales</option><option value="finance">Finance</option></select></label>
         <div className="flex flex-wrap gap-3">
-          {member.employment_state!=='disabled'&&<button className={button} disabled={busy} onClick={()=>{setInvite(member);setPassword('');}}>Send invitation</button>}
+          {member.employment_state!=='disabled'&&<button className={button} disabled={busy} onClick={()=>{setInvite(member);setRecovery(null);setPassword('');}}>Send invitation</button>}
+          {member.employment_state==='active'&&member.credential_state==='ready'&&member.is_active&&
+            <button className={button} disabled={busy} onClick={()=>{setRecovery(member);setInvite(null);setPassword('');}}>Send password recovery</button>}
           <button disabled={busy} className="rounded-lg border px-4 py-3" onClick={()=>void act(()=>staffService.edit(member,{is_active:member.employment_state==='disabled'}),member.employment_state==='disabled'?'Employment restored. A fresh invitation and employee proof are still required.':'Employment disabled. Unused invitations revoked.')}>
             {member.employment_state==='disabled'?'Restore employment':'Disable employment'}</button>
         </div>
@@ -55,6 +79,12 @@ export function StaffPage() {
           <label className="block">Your current Owner password<input required type="password" autoComplete="current-password" className={field} value={password} onChange={e=>setPassword(e.target.value)}/></label>
           <button className={button} disabled={busy}>Confirm email invitation</button>
           <button type="button" className="ml-3 underline" onClick={()=>{setInvite(null);setPassword('');}}>Cancel</button>
+        </form>}
+        {recovery?.id===member.id&&<form className="space-y-3 border-t pt-3" onSubmit={e=>{e.preventDefault();void requestRecovery(member);}}>
+          <p>You can request a link; only the employee can choose their new password. Resend after 60 seconds; only the latest link works.</p>
+          <label className="block">Your current Owner password<input required maxLength={256} type="password" autoComplete="current-password" className={field} value={password} onChange={e=>setPassword(e.target.value)}/></label>
+          <button className={button} disabled={busy}>Confirm password recovery request</button>
+          <button type="button" className="ml-3 underline" onClick={()=>{setRecovery(null);setPassword('');}}>Cancel</button>
         </form>}
       </article>)}
     </section>

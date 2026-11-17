@@ -4,6 +4,7 @@ import { OwnerRoute } from '@/router/guards';
 import { StaffPage } from '@/pages/staff/StaffPage';
 import { StaffRolesPage } from '@/pages/staff/StaffRolesPage';
 import { StaffSetupCredentialPage } from '@/pages/staff/StaffSetupCredentialPage';
+import { StaffRecoverCredentialPage } from '@/pages/staff/StaffRecoverCredentialPage';
 import { CLIENT_PERMISSIONS, INVITATION_PERMISSIONS } from '@/utils/permissions';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ClientLayout } from '@/components/layout/ClientLayout';
@@ -85,6 +86,7 @@ import { IncidentTriagePage } from '@/pages/platform/ops/IncidentTriagePage';
 
 const router = createBrowserRouter([
   {path:'/staff/setup-credential',element:<StaffSetupCredentialPage/>},
+  {path:'/staff/recover-credential',element:<StaffRecoverCredentialPage/>},
   {
     element: <PublicRoute />,
     children: [

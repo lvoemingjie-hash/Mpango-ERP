@@ -30,6 +30,7 @@ class JwtAuthStrategy(AuthStrategy):
                 current = await current_identity(session, context.token)
             context.token = context.token.model_copy(update={
                 "roles": current.roles, "tmap": current.tenant_user_map,
+                "tver": current.tenant_credential_epochs,
             })
         return context
 

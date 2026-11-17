@@ -3164,6 +3164,124 @@ async def _assert_staff_catalog(db, ts: str) -> None:
             raise RuntimeError('STAFF_BOOTSTRAP_TRIGGER_MISMATCH')
 
 
+CREDENTIAL_EPOCH_DDL = (
+    """ALTER TABLE {q}.users ADD COLUMN credential_epoch BIGINT NOT NULL DEFAULT 1
+       CONSTRAINT ck_users_credential_epoch CHECK (credential_epoch>0)""",
+    """CREATE FUNCTION {q}.advance_credential_epoch() RETURNS trigger LANGUAGE plpgsql
+       SET search_path=pg_catalog AS $epoch$
+       BEGIN
+         IF TG_OP='INSERT' THEN NEW.credential_epoch := 1;
+         ELSIF ROW(NEW.password_hash,NEW.email,NEW.is_active,NEW.is_deleted)
+             IS DISTINCT FROM ROW(OLD.password_hash,OLD.email,OLD.is_active,OLD.is_deleted)
+         THEN NEW.credential_epoch := OLD.credential_epoch+1;
+         ELSE NEW.credential_epoch := OLD.credential_epoch;
+         END IF;
+         RETURN NEW;
+       END; $epoch$""",
+    """CREATE TRIGGER credential_epoch_monotonic BEFORE INSERT OR UPDATE ON {q}.users
+       FOR EACH ROW EXECUTE FUNCTION {q}.advance_credential_epoch()""",
+)
+
+
+async def _assert_credential_epoch_catalog(db, ts: str) -> None:
+    """Read-only validation, including the exact guard body and enabled event."""
+    from sqlalchemy import text
+
+    column = (await db.execute(text(
+        "SELECT format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull,"
+        "pg_get_userbyid(n.nspowner) AS schema_owner,pg_get_userbyid(c.relowner) AS table_owner,"
+        "pg_get_expr(d.adbin,d.adrelid) AS default_expr FROM pg_attribute a "
+        "JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace "
+        "LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum "
+        "WHERE n.nspname=:s AND c.relname='users' AND a.attname='credential_epoch' AND NOT a.attisdropped"
+    ), {"s": ts})).mappings().one_or_none()
+    check = (await db.execute(text(
+        "SELECT pg_get_constraintdef(co.oid) FROM pg_constraint co "
+        "JOIN pg_class c ON c.oid=co.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace "
+        "WHERE n.nspname=:s AND c.relname='users' AND co.conname='ck_users_credential_epoch' "
+        "AND co.contype='c' AND co.convalidated"
+    ), {"s": ts})).scalar_one_or_none()
+    if (not column or column["type"] != "bigint" or not column["attnotnull"]
+            or column["schema_owner"] != "mpango_app" or column["table_owner"] != "mpango_app"
+            or column["default_expr"] not in {"1", "1::bigint"}
+            or re.sub(r"[\s()]", "", check or "").lower() not in
+            {"checkcredential_epoch>0", "checkcredential_epoch>0::bigint"}):
+        raise RuntimeError("CREDENTIAL_EPOCH_COLUMN_CONTRACT_MISMATCH")
+    guard = (await db.execute(text(
+        "SELECT p.prosrc,p.prosecdef,p.proconfig,p.provolatile::text AS provolatile,pg_get_userbyid(p.proowner) AS owner,"
+        "p.pronargs,p.prorettype='trigger'::regtype AS returns_trigger,l.lanname,"
+        "t.tgtype,t.tgenabled::text AS tgenabled,t.tgconstraint,t.tgqual,t.tgnargs "
+        "FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid "
+        "JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_proc p ON p.oid=t.tgfoid "
+        "JOIN pg_namespace pn ON pn.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang "
+        "WHERE n.nspname=:s AND c.relname='users' AND t.tgname='credential_epoch_monotonic' "
+        "AND NOT t.tgisinternal AND pn.nspname=:s AND p.proname='advance_credential_epoch'"
+    ), {"s": ts})).mappings().one_or_none()
+    expected_body = CREDENTIAL_EPOCH_DDL[1].split("$epoch$")[1]
+    if (not guard or guard["prosecdef"] or guard["proconfig"] != ["search_path=pg_catalog"]
+            or guard["owner"] != "mpango_app" or guard["pronargs"] != 0
+            or not guard["returns_trigger"] or guard["lanname"] != "plpgsql"
+            or guard["provolatile"] != "v"
+            or guard["tgtype"] != 23 or guard["tgenabled"] != "O"
+            or guard["tgconstraint"] != 0 or guard["tgqual"] is not None or guard["tgnargs"] != 0
+            or re.sub(r"\s+", " ", guard["prosrc"]).strip()
+            != re.sub(r"\s+", " ", expected_body).strip()):
+        raise RuntimeError("CREDENTIAL_EPOCH_GUARD_CONTRACT_MISMATCH")
+
+
+async def _reconcile_credential_epoch(db, ts: str) -> None:
+    from sqlalchemy import text
+
+    q = '"' + ts + '"'
+    column = await _column_exists(db, ts, "users", "credential_epoch")
+    function = (await db.execute(text("SELECT to_regprocedure(:f)"),
+                                {"f": ts + ".advance_credential_epoch()"})).scalar() is not None
+    trigger = (await db.execute(text(
+        "SELECT EXISTS(SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid "
+        "JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=:s "
+        "AND c.relname='users' AND t.tgname='credential_epoch_monotonic')"
+    ), {"s": ts})).scalar_one()
+    if not any((column, function, trigger)):
+        if (await db.execute(text(f"SELECT EXISTS(SELECT 1 FROM {q}.users)"))).scalar_one():
+            raise RuntimeError("CREDENTIAL_EPOCH_MIGRATION_REQUIRED")
+        for statement in CREDENTIAL_EPOCH_DDL:
+            await db.execute(text(statement.format(q=q)))
+    elif not all((column, function, trigger)):
+        raise RuntimeError("CREDENTIAL_EPOCH_PARTIAL_SCHEMA")
+    await _assert_credential_epoch_catalog(db, ts)
+
+
+async def _assert_staff_recovery_contract(db) -> None:
+    """Read-only public recovery ownership, shape and privilege admission."""
+    from sqlalchemy import text
+    row=(await db.execute(text(
+        "SELECT pg_get_userbyid(c.relowner) AS owner,pg_get_userbyid(p.proowner) AS authority,"
+        "(has_table_privilege('mpango_app',c.oid,'SELECT') AND "
+        "has_table_privilege('mpango_app',c.oid,'INSERT') AND has_table_privilege('mpango_app',c.oid,'UPDATE')) AS usable,"
+        "has_table_privilege('mpango_app',c.oid,'DELETE,TRUNCATE,REFERENCES,TRIGGER') AS excessive,"
+        "has_table_privilege('reporting_user',c.oid,'SELECT') AS reporting_read,"
+        "has_schema_privilege('mpango_app','public','CREATE') AS public_create,"
+        "EXISTS(SELECT 1 FROM aclexplode(c.relacl) WHERE grantee=0) AS public_grant "
+        "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN pg_proc p "
+        "WHERE n.nspname='public' AND c.relname='staff_credential_recovery_tokens' "
+        "AND p.oid='public.prevent_ledger_modification()'::regprocedure"
+    ))).mappings().one_or_none()
+    columns=set((await db.execute(text(
+        "SELECT attname FROM pg_attribute WHERE attrelid='public.staff_credential_recovery_tokens'::regclass "
+        "AND attnum>0 AND NOT attisdropped"))).scalars())
+    required={'id','tenant_id','user_id','initiator_user_id','email','membership_version',
+              'target_credential_epoch','token_hash','purpose','created_at','expires_at','used_at','revoked_at'}
+    index=(await db.execute(text(
+        "SELECT i.indisunique AND i.indisvalid AS valid,pg_get_expr(i.indpred,i.indrelid) AS predicate "
+        "FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace "
+        "WHERE n.nspname='public' AND c.relname='ux_staff_recovery_active'"
+    ))).one_or_none()
+    if (not row or row['owner']!=row['authority'] or row['owner']=='mpango_app' or not row['usable']
+            or row['excessive'] or row['reporting_read'] or row['public_create'] or row['public_grant'] or columns!=required
+            or not index or not index.valid or index.predicate!='((used_at IS NULL) AND (revoked_at IS NULL))'):
+        raise RuntimeError('STAFF_RECOVERY_PUBLIC_CONTRACT_MISMATCH')
+
+
 async def bootstrap(tenant_schema: str, database_url: str) -> None:
     """Create tenant schema and all required tables."""
     from sqlalchemy import text
@@ -3205,7 +3323,8 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
 
         # C5 deployment-order gate (Order stream): refuse BEFORE creating ANY
         # tenant object.
-        await _require_alembic_revision(db, "044_inventory_adjustment_approval")
+        await _require_alembic_revision(db, "046_staff_credential_recovery")
+        await _assert_staff_recovery_contract(db)
 
         await db.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{ts}"'))
         await db.execute(text(f'SET LOCAL search_path TO "{ts}", public'))
@@ -3597,6 +3716,7 @@ async def bootstrap(tenant_schema: str, database_url: str) -> None:
         await _reconcile_order_negotiations(db, ts)
         await _reconcile_staff_authority(db, ts)
         await _reconcile_stock_approval(db, ts)
+        await _reconcile_credential_epoch(db, ts)
 
         await db.commit()
 

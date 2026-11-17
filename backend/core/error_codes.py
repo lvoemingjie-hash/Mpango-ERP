@@ -399,6 +399,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
     # Extract validation errors
     errors = exc.errors()
+    path=request.url.path.rstrip('/')
+    if (path=='/api/v1/auth/staff/recover-credential' or
+            (path.startswith('/api/v1/staff/') and path.endswith('/credential-recovery'))):
+        # Never serialize input/ctx/raw repr for these credential-bearing paths.
+        # Fixed locations also avoid reflecting attacker-controlled extra keys.
+        errors=[{'type':'recovery_request_invalid','loc':['body'],
+                 'msg':'Invalid recovery request'}]
     encoded_errors = jsonable_encoder(errors)
 
     logger.warning(

@@ -10,11 +10,12 @@ Per multi_tenancy_spec.md section 4.1, JWT claims must contain:
 - type: "access" or "refresh"
 """
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Annotated, Dict, List, Optional
+from uuid import UUID
 
 from jose import jwt, JWTError, ExpiredSignatureError
 from passlib.context import CryptContext
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StrictInt, ValidationError
 
 from core.config import get_settings
 
@@ -32,6 +33,9 @@ class ExpiredTokenError(Exception):
 
 # Password hashing context using bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+CredentialEpoch = Annotated[StrictInt, Field(gt=0, le=9223372036854775807)]
+SESSION_VERSION = 2
 
 
 class TokenPayload(BaseModel):
@@ -61,6 +65,11 @@ class TokenPayload(BaseModel):
     # must contain ONLY verified tenant_id -> user_id pairs and must never
     # include unverified tenants, password hashes, token hashes, or raw tokens.
     tmap: Optional[Dict[str, str]] = None
+    # Signed revocation state, never a substitute for current DB authority.
+    # Optional here for internal single-layer contexts; decode/mint require v2.
+    sv: Optional[StrictInt] = None
+    credential_epoch: Optional[CredentialEpoch] = None
+    tver: Optional[Dict[str, CredentialEpoch]] = None
 
     @property
     def is_identity_only(self) -> bool:
@@ -73,6 +82,54 @@ class TokenPayload(BaseModel):
         return "super_admin" in self.roles
 
 
+def validate_session_claims(token: TokenPayload) -> None:
+    """Reject legacy/unbound credentials; never upgrade missing state from DB."""
+    if token.sv != SESSION_VERSION:
+        raise InvalidTokenError("Session protocol requires a new login")
+    try:
+        if str(UUID(token.user_id)) != token.user_id:
+            raise ValueError
+        if token.tenant_id is None and token.tenant_schema is None:
+            if not token.tmap or not token.tver or set(token.tmap) != set(token.tver):
+                raise ValueError
+            if token.credential_epoch is not None or token.user_id not in token.tmap.values():
+                raise ValueError
+            for tid, uid in token.tmap.items():
+                if str(UUID(tid)) != tid or str(UUID(uid)) != uid:
+                    raise ValueError
+                if not credential_epoch_matches(token.tver[tid], token.tver[tid]):
+                    raise ValueError
+        else:
+            if (not token.tenant_id or not token.tenant_schema or token.tmap is not None
+                    or token.tver is not None):
+                raise ValueError
+            tid = UUID(token.tenant_id)
+            if str(tid) != token.tenant_id or token.tenant_schema != "t_" + tid.hex:
+                raise ValueError
+            if not credential_epoch_matches(token.credential_epoch, token.credential_epoch):
+                raise ValueError
+    except (TypeError, ValueError, AttributeError, KeyError):
+        raise InvalidTokenError("Invalid session binding") from None
+
+
+def credential_epoch_matches(signed: object, current: object) -> bool:
+    """No coercion/default epoch: bool, missing and mock values fail closed."""
+    return (type(signed) is int and type(current) is int
+            and 0 < signed <= 9223372036854775807 and signed == current)
+
+
+def selected_credential_binding(token: TokenPayload, tenant_id: str) -> tuple[str, int]:
+    """Constrain a tenant switch to an already signed, validated binding."""
+    validate_session_claims(token)
+    if token.is_identity_only:
+        if tenant_id not in token.tmap:
+            raise InvalidTokenError("Tenant not in session bindings")
+        return token.tmap[tenant_id], token.tver[tenant_id]
+    if token.tenant_id != tenant_id:
+        raise InvalidTokenError("Sign in again to change tenant context")
+    return token.user_id, token.credential_epoch
+
+
 def create_identity_token(
     user_id: str,
     roles: List[str],
@@ -80,6 +137,7 @@ def create_identity_token(
     token_type: str = "access",
     expires_delta: Optional[timedelta] = None,
     tenant_user_map: Optional[Dict[str, str]] = None,
+    tenant_credential_epochs: Optional[Dict[str, int]] = None,
 ) -> str:
     """
     Create an Identity JWT -- no tenant context.
@@ -98,6 +156,10 @@ def create_identity_token(
             exists in multiple tenants with different user IDs. Only verified
             matches (password_hash verified at login) are included.
     """
+    validate_session_claims(TokenPayload(
+        user_id=user_id, roles=roles, sv=SESSION_VERSION,
+        tmap=tenant_user_map, tver=tenant_credential_epochs,
+    ))
     settings = get_settings()
     if expires_delta is None:
         expires_delta = (
@@ -111,6 +173,8 @@ def create_identity_token(
         "roles": roles,
         "exp": expire,
         "type": token_type,
+        "sv": SESSION_VERSION,
+        "tver": tenant_credential_epochs,
     }
     if tenant_user_map:
         payload["tmap"] = tenant_user_map
@@ -125,6 +189,7 @@ def create_contextual_token(
     *,
     token_type: str = "access",
     expires_delta: Optional[timedelta] = None,
+    credential_epoch: int,
 ) -> str:
     """
     Create a Contextual JWT -- includes tenant context.
@@ -140,6 +205,10 @@ def create_contextual_token(
         token_type: "access" or "refresh"
         expires_delta: Optional custom expiration time
     """
+    validate_session_claims(TokenPayload(
+        user_id=user_id, tenant_id=tenant_id, tenant_schema=tenant_schema,
+        roles=roles, sv=SESSION_VERSION, credential_epoch=credential_epoch,
+    ))
     settings = get_settings()
     if expires_delta is None:
         expires_delta = (
@@ -155,6 +224,8 @@ def create_contextual_token(
         "tenant_schema": tenant_schema,
         "exp": expire,
         "type": token_type,
+        "sv": SESSION_VERSION,
+        "credential_epoch": credential_epoch,
     }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
@@ -165,6 +236,8 @@ def create_access_token(
     tenant_schema: str,
     expires_delta: Optional[timedelta] = None,
     roles: Optional[List[str]] = None,
+    *,
+    credential_epoch: int,
 ) -> str:
     """
     Create JWT access token with tenant claims.
@@ -179,6 +252,7 @@ def create_access_token(
         tenant_schema=tenant_schema,
         token_type="access",
         expires_delta=expires_delta,
+        credential_epoch=credential_epoch,
     )
 
 
@@ -188,6 +262,8 @@ def create_refresh_token(
     tenant_schema: str,
     expires_delta: Optional[timedelta] = None,
     roles: Optional[List[str]] = None,
+    *,
+    credential_epoch: int,
 ) -> str:
     """
     Create JWT refresh token with tenant claims.
@@ -202,6 +278,7 @@ def create_refresh_token(
         tenant_schema=tenant_schema,
         token_type="refresh",
         expires_delta=expires_delta,
+        credential_epoch=credential_epoch,
     )
 
 
@@ -229,11 +306,15 @@ def decode_token(token: str) -> TokenPayload:
         )
         if payload.get("type") not in ("access", "refresh"):
             raise InvalidTokenError("Token purpose is missing or invalid")
-        return TokenPayload(**payload)
+        token_payload = TokenPayload(**payload)
+        validate_session_claims(token_payload)
+        return token_payload
     except ExpiredSignatureError:
         raise ExpiredTokenError("Token has expired")
     except JWTError as e:
         raise InvalidTokenError(f"Invalid token: {str(e)}")
+    except (ValidationError, TypeError, ValueError):
+        raise InvalidTokenError("Invalid token claims") from None
 
 
 # Password utilities using bcrypt

@@ -97,6 +97,37 @@ router = APIRouter()
 
 
 from schemas.staff import StaffCredentialConsume
+from schemas.staff import StaffRecoveryConsume
+
+
+@router.post('/staff/recover-credential')
+async def consume_staff_recovery(body: StaffRecoveryConsume, request: Request,
+                                 db: AsyncSession=Depends(get_db_session)):
+    from services.staff_credential_service import StaffCredentialService, StaffRecoveryTokenInvalidError
+    if request.query_params:
+        raise HTTPException(422,detail={'code':'RECOVERY_QUERY_FORBIDDEN'})
+    try:
+        result=await StaffCredentialService(db).consume_recovery(
+            body.recovery_token.get_secret_value(),body.new_password.get_secret_value())
+    except StaffRecoveryTokenInvalidError as exc:
+        await db.rollback()
+        logger.warning('Staff recovery proof refused',extra={'event_class':exc.reason})
+        raise HTTPException(401,detail={'code':'INVALID_OR_EXPIRED_STAFF_RECOVERY_TOKEN'}) from None
+    except ValueError:
+        await db.rollback()
+        raise HTTPException(422,detail={'code':'INVALID_RECOVERY_PASSWORD'}) from None
+    except Exception:
+        await db.rollback()
+        logger.warning('Staff recovery consume unavailable',extra={'event_class':'STAFF_RECOVERY_CONSUME_UNAVAILABLE'})
+        raise HTTPException(503,detail={'code':'STAFF_RECOVERY_UNAVAILABLE'}) from None
+    try:
+        await db.commit()
+    except BaseException as exc:
+        await db.rollback()
+        logger.warning('Staff recovery commit outcome unknown',extra={'event_class':'STAFF_RECOVERY_COMMIT_OUTCOME_UNKNOWN'})
+        if not isinstance(exc,Exception): raise
+        raise HTTPException(503,detail={'code':'STAFF_RECOVERY_COMMIT_OUTCOME_UNKNOWN'}) from None
+    return {'success':True,'data':result}
 
 
 @router.post('/staff/setup-credential')
@@ -312,6 +343,7 @@ async def login(
     # correct per-tenant user_id when the same email has different user IDs
     # across tenants. Never exposed in the public response body.
     tenant_user_map = {str(m.wholesaler.id): str(m.user.id) for m in matches}
+    tenant_credential_epochs = {str(m.wholesaler.id): m.credential_epoch for m in matches}
 
     # Create identity tokens (no tenant context) carrying the signed map.
     access_token = create_identity_token(
@@ -319,12 +351,14 @@ async def login(
         roles=all_roles,
         token_type="access",
         tenant_user_map=tenant_user_map,
+        tenant_credential_epochs=tenant_credential_epochs,
     )
     refresh_token = create_identity_token(
         user_id=verified_user_id,
         roles=all_roles,
         token_type="refresh",
         tenant_user_map=tenant_user_map,
+        tenant_credential_epochs=tenant_credential_epochs,
     )
 
     return IdentityLoginResponse(
@@ -381,30 +415,18 @@ async def select_tenant(
 
     tenant_schema = wholesaler.get_tenant_schema()
 
-    # DC-3B-R1: resolve the tenant-local user_id. For identity-only tokens that
-    # carry the signed tenant_id->user_id map (tmap), use the map entry for the
-    # requested tenant so the correct per-tenant user is selected even when the
-    # same email has different user IDs across tenants. For contextual tokens or
-    # legacy/mock identity tokens without tmap, fall back to token.user_id.
-    # getattr() tolerates mock tokens (test mode) that don't expose the field.
-    token_tmap = getattr(token, "tmap", None)
-    if token.is_identity_only and token_tmap:
-        local_user_id_str = token_tmap.get(str(wholesaler.id))
-        if not local_user_id_str:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "code": "TENANT_ACCESS_DENIED",
-                    "message": "You do not have access to this tenant"
-                },
-            )
-        effective_user_id = UUID(local_user_id_str)
-    else:
-        effective_user_id = UUID(token.user_id)
+    from core.security import selected_credential_binding, credential_epoch_matches
+    try:
+        local_user_id, expected_epoch = selected_credential_binding(token, str(wholesaler.id))
+    except InvalidTokenError:
+        raise HTTPException(403, detail={
+            "code": "TENANT_ACCESS_DENIED", "message": "Sign in again for this tenant",
+        }) from None
+    effective_user_id = UUID(local_user_id)
 
     # 2. Verify user exists and is active in this tenant schema.
     user_query = text(
-        f'SELECT id, is_active, is_deleted FROM "{tenant_schema}".users '
+        f'SELECT id, is_active, is_deleted, credential_epoch FROM "{tenant_schema}".users '
         "WHERE id = :user_id"
     )
     user_result = await db.execute(user_query, {"user_id": effective_user_id})
@@ -425,6 +447,11 @@ async def select_tenant(
             }
         )
 
+    if not credential_epoch_matches(expected_epoch, user.credential_epoch):
+        raise HTTPException(401, detail={
+            "code": "SESSION_REVOKED", "message": "Session revoked; sign in again",
+        })
+
     # Fetch roles for the user in the target tenant
     roles_query = text(
         f'SELECT r.name FROM "{tenant_schema}".roles r '
@@ -442,6 +469,7 @@ async def select_tenant(
         tenant_id=str(wholesaler.id),
         tenant_schema=tenant_schema,
         token_type="access",
+        credential_epoch=expected_epoch,
     )
     refresh_token = create_contextual_token(
         user_id=str(user.id),
@@ -449,6 +477,7 @@ async def select_tenant(
         tenant_id=str(wholesaler.id),
         tenant_schema=tenant_schema,
         token_type="refresh",
+        credential_epoch=expected_epoch,
     )
 
     return LoginResponse(
@@ -472,7 +501,7 @@ async def select_tenant(
 
 async def _validate_contextual_refresh_subject(
     db: AsyncSession, payload: TokenPayload
-) -> None:
+) -> int:
     """R1 revocation fix: re-validate the CURRENT subject and tenant of a
     contextual refresh token against the database before issuing new tokens.
 
@@ -526,7 +555,7 @@ async def _validate_contextual_refresh_subject(
         user_row = (
             await db.execute(
                 text(
-                    f'SELECT is_active, is_deleted FROM "{tenant_schema}".users '
+                    f'SELECT is_active, is_deleted, credential_epoch FROM "{tenant_schema}".users '
                     "WHERE id = :uid"
                 ),
                 {"uid": user_id},
@@ -568,6 +597,17 @@ async def _validate_contextual_refresh_subject(
                 "message": "Refresh subject is inactive",
             },
         )
+
+
+    from core.security import credential_epoch_matches
+    if payload.sv != 2 or not credential_epoch_matches(
+        payload.credential_epoch, user_row.credential_epoch
+    ):
+        raise HTTPException(401, detail={
+            "code": "SESSION_REVOKED", "message": "Session revoked; sign in again",
+        })
+    # Keep the validated SIGNED value across concurrent password changes.
+    return payload.credential_epoch
 
 
 @router.post("/refresh", response_model=Union[LoginResponse, IdentityLoginResponse], status_code=status.HTTP_200_OK)
@@ -612,12 +652,14 @@ async def refresh_token(
                 roles=current.roles,
                 token_type="access",
                 tenant_user_map=current.tenant_user_map,
+                tenant_credential_epochs=current.tenant_credential_epochs,
             )
             new_refresh = create_identity_token(
                 user_id=payload.user_id,
                 roles=current.roles,
                 token_type="refresh",
                 tenant_user_map=current.tenant_user_map,
+                tenant_credential_epochs=current.tenant_credential_epochs,
             )
             # For identity-only refresh we still return LoginResponse
             # but with placeholder tenant fields - the frontend should
@@ -640,13 +682,14 @@ async def refresh_token(
             # Contextual refresh - the subject must still be valid in the
             # tenant's CURRENT state (R1 revocation fix); only then are the
             # tenant claims preserved into the new pair.
-            await _validate_contextual_refresh_subject(db, payload)
+            expected_epoch = await _validate_contextual_refresh_subject(db, payload)
             access_token = create_contextual_token(
                 user_id=payload.user_id,
                 roles=payload.roles,
                 tenant_id=payload.tenant_id,
                 tenant_schema=payload.tenant_schema,
                 token_type="access",
+                credential_epoch=expected_epoch,
             )
             new_refresh = create_contextual_token(
                 user_id=payload.user_id,
@@ -654,6 +697,7 @@ async def refresh_token(
                 tenant_id=payload.tenant_id,
                 tenant_schema=payload.tenant_schema,
                 token_type="refresh",
+                credential_epoch=expected_epoch,
             )
 
             return LoginResponse(

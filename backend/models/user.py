@@ -4,7 +4,7 @@ Implements database_contract.md tenant schema tables.
 """
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import String, Boolean, Text, Index
+from sqlalchemy import BigInteger, CheckConstraint, String, Boolean, Text, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from models.base import BaseModel
@@ -26,6 +26,7 @@ class User(BaseModel):
     __tablename__ = "users"
     __table_args__ = (
         Index('ix_users_email', 'email', unique=True),
+        CheckConstraint('credential_epoch>0', name='ck_users_credential_epoch'),
     )
 
     email: Mapped[str] = mapped_column(
@@ -37,6 +38,10 @@ class User(BaseModel):
     password_hash: Mapped[str] = mapped_column(
         String(255),
         nullable=False
+    )
+    # The DB trigger owns advancement; callers cannot reset this value.
+    credential_epoch: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default=text("1")
     )
     full_name: Mapped[Optional[str]] = mapped_column(
         Text,

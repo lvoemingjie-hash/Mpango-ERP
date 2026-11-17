@@ -23,10 +23,8 @@ from core.security import (
 # (avoids HealthCheck.too_slow from slow regex backtracking)
 uuid_strategy = st.uuids().map(str)
 
-# Strategy for generating tenant schema names — exactly 16 bytes rendered as hex
-tenant_schema_strategy = st.binary(min_size=16, max_size=16).map(
-    lambda b: "t_" + b.hex()
-)
+# Generate a real tenant binding, rather than an unrelated schema label.
+tenant_binding_strategy = st.uuids().map(lambda value: (str(value), "t_" + value.hex))
 
 # Strategy for generating passwords (within bcrypt's 72-byte limit, no NULL bytes)
 password_strategy = st.text(
@@ -41,11 +39,11 @@ password_strategy = st.text(
 
 @given(
     user_id=uuid_strategy,
-    tenant_id=uuid_strategy,
-    tenant_schema=tenant_schema_strategy
+    tenant=tenant_binding_strategy,
+    credential_epoch=st.integers(min_value=1, max_value=9223372036854775807)
 )
 @settings(max_examples=20)  # Reduced from default 100 for faster execution
-def test_property_token_roundtrip_integrity(user_id, tenant_id, tenant_schema):
+def test_property_token_roundtrip_integrity(user_id, tenant, credential_epoch):
     """
     Property P1: Token Roundtrip Integrity
 
@@ -54,22 +52,25 @@ def test_property_token_roundtrip_integrity(user_id, tenant_id, tenant_schema):
     - Creating a refresh token and decoding it should preserve all claims
     """
     # Test access token
-    access_token = create_access_token(user_id, tenant_id, tenant_schema)
+    tenant_id, tenant_schema = tenant
+    access_token = create_access_token(user_id, tenant_id, tenant_schema, credential_epoch=credential_epoch)
     access_payload = decode_token(access_token)
 
     assert access_payload.user_id == user_id
     assert access_payload.tenant_id == tenant_id
     assert access_payload.tenant_schema == tenant_schema
     assert access_payload.type == "access"
+    assert access_payload.credential_epoch == credential_epoch
 
     # Test refresh token
-    refresh_token = create_refresh_token(user_id, tenant_id, tenant_schema)
+    refresh_token = create_refresh_token(user_id, tenant_id, tenant_schema, credential_epoch=credential_epoch)
     refresh_payload = decode_token(refresh_token)
 
     assert refresh_payload.user_id == user_id
     assert refresh_payload.tenant_id == tenant_id
     assert refresh_payload.tenant_schema == tenant_schema
     assert refresh_payload.type == "refresh"
+    assert refresh_payload.credential_epoch == credential_epoch
 
 
 @given(password=password_strategy)
@@ -99,11 +100,11 @@ def test_property_password_hash_verify_roundtrip(password):
 
 @given(
     user_id=uuid_strategy,
-    tenant_id=uuid_strategy,
-    tenant_schema=tenant_schema_strategy
+    tenant=tenant_binding_strategy,
+    credential_epoch=st.integers(min_value=1, max_value=9223372036854775807)
 )
 @settings(max_examples=20)  # Reduced from default 100 for faster execution
-def test_property_refresh_preserves_claims(user_id, tenant_id, tenant_schema):
+def test_property_refresh_preserves_claims(user_id, tenant, credential_epoch):
     """
     Property P8: Refresh Preserves Claims
 
@@ -111,7 +112,8 @@ def test_property_refresh_preserves_claims(user_id, tenant_id, tenant_schema):
     - Creating a refresh token and decoding it should preserve tenant_id and tenant_schema
     - These values should be identical to the original input
     """
-    refresh_token = create_refresh_token(user_id, tenant_id, tenant_schema)
+    tenant_id, tenant_schema = tenant
+    refresh_token = create_refresh_token(user_id, tenant_id, tenant_schema, credential_epoch=credential_epoch)
     payload = decode_token(refresh_token)
 
     # Verify claims are preserved
@@ -123,12 +125,14 @@ def test_property_refresh_preserves_claims(user_id, tenant_id, tenant_schema):
     new_access_token = create_access_token(
         payload.user_id,
         payload.tenant_id,
-        payload.tenant_schema
+        payload.tenant_schema,
+        credential_epoch=payload.credential_epoch,
     )
     new_refresh_token = create_refresh_token(
         payload.user_id,
         payload.tenant_id,
-        payload.tenant_schema
+        payload.tenant_schema,
+        credential_epoch=payload.credential_epoch,
     )
 
     # Decode new tokens
@@ -164,11 +168,11 @@ def test_property_password_hash_is_deterministic_for_verification(password):
 
 @given(
     user_id=uuid_strategy,
-    tenant_id=uuid_strategy,
-    tenant_schema=tenant_schema_strategy
+    tenant=tenant_binding_strategy,
+    credential_epoch=st.integers(min_value=1, max_value=9223372036854775807)
 )
 @settings(max_examples=20)  # Reduced from default 100 for faster execution
-def test_property_token_type_is_preserved(user_id, tenant_id, tenant_schema):
+def test_property_token_type_is_preserved(user_id, tenant, credential_epoch):
     """
     Property P7: Token Type Separation
 
@@ -177,10 +181,13 @@ def test_property_token_type_is_preserved(user_id, tenant_id, tenant_schema):
     - Refresh tokens always have type="refresh"
     - Token type is preserved through encode/decode
     """
-    access_token = create_access_token(user_id, tenant_id, tenant_schema)
+    tenant_id, tenant_schema = tenant
+    access_token = create_access_token(user_id, tenant_id, tenant_schema, credential_epoch=credential_epoch)
     access_payload = decode_token(access_token)
     assert access_payload.type == "access"
+    assert access_payload.credential_epoch == credential_epoch
 
-    refresh_token = create_refresh_token(user_id, tenant_id, tenant_schema)
+    refresh_token = create_refresh_token(user_id, tenant_id, tenant_schema, credential_epoch=credential_epoch)
     refresh_payload = decode_token(refresh_token)
     assert refresh_payload.type == "refresh"
+    assert refresh_payload.credential_epoch == credential_epoch

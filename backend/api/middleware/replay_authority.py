@@ -174,14 +174,13 @@ async def _seam_select_tenant(request, body, token, tenant_ctx) -> bool:
     if wholesaler is None:
         return False
     tenant_schema = wholesaler.get_tenant_schema()
-    token_tmap = getattr(token, "tmap", None)
-    if token.is_identity_only and token_tmap:
-        local_user_id = token_tmap.get(str(wholesaler.id))
-        if not local_user_id:
-            return False
-        effective_user_id = local_user_id
-    else:
-        effective_user_id = token.user_id
+    from core.security import (
+        InvalidTokenError, credential_epoch_matches, selected_credential_binding,
+    )
+    try:
+        effective_user_id, expected_epoch = selected_credential_binding(token, str(wholesaler.id))
+    except InvalidTokenError:
+        return False
     session = await create_tenant_session(tenant_schema)
     try:
         user = await get_user_with_permissions(session, effective_user_id)
@@ -191,6 +190,7 @@ async def _seam_select_tenant(request, body, token, tenant_ctx) -> bool:
         user is not None
         and not bool(getattr(user, "is_deleted", False))
         and bool(getattr(user, "is_active", False))
+        and credential_epoch_matches(expected_epoch, user.credential_epoch)
     )
 
 

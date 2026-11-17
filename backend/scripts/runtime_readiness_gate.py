@@ -5,7 +5,7 @@ heredoc; CTO-AUTH-ORDER-R2-DB-AUTHORITY-INTEGRATION-R1-R4-BOUNDED-RUNTIME-CONTRA
 The backend container receives ONLY the runtime-role DATABASE_URL.  This gate
 verifies, strictly read-only, that the five-stage setup completed:
 
-  * public migration head is exactly ``044_inventory_adjustment_approval``;
+  * public migration head is exactly ``046_staff_credential_recovery``;
   * the migration-owned ledger guard matches its authority contract and the
     public binding-balance contract is intact (the product's own read-only
     catalog assertions);
@@ -35,7 +35,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
-REQUIRED_REVISION = "044_inventory_adjustment_approval"
+REQUIRED_REVISION = "046_staff_credential_recovery"
 DEFAULT_REQUIRED_TENANT_TABLE = "order_credit_holds"
 
 
@@ -256,6 +256,8 @@ def evaluate_contract(database_url: str, tenant: str = "t_dev",
                 await bts._assert_ledger_guard_function_authority(conn)
                 await bts._assert_public_binding_balance_contract(conn)
                 await bts._assert_s1_pricing_contract(conn, tenant)
+                await bts._assert_credential_epoch_catalog(conn, tenant)
+                await bts._assert_staff_recovery_contract(conn)
                 # R1-R7: read-only reporting identity probe (named
                 # refusals; catalog/setting reads only).
                 await _probe_reporting(reason, tenant, database_url)

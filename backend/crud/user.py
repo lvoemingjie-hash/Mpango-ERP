@@ -24,6 +24,9 @@ class TenantUserMatch:
     wholesaler: Wholesaler
     user: User
     roles: List[str]
+    # Captured with the password_hash that is actually verified, not reloaded
+    # after another transaction might have replaced the credential.
+    credential_epoch: int
 
 
 async def find_user_across_tenants(
@@ -76,6 +79,7 @@ async def find_user_across_tenants(
                     wholesaler=ws,
                     user=user,
                     roles=role_names,
+                    credential_epoch=user.credential_epoch,
                 ))
         except Exception:
             continue

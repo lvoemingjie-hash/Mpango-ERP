@@ -141,33 +141,55 @@ HISTORICAL_COLLECTION_COUNTS = {
 
 # Current bindings are populated only after the authorized native evidence
 # has been reconciled with the final five file lists.
-CANONICAL_NODEID_SHA256 = {
+REUSE_664_CANONICAL_NODEID_SHA256 = {
     "runtime-a": "06de6c39cbc4785137a5c1d14d4fc75c7948c6f15b316e0dc79daea7a0f92ca8",
     "runtime-b": "bd3fabb1f3aa9a9942ccf6b185ecd52fa8635cb057604e76a65e2442293caab5",
     "topology": "c5b860246b7e6829d45924e4f608da4250e27ad519d2fae00eea11a268a38200",
     "invariants-jwt": "9711b92784bb6eac7890f5ba17202c1098431524a1d29bc55c232f4a27e63e4c",
     "task-managed-pg": "fb07315c5fa8c89517191a1df66db7f7447b0ec76cd8953c9715474544098d20",
 }
-CURRENT_COLLECTION_COUNTS = {
+REUSE_664_CURRENT_COLLECTION_COUNTS = {
     "runtime-a": 1741,
     "runtime-b": 1722,
     "topology": 798,
     "invariants-jwt": 410,
     "task-managed-pg": 92,
 }
-CURRENT_ORDERED_NODEID_SHA256 = {
+REUSE_664_CURRENT_ORDERED_NODEID_SHA256 = {
     "runtime-a": "12014f673c2845adb943a22b77b8763ff304f9ee47ffc39525d369e99e6903d9",
     "runtime-b": "196878b6786aa652e2ee4d248b584874cabeaf31dff7e5c95485de159c5eee1e",
     "topology": "6e9d1e29ae44ea40c85bc8dd53c3c9441edbd74e976f6a90464cf4fac09be119",
     "invariants-jwt": "f851c4383bea389a8c17254e60acc334176e75c00384a0a8158b6663431452da",
     "task-managed-pg": "06e1299586219cfae00a68530d00d3d9becf32b48eee91d8ef3ef5623651cfc2",
 }
-CURRENT_COLLECTION_FILE_COUNTS = {
+REUSE_664_CURRENT_COLLECTION_FILE_COUNTS = {
     "runtime-a": 100,
     "runtime-b": 99,
     "topology": 39,
     "invariants-jwt": 22,
     "task-managed-pg": 4,
+}
+
+# Current R3 values come from the affected native collections against T.
+CANONICAL_NODEID_SHA256 = {
+    **REUSE_664_CANONICAL_NODEID_SHA256,
+    "runtime-b": "0c4cb0023145e389864fc9f9628924066c80f6fb71e0d6b4b3f614a480572652",
+    "task-managed-pg": "b43e814ee6b719238a4c8b1f1da8042d65054148e7243604c658ca60f6dae4b9",
+}
+CURRENT_COLLECTION_COUNTS = {
+    **REUSE_664_CURRENT_COLLECTION_COUNTS,
+    "runtime-b": 1708,
+    "task-managed-pg": 106,
+}
+CURRENT_ORDERED_NODEID_SHA256 = {
+    **REUSE_664_CURRENT_ORDERED_NODEID_SHA256,
+    "runtime-b": "32fcf1b6ca16e268211807432b482ae4afeaf9810efb7afbbaf46c5e3c806aaa",
+    "task-managed-pg": "3f7244255446496481a7ddea70b02be394ee52ccf2372dc15a1e992440a14c3c",
+}
+CURRENT_COLLECTION_FILE_COUNTS = {
+    **REUSE_664_CURRENT_COLLECTION_FILE_COUNTS,
+    "runtime-b": 97,
+    "task-managed-pg": 6,
 }
 
 # F-01 (R6R1): the task credential store is a single private store shared by
@@ -809,7 +831,8 @@ REUSE_APPROVED_REF = "2add5eec0f21e1bc6e505e77e9385e33a105f347"
 # Historical collection remains on 2add; live objects use this CTO-fixed successor.
 REUSE_0DA4_APPROVED_REF = "0da4c8502928933bb61ba07b784206dec3a03bdc"
 REUSE_AA19_APPROVED_REF = "aa19b49fad2618b1e01d071860f847cfbefb384b"
-REUSE_LIVE_APPROVED_REF = "664659b9cebdb4fecdb4a975c7c4770cb56c60f3"
+REUSE_664_APPROVED_REF = "664659b9cebdb4fecdb4a975c7c4770cb56c60f3"
+REUSE_LIVE_APPROVED_REF = "3356d9514e350896888e2f3260b23a1817343c59"
 REUSE_5033_APPROVED_REF = "5033e2cd039af3b989418ae0a57133a6355ca42c"
 REUSE_PREVIOUS_APPROVED_REF = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
@@ -3159,7 +3182,7 @@ def _reuse_expected_metadata(repo):
         )
     }))
     authority = "CTO-AUTH-MVP-664659B9-FIVE-LEG-CI-ALIGNMENT-CODEXL-R1-20261118"
-    fixed = REUSE_LIVE_APPROVED_REF
+    fixed = REUSE_664_APPROVED_REF
 
     def live_oid(suffix):
         return _git_bytes(repo, "rev-parse", fixed + suffix).decode().strip()
@@ -3185,15 +3208,15 @@ def _reuse_expected_metadata(repo):
     }
     expected["ordinary_canonical_status"] = "CURRENT_NATIVE_COLLECT_ONLY__NO_BODY_PASS"
     expected["current_collection_binding"] = {
-        "source_ref": fixed, "node_counts": CURRENT_COLLECTION_COUNTS,
-        "canonical_sha256": CANONICAL_NODEID_SHA256,
-        "ordered_nodeid_sha256": CURRENT_ORDERED_NODEID_SHA256,
+        "source_ref": fixed, "node_counts": REUSE_664_CURRENT_COLLECTION_COUNTS,
+        "canonical_sha256": REUSE_664_CANONICAL_NODEID_SHA256,
+        "ordered_nodeid_sha256": REUSE_664_CURRENT_ORDERED_NODEID_SHA256,
         "claim": "AUTHOR_NATIVE_COLLECT_ONLY__NOT_BUSINESS_OR_CI_PASS",
     }
     expected["current_ci_alignment"] = {
         "authority": authority, "fixed_source": fixed, "previous_live_source": REUSE_AA19_APPROVED_REF,
         "selection_counts": {"tracked": 292, "ordinary": 264, "dedicated": 21, "ignored": 6, "non_executing": 1},
-        "file_counts": CURRENT_COLLECTION_FILE_COUNTS, **expected["current_collection_binding"],
+        "file_counts": REUSE_664_CURRENT_COLLECTION_FILE_COUNTS, **expected["current_collection_binding"],
         "current_hosted_ci": "NOT_RUN", "backend_body": "NOT_RUN",
         "historical_results_rebound": False, "release_ready": False,
         "non_executing_test_files": NON_EXECUTING_TEST_IDENTITIES,
@@ -3203,6 +3226,40 @@ def _reuse_expected_metadata(repo):
         "Four original native collections retain their source and setup boundaries. Runtime-b was collected after the exact empty-file exclusion.",
         "Dedicated and ignored tests are outside the five ordinary legs. Historical evidence and open gaps retain their original scope.",
         "No hosted CI, backend body run, independent acceptance or release is claimed.",
+    ]
+    expected["previous_664659b9_alignment"] = json.loads(json.dumps({
+        key: expected[key] for key in (
+            "record", "authorization", "intake_status", "intake_version", "product_anchor",
+            "current_source_intake", "selection_binding", "ordinary_canonical_status",
+            "fixed_source_alignment", "fixed_live_source", "current_ci_alignment",
+            "current_collection_binding", "explicit_non_claims",
+        )
+    }))
+    authority = "CTO-AUTH-MVP-CI-HISTORICAL-FIXTURE-AND-EXACT-REF-CODEXL-R3-20261118"
+    fixed = REUSE_LIVE_APPROVED_REF
+    expected.update(record="CURRENT_EXACT_T_CI_ALIGNMENT_V1", authorization=authority,
+                    intake_version=16, product_anchor=fixed,
+                    intake_status="LOCAL_COLLECTION_AND_ADMISSION_ONLY")
+    expected["fixed_source_alignment"].update(
+        whole_backend_frontend_comparison_source=fixed, live_comparison_authority=authority)
+    expected["fixed_live_source"].update(
+        source_ref=fixed, backend_tree=live_oid(":backend"), frontend_tree=live_oid(":frontend"),
+        current_native_collect="AFFECTED_LEG_NATIVE_COLLECTION_WITH_THREE_UNCHANGED_ARRAYS")
+    expected["current_source_intake"] = dict(expected["fixed_live_source"],
+        authorization=authority, source_tree=live_oid("^{tree}"), source_parent=live_oid("^"),
+        source_contract_commit=fixed, independent_v3_this_intake="NOT_RUN")
+    expected["selection_binding"].update(authority=authority, source_ref=fixed)
+    expected["current_collection_binding"].update(
+        source_ref=fixed, node_counts=CURRENT_COLLECTION_COUNTS,
+        canonical_sha256=CANONICAL_NODEID_SHA256, ordered_nodeid_sha256=CURRENT_ORDERED_NODEID_SHA256)
+    expected["current_ci_alignment"].update(
+        authority=authority, fixed_source=fixed, previous_live_source=REUSE_664_APPROVED_REF,
+        file_counts=CURRENT_COLLECTION_FILE_COUNTS, **expected["current_collection_binding"])
+    expected["explicit_non_claims"] = [
+        "The fixed T commit supplies all approved backend/frontend objects. CI metadata is committed separately.",
+        "Runtime-b and task-managed-pg were recollected. The other three retain their original native arrays.",
+        "Dedicated and ignored files are outside the five legs. Historical evidence retains its original scope.",
+        "No hosted CI, backend full-body run, independent acceptance or release is claimed.",
     ]
     return expected
 

@@ -47,28 +47,28 @@ jobs:
           - shard: runtime-a
             job-timeout-minutes: 50
             pytest-timeout: 40m
-            expected-files: "99"
-            expected-nodes: ""
+            expected-files: "100"
+            expected-nodes: "1741"
           - shard: runtime-b
             job-timeout-minutes: 25
             pytest-timeout: 18m
-            expected-files: "98"
-            expected-nodes: ""
+            expected-files: "99"
+            expected-nodes: "1722"
           - shard: topology
             job-timeout-minutes: 35
             pytest-timeout: 25m
             expected-files: "39"
-            expected-nodes: ""
+            expected-nodes: "798"
           - shard: invariants-jwt
             job-timeout-minutes: 30
             pytest-timeout: 20m
-            expected-files: "20"
-            expected-nodes: ""
+            expected-files: "22"
+            expected-nodes: "410"
           - shard: task-managed-pg
             job-timeout-minutes: 20
             pytest-timeout: 13m
             expected-files: "4"
-            expected-nodes: ""
+            expected-nodes: "92"
     env:
       CI_OWNER_LABEL: zcode-mvp-invariants-ci-deploy-staging-r6
       # R6R1 (F-01) intended ONE credential-store path visible to the supply
@@ -309,8 +309,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          # Offline C alignment has no fresh node universe. Fail before collect
-          # until a separately authorized five-leg measurement is CTO-frozen.
+          # Keep the frozen count and canonical set admission before body execution.
           test -n "${{ matrix.expected-nodes }}" || { echo "CURRENT_COLLECTION_NOT_FROZEN"; exit 1; }
           test -s "$RUNNER_TEMP/profile-${{ matrix.shard }}.tests" || { echo "shard ${{ matrix.shard }} argfile missing/empty; refusing to fall back to full collection"; exit 1; }
           # F-02 (R6R2): shard-verify refusals echo identities (nodeid/file
@@ -368,8 +367,8 @@ jobs:
             echo "dedicated-verify REFUSED"
             exit 1
           fi
-          # Existing S is whole-source authority; historical layers are unchanged.
-          if ! python tools/ci/prepare_test_evidence.py verify-reuse --coverage docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json --repo-root . --approved-ref aa19b49fad2618b1e01d071860f847cfbefb384b --result-file "$RUNNER_TEMP/reuse-result.json" > "$RUNNER_TEMP/reuse.log" 2>&1; then
+          # Fixed reviewed product objects are the whole-source authority.
+          if ! python tools/ci/prepare_test_evidence.py verify-reuse --coverage docs/releases/mvp-20261031/VERIFICATION-COVERAGE.json --repo-root . --approved-ref 664659b9cebdb4fecdb4a975c7c4770cb56c60f3 --result-file "$RUNNER_TEMP/reuse-result.json" > "$RUNNER_TEMP/reuse.log" 2>&1; then
             echo "verify-reuse REFUSED"
             exit 1
           fi

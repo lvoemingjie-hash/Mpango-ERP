@@ -54,6 +54,17 @@ from pathlib import Path
 RUNTIME_SHARD_BOUNDARY = "tests/test_platform_p12_support_console.py"
 SHARD_NAMES = ("runtime-a", "runtime-b", "topology", "invariants-jwt", "task-managed-pg")
 
+# This registered shell contributes no test nodes and still counts as tracked.
+NON_EXECUTING_TEST_IDENTITIES = {
+    "tests/test_s3_db_performance.py": {
+        "mode": "100644",
+        "blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+        "bytes": 0,
+        "reason": "Historical empty shell since addition; performance coverage remains unproved",
+        "introduced_commit": "8024432aa083aa800ab888711a77cf366a8df213",
+    },
+}
+
 # CTO-AUTH-RC1-CI-ADMISSION-CLOSURE-L-R1-20261015: frozen dedicated-evidence
 # registry — the exact backend-relative paths registered out of the ordinary
 # hosted regression zone (byte-equal contract with the wrapper's registry;
@@ -128,10 +139,36 @@ HISTORICAL_COLLECTION_COUNTS = {
     "task-managed-pg": 92,
 }
 
-# No current collection is authorized by this offline alignment. The old
-# maps above describe their original native runs, never this S source.
-CANONICAL_NODEID_SHA256 = dict.fromkeys(SHARD_NAMES)
-CURRENT_COLLECTION_COUNTS = dict.fromkeys(SHARD_NAMES)
+# Current bindings are populated only after the authorized native evidence
+# has been reconciled with the final five file lists.
+CANONICAL_NODEID_SHA256 = {
+    "runtime-a": "06de6c39cbc4785137a5c1d14d4fc75c7948c6f15b316e0dc79daea7a0f92ca8",
+    "runtime-b": "bd3fabb1f3aa9a9942ccf6b185ecd52fa8635cb057604e76a65e2442293caab5",
+    "topology": "c5b860246b7e6829d45924e4f608da4250e27ad519d2fae00eea11a268a38200",
+    "invariants-jwt": "9711b92784bb6eac7890f5ba17202c1098431524a1d29bc55c232f4a27e63e4c",
+    "task-managed-pg": "fb07315c5fa8c89517191a1df66db7f7447b0ec76cd8953c9715474544098d20",
+}
+CURRENT_COLLECTION_COUNTS = {
+    "runtime-a": 1741,
+    "runtime-b": 1722,
+    "topology": 798,
+    "invariants-jwt": 410,
+    "task-managed-pg": 92,
+}
+CURRENT_ORDERED_NODEID_SHA256 = {
+    "runtime-a": "12014f673c2845adb943a22b77b8763ff304f9ee47ffc39525d369e99e6903d9",
+    "runtime-b": "196878b6786aa652e2ee4d248b584874cabeaf31dff7e5c95485de159c5eee1e",
+    "topology": "6e9d1e29ae44ea40c85bc8dd53c3c9441edbd74e976f6a90464cf4fac09be119",
+    "invariants-jwt": "f851c4383bea389a8c17254e60acc334176e75c00384a0a8158b6663431452da",
+    "task-managed-pg": "06e1299586219cfae00a68530d00d3d9becf32b48eee91d8ef3ef5623651cfc2",
+}
+CURRENT_COLLECTION_FILE_COUNTS = {
+    "runtime-a": 100,
+    "runtime-b": 99,
+    "topology": 39,
+    "invariants-jwt": 22,
+    "task-managed-pg": 4,
+}
 
 # F-01 (R6R1): the task credential store is a single private store shared by
 # the supply and the publication steps; a store that lacks any required key
@@ -222,6 +259,25 @@ def _encoded_variants(value: str) -> set:
 # shard planning / verification
 # ---------------------------------------------------------------------------
 
+def _validated_non_executing_files(repo_root: Path) -> dict:
+    files = []
+    for relative, identity in sorted(NON_EXECUTING_TEST_IDENTITIES.items()):
+        path = Path(repo_root) / "backend" / relative
+        try:
+            info = path.lstat()
+            if not stat.S_ISREG(info.st_mode):
+                raise Refused("NON_EXECUTING_FILE_CHANGED: source must be reviewed again", 3)
+            data = path.read_bytes()
+        except OSError:
+            raise Refused("NON_EXECUTING_FILE_MISSING: registered source is unavailable", 3)
+        mode = "100755" if info.st_mode & 0o111 else "100644"
+        blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+        if mode != identity["mode"] or len(data) != identity["bytes"] or blob != identity["blob"]:
+            raise Refused("NON_EXECUTING_FILE_CHANGED: source must be reviewed again", 3)
+        files.append(dict(path=relative, **identity))
+    return {"record": "EXACT_NON_EXECUTING_TEST_FILES_V1", "count": len(files), "files": files}
+
+
 def _load_plan(plan_path: Path) -> dict:
     try:
         plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
@@ -233,6 +289,17 @@ def _load_plan(plan_path: Path) -> dict:
     runtime = profiles.get("runtime") if isinstance(profiles, dict) else None
     if not isinstance(runtime, dict) or not isinstance(runtime.get("files"), list):
         raise Refused("PLAN_SHAPE_INVALID: profiles.runtime.files list is required", 3)
+    block, root = plan.get("non_executing_files"), plan.get("repo_root")
+    if block is not None or root is not None:
+        if not isinstance(root, str) or not Path(root).is_absolute():
+            raise Refused("NON_EXECUTING_SOURCE_REQUIRED: absolute repo_root is required", 3)
+        if block != _validated_non_executing_files(Path(root)):
+            raise Refused("NON_EXECUTING_REGISTRY_DRIFT: declaration must match exact source", 3)
+    if any(not isinstance(profile, dict) or not isinstance(profile.get("files"), list)
+           for profile in profiles.values()):
+        raise Refused("PLAN_SHAPE_INVALID: profile file lists are required", 3)
+    if any(name in NON_EXECUTING_TEST_IDENTITIES for profile in profiles.values() for name in profile["files"]):
+        raise Refused("NON_EXECUTING_FILE_IN_PROFILE: registered shell is not executable selection", 3)
     return plan
 
 
@@ -358,6 +425,15 @@ def cmd_shard_verify(args: argparse.Namespace) -> int:
             f"SHARD_FILE_COUNT_MISMATCH: argfile={len(members)} expected={args.expected_files}",
             3,
         )
+    if plan.get("repo_root"):
+        root = Path(plan["repo_root"]) / "backend"
+        missing_source = [name for name in members
+                          if not (root / name).is_file() or (root / name).is_symlink()]
+        if missing_source:
+            _refuse_with_diagnostics(
+                diag, "SHARD_SOURCE_FILE_MISSING", "selected source file is unavailable",
+                {"missing": sorted(missing_source)},
+            )
     print(f"[shard-verify] {shard}: {len(members)} files, membership exact vs plan")
 
     if args.collect:
@@ -378,6 +454,13 @@ def cmd_shard_verify(args: argparse.Namespace) -> int:
                 diag, "COLLECTED_FILE_NOT_IN_SHARD",
                 f"{len(outsiders)} collected file(s) outside the shard",
                 {"outside_files": outsiders},
+            )
+        zero_node_files = sorted(member_set - set(collected_files))
+        if zero_node_files:
+            _refuse_with_diagnostics(
+                diag, "SELECTED_FILE_WITHOUT_NODES",
+                f"{len(zero_node_files)} selected file(s) produced no nodeids",
+                {"zero_node_files": zero_node_files},
             )
         if len(nodeids) != int(args.expected_nodes):
             raise Refused(
@@ -725,7 +808,8 @@ REUSE_477_APPROVED_REF = "47716cdc88451e233c4142e7da0c3d82c368dd22"
 REUSE_APPROVED_REF = "2add5eec0f21e1bc6e505e77e9385e33a105f347"
 # Historical collection remains on 2add; live objects use this CTO-fixed successor.
 REUSE_0DA4_APPROVED_REF = "0da4c8502928933bb61ba07b784206dec3a03bdc"
-REUSE_LIVE_APPROVED_REF = "aa19b49fad2618b1e01d071860f847cfbefb384b"
+REUSE_AA19_APPROVED_REF = "aa19b49fad2618b1e01d071860f847cfbefb384b"
+REUSE_LIVE_APPROVED_REF = "664659b9cebdb4fecdb4a975c7c4770cb56c60f3"
 REUSE_5033_APPROVED_REF = "5033e2cd039af3b989418ae0a57133a6355ca42c"
 REUSE_PREVIOUS_APPROVED_REF = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
@@ -3021,39 +3105,39 @@ def _reuse_expected_metadata(repo):
     expected["previous_0da4_ci_alignment"] = json.loads(json.dumps(expected))
     authority = "CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116"
     expected.update(record="CURRENT_AA19_OFFLINE_CI_ALIGNMENT_V1", authorization=authority,
-                    intake_version=REUSE_INTAKE_VERSION, product_anchor=REUSE_LIVE_APPROVED_REF,
+                    intake_version=REUSE_INTAKE_VERSION, product_anchor=REUSE_AA19_APPROVED_REF,
                     intake_status="OFFLINE_CANDIDATE__FIVE_FRESH_COLLECTS_REQUIRED")
     expected["fixed_source_alignment"].update(
-        whole_backend_frontend_comparison_source=REUSE_LIVE_APPROVED_REF,
+        whole_backend_frontend_comparison_source=REUSE_AA19_APPROVED_REF,
         live_comparison_authority=authority)
     expected["fixed_live_source"] = {
-        "source_ref": REUSE_LIVE_APPROVED_REF,
-        "backend_tree": _git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + ":backend").decode().strip(),
-        "frontend_tree": _git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + ":frontend").decode().strip(),
+        "source_ref": REUSE_AA19_APPROVED_REF,
+        "backend_tree": _git_bytes(repo, "rev-parse", REUSE_AA19_APPROVED_REF + ":backend").decode().strip(),
+        "frontend_tree": _git_bytes(repo, "rev-parse", REUSE_AA19_APPROVED_REF + ":frontend").decode().strip(),
         "historical_collection_ref": REUSE_APPROVED_REF,
         "current_native_collect": "NOT_RUN", "current_hosted_ci": "NOT_RUN",
         "claim": "WHOLE_BACKEND_FRONTEND_SOURCE_COMPARISON_ONLY",
     }
     expected["current_source_intake"] = dict(expected["fixed_live_source"],
-        authorization=authority, source_tree=_git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + "^{tree}").decode().strip(),
-        source_parent=_git_bytes(repo, "rev-parse", REUSE_LIVE_APPROVED_REF + "^").decode().strip(),
-        source_contract_commit=REUSE_LIVE_APPROVED_REF, independent_v3_this_intake="NOT_RUN")
+        authorization=authority, source_tree=_git_bytes(repo, "rev-parse", REUSE_AA19_APPROVED_REF + "^{tree}").decode().strip(),
+        source_parent=_git_bytes(repo, "rev-parse", REUSE_AA19_APPROVED_REF + "^").decode().strip(),
+        source_contract_commit=REUSE_AA19_APPROVED_REF, independent_v3_this_intake="NOT_RUN")
     expected["selection_binding"] = {
-        "authority": authority, "source_ref": REUSE_LIVE_APPROVED_REF,
+        "authority": authority, "source_ref": REUSE_AA19_APPROVED_REF,
         "discovered_files": 287, "ordinary_files": 260, "dedicated_files": 21,
         "ignores": 6, "union": 281, "intersection": 0, "unknown": 0,
     }
     expected["current_collection_binding"] = {
-        "source_ref": REUSE_LIVE_APPROVED_REF, "node_counts": CURRENT_COLLECTION_COUNTS,
-        "canonical_sha256": CANONICAL_NODEID_SHA256, "claim": "NOT_COLLECTED_THIS_ROUND",
+        "source_ref": REUSE_AA19_APPROVED_REF, "node_counts": dict.fromkeys(SHARD_NAMES),
+        "canonical_sha256": dict.fromkeys(SHARD_NAMES), "claim": "NOT_COLLECTED_THIS_ROUND",
     }
     expected["ordinary_canonical_status"] = "NOT_COLLECTED_THIS_ROUND"
     expected["current_ci_alignment"] = {
-        "authority": authority, "fixed_source": REUSE_LIVE_APPROVED_REF,
+        "authority": authority, "fixed_source": REUSE_AA19_APPROVED_REF,
         "previous_live_source": REUSE_0DA4_APPROVED_REF,
         "selection_counts": {"tracked": 287, "ordinary": 260, "dedicated": 21, "ignored": 6},
         "file_counts": dict(zip(SHARD_NAMES, (99, 98, 39, 20, 4))),
-        "node_counts": CURRENT_COLLECTION_COUNTS, "canonical_sha256": CANONICAL_NODEID_SHA256,
+        "node_counts": dict.fromkeys(SHARD_NAMES), "canonical_sha256": dict.fromkeys(SHARD_NAMES),
         "current_collect": "NOT_RUN", "current_hosted_ci": "NOT_RUN", "backend_body": "NOT_RUN",
         "author_three_nodes": "ACCEPTED_BYTES_ONLY__NOT_RERUN_OR_INDEPENDENT_ACCEPTANCE",
         "matching_live_owner_branch": "NOT_VERIFIED", "historical_results_rebound": False,
@@ -3065,6 +3149,60 @@ def _reuse_expected_metadata(repo):
         "Current nodes and canonical are unknown; old native results remain in previous_0da4_ci_alignment.",
         "Whole backend/frontend and external-path refusal algorithms remain authoritative, including tests.",
         "No new collect, full tool gate, hosted CI, independent acceptance or release is claimed.",
+    ]
+    expected["previous_aa19_ci_alignment"] = json.loads(json.dumps({
+        key: expected[key] for key in (
+            "record", "authorization", "intake_status", "intake_version", "product_anchor",
+            "current_source_intake", "selection_binding", "ordinary_canonical_status",
+            "fixed_source_alignment", "fixed_live_source", "current_ci_alignment",
+            "current_collection_binding", "explicit_non_claims",
+        )
+    }))
+    authority = "CTO-AUTH-MVP-664659B9-FIVE-LEG-CI-ALIGNMENT-CODEXL-R1-20261118"
+    fixed = REUSE_LIVE_APPROVED_REF
+
+    def live_oid(suffix):
+        return _git_bytes(repo, "rev-parse", fixed + suffix).decode().strip()
+
+    expected.update(record="CURRENT_664659B9_CI_ONLY_ALIGNMENT_V1", authorization=authority,
+                    intake_version=15, product_anchor=fixed,
+                    intake_status="LOCAL_COLLECTION_AND_ADMISSION_ONLY")
+    expected["fixed_source_alignment"].update(
+        whole_backend_frontend_comparison_source=fixed, live_comparison_authority=authority)
+    expected["fixed_live_source"] = {
+        "source_ref": fixed, "backend_tree": live_oid(":backend"),
+        "frontend_tree": live_oid(":frontend"), "historical_collection_ref": REUSE_APPROVED_REF,
+        "current_native_collect": "RUNTIME_B_RECOLLECT_PLUS_FOUR_FIXED_SOURCE_ARRAYS",
+        "current_hosted_ci": "NOT_RUN", "claim": "WHOLE_BACKEND_FRONTEND_SOURCE_COMPARISON_ONLY",
+    }
+    expected["current_source_intake"] = dict(expected["fixed_live_source"],
+        authorization=authority, source_tree=live_oid("^{tree}"), source_parent=live_oid("^"),
+        source_contract_commit=fixed, independent_v3_this_intake="NOT_RUN")
+    expected["selection_binding"] = {
+        "authority": authority, "source_ref": fixed, "discovered_files": 292,
+        "ordinary_files": 264, "dedicated_files": 21, "ignores": 6, "non_executing": 1,
+        "union": 285, "intersection": 0, "unknown": 0,
+    }
+    expected["ordinary_canonical_status"] = "CURRENT_NATIVE_COLLECT_ONLY__NO_BODY_PASS"
+    expected["current_collection_binding"] = {
+        "source_ref": fixed, "node_counts": CURRENT_COLLECTION_COUNTS,
+        "canonical_sha256": CANONICAL_NODEID_SHA256,
+        "ordered_nodeid_sha256": CURRENT_ORDERED_NODEID_SHA256,
+        "claim": "AUTHOR_NATIVE_COLLECT_ONLY__NOT_BUSINESS_OR_CI_PASS",
+    }
+    expected["current_ci_alignment"] = {
+        "authority": authority, "fixed_source": fixed, "previous_live_source": REUSE_AA19_APPROVED_REF,
+        "selection_counts": {"tracked": 292, "ordinary": 264, "dedicated": 21, "ignored": 6, "non_executing": 1},
+        "file_counts": CURRENT_COLLECTION_FILE_COUNTS, **expected["current_collection_binding"],
+        "current_hosted_ci": "NOT_RUN", "backend_body": "NOT_RUN",
+        "historical_results_rebound": False, "release_ready": False,
+        "non_executing_test_files": NON_EXECUTING_TEST_IDENTITIES,
+    }
+    expected["explicit_non_claims"] = [
+        "Fixed source authority binds CI admission to reviewed backend/frontend and protected external objects.",
+        "Four original native collections retain their source and setup boundaries. Runtime-b was collected after the exact empty-file exclusion.",
+        "Dedicated and ignored tests are outside the five ordinary legs. Historical evidence and open gaps retain their original scope.",
+        "No hosted CI, backend body run, independent acceptance or release is claimed.",
     ]
     return expected
 

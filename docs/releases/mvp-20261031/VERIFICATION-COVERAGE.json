@@ -1,19 +1,20 @@
 {
-  "record": "CURRENT_AA19_OFFLINE_CI_ALIGNMENT_V1",
-  "authorization": "CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116",
+  "record": "CURRENT_664659B9_CI_ONLY_ALIGNMENT_V1",
+  "authorization": "CTO-AUTH-MVP-664659B9-FIVE-LEG-CI-ALIGNMENT-CODEXL-R1-20261118",
   "ruling": {
     "path": "AI_REPORT_INBOX/rc1-finite-closure-cto-20261015/CTO-REVIEW.zh-CN.md",
     "sha256": "37fa77e5ff1889c884f58ab929fe9ed06a7489446c933e9ddb81832a4c31a20c",
     "route": "APPROVED_FINITE_HYBRID_ROUTE__IMPLEMENTATION_AND_LOCAL_VALIDATION_ONLY"
   },
   "selection_binding": {
-    "authority": "CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116",
-    "source_ref": "aa19b49fad2618b1e01d071860f847cfbefb384b",
-    "discovered_files": 287,
-    "ordinary_files": 260,
+    "authority": "CTO-AUTH-MVP-664659B9-FIVE-LEG-CI-ALIGNMENT-CODEXL-R1-20261118",
+    "source_ref": "664659b9cebdb4fecdb4a975c7c4770cb56c60f3",
+    "discovered_files": 292,
+    "ordinary_files": 264,
     "dedicated_files": 21,
     "ignores": 6,
-    "union": 281,
+    "non_executing": 1,
+    "union": 285,
     "intersection": 0,
     "unknown": 0
   },
@@ -643,14 +644,14 @@
     }
   ],
   "explicit_non_claims": [
-    "S is an existing source authority, not a new CI or business pass.",
-    "Current nodes and canonical are unknown; old native results remain in previous_0da4_ci_alignment.",
-    "Whole backend/frontend and external-path refusal algorithms remain authoritative, including tests.",
-    "No new collect, full tool gate, hosted CI, independent acceptance or release is claimed."
+    "Fixed source authority binds CI admission to reviewed backend/frontend and protected external objects.",
+    "Four original native collections retain their source and setup boundaries. Runtime-b was collected after the exact empty-file exclusion.",
+    "Dedicated and ignored tests are outside the five ordinary legs. Historical evidence and open gaps retain their original scope.",
+    "No hosted CI, backend body run, independent acceptance or release is claimed."
   ],
-  "intake_version": 14,
-  "intake_status": "OFFLINE_CANDIDATE__FIVE_FRESH_COLLECTS_REQUIRED",
-  "product_anchor": "aa19b49fad2618b1e01d071860f847cfbefb384b",
+  "intake_version": 15,
+  "intake_status": "LOCAL_COLLECTION_AND_ADMISSION_ONLY",
+  "product_anchor": "664659b9cebdb4fecdb4a975c7c4770cb56c60f3",
   "intake_sources": [
     {
       "relative_record": "mvp-rc2-post-images-cto-review-20261017/CTO-REVIEW.zh-CN.md",
@@ -679,7 +680,7 @@
       "sha256": "8dbcc00908bade6ffebbd5d5f5beeb04f9ea76476b891c1e54a82cb0287dac58"
     }
   ],
-  "ordinary_canonical_status": "NOT_COLLECTED_THIS_ROUND",
+  "ordinary_canonical_status": "CURRENT_NATIVE_COLLECT_ONLY__NO_BODY_PASS",
   "frozen_external_paths": [
     "docker-compose.yml",
     "nginx/gateway.conf",
@@ -694,17 +695,17 @@
     }
   ],
   "current_source_intake": {
-    "source_ref": "aa19b49fad2618b1e01d071860f847cfbefb384b",
-    "backend_tree": "7b4f9084ace9f580e4315f4fd6d040eaec023385",
-    "frontend_tree": "d9284c9f5c377880547d3631e719120b5372ceaa",
+    "source_ref": "664659b9cebdb4fecdb4a975c7c4770cb56c60f3",
+    "backend_tree": "a65df01911287eecc4840022facadab71a53f46f",
+    "frontend_tree": "74e634ccdd53ac5249ec537c3c330b8d3a462074",
     "historical_collection_ref": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
-    "current_native_collect": "NOT_RUN",
+    "current_native_collect": "RUNTIME_B_RECOLLECT_PLUS_FOUR_FIXED_SOURCE_ARRAYS",
     "current_hosted_ci": "NOT_RUN",
     "claim": "WHOLE_BACKEND_FRONTEND_SOURCE_COMPARISON_ONLY",
-    "authorization": "CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116",
-    "source_tree": "cd54da3c40835fe02fb2b47ad4db39bb81f33c1e",
-    "source_parent": "2bd8f3859a0aa472bf9f90a83f2e45bbd4c58b3a",
-    "source_contract_commit": "aa19b49fad2618b1e01d071860f847cfbefb384b",
+    "authorization": "CTO-AUTH-MVP-664659B9-FIVE-LEG-CI-ALIGNMENT-CODEXL-R1-20261118",
+    "source_tree": "783c8101daafe00f9e864044ea4cc4053263fb88",
+    "source_parent": "4c027b67ba8e04ab4348bbf0a0ea748bf0b01eeb",
+    "source_contract_commit": "664659b9cebdb4fecdb4a975c7c4770cb56c60f3",
     "independent_v3_this_intake": "NOT_RUN"
   },
   "current_attachment_deltas": [
@@ -3078,8 +3079,8 @@
   "fixed_source_alignment": {
     "authority": "CTO-AUTH-2ADD-CI-ALIGNMENT-AND-FIVE-COLLECT-CODEXL-R1-20261101",
     "previous_comparison_source": "47716cdc88451e233c4142e7da0c3d82c368dd22",
-    "whole_backend_frontend_comparison_source": "aa19b49fad2618b1e01d071860f847cfbefb384b",
-    "live_comparison_authority": "CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116",
+    "whole_backend_frontend_comparison_source": "664659b9cebdb4fecdb4a975c7c4770cb56c60f3",
+    "live_comparison_authority": "CTO-AUTH-MVP-664659B9-FIVE-LEG-CI-ALIGNMENT-CODEXL-R1-20261118",
     "historical_bindings_rebound": false,
     "overall_source_ok": false,
     "OLD_24_HOSTED_FAILURES": "OPEN__NOT_EXECUTED_THIS_TASK",
@@ -3237,29 +3238,36 @@
     "No hosted CI, full backend body execution, independent V3 or release readiness is established here."
   ],
   "current_collection_binding": {
-    "source_ref": "aa19b49fad2618b1e01d071860f847cfbefb384b",
+    "source_ref": "664659b9cebdb4fecdb4a975c7c4770cb56c60f3",
     "node_counts": {
-      "runtime-a": null,
-      "runtime-b": null,
-      "topology": null,
-      "invariants-jwt": null,
-      "task-managed-pg": null
+      "runtime-a": 1741,
+      "runtime-b": 1722,
+      "topology": 798,
+      "invariants-jwt": 410,
+      "task-managed-pg": 92
     },
     "canonical_sha256": {
-      "runtime-a": null,
-      "runtime-b": null,
-      "topology": null,
-      "invariants-jwt": null,
-      "task-managed-pg": null
+      "runtime-a": "06de6c39cbc4785137a5c1d14d4fc75c7948c6f15b316e0dc79daea7a0f92ca8",
+      "runtime-b": "bd3fabb1f3aa9a9942ccf6b185ecd52fa8635cb057604e76a65e2442293caab5",
+      "topology": "c5b860246b7e6829d45924e4f608da4250e27ad519d2fae00eea11a268a38200",
+      "invariants-jwt": "9711b92784bb6eac7890f5ba17202c1098431524a1d29bc55c232f4a27e63e4c",
+      "task-managed-pg": "fb07315c5fa8c89517191a1df66db7f7447b0ec76cd8953c9715474544098d20"
     },
-    "claim": "NOT_COLLECTED_THIS_ROUND"
+    "ordered_nodeid_sha256": {
+      "runtime-a": "12014f673c2845adb943a22b77b8763ff304f9ee47ffc39525d369e99e6903d9",
+      "runtime-b": "196878b6786aa652e2ee4d248b584874cabeaf31dff7e5c95485de159c5eee1e",
+      "topology": "6e9d1e29ae44ea40c85bc8dd53c3c9441edbd74e976f6a90464cf4fac09be119",
+      "invariants-jwt": "f851c4383bea389a8c17254e60acc334176e75c00384a0a8158b6663431452da",
+      "task-managed-pg": "06e1299586219cfae00a68530d00d3d9becf32b48eee91d8ef3ef5623651cfc2"
+    },
+    "claim": "AUTHOR_NATIVE_COLLECT_ONLY__NOT_BUSINESS_OR_CI_PASS"
   },
   "fixed_live_source": {
-    "source_ref": "aa19b49fad2618b1e01d071860f847cfbefb384b",
-    "backend_tree": "7b4f9084ace9f580e4315f4fd6d040eaec023385",
-    "frontend_tree": "d9284c9f5c377880547d3631e719120b5372ceaa",
+    "source_ref": "664659b9cebdb4fecdb4a975c7c4770cb56c60f3",
+    "backend_tree": "a65df01911287eecc4840022facadab71a53f46f",
+    "frontend_tree": "74e634ccdd53ac5249ec537c3c330b8d3a462074",
     "historical_collection_ref": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
-    "current_native_collect": "NOT_RUN",
+    "current_native_collect": "RUNTIME_B_RECOLLECT_PLUS_FOUR_FIXED_SOURCE_ARRAYS",
     "current_hosted_ci": "NOT_RUN",
     "claim": "WHOLE_BACKEND_FRONTEND_SOURCE_COMPARISON_ONLY"
   },
@@ -6557,45 +6565,59 @@
     }
   },
   "current_ci_alignment": {
-    "authority": "CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116",
-    "fixed_source": "aa19b49fad2618b1e01d071860f847cfbefb384b",
-    "previous_live_source": "0da4c8502928933bb61ba07b784206dec3a03bdc",
+    "authority": "CTO-AUTH-MVP-664659B9-FIVE-LEG-CI-ALIGNMENT-CODEXL-R1-20261118",
+    "fixed_source": "664659b9cebdb4fecdb4a975c7c4770cb56c60f3",
+    "previous_live_source": "aa19b49fad2618b1e01d071860f847cfbefb384b",
     "selection_counts": {
-      "tracked": 287,
-      "ordinary": 260,
+      "tracked": 292,
+      "ordinary": 264,
       "dedicated": 21,
-      "ignored": 6
+      "ignored": 6,
+      "non_executing": 1
     },
     "file_counts": {
-      "runtime-a": 99,
-      "runtime-b": 98,
+      "runtime-a": 100,
+      "runtime-b": 99,
       "topology": 39,
-      "invariants-jwt": 20,
+      "invariants-jwt": 22,
       "task-managed-pg": 4
     },
+    "source_ref": "664659b9cebdb4fecdb4a975c7c4770cb56c60f3",
     "node_counts": {
-      "runtime-a": null,
-      "runtime-b": null,
-      "topology": null,
-      "invariants-jwt": null,
-      "task-managed-pg": null
+      "runtime-a": 1741,
+      "runtime-b": 1722,
+      "topology": 798,
+      "invariants-jwt": 410,
+      "task-managed-pg": 92
     },
     "canonical_sha256": {
-      "runtime-a": null,
-      "runtime-b": null,
-      "topology": null,
-      "invariants-jwt": null,
-      "task-managed-pg": null
+      "runtime-a": "06de6c39cbc4785137a5c1d14d4fc75c7948c6f15b316e0dc79daea7a0f92ca8",
+      "runtime-b": "bd3fabb1f3aa9a9942ccf6b185ecd52fa8635cb057604e76a65e2442293caab5",
+      "topology": "c5b860246b7e6829d45924e4f608da4250e27ad519d2fae00eea11a268a38200",
+      "invariants-jwt": "9711b92784bb6eac7890f5ba17202c1098431524a1d29bc55c232f4a27e63e4c",
+      "task-managed-pg": "fb07315c5fa8c89517191a1df66db7f7447b0ec76cd8953c9715474544098d20"
     },
-    "current_collect": "NOT_RUN",
+    "ordered_nodeid_sha256": {
+      "runtime-a": "12014f673c2845adb943a22b77b8763ff304f9ee47ffc39525d369e99e6903d9",
+      "runtime-b": "196878b6786aa652e2ee4d248b584874cabeaf31dff7e5c95485de159c5eee1e",
+      "topology": "6e9d1e29ae44ea40c85bc8dd53c3c9441edbd74e976f6a90464cf4fac09be119",
+      "invariants-jwt": "f851c4383bea389a8c17254e60acc334176e75c00384a0a8158b6663431452da",
+      "task-managed-pg": "06e1299586219cfae00a68530d00d3d9becf32b48eee91d8ef3ef5623651cfc2"
+    },
+    "claim": "AUTHOR_NATIVE_COLLECT_ONLY__NOT_BUSINESS_OR_CI_PASS",
     "current_hosted_ci": "NOT_RUN",
     "backend_body": "NOT_RUN",
-    "author_three_nodes": "ACCEPTED_BYTES_ONLY__NOT_RERUN_OR_INDEPENDENT_ACCEPTANCE",
-    "matching_live_owner_branch": "NOT_VERIFIED",
     "historical_results_rebound": false,
     "release_ready": false,
-    "new_business_accepted_total": null,
-    "required_next_gate": "FIVE_ONCE_ONLY_FRESH_NATIVE_COLLECTS_THEN_CTO_FREEZE"
+    "non_executing_test_files": {
+      "tests/test_s3_db_performance.py": {
+        "mode": "100644",
+        "blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+        "bytes": 0,
+        "reason": "Historical empty shell since addition; performance coverage remains unproved",
+        "introduced_commit": "8024432aa083aa800ab888711a77cf366a8df213"
+      }
+    }
   },
   "previous_0da4_ci_alignment": {
     "record": "CURRENT_0DA4_CI_ONLY_ALIGNMENT_V1",
@@ -13394,6 +13416,126 @@
           "tests/s2_reorder/test_tcp_reorder.py::test_nr06_shortage_preserves_quantity_zero_effects_confirmation_atomic_refusal[KE]"
         ]
       }
+    ]
+  },
+  "previous_aa19_ci_alignment": {
+    "record": "CURRENT_AA19_OFFLINE_CI_ALIGNMENT_V1",
+    "authorization": "CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116",
+    "intake_status": "OFFLINE_CANDIDATE__FIVE_FRESH_COLLECTS_REQUIRED",
+    "intake_version": 14,
+    "product_anchor": "aa19b49fad2618b1e01d071860f847cfbefb384b",
+    "current_source_intake": {
+      "source_ref": "aa19b49fad2618b1e01d071860f847cfbefb384b",
+      "backend_tree": "7b4f9084ace9f580e4315f4fd6d040eaec023385",
+      "frontend_tree": "d9284c9f5c377880547d3631e719120b5372ceaa",
+      "historical_collection_ref": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
+      "current_native_collect": "NOT_RUN",
+      "current_hosted_ci": "NOT_RUN",
+      "claim": "WHOLE_BACKEND_FRONTEND_SOURCE_COMPARISON_ONLY",
+      "authorization": "CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116",
+      "source_tree": "cd54da3c40835fe02fb2b47ad4db39bb81f33c1e",
+      "source_parent": "2bd8f3859a0aa472bf9f90a83f2e45bbd4c58b3a",
+      "source_contract_commit": "aa19b49fad2618b1e01d071860f847cfbefb384b",
+      "independent_v3_this_intake": "NOT_RUN"
+    },
+    "selection_binding": {
+      "authority": "CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116",
+      "source_ref": "aa19b49fad2618b1e01d071860f847cfbefb384b",
+      "discovered_files": 287,
+      "ordinary_files": 260,
+      "dedicated_files": 21,
+      "ignores": 6,
+      "union": 281,
+      "intersection": 0,
+      "unknown": 0
+    },
+    "ordinary_canonical_status": "NOT_COLLECTED_THIS_ROUND",
+    "fixed_source_alignment": {
+      "authority": "CTO-AUTH-2ADD-CI-ALIGNMENT-AND-FIVE-COLLECT-CODEXL-R1-20261101",
+      "previous_comparison_source": "47716cdc88451e233c4142e7da0c3d82c368dd22",
+      "whole_backend_frontend_comparison_source": "aa19b49fad2618b1e01d071860f847cfbefb384b",
+      "live_comparison_authority": "CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116",
+      "historical_bindings_rebound": false,
+      "overall_source_ok": false,
+      "OLD_24_HOSTED_FAILURES": "OPEN__NOT_EXECUTED_THIS_TASK",
+      "R7_R5_FINAL_SCAN_AND_THREE_RESOURCE_ACTION_GAPS": "RETAINED",
+      "CI_SECRET_GATE": "UNADJUDICATED",
+      "hosted_ci": "NOT_RUN",
+      "merge_deploy_owner_trial_upgrade": "NOT_AUTHORIZED"
+    },
+    "fixed_live_source": {
+      "source_ref": "aa19b49fad2618b1e01d071860f847cfbefb384b",
+      "backend_tree": "7b4f9084ace9f580e4315f4fd6d040eaec023385",
+      "frontend_tree": "d9284c9f5c377880547d3631e719120b5372ceaa",
+      "historical_collection_ref": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
+      "current_native_collect": "NOT_RUN",
+      "current_hosted_ci": "NOT_RUN",
+      "claim": "WHOLE_BACKEND_FRONTEND_SOURCE_COMPARISON_ONLY"
+    },
+    "current_ci_alignment": {
+      "authority": "CTO-AUTH-AA19-CI-ALIGNMENT-OFFLINE-CODEXL-R1-20261116",
+      "fixed_source": "aa19b49fad2618b1e01d071860f847cfbefb384b",
+      "previous_live_source": "0da4c8502928933bb61ba07b784206dec3a03bdc",
+      "selection_counts": {
+        "tracked": 287,
+        "ordinary": 260,
+        "dedicated": 21,
+        "ignored": 6
+      },
+      "file_counts": {
+        "runtime-a": 99,
+        "runtime-b": 98,
+        "topology": 39,
+        "invariants-jwt": 20,
+        "task-managed-pg": 4
+      },
+      "node_counts": {
+        "runtime-a": null,
+        "runtime-b": null,
+        "topology": null,
+        "invariants-jwt": null,
+        "task-managed-pg": null
+      },
+      "canonical_sha256": {
+        "runtime-a": null,
+        "runtime-b": null,
+        "topology": null,
+        "invariants-jwt": null,
+        "task-managed-pg": null
+      },
+      "current_collect": "NOT_RUN",
+      "current_hosted_ci": "NOT_RUN",
+      "backend_body": "NOT_RUN",
+      "author_three_nodes": "ACCEPTED_BYTES_ONLY__NOT_RERUN_OR_INDEPENDENT_ACCEPTANCE",
+      "matching_live_owner_branch": "NOT_VERIFIED",
+      "historical_results_rebound": false,
+      "release_ready": false,
+      "new_business_accepted_total": null,
+      "required_next_gate": "FIVE_ONCE_ONLY_FRESH_NATIVE_COLLECTS_THEN_CTO_FREEZE"
+    },
+    "current_collection_binding": {
+      "source_ref": "aa19b49fad2618b1e01d071860f847cfbefb384b",
+      "node_counts": {
+        "runtime-a": null,
+        "runtime-b": null,
+        "topology": null,
+        "invariants-jwt": null,
+        "task-managed-pg": null
+      },
+      "canonical_sha256": {
+        "runtime-a": null,
+        "runtime-b": null,
+        "topology": null,
+        "invariants-jwt": null,
+        "task-managed-pg": null
+      },
+      "claim": "NOT_COLLECTED_THIS_ROUND"
+    },
+    "explicit_non_claims": [
+      "S is an existing source authority, not a new CI or business pass.",
+      "Current nodes and canonical are unknown; old native results remain in previous_0da4_ci_alignment.",
+      "Whole backend/frontend and external-path refusal algorithms remain authoritative, including tests.",
+      "No new collect, full tool gate, hosted CI, independent acceptance or release is claimed."
     ]
   }
 }

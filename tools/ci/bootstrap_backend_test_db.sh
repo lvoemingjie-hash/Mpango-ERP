@@ -15,7 +15,7 @@
 #   phase 1c pgcrypto pre-install (admin, task DB, before/after catalog
 #            facts) — tests need it; app never gains public CREATE
 #   phase 2  migrate    (migration authority)    alembic through exactly
-#            044_inventory_adjustment_approval + REPORTING_USER_PASSWORD (migration 011)
+#            046_staff_credential_recovery + REPORTING_USER_PASSWORD (migration 011)
 #   phase 3  grants     (migration authority)    provisioner --apply-grants
 #   phase 4  verify     (read-only)              provisioner --verify
 #   phase 4b read-only capability probe          operator attributes and
@@ -175,8 +175,9 @@ if [ -z "$PROFILE_DIR" ]; then
 fi
 mkdir -p "$PROFILE_DIR" "$(dirname "$PLAN_FILE")"
 
-"$PY_RUNNER" - "$REPO_ROOT" "$PLAN_FILE" "$PROFILE_DIR" "$TEST_DB" "$ADMIN_USER" "$MIGRATE_USER" "$APP_USER" "$OPERATOR_USER" "$PG_CONTAINER_ID" "$REDIS_CONTAINER_ID" "$OWNER_LABEL" <<'PY'
+"$PY_RUNNER" - "$REPO_ROOT" "$PLAN_FILE" "$PROFILE_DIR" "$TEST_DB" "$ADMIN_USER" "$MIGRATE_USER" "$APP_USER" "$OPERATOR_USER" "$PG_CONTAINER_ID" "$REDIS_CONTAINER_ID" "$OWNER_LABEL" "${BASH_SOURCE[0]}" <<'PY'
 import ast
+import importlib.util
 import json
 import subprocess
 import sys
@@ -187,6 +188,7 @@ plan_path = Path(sys.argv[2])
 profile_dir = Path(sys.argv[3])
 test_db, admin_user, migrate_user, app_user, operator_user = sys.argv[4:9]
 pg_container, redis_container, owner_label = sys.argv[9:12]
+evidence_tool = Path(sys.argv[12]).resolve().with_name("prepare_test_evidence.py")
 
 frozen_ignores = [
     "tests/test_s3c_cache.py",
@@ -341,7 +343,19 @@ all_files = sorted(
 if any(not (repo / "backend" / name).is_file() for name in all_files):
     print("REFUSED: GIT_TRACKED_TEST_FILE_MISSING", file=sys.stderr)
     sys.exit(3)
-selected = [f for f in all_files if f not in frozen_ignores]
+spec = importlib.util.spec_from_file_location("ci_selection_contract", evidence_tool)
+selection_contract = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(selection_contract)
+try:
+    non_executing = selection_contract._validated_non_executing_files(repo)
+except selection_contract.Refused as error:
+    print(f"REFUSED: {error}", file=sys.stderr)
+    sys.exit(3)
+non_executing_paths = {entry["path"] for entry in non_executing["files"]}
+if not non_executing_paths <= set(all_files) or non_executing_paths & set(frozen_ignores):
+    print("REFUSED: NON_EXECUTING_TRACKED_PARTITION_DRIFT", file=sys.stderr)
+    sys.exit(3)
+selected = [f for f in all_files if f not in frozen_ignores and f not in non_executing_paths]
 if not selected:
     print("REFUSED: empty selection (no test_*.py remain after the frozen ignores); refusing to emit a zero-test plan", file=sys.stderr)
     sys.exit(3)
@@ -381,6 +395,8 @@ if sum(len(v) for v in partition.values()) != len(ordinary_files):
     sys.exit(3)
 
 plan = {
+    "repo_root": str(repo.resolve()),
+    "non_executing_files": non_executing,
     "authorization": "CTO-AUTH-MVP-RC4-CURRENT-CI-INTAKE-CODEXL-R1-20261024",
     "classifier": "AST module imports + module-level os.environ constant references (structural; no substring keyword matching)",
     "source_recipe": "backend/scripts/setup.sh + backend/tests/task_owned_pg_resources.py",
@@ -394,7 +410,7 @@ plan = {
         {"phase": 1, "name": "provision", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--provision", "identity": "admin (maintenance DB)", "roles": [migrate_user, app_user]},
         {"phase": "1b", "name": "task operator supply", "tool": "psql via private stdin", "identity": "admin (maintenance DB)", "grants": ["LOGIN", "CREATEDB (task authorization)", "CREATEROLE (task authorization)", "SET-only membership of " + migrate_user + " (non-inheriting)"]},
         {"phase": "1c", "name": "pgcrypto pre-install", "tool": "psql admin on task DB", "identity": "admin", "evidence": "before/after pg_extension catalog facts"},
-        {"phase": 2, "name": "migrate", "tool": "alembic upgrade head", "head": "044_inventory_adjustment_approval", "identity": "migration authority (database owner)"},
+        {"phase": 2, "name": "migrate", "tool": "alembic upgrade 046_staff_credential_recovery", "head": "046_staff_credential_recovery", "identity": "migration authority (database owner)"},
         {"phase": 3, "name": "apply-grants", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--apply-grants", "identity": "migration authority"},
         {"phase": 4, "name": "verify", "tool": "backend/scripts/provision_runtime_db_roles.py", "mode": "--verify", "identity": "read-only"},
         {"phase": "4b", "name": "capability probe", "tool": "read-only catalog SELECTs", "checks": ["operator rolcreatedb/rolcreaterole true, rolsuper/rolinherit false", "SET-only membership (set_option true, inherit_option false)"]},
@@ -434,6 +450,7 @@ plan = {
     },
     "selection_counts": {
         "collected_test_files": len(all_files),
+        "non_executing": len(non_executing_paths),
         "selected": len(selected),
         "dedicated": len(dedicated_files),
         "ordinary": len(ordinary_files),
@@ -622,16 +639,16 @@ PGCRYPTO_AFTER="$(run_psql "$ADMIN_USER" "$ADMIN_PASSWORD" "$TEST_DB" "SELECT co
 [ "$PGCRYPTO_AFTER" = "1" ] || refuse "pgcrypto not present after install (before=${PGCRYPTO_BEFORE}, after=${PGCRYPTO_AFTER})"
 echo "[supply] pgcrypto catalog facts: before=${PGCRYPTO_BEFORE} after=${PGCRYPTO_AFTER}"
 
-# ---- phase 2: migrations through exactly 044 as the migration authority ----
-echo "[supply] phase 2/5 migrate (migration authority; alembic upgrade head)"
+# ---- phase 2: migrations through exactly 046 as the migration authority ----
+echo "[supply] phase 2/5 migrate (migration authority; alembic upgrade 046_staff_credential_recovery)"
 (
     cd "$REPO_ROOT/backend"
     export DATABASE_URL="$MIGRATE_URL" REPORTING_USER_PASSWORD="$REPORTING_PASSWORD"
-    poetry run alembic upgrade head 2>&1 | REDACTED_TOOL_PIPE
+    poetry run alembic upgrade 046_staff_credential_recovery 2>&1 | REDACTED_TOOL_PIPE
 )
 HEAD_ROW="$(run_psql "$MIGRATE_USER" "$MIGRATE_PASSWORD" "$TEST_DB" "SELECT version_num FROM public.alembic_version")"
-[ "$HEAD_ROW" = "044_inventory_adjustment_approval" ] || refuse "alembic head is '$HEAD_ROW', expected exactly 044_inventory_adjustment_approval"
-echo "[supply] alembic head verified: 044_inventory_adjustment_approval"
+[ "$HEAD_ROW" = "046_staff_credential_recovery" ] || refuse "alembic head is '$HEAD_ROW', expected exactly 046_staff_credential_recovery"
+echo "[supply] alembic head verified: 046_staff_credential_recovery"
 
 # ---- phase 3: minimum runtime grants ----------------------------------------
 echo "[supply] phase 3/5 apply-grants (migration authority)"

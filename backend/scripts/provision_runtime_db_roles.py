@@ -219,6 +219,97 @@ def _assert_sanctioned_sql(sql: str) -> str:
     return sql
 
 
+# Exact object exception to the legacy public-schema reporting defaults.
+# Deployment order is apply-grants -> verify -> runtime readiness; publishing
+# this source or running Alembic alone does not change an existing ACL.
+PLATFORM_RECOVERY_REPORTING_REVOKE = (
+    'REVOKE SELECT ON public.platform_operator_recovery_credentials '
+    'FROM reporting_user, reporting_role, PUBLIC'
+)
+
+PLATFORM_RECOVERY_REPORTING_SQL = """
+WITH target AS (
+    SELECT to_regclass('public.platform_operator_recovery_credentials') AS oid
+), principals AS (
+    SELECT oid, rolname FROM pg_roles
+    WHERE rolname IN ('reporting_user', 'reporting_role')
+), readers AS (
+    SELECT r.rolname, has_table_privilege(r.oid, t.oid, 'SELECT') AS table_read,
+           has_any_column_privilege(r.oid, t.oid, 'SELECT') AS column_read
+    FROM principals r CROSS JOIN target t
+)
+SELECT t.oid IS NOT NULL AS object_exists,
+       (SELECT count(*)=2 FROM principals) AS principals_exist,
+       COALESCE((SELECT bool_or(table_read) FROM readers), TRUE) AS table_read,
+       COALESCE((SELECT bool_or(column_read) FROM readers), TRUE) AS column_read,
+       (EXISTS (
+           SELECT 1 FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) x
+           WHERE c.oid=t.oid AND x.grantee=0 AND x.privilege_type='SELECT'
+        ) OR EXISTS (
+           SELECT 1 FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) x
+           WHERE a.attrelid=t.oid AND a.attnum>0 AND NOT a.attisdropped
+             AND x.grantee=0 AND x.privilege_type='SELECT'
+        )) AS public_read,
+       ARRAY(
+           SELECT r.rolname || '.' || a.attname
+           FROM principals r CROSS JOIN target q
+           JOIN pg_attribute a ON a.attrelid=q.oid
+           WHERE a.attnum>0 AND NOT a.attisdropped
+             AND has_column_privilege(r.oid,q.oid,a.attnum,'SELECT')
+           ORDER BY r.rolname,a.attnum
+       ) AS reader_columns,
+       ARRAY(
+           SELECT COALESCE(r.rolname,'PUBLIC') || '.' || a.attname
+           FROM pg_attribute a CROSS JOIN LATERAL aclexplode(a.attacl) x
+           LEFT JOIN pg_roles r ON r.oid=x.grantee
+           WHERE a.attrelid=t.oid AND a.attnum>0 AND NOT a.attisdropped
+             AND x.privilege_type='SELECT'
+             AND (x.grantee=0 OR r.rolname IN ('reporting_user','reporting_role'))
+           ORDER BY x.grantee,a.attnum
+       ) AS explicit_column_readers,
+       ARRAY(
+           SELECT r.rolname FROM pg_roles r CROSS JOIN target q
+           JOIN pg_roles u ON u.rolname='reporting_user'
+           WHERE q.oid IS NOT NULL
+             AND r.rolname NOT IN ('reporting_user','reporting_role')
+             AND (pg_has_role(u.oid,r.oid,'USAGE') OR pg_has_role(u.oid,r.oid,'SET'))
+             AND (has_table_privilege(r.oid,q.oid,'SELECT')
+                  OR has_any_column_privilege(r.oid,q.oid,'SELECT'))
+           ORDER BY r.rolname
+       ) AS unknown_reader_roles
+FROM target t
+"""
+
+
+def platform_recovery_reporting_refusals(facts: dict) -> list[str]:
+    """One object's catalog-only policy, shared by verify and readiness.
+
+    Column ACLs and other reachable reader roles are reported, never silently
+    revoked. SET-only membership is also a reader path, even without INHERIT.
+    No credential value is queried or returned by this policy.
+    """
+    flags = ('object_exists', 'principals_exist', 'table_read', 'column_read', 'public_read')
+    arrays = ('reader_columns', 'explicit_column_readers', 'unknown_reader_roles')
+    if (any(type(facts.get(k)) is not bool for k in flags)
+            or any(not isinstance(facts.get(k), list)
+                   or any(not isinstance(v, str) for v in facts[k]) for k in arrays)):
+        return ['PLATFORM_RECOVERY_REPORTING_FACTS_INVALID']
+    reasons = []
+    if not facts['object_exists']:
+        reasons.append('PLATFORM_RECOVERY_REPORTING_OBJECT_MISSING')
+    if not facts['principals_exist']:
+        reasons.append('PLATFORM_RECOVERY_REPORTING_PRINCIPALS_MISSING')
+    if facts['table_read']:
+        reasons.append('PLATFORM_RECOVERY_REPORTING_TABLE_READ')
+    if facts['column_read'] or facts['reader_columns'] or facts['explicit_column_readers']:
+        reasons.append('PLATFORM_RECOVERY_REPORTING_COLUMN_READ')
+    if facts['public_read']:
+        reasons.append('PLATFORM_RECOVERY_REPORTING_PUBLIC_READ')
+    if facts['unknown_reader_roles']:
+        reasons.append('PLATFORM_RECOVERY_REPORTING_UNAPPROVED_ROLE_PATH')
+    return reasons
+
+
 class ClusterBindingError(RuntimeError):
     """Zero-write refusal: the three URLs do not describe one deployment."""
 
@@ -705,6 +796,24 @@ class Provisioner:
                     await migrate.execute('REVOKE DELETE, TRUNCATE, REFERENCES, TRIGGER '
                         f'ON public.staff_credential_recovery_tokens FROM "{self.app_role}"')
                     await migrate.execute('REVOKE ALL ON public.staff_credential_recovery_tokens FROM PUBLIC, reporting_user, reporting_role')
+                if await migrate.fetchval("SELECT to_regclass('public.platform_operator_recovery_credentials')"):
+                    before = dict(await migrate.fetchrow(PLATFORM_RECOVERY_REPORTING_SQL))
+                    if before['explicit_column_readers']:
+                        # PostgreSQL's table-level REVOKE also removes these
+                        # column ACLs. Refuse before it can conceal an
+                        # unreviewed column grant; the transaction rolls back.
+                        raise RuntimeError('PLATFORM_RECOVERY_REPORTING_COLUMN_READ; columns=' +
+                                           repr(before['explicit_column_readers']))
+                    await migrate.execute(_assert_sanctioned_sql(PLATFORM_RECOVERY_REPORTING_REVOKE))
+                    facts = dict(await migrate.fetchrow(PLATFORM_RECOVERY_REPORTING_SQL))
+                    refused = platform_recovery_reporting_refusals(facts)
+                    if refused:
+                        # Exact known-role revocation is atomic with the other
+                        # grants. Unknown role/column ACLs require review; do
+                        # not broaden this tool's destructive authority.
+                        raise RuntimeError('; '.join(refused) +
+                                           '; columns=' + repr(facts['reader_columns']) +
+                                           '; roles=' + repr(facts['unknown_reader_roles']))
             print(
                 f"[grants] {len(statements)} minimum grants applied as "
                 f"{self.migrate_role}"
@@ -843,6 +952,10 @@ class Provisioner:
 
         migrate = await asyncpg.connect(self.migrate_url)
         try:
+            reporting_facts = dict(await migrate.fetchrow(PLATFORM_RECOVERY_REPORTING_SQL))
+            reporting_refusals = platform_recovery_reporting_refusals(reporting_facts)
+            _record('platform_recovery_reporting_privileges', not reporting_refusals,
+                    reasons=reporting_refusals, **reporting_facts)
             row = await migrate.fetchrow(
                 "SELECT p.oid::bigint AS function_oid, "
                 "pg_get_userbyid(p.proowner) AS owner, "

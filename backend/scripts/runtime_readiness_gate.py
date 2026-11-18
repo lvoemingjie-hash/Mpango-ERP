@@ -200,6 +200,19 @@ async def _probe_reporting(reason, tenant: str, runtime_database_url: str) -> No
                     reason("reporting identity privilege surface mismatch: "
                            + name + " expected " + str(expectations[name]))
                     return
+            # Required deployment chain: authorized apply-grants, then verify,
+            # then this read-only gate. Alembic/source publication alone does
+            # not close a pre-existing reporting ACL.
+            from scripts.provision_runtime_db_roles import (
+                PLATFORM_RECOVERY_REPORTING_SQL,
+                platform_recovery_reporting_refusals,
+            )
+            facts = dict((await conn.execute(_text(PLATFORM_RECOVERY_REPORTING_SQL))).mappings().one())
+            refused = platform_recovery_reporting_refusals(facts)
+            if refused:
+                reason('; '.join(refused) + '; columns=' + repr(facts['reader_columns']) +
+                       '; roles=' + repr(facts['unknown_reader_roles']))
+                return
     except Exception as exc:  # noqa: BLE001 - named type only, no detail echo
         reason("reporting connection refused or unusable: "
                + type(exc).__name__)

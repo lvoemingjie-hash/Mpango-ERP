@@ -611,8 +611,15 @@ async def test_migration_schema_sanity_uses_current_single_head():
     alembic_cfg = Config(str(backend_dir / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(backend_dir / "alembic"))
     script = ScriptDirectory.from_config(alembic_cfg)
-    assert script.get_heads() == ["044_inventory_adjustment_approval"]
-    assert script.get_current_head() == "044_inventory_adjustment_approval"
+    head = "046_staff_credential_recovery"
+    assert script.get_heads() == [head]
+    assert script.get_current_head() == head
+    ancestors = {migration.revision for migration in script.iterate_revisions(head, "base")}
+    assert {
+        "026_tenant_onboarding_auth_contract",
+        "027_onboarding_status_tokens",
+        "028_owner_credential_setup_tokens",
+    } <= ancestors
 
     assert TenantRegistration.__tablename__ == "tenant_registrations"
     assert EmailVerificationToken.__tablename__ == "email_verification_tokens"

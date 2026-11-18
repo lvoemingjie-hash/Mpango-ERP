@@ -51,8 +51,13 @@ def _migration_identity_prep_url() -> str:
 
 def _ensure_public_tables(_session=None) -> None:
     """Read-only admission: the native five-stage supply owns public DDL."""
-    import psycopg2
+    from pathlib import Path
     from urllib.parse import unquote, urlsplit
+
+    import psycopg2
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
     from core.config import get_settings
 
     configured = get_settings().DATABASE_URL
@@ -60,6 +65,15 @@ def _ensure_public_tables(_session=None) -> None:
         raise RuntimeError("DC11D_RUNTIME_DATABASE_REQUIRED")
     url = configured.replace("postgresql+asyncpg://", "postgresql://", 1)
     expected_database = unquote(urlsplit(url).path.lstrip("/"))
+    backend = Path(__file__).resolve().parents[1]
+    alembic = Config(str(backend / "alembic.ini"))
+    alembic.set_main_option("script_location", str(backend / "alembic"))
+    script = ScriptDirectory.from_config(alembic)
+    heads = script.get_heads()
+    assert len(heads) == 1, "DC11D_CURRENT_SINGLE_HEAD_REQUIRED"
+    assert "043_staff_authority_and_credentials" in {
+        migration.revision for migration in script.iterate_revisions(heads[0], "base")
+    }, "DC11D_PUBLIC_SUPPLY_ANCESTRY_REQUIRED"
     conn = psycopg2.connect(url, connect_timeout=10)
     try:
         conn.set_session(readonly=True)
@@ -72,10 +86,10 @@ def _ensure_public_tables(_session=None) -> None:
             cur.execute("SELECT to_regclass('public.alembic_version')")
             assert cur.fetchone()[0] is not None, "DC11D_CURRENT_HEAD_REQUIRED"
             cur.execute("SELECT version_num FROM public.alembic_version")
-            assert cur.fetchall() == [("044_inventory_adjustment_approval",)], "DC11D_CURRENT_HEAD_REQUIRED"
+            assert cur.fetchall() == [(heads[0],)], "DC11D_CURRENT_HEAD_REQUIRED"
             for name in ("wholesalers", "retailers", "wholesaler_retailer_bindings", "staff_stock_audit_events"):
-                cur.execute("SELECT to_regclass(%s)", ("public." + name,))
-                assert cur.fetchone()[0] is not None, "DC11D_CURRENT_PUBLIC_SUPPLY_REQUIRED"
+                cur.execute("SELECT relkind FROM pg_class WHERE oid=to_regclass(%s)", ("public." + name,))
+                assert cur.fetchone() in (("r",), ("p",)), "DC11D_CURRENT_PUBLIC_SUPPLY_REQUIRED"
     finally:
         conn.close()
 

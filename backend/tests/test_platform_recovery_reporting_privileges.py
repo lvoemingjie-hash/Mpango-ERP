@@ -1,15 +1,17 @@
-"""One fresh task PG: exact ACL correction, fail-closed gates and BI positives.
+"""One private task-managed PG: exact ACL correction and BI positives.
 
 This suite never selects credential values. LIMIT 0 checks statement admission;
 the optional synthetic app rows are rolled back. No production credentials,
 Operator login, mail, or recovery operation is performed.
 """
+import asyncio
 import json
 import os
 from pathlib import Path
-from urllib.parse import urlsplit
+from secrets import token_urlsafe
+import sys
+from urllib.parse import unquote, urlsplit
 from uuid import uuid4
-import asyncio
 
 import asyncpg
 import pytest
@@ -19,7 +21,9 @@ from scripts.provision_runtime_db_roles import (
     Provisioner, PLATFORM_RECOVERY_REPORTING_SQL,
     platform_recovery_reporting_refusals,
 )
+from scripts.bootstrap_tenant_schema import bootstrap
 from scripts.runtime_readiness_gate import evaluate_contract
+from tests.task_owned_pg_resources import _native, task_postgres
 
 pytestmark = pytest.mark.integration
 TARGET = 'public.platform_operator_recovery_credentials'
@@ -41,44 +45,76 @@ async def facts(world):
 
 
 async def gate(world):
-    return await asyncio.to_thread(evaluate_contract, world['app_url'], 't_test')
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv('REPORTING_DATABASE_URL', world['reporting_url'])
+        return await asyncio.to_thread(evaluate_contract, world['app_url'], 't_test')
 
 
 @pytest_asyncio.fixture(scope='module')
 async def world():
-    root = Path(os.environ['REPORTING_FIX_TASK_ROOT']).resolve(strict=True)
-    path = Path(os.environ['REPORTING_FIX_INPUT_JSON'])
-    assert path.parent == root / 'private' and path.name.startswith('B-test-inputs')
-    assert not path.is_symlink()
-    assert path.stat().st_uid == os.getuid() and path.stat().st_mode & 0o777 == 0o600
-    data = json.loads(path.read_text())
-    run = Path(os.environ['REPORTING_FIX_RUN_ROOT'])
-    assert run.parent == root and run.name in ('run', 'run-r2')
-    ready = json.loads((run / 'private/A/resources-ready.json').read_text())
-    assert ready['task'] == root.name + '-A'
-    assert ready['owner'] == 'codexl-recovery-reporting-r2-20261117'
-    pg = next(x for x in ready['containers'] if x['kind'] == 'pg')
-    binding = pg['ports']['5432/tcp']
-    assert len(binding) == 1 and binding[0]['HostIp'] == '127.0.0.1'
-    roles = {'app_url': 'mpango_app', 'migrate_url': 'mpango_migrate',
-             'admin_url': 'postgres', 'reporting_url': 'reporting_user'}
-    for key, role in roles.items():
-        u = urlsplit(data[key])
-        if not (u.scheme == 'postgresql' and u.hostname == '127.0.0.1'
-                and u.port == int(binding[0]['HostPort']) and u.username == role
-                and u.password and not u.query and not u.fragment
-                and u.path == ('/postgres' if role == 'postgres' else '/test_ci_mpango')):
-            raise RuntimeError('TASK_DATABASE_BINDING_INVALID')
-    if data['reporting_url'] != os.environ['REPORTING_DATABASE_URL']:
-        raise RuntimeError('REPORTING_RUNTIME_SOURCE_MISMATCH')
-    data['facts_dir'] = Path(os.environ['REPORTING_FIX_FACTS_DIR'])
-    assert data['facts_dir'].parent == root / 'private'
-    assert data['facts_dir'].name.startswith('B-pg-facts-')
-    data['facts_dir'].mkdir(mode=0o700)
-    data['provisioner'] = Provisioner(data['admin_url'], data['migrate_url'],
-                                    data['app_url'], 'mpango_migrate',
-                                    'mpango_app', 'test_ci_mpango')
-    yield data
+    shared = urlsplit(os.environ['DATABASE_URL'])
+    with task_postgres('reporting_acl', cluster_only=True) as cluster:
+        # The existing helper validates empty cluster, full ID/labels/image,
+        # volume and loopback mapping before yielding this endpoint.
+        app = urlsplit(cluster['runtime_endpoint'])
+        admin = urlsplit(cluster['admin_sync'])
+        assert app.hostname == admin.hostname == '127.0.0.1'
+        assert app.port == admin.port and app.port != (shared.port or 5432)
+        assert cluster['container'] != os.environ.get('CI_PG_CONTAINER_ID')
+        assert app.username == 'mpango_app' and app.password
+        assert admin.username == 'postgres' and admin.path == '/postgres'
+        database = app.path.removeprefix('/')
+        assert database == 'test_c91_reporting_acl'
+        migrate_password = token_urlsafe(32)
+        reporting_password = token_urlsafe(32)
+        migrate_url = app._replace(netloc=f'mpango_migrate:{migrate_password}@127.0.0.1:{app.port}').geturl()
+        reporting_url = app._replace(netloc=f'reporting_user:{reporting_password}@127.0.0.1:{app.port}').geturl()
+        provisioner = Provisioner(admin.geturl(), migrate_url, app.geturl(),
+                                  'mpango_migrate', 'mpango_app', database)
+        root = Path(cluster['private_root'])
+        data = dict(admin_url=admin.geturl(), migrate_url=migrate_url, app_url=app.geturl(),
+                    reporting_url=reporting_url, facts_dir=root, provisioner=provisioner)
+
+        await provisioner.create_roles_and_database(
+            app_password=unquote(app.password), migrate_password=migrate_password,
+        )
+        migration_env = {k: os.environ[k] for k in (
+            'HOME', 'PATH', 'LANG', 'VIRTUAL_ENV', 'PYTHONNOUSERSITE', 'SECRET_KEY',
+        ) if k in os.environ}
+        migration_env.update(
+            DATABASE_URL=migrate_url, MPANGO_ENV='test', REPORTING_USER_PASSWORD=reporting_password,
+            PYTHONPATH=str(Path(__file__).resolve().parents[1]), PYTHONDONTWRITEBYTECODE='1',
+        )
+        await asyncio.to_thread(
+            _native, root, 'reporting-migration',
+            [sys.executable, '-B', '-m', 'alembic', 'upgrade', '046_staff_credential_recovery'],
+            env=migration_env, timeout=120,
+        )
+        # Check the real fresh legacy ACL before the first application of the
+        # correction. No credential values are selected, even here.
+        initial = await facts(data)
+        assert initial['table_read'] is True and initial['column_read'] is True
+        await zero_row_read(data, True)
+        save(data, 'fresh-legacy-acl.json', {'facts': initial, 'limit_zero_read_admitted': True})
+        await provisioner.apply_minimum_grants()
+        await bootstrap('t_test', data['app_url'])
+        assert platform_recovery_reporting_refusals(await facts(data)) == []
+        assert await gate(data) == []
+        yield data
+
+
+@pytest_asyncio.fixture
+async def legacy_reader(world):
+    # Replay exactly the observed legacy table grant in this dedicated
+    # database so that readiness (which needs the tenant schema) can see it.
+    c = await asyncpg.connect(world['migrate_url'])
+    try:
+        await c.execute(f'GRANT SELECT ON {TARGET} TO reporting_role')
+        yield
+    finally:
+        # Restore only grants owned by this test if it stopped before apply.
+        await c.execute(f'REVOKE SELECT ON {TARGET} FROM reporting_user, reporting_role, PUBLIC')
+        await c.close()
 
 
 async def refused_gates(world, expected):
@@ -137,12 +173,12 @@ async def bi_and_app_positive(world):
             'app_transaction_rolled_back': True, 'credential_values_selected': False}
 
 
-async def test_legacy_reader_exact_apply_repeat_and_positive_consumers(world):
+async def test_legacy_reader_exact_apply_repeat_and_positive_consumers(world, legacy_reader):
     before = await facts(world)
     assert before['table_read'] is True and before['column_read'] is True
     await zero_row_read(world, True)
     old = await refused_gates(world, 'PLATFORM_RECOVERY_REPORTING_TABLE_READ')
-    save(world, '00-real-legacy-prestate.json', {'facts': before, 'gates': old,
+    save(world, '00-replayed-legacy-acl.json', {'facts': before, 'gates': old,
                                               'limit_zero_read_admitted': True})
     # Additional controlled direct/PUBLIC grants are synthetic cases, not a
     # claim that those were present in the historical default-ACL observation.

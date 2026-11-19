@@ -269,8 +269,9 @@ def current_rbac_sql(statement, params, *, schema, user_id, permissions, roles):
 
 class BoundIdentitySQL:
     """Only the two live-binding reads consumed by current_identity."""
-    def __init__(self, tenant_id, user_id, roles):
+    def __init__(self, tenant_id, user_id, roles, *, credential_epoch):
         self.tenant_id, self.user_id, self.roles = tenant_id, user_id, roles
+        self.credential_epoch = credential_epoch
 
     async def __aenter__(self):
         return self
@@ -287,10 +288,11 @@ class BoundIdentitySQL:
         if sql.startswith('SELECT id FROM public.wholesalers WHERE id=:tid '):
             assert str(params['tid']) == self.tenant_id
             return SQLReadResult([SimpleNamespace(id=uuid.UUID(self.tenant_id))])
-        expected = f'SELECT u.id, r.name FROM "t_{uuid.UUID(self.tenant_id).hex}".users u '
+        expected = f'SELECT u.id, u.credential_epoch, r.name FROM "t_{uuid.UUID(self.tenant_id).hex}".users u '
         assert sql.startswith(expected), 'UNMODELED_IDENTITY_SQL'
         assert str(params['uid']) == self.user_id
-        return SQLReadResult([SimpleNamespace(id=uuid.UUID(self.user_id), name=r) for r in self.roles])
+        return SQLReadResult([SimpleNamespace(id=uuid.UUID(self.user_id), name=r,
+            credential_epoch=self.credential_epoch) for r in self.roles])
 
 
 async def current_order_ledger(db, order_id):

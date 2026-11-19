@@ -108,6 +108,11 @@ async def world(request):
             f'INSERT INTO "{schema}".inventory_stocks (sku_id,quantity_on_hand) VALUES (:sid,100)'
         ), {"sid": sku})
         await db.commit()
+        epoch_rows = (await db.execute(text(
+            f'SELECT id,credential_epoch FROM "{schema}".users WHERE id IN (:actor,:customer)'
+        ), {"actor": actor, "customer": customer})).all()
+        epochs = {str(row.id): row.credential_epoch for row in epoch_rows}
+        assert set(epochs) == {str(actor), str(customer)}
 
     def session():
         db = factory()
@@ -119,8 +124,10 @@ async def world(request):
 
     yield {"schema": schema, "wid": str(wid), "rid": str(retailer), "actor": str(actor),
            "customer": str(customer), "sku": str(sku), "product": str(product), "session": session,
-           "token": create_contextual_token(str(actor), ["admin"], str(wid), schema),
-           "client_token": create_contextual_token(str(customer), ["retailer_operator"], str(wid), schema),
+           "token": create_contextual_token(str(actor), ["admin"], str(wid), schema,
+               credential_epoch=epochs[str(actor)]),
+           "client_token": create_contextual_token(str(customer), ["retailer_operator"], str(wid), schema,
+               credential_epoch=epochs[str(customer)]),
            "currency": "UGX" if country == "UG" else "KES", "tenant_code": code,
            "owner_email": code.lower() + "@example.com", "owner_password": owner_password,
            "customer_email": customer.hex + "@example.com", "customer_password": customer_password}

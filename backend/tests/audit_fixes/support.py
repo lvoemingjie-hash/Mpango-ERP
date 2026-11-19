@@ -85,8 +85,15 @@ async def full_world(country='KE'):
         configure_app(app, get_settings())
         assert not app.dependency_overrides
         assert type(app.state.auth_strategy).__name__ == 'JwtAuthStrategy'
-        token = create_contextual_token(str(sw.actor), ['admin'], str(sw.wid), sw.schema)
-        client_token = create_contextual_token(str(customer), ['retailer_operator'], str(sw.wid), sw.schema)
+        epoch_rows = await sql(
+            'SELECT id,credential_epoch FROM users WHERE id IN (:actor,:customer)',
+            {'actor': sw.actor, 'customer': customer})
+        epochs = {str(row['id']): row['credential_epoch'] for row in epoch_rows}
+        assert set(epochs) == {str(sw.actor), str(customer)}
+        token = create_contextual_token(str(sw.actor), ['admin'], str(sw.wid), sw.schema,
+            credential_epoch=epochs[str(sw.actor)])
+        client_token = create_contextual_token(str(customer), ['retailer_operator'], str(sw.wid), sw.schema,
+            credential_epoch=epochs[str(customer)])
         async with AsyncClient(transport=ASGITransport(app=app, raise_app_exceptions=False),
                 base_url='http://audit', headers={'Authorization': 'Bearer '+token,
                     'X-Forwarded-For': '10.'+'.'.join(str(x) for x in secrets.token_bytes(3))},

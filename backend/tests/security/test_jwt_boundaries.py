@@ -21,6 +21,20 @@ from core.security import (
 from core.config import get_settings
 
 
+_UNIT_USER_ID = "00000000-0000-0000-0000-000000000011"
+_UNIT_TENANT_ID = "00000000-0000-0000-0000-000000000022"
+_UNIT_SCHEMA = "t_" + _UNIT_TENANT_ID.replace("-", "")
+
+
+def _unit_identity_token(*, roles, token_type="access"):
+    """Explicit synthetic claim input, never a database/login authority."""
+    return create_identity_token(
+        user_id=_UNIT_USER_ID, roles=roles, token_type=token_type,
+        tenant_user_map={_UNIT_TENANT_ID: _UNIT_USER_ID},
+        tenant_credential_epochs={_UNIT_TENANT_ID: 7},
+    )
+
+
 class TestJWTTokenClaims:
     """Verify token claim structure for identity vs contextual tokens."""
 
@@ -76,8 +90,7 @@ class TestJWTTokenClaims:
 
     def test_super_admin_identity_token_has_super_admin_role(self):
         """Super admin Identity token should have super_admin role."""
-        token = create_identity_token(
-            user_id="super-admin-001",
+        token = _unit_identity_token(
             roles=["super_admin"],
             token_type="access",
         )
@@ -104,9 +117,7 @@ class TestScenarioA_IdentityJWTCannotAccessBusinessData:
         (get_tenant_db_session requires tenant_schema).
         """
         # Create an identity token (no tenant context)
-        identity_token = create_identity_token(
-            user_id="00000000-0000-0000-0000-000000000011",
-            tenant_user_map={"00000000-0000-0000-0000-000000000022": "00000000-0000-0000-0000-000000000011"},
+        identity_token = _unit_identity_token(
             roles=["admin"],
             token_type="access",
         )
@@ -131,7 +142,7 @@ class TestScenarioA_IdentityJWTCannotAccessBusinessData:
         # Authenticate - should succeed
         from tests.rc2_current_contract_support import BoundIdentitySQL
         session = BoundIdentitySQL("00000000-0000-0000-0000-000000000022",
-            "00000000-0000-0000-0000-000000000011", ["admin", "user"])
+            "00000000-0000-0000-0000-000000000011", ["admin", "user"], credential_epoch=7)
         with patch("database.session.AsyncSessionLocal", return_value=session):
             auth_ctx = await strategy.authenticate(mock_request)
         assert auth_ctx is not None
@@ -163,8 +174,7 @@ class TestScenarioB_IdentityJWTCannotSelectUnauthorizedTenant:
         # the target tenant schema. If not found or inactive, returns 403.
 
         # Create identity token for user who only has access to tenant-A
-        identity_token = create_identity_token(
-            user_id="user-tenant-a",
+        identity_token = _unit_identity_token(
             roles=["admin"],
             token_type="access",
         )
@@ -172,7 +182,7 @@ class TestScenarioB_IdentityJWTCannotSelectUnauthorizedTenant:
         payload = decode_token(identity_token)
 
         # Verify token is valid identity token
-        assert payload.user_id == "user-tenant-a"
+        assert payload.user_id == _UNIT_USER_ID
         assert payload.is_identity_only is True
 
         # The actual test would require a running backend with:
@@ -201,8 +211,7 @@ class TestScenarioC_SuperAdminIdentityJWTBoundaries:
         (like /wholesalers CRUD) via RequirePermission bypass.
         """
         # Create super admin identity token
-        token = create_identity_token(
-            user_id="super-admin-001",
+        token = _unit_identity_token(
             roles=["super_admin"],
             token_type="access",
         )
@@ -224,8 +233,7 @@ class TestScenarioC_SuperAdminIdentityJWTBoundaries:
         (orders, inventory, etc.) without selecting a tenant first.
         """
         # Create super admin identity token
-        token = create_identity_token(
-            user_id="super-admin-001",
+        token = _unit_identity_token(
             roles=["super_admin"],
             token_type="access",
         )
@@ -255,8 +263,7 @@ class TestTokenClaimInspection:
 
     def test_identity_token_payload_structure(self):
         """Verify Identity JWT has correct payload structure."""
-        token = create_identity_token(
-            user_id="test-user-123",
+        token = _unit_identity_token(
             roles=["manager", "viewer"],
             token_type="access",
         )
@@ -277,11 +284,12 @@ class TestTokenClaimInspection:
     def test_contextual_token_payload_structure(self):
         """Verify Contextual JWT has correct payload structure."""
         token = create_contextual_token(
-            user_id="test-user-123",
+            user_id=_UNIT_USER_ID,
             roles=["manager"],
-            tenant_id="tenant-abc",
-            tenant_schema="t_tenantabc",
+            tenant_id=_UNIT_TENANT_ID,
+            tenant_schema=_UNIT_SCHEMA,
             token_type="access",
+            credential_epoch=7,
         )
 
         settings = get_settings()
@@ -293,8 +301,8 @@ class TestTokenClaimInspection:
         assert "roles" in raw_payload
         assert "tenant_id" in raw_payload
         assert "tenant_schema" in raw_payload
-        assert raw_payload["tenant_id"] == "tenant-abc"
-        assert raw_payload["tenant_schema"] == "t_tenantabc"
+        assert raw_payload["tenant_id"] == _UNIT_TENANT_ID
+        assert raw_payload["tenant_schema"] == _UNIT_SCHEMA
 
 
 class TestMiddlewareBehavior:
@@ -311,9 +319,7 @@ class TestMiddlewareBehavior:
         strategy = JwtAuthStrategy()
 
         # Create identity token
-        identity_token = create_identity_token(
-            user_id="00000000-0000-0000-0000-000000000011",
-            tenant_user_map={"00000000-0000-0000-0000-000000000022": "00000000-0000-0000-0000-000000000011"},
+        identity_token = _unit_identity_token(
             roles=["user"],
             token_type="access",
         )
@@ -325,7 +331,7 @@ class TestMiddlewareBehavior:
         # Authenticate
         from tests.rc2_current_contract_support import BoundIdentitySQL
         session = BoundIdentitySQL("00000000-0000-0000-0000-000000000022",
-            "00000000-0000-0000-0000-000000000011", ["admin", "user"])
+            "00000000-0000-0000-0000-000000000011", ["admin", "user"], credential_epoch=7)
         with patch("database.session.AsyncSessionLocal", return_value=session):
             auth_ctx = await strategy.authenticate(mock_request)
         assert auth_ctx is not None, "authenticate() must return AuthContext for valid token"
@@ -362,11 +368,12 @@ class TestMiddlewareBehavior:
 
         # Create contextual token
         contextual_token = create_contextual_token(
-            user_id="test-user",
+            user_id=_UNIT_USER_ID,
             roles=["admin"],
-            tenant_id="tenant-123",
-            tenant_schema="t_tenant123",
+            tenant_id=_UNIT_TENANT_ID,
+            tenant_schema=_UNIT_SCHEMA,
             token_type="access",
+            credential_epoch=7,
         )
 
         # Create mock request
@@ -379,8 +386,8 @@ class TestMiddlewareBehavior:
 
         # Contextual JWT is NOT identity-only → middleware will NOT skip
         assert auth_ctx.token.is_identity_only is False
-        assert auth_ctx.token.tenant_id == "tenant-123"
-        assert auth_ctx.token.tenant_schema == "t_tenant123"
+        assert auth_ctx.token.tenant_id == _UNIT_TENANT_ID
+        assert auth_ctx.token.tenant_schema == _UNIT_SCHEMA
 
         # Verify the strategy branch: identity-only check is False,
         # so strategy.resolve_tenant_context will call the real

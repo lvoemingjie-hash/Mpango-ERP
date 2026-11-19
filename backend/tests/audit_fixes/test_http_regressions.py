@@ -235,8 +235,10 @@ async def test_receipt_ledger_failure_rolls_back_entire_payment(world):
 
 @pytest.mark.parametrize('kind', ['refresh', 'unknown'])
 async def test_real_business_http_refuses_non_access_token(world, kind):
-    from core.security import create_contextual_token
-    token = create_contextual_token(str(world.uid), ['admin'], str(world.a), world.schema, token_type=kind)
+    from core.security import create_contextual_token, decode_token
+    session_token = world.client.headers['Authorization'].removeprefix('Bearer ')
+    token = create_contextual_token(str(world.uid), ['admin'], str(world.a), world.schema,
+        token_type=kind, credential_epoch=decode_token(session_token).credential_epoch)
     response = await world.client.get('/api/v1/wholesalers', headers={'Authorization': 'Bearer ' + token})
     assert response.status_code == 401, 'AUDIT-F06-REAL-HTTP-REJECT'
 

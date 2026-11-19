@@ -97,7 +97,10 @@ async def rl_tenant(rl_auth_schema):
              'p': hash_password(uuid.uuid4().hex)})
         await session.execute(text("INSERT INTO user_roles (user_id,role_id) SELECT :u,id FROM roles WHERE name='admin'"),
                               {'u': user_id})
-    yield {"schema": world.schema, "tenant_id": str(world.wid), "user_id": str(user_id)}
+        epoch = (await session.execute(text('SELECT credential_epoch FROM users WHERE id=:u'),
+                                       {'u': user_id})).scalar_one()
+    yield {"schema": world.schema, "tenant_id": str(world.wid), "user_id": str(user_id),
+           "credential_epoch": epoch}
     async with world.session() as session:
         await session.execute(text('DELETE FROM user_roles WHERE user_id=:u'), {'u': user_id})
         await session.execute(text('DELETE FROM users WHERE id=:u'), {'u': user_id})
@@ -147,6 +150,7 @@ def contextual_token(rl):
         tenant_id=rl["tenant_id"],
         tenant_schema=rl["schema"],
         token_type="access",
+        credential_epoch=rl["credential_epoch"],
     )
 
 
@@ -267,7 +271,8 @@ async def test_contextual_burst_stays_admitted_well_past_ip_limit(rl_tenant):
 
 async def test_identity_only_jwt_uses_ip_limit_100(rl_tenant):
     token = create_identity_token(user_id=rl_tenant["user_id"], roles=["admin"], token_type="access",
-        tenant_user_map={rl_tenant["tenant_id"]: rl_tenant["user_id"]})
+        tenant_user_map={rl_tenant["tenant_id"]: rl_tenant["user_id"]},
+        tenant_credential_epochs={rl_tenant["tenant_id"]: rl_tenant["credential_epoch"]})
     async with make_client(_make_test_ip(14)) as client:
         resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
         # Identity-only me is handled (H-Fix-01); it must stay on the IP limit.

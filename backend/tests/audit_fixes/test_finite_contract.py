@@ -228,11 +228,10 @@ async def test_identity_revocation_reaches_auth_boundary_without_platform_catalo
 
 async def test_missing_token_type_business_http_is_rejected():
     from core.config import get_settings
-    from core.security import create_contextual_token
     from jose import jwt
     async with full_world() as w:
         settings = get_settings()
-        raw = create_contextual_token(str(w.uid), ['admin'], str(w.a), w.schema)
+        raw = w.client.headers['Authorization'].removeprefix('Bearer ')
         payload = jwt.decode(raw, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         payload.pop('type')
         token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)

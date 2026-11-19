@@ -665,7 +665,9 @@ echo "[supply] phase 4/5 verify (read-only product contract)"
     cd "$REPO_ROOT/backend"
     export MPANGO_DB_ADMIN_URL="$MAINT_URL" MPANGO_DB_MIGRATE_URL="$MIGRATE_URL" MPANGO_DB_APP_URL="$APP_URL"
     export MPANGO_DB_MIGRATE_ROLE="$MIGRATE_USER" MPANGO_DB_APP_ROLE="$APP_USER"
-    poetry run python scripts/provision_runtime_db_roles.py --verify 2>&1 | REDACTED_TOOL_PIPE
+    # Verification imports sibling script modules on 045/046. Resolve them
+    # from this backend working directory without a caller PYTHONPATH.
+    poetry run python -m scripts.provision_runtime_db_roles --verify 2>&1 | REDACTED_TOOL_PIPE
 )
 
 # ---- phase 4b: read-only capability probe (operator authorization facts) ----

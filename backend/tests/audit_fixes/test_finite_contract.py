@@ -317,8 +317,21 @@ async def test_persisted_jobs_distinct_worker_processes_and_restart():
                 download = await w.client.get('/api/v1/exports/'+jid+'/download')
                 assert download.status_code == 200, download.text
                 contents.append(download.content)
+                # Read the signing epoch from this foreign tenant's actual actor row.
+                async with w.foreign.session() as foreign_db:
+                    foreign_identity = (await foreign_db.execute(text(
+                        'SELECT u.id,u.credential_epoch,r.wholesaler_id,r.tenant_schema,'
+                        'current_schema() AS active_schema '
+                        f'FROM "{w.foreign.schema}".users AS u '
+                        'JOIN public.tenant_registrations AS r ON r.id=:registration '
+                        'WHERE u.id=:uid'
+                    ), {'registration': w.foreign.registration, 'uid': w.foreign.actor})).mappings().one()
+                assert foreign_identity['id'] == w.foreign.actor
+                assert foreign_identity['wholesaler_id'] == w.foreign.wid == w.b
+                assert foreign_identity['tenant_schema'] == foreign_identity['active_schema'] == w.foreign.schema
                 foreign_token = __import__('core.security', fromlist=['create_contextual_token']).create_contextual_token(
-                    str(w.foreign.actor), ['admin'], str(w.b), w.foreign.schema)
+                    str(w.foreign.actor), ['admin'], str(w.b), w.foreign.schema,
+                    credential_epoch=foreign_identity['credential_epoch'])
                 denied = await w.client.get('/api/v1/exports/'+jid+'/download',
                     headers={'Authorization': 'Bearer '+foreign_token})
                 assert denied.status_code == 404, denied.text

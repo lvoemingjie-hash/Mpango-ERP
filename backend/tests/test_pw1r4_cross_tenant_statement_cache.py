@@ -75,7 +75,7 @@ EXACT_ROUTE = "/api/v1/client/orders?page=1&size=100"
 # ---------------------------------------------------------------------------
 # R2-R3 (DC-12R1-MVP-L1-J1-H2-B): exact public-row ownership registry.
 # _seed_tenant_readiness commits synthetic public wholesaler/retailer/binding
-# rows with random UUIDs; the module's own cleanup drops only the t_r4a_*
+# rows with task-owned UUIDs; the module's own cleanup drops only its registered
 # schemas, so those public rows survive the module and break the DC3B
 # password-reset scan (derived schema never exists for them). The registry
 # records every exact identity this module creates; the module-scoped
@@ -167,7 +167,7 @@ async def _seed_tenant_readiness(schema: str, user_id: str) -> None:
     public retailer/wholesaler rows, and one tenant-distinct order row.
     """
     retailer_id = uuid.uuid4()
-    wholesaler_id = uuid.uuid4()
+    wholesaler_id = uuid.UUID(schema.removeprefix("t_"))
     order_id = uuid.uuid4()
     async with AsyncSessionLocal() as s:
         await s.execute(text(f'SET LOCAL search_path TO "{schema}", public'))
@@ -267,8 +267,10 @@ async def _setup_two_tenants(
     if suffix is None:
         suffix = uuid.uuid4().hex[:8]
     owned: list[str] = []
-    a = f"t_r4a_a_{suffix}"
-    b = f"t_r4a_b_{suffix}"
+    # Keep the task suffix and distinct A/B tail markers, while satisfying
+    # the production UUID -> canonical schema binding contract.
+    a = f"t_{'0' * 23}{suffix}a"
+    b = f"t_{'0' * 23}{suffix}b"
     ddl_engine = None
     try:
         await bootstrap(a, _async_db_url())
@@ -289,6 +291,13 @@ async def _setup_two_tenants(
                 raise original_error or _ForcedFailure("injected: user_seed")
         ws_a = await seed(a, user_a)
         ws_b = await seed(b, user_b)
+        async with AsyncSessionLocal() as session:
+            epoch_a = (await session.execute(text(
+                f'SELECT credential_epoch FROM "{a}".users WHERE id=:u'
+            ), {"u": uuid.UUID(user_a)})).scalar_one()
+            epoch_b = (await session.execute(text(
+                f'SELECT credential_epoch FROM "{b}".users WHERE id=:u'
+            ), {"u": uuid.UUID(user_b)})).scalar_one()
 
         if fail_at == "before_ddl_engine":
             raise original_error or _ForcedFailure("injected: before_ddl_engine")
@@ -297,8 +306,8 @@ async def _setup_two_tenants(
         return {
             # tenant_id MUST equal the seeded public.wholesalers.id: the
             # binding lookup keys on token.tenant_id == binding.wholesaler_id.
-            "a": {"schema": a, "tenant_id": ws_a, "user_id": user_a},
-            "b": {"schema": b, "tenant_id": ws_b, "user_id": user_b},
+            "a": {"schema": a, "tenant_id": ws_a, "user_id": user_a, "credential_epoch": epoch_a},
+            "b": {"schema": b, "tenant_id": ws_b, "user_id": user_b, "credential_epoch": epoch_b},
             "owned": owned,
             "ddl_engine": ddl_engine,
         }
@@ -471,6 +480,7 @@ def token_for(tenant: dict) -> str:
         tenant_id=tenant["tenant_id"],
         tenant_schema=tenant["schema"],
         token_type="access",
+        credential_epoch=tenant["credential_epoch"],
     )
 
 
@@ -724,7 +734,7 @@ async def _assert_no_residue(owned: list[str]) -> None:
 
 async def test_forced_failure_second_bootstrap_cleans_first_schema():
     suffix = uuid.uuid4().hex[:8]
-    a = f"t_r4a_a_{suffix}"
+    a = f"t_{'0' * 23}{suffix}a"
     with pytest.raises(_ForcedFailure, match="second_bootstrap") as ei:
         await _setup_two_tenants(fail_at="second_bootstrap", suffix=suffix)
     # original exception type/message preserved (no overwrite)
@@ -739,7 +749,7 @@ async def test_forced_failure_user_seed_reraises_same_original_object():
     exception object (object identity, not a copy/reconstruction) after
     cleaning both tenants, and the independent proof sees zero residue."""
     suffix = uuid.uuid4().hex[:8]
-    owned = [f"t_r4a_a_{suffix}", f"t_r4a_b_{suffix}"]
+    owned = [f"t_{'0' * 23}{suffix}a", f"t_{'0' * 23}{suffix}b"]
     original_error = _ForcedFailure("injected: user_seed")
     with pytest.raises(_ForcedFailure) as ei:
         await _setup_two_tenants(
@@ -753,7 +763,7 @@ async def test_forced_failure_user_seed_reraises_same_original_object():
 
 async def test_forced_failure_before_ddl_engine_cleans_both_schemas():
     suffix = uuid.uuid4().hex[:8]
-    owned = [f"t_r4a_a_{suffix}", f"t_r4a_b_{suffix}"]
+    owned = [f"t_{'0' * 23}{suffix}a", f"t_{'0' * 23}{suffix}b"]
     with pytest.raises(_ForcedFailure, match="before_ddl_engine"):
         await _setup_two_tenants(fail_at="before_ddl_engine", suffix=suffix)
     await _assert_no_residue(owned)
@@ -770,7 +780,7 @@ async def test_cleanup_failure_raises_exception_group_with_original_and_cleanup(
     leaves the schemas in place, so the fail-closed finally drops them with
     the real helper and proves zero residue independently."""
     suffix = uuid.uuid4().hex[:8]
-    owned = [f"t_r4a_a_{suffix}", f"t_r4a_b_{suffix}"]
+    owned = [f"t_{'0' * 23}{suffix}a", f"t_{'0' * 23}{suffix}b"]
     original_error = _ForcedFailure("injected: user_seed")
     cleanup_error = _ForcedFailure("injected: cleanup failure")
     try:

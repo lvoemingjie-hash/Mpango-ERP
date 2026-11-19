@@ -201,10 +201,13 @@ async def test_real_asgi_export_exit(endpoint, finish, monkeypatch, request):
             receipt.update(complete_body=completed, disconnected=disconnected.is_set(),
                 received_lines=b''.join(chunks).count(b'\n'), error_types=[type(e).__name__ for e in leaves(observed_error)] if observed_error else [])
             phase['name'] = 'followup'
-            token = create_contextual_token(str(w.foreign.actor), ['admin'], str(w.b), w.foreign.schema)
             foreign_stock_ids = set()
             async with w.foreign.session() as db:
                 foreign_stock_ids = {str(x) for x in (await db.execute(text('SELECT id FROM inventory_stocks'))).scalars()}
+                epoch = (await db.execute(text('SELECT credential_epoch FROM users WHERE id=:u'),
+                    {'u': w.foreign.actor})).scalar_one()
+            token = create_contextual_token(str(w.foreign.actor), ['admin'], str(w.b), w.foreign.schema,
+                credential_epoch=epoch)
             followups = []
             for _ in range(2):
                 response = await w.client.get('/api/v1/inventory/export', headers={'Authorization': 'Bearer ' + token})

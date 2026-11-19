@@ -1864,6 +1864,7 @@ _BEARER_USER_ID = UUID("00000000-0000-4000-8000-000000000020")
 
 class _BearerIdentityRow(NamedTuple):
     id: UUID
+    credential_epoch: int | None = None
     name: str | None = None
 
 
@@ -1887,6 +1888,7 @@ class _BearerIdentityIO:
         self.wholesaler_live = True
         self.user_live = True
         self.roles = ("super_admin",)
+        self.credential_epoch = 7  # Independently declared unit I/O authority.
         self.opened = 0
         self.closed = 0
         self.nested = 0
@@ -1923,7 +1925,7 @@ class _BearerIdentityIO:
         )
         schema = "t_" + self.tenant_id.hex
         roles_sql = (
-            f'SELECT u.id, r.name FROM "{schema}".users u '
+            f'SELECT u.id, u.credential_epoch, r.name FROM "{schema}".users u '
             f'LEFT JOIN "{schema}".user_roles ur ON ur.user_id=u.id '
             f'LEFT JOIN "{schema}".roles r ON r.id=ur.role_id AND r.is_deleted IS FALSE '
             "WHERE u.id=:uid AND u.is_active IS TRUE AND u.is_deleted IS FALSE"
@@ -1942,8 +1944,8 @@ class _BearerIdentityIO:
             assert isinstance(params["uid"], UUID)
             self.query_log.append(("user_roles", params["uid"]))
             rows = (
-                tuple(_BearerIdentityRow(self.user_id, role) for role in self.roles)
-                or (_BearerIdentityRow(self.user_id),)
+                tuple(_BearerIdentityRow(self.user_id, self.credential_epoch, role) for role in self.roles)
+                or (_BearerIdentityRow(self.user_id, self.credential_epoch),)
                 if params["uid"] == self.user_id and self.user_live
                 else ()
             )
@@ -1999,6 +2001,7 @@ def _create_real_identity_token(
     return create_identity_token(
         user_id=user_id, roles=roles,
         tenant_user_map=tenant_user_map if include_binding else None,
+        tenant_credential_epochs={tid: 7 for tid in tenant_user_map} if include_binding else None,
     )
 
 
@@ -2146,6 +2149,9 @@ class TestBearerRealMiddleware:
 
     def test_real_no_auth_denied(self, monkeypatch, identity_io):
         """No auth or malformed signed bindings fail before any authority SQL."""
+        from core.config import get_settings
+        from jose import jwt
+
         monkeypatch.delenv("MPANGO_ENV", raising=False)
         monkeypatch.delenv("PLATFORM_OPERATOR_SECRET", raising=False)
         monkeypatch.delenv("PLATFORM_TEST_OVERRIDE_SECRET", raising=False)
@@ -2161,18 +2167,30 @@ class TestBearerRealMiddleware:
                 {"tenant_user_map": {"not-a-uuid": str(_BEARER_USER_ID)}},
                 {"tenant_user_map": {str(_BEARER_TENANT_ID): "not-a-uuid"}},
             )
+            config = get_settings()
+            valid = _create_real_identity_token(roles=["super_admin"])
             for inputs in malformed:
-                token = _create_real_identity_token(roles=["super_admin"], **inputs)
+                # A current issuer correctly refuses these inputs. Mutate a
+                # signed legal fixture to exercise the actual decoder boundary.
+                claims = jwt.decode(valid, config.SECRET_KEY, algorithms=[config.ALGORITHM])
+                if not inputs.get("include_binding", True):
+                    claims.pop("tmap")
+                    claims.pop("tver")
+                if "user_id" in inputs:
+                    claims["user_id"] = inputs["user_id"]
+                if "tenant_user_map" in inputs:
+                    claims["tmap"] = inputs["tenant_user_map"]
+                token = jwt.encode(claims, config.SECRET_KEY, algorithm=config.ALGORITHM)
                 denied = client.get(
                     "/api/v1/platform/p10/tenants",
                     headers={"Authorization": f"Bearer {token}"},
                 )
                 assert denied.status_code == 401
                 assert denied.json() == {
-                    "code": "IDENTITY_BINDING_REQUIRED",
-                    "message": "Identity is no longer authorized; sign in again",
+                    "code": "INVALID_TOKEN",
+                    "message": "Invalid token",
                 }
-        assert identity_io.opened == identity_io.closed == 4
+        assert identity_io.opened == identity_io.closed == 0
         assert identity_io.query_log == []
 
     def test_real_identity_super_admin_system_health(self, monkeypatch, identity_io):
@@ -2194,6 +2212,18 @@ class TestBearerRealMiddleware:
         assert identity_io.query_log == [
             ("wholesaler", _BEARER_TENANT_ID), ("user_roles", _BEARER_USER_ID),
         ]
+        assert endpoint_db.execute.await_count == 0
+        # Same signed token, independently changed current authority version.
+        identity_io.credential_epoch = 8
+        with TestClient(app) as client:
+            stale = client.get("/api/v1/platform/p10/system/health",
+                headers={"Authorization": f"Bearer {token}"})
+            assert stale.status_code == 401
+            assert stale.json() == {
+                "code": "SESSION_REVOKED",
+                "message": "Identity is no longer authorized; sign in again",
+            }
+        assert identity_io.opened == identity_io.closed == 2
         assert endpoint_db.execute.await_count == 0
 
 

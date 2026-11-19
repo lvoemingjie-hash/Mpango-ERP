@@ -417,13 +417,24 @@ class TestBindingFailClosed:
 @pytest.mark.usefixtures("registered_pool_ke")
 class TestTokenFailClosed:
     async def test_identity_only_jwt_denied(self, s3_client, two_tenants):
-        from core.security import create_identity_token
-        tok = create_identity_token(user_id=str(uuid.uuid4()), roles=["retailer_operator"])
+        from core.security import decode_token
+        _a, _b, _schema_b, email, password, uid_a, uid_b = two_tenants
+        login = await s3_client.post('/api/v1/auth/login',
+            json={'email': email, 'password': password})
+        assert login.status_code == HTTPStatus.OK
+        tok = login.json()['data']['access_token']
+        claims = decode_token(tok)
+        assert claims.is_identity_only and claims.tenant_id is None and claims.tenant_schema is None
+        assert set(claims.tmap.values()) == {uid_a, uid_b}
+        assert set(claims.tver) == set(claims.tmap)
+        headers = {"Authorization": f"Bearer {tok}"}
+        # The same credential must pass current database authority first.
+        assert (await s3_client.get('/api/v1/auth/me', headers=headers)).status_code == HTTPStatus.OK
         resp = await s3_client.get("/api/v1/client/products",
-            headers={"Authorization": f"Bearer {tok}"})
-        _assert_controlled_envelope(resp)
-        assert resp.status_code == HTTPStatus.UNAUTHORIZED
-        assert resp.json()["code"] == "IDENTITY_BINDING_REQUIRED"
+            headers=headers)
+        _assert_controlled_envelope(resp, allow=(HTTPStatus.FORBIDDEN,))
+        assert resp.status_code == HTTPStatus.FORBIDDEN
+        assert resp.json()["code"] == "TENANT_CONTEXT_REQUIRED"
 
     async def test_missing_token_denied(self, s3_client):
         resp = await s3_client.get("/api/v1/client/products")

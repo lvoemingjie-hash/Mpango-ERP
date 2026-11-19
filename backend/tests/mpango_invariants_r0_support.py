@@ -53,7 +53,9 @@ from sqlalchemy import text
 from database.session import AsyncSessionLocal, async_engine
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
-BASELINE_MIGRATION_HEAD = "044_inventory_adjustment_approval"
+# This fixture upgrades the current task database to head. Historical 044
+# coverage uses a separate database in the migration contract tests.
+BASELINE_MIGRATION_HEAD = "046_staff_credential_recovery"
 SUPERVISE_TIMEOUT_S = 30.0
 
 CONTAINER_ENV_VAR = "MPANGO_INVARIANTS_R0_PG_CONTAINER"
@@ -1338,7 +1340,7 @@ def apply_product_minimum_grants() -> None:
     for phase in ("--apply-grants", "--verify"):
         try:
             result = subprocess.run(
-                [sys.executable, str(provisioner), phase],
+                [sys.executable, "-m", "scripts.provision_runtime_db_roles", phase],
                 cwd=str(backend_dir),
                 capture_output=True,
                 text=True,

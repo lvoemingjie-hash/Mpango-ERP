@@ -99,7 +99,7 @@ class TestSessionProtocol:
 
 
 @pytest_asyncio.fixture
-async def live_session_world():
+async def live_session_world(monkeypatch):
     """Actual product provisioning and middleware; no injected AuthContext."""
     import os
     from fastapi import FastAPI, Depends
@@ -111,17 +111,26 @@ async def live_session_world():
     from core.error_codes import register_exception_handlers
     from tests.test_inventory_manual_adjustment_safety import StockWorld
 
-    assert get_settings().MPANGO_ENV == "staging"
-    assert os.environ["TEST_DATABASE_URL"] == os.environ["DATABASE_URL"]
+    settings = get_settings()
+    assert settings.MPANGO_ENV == "staging"
+    assert settings.DATABASE_URL == os.environ["TEST_DATABASE_URL"] == os.environ["DATABASE_URL"]
+    # The hosted parent also carries task supply aliases for the R0 harness.
+    # Hide those aliases only for this fixture; pytest restores them on teardown.
+    for key in (
+        "TEST_ADMIN_DATABASE_URL", "TEST_MIGRATION_DATABASE_URL", "TEST_OPERATOR_DATABASE_URL",
+        "MPANGO_INVARIANTS_R0_ADMIN_DATABASE_URL", "MPANGO_INVARIANTS_R0_MIGRATION_DATABASE_URL",
+    ):
+        monkeypatch.delenv(key, raising=False)
     assert not any(key in os.environ for key in (
         "TEST_ADMIN_DATABASE_URL", "TEST_MIGRATION_DATABASE_URL", "TEST_OPERATOR_DATABASE_URL",
+        "MPANGO_INVARIANTS_R0_ADMIN_DATABASE_URL", "MPANGO_INVARIANTS_R0_MIGRATION_DATABASE_URL",
         "MPANGO_DB_ADMIN_URL", "MPANGO_DB_MIGRATE_URL",
     ))
     world = StockWorld()
     await world.initialize()
     app = FastAPI()
     register_exception_handlers(app)
-    configure_app(app, get_settings())
+    configure_app(app, settings)
     assert isinstance(app.state.auth_strategy, JwtAuthStrategy)
     app.state.effects = 0
 

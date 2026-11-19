@@ -173,17 +173,33 @@ async def _set_tenant_status(identity: TenantIdentity, status: str) -> None:
         await db.commit()
 
 
-def _bearer(user_id: uuid.UUID, identity: TenantIdentity) -> str:
+async def _credential_epoch(user_id: uuid.UUID, identity: TenantIdentity) -> int:
+    async with tenant_session(identity.schema, identity.wholesaler_id) as db:
+        result = await db.execute(
+            text("SELECT credential_epoch FROM users WHERE id = :user_id"),
+            {"user_id": user_id},
+        )
+        return result.scalar_one()
+
+
+async def _bearer(user_id: uuid.UUID, identity: TenantIdentity) -> str:
     return create_contextual_token(
         str(user_id), ["r0_admin"], str(identity.wholesaler_id), identity.schema,
         token_type="access",
+        credential_epoch=await _credential_epoch(user_id, identity),
     )
 
 
-def _refresh(user_id: uuid.UUID, identity: TenantIdentity) -> str:
+async def _refresh(
+    user_id: uuid.UUID, identity: TenantIdentity, *, absent_subject_epoch: int | None = None,
+) -> str:
+    epoch = absent_subject_epoch
+    if epoch is None:
+        epoch = await _credential_epoch(user_id, identity)
     return create_contextual_token(
         str(user_id), ["r0_admin"], str(identity.wholesaler_id), identity.schema,
         token_type="refresh",
+        credential_epoch=epoch,
     )
 
 
@@ -496,7 +512,7 @@ async def test_r0_control_active_user_active_tenant_can_access(http_client):
             identity=identity, email=f"r0-{uuid.uuid4().hex[:8]}@example.com"
         )
         response = await http_client.get(
-            "/api/v1/skus", headers={"Authorization": "Bearer " + _bearer(user_id, identity)}
+            "/api/v1/skus", headers={"Authorization": "Bearer " + (await _bearer(user_id, identity))}
         )
         assert response.status_code == 200, (
             f"CONTROL: active user in active tenant must get 200, got {response.status_code}: {response.text[:300]}"
@@ -527,7 +543,7 @@ async def test_r0_control_deactivated_user_denied(http_client):
         )
         await _set_user_flags(identity=identity, user_id=user_id, is_active=False)
         response = await http_client.get(
-            "/api/v1/skus", headers={"Authorization": "Bearer " + _bearer(user_id, identity)}
+            "/api/v1/skus", headers={"Authorization": "Bearer " + (await _bearer(user_id, identity))}
         )
         assert response.status_code == 401, (
             f"CONTROL: deactivated user must be denied 401, got {response.status_code}"
@@ -571,7 +587,7 @@ async def test_r0_red_soft_deleted_user_in_active_tenant_denied(http_client):
         )
         await _set_user_flags(identity=identity, user_id=user_id, is_deleted=True)
         response = await http_client.get(
-            "/api/v1/skus", headers={"Authorization": "Bearer " + _bearer(user_id, identity)}
+            "/api/v1/skus", headers={"Authorization": "Bearer " + (await _bearer(user_id, identity))}
         )
         assert response.status_code == 401, (
             "INVARIANT_R0_SOFT_DELETED_USER_ACCESS: a soft-deleted user in an "
@@ -618,7 +634,7 @@ async def test_r0_red_active_user_in_suspended_tenant_denied(http_client):
         )
         await _set_tenant_status(identity, "suspended")
         response = await http_client.get(
-            "/api/v1/skus", headers={"Authorization": "Bearer " + _bearer(user_id, identity)}
+            "/api/v1/skus", headers={"Authorization": "Bearer " + (await _bearer(user_id, identity))}
         )
         assert response.status_code == 401, (
             "INVARIANT_R0_SUSPENDED_TENANT_ACCESS: an active user in a "
@@ -673,7 +689,8 @@ async def test_r0_red_refresh_nonexistent_principal_no_session(http_client):
     try:
         await _assert_refresh_refused(
             http_client,
-            _refresh(ghost_user, ghost),
+            # The target tenant and subject are absent by design.
+            await _refresh(ghost_user, ghost, absent_subject_epoch=1),
             "INVARIANT_R0_REFRESH_NONEXISTENT_PRINCIPAL",
             "a principal with no user row",
         )
@@ -714,7 +731,7 @@ async def test_r0_red_refresh_soft_deleted_user_no_session(http_client):
         user_id = await _seed_tenant_user(
             identity=identity, email=f"r0-{uuid.uuid4().hex[:8]}@example.com"
         )
-        old_refresh = _refresh(user_id, identity)
+        old_refresh = await _refresh(user_id, identity)
         await _set_user_flags(identity=identity, user_id=user_id, is_deleted=True)
 
         await _assert_refresh_refused(
@@ -754,7 +771,7 @@ async def test_r0_red_refresh_suspended_tenant_no_session(http_client):
         user_id = await _seed_tenant_user(
             identity=identity, email=f"r0-{uuid.uuid4().hex[:8]}@example.com"
         )
-        old_refresh = _refresh(user_id, identity)
+        old_refresh = await _refresh(user_id, identity)
         await _set_tenant_status(identity, "suspended")
 
         await _assert_refresh_refused(
@@ -791,7 +808,7 @@ async def test_r0_control_refresh_live_subject_issues_usable_session(http_client
         user_id = await _seed_tenant_user(
             identity=identity, email=f"r0-{uuid.uuid4().hex[:8]}@example.com"
         )
-        response = await _http_refresh(http_client, _refresh(user_id, identity))
+        response = await _http_refresh(http_client, await _refresh(user_id, identity))
         assert response.status_code == 200, (
             f"CONTROL: refresh for a live subject must succeed (200), got "
             f"{response.status_code} with body {response.text[:300]}"
@@ -845,7 +862,7 @@ async def test_r1_control_refresh_wrong_signature_refused(http_client, monkeypat
         user_id = await _seed_tenant_user(
             identity=identity, email=f"r1r1-{uuid.uuid4().hex[:8]}@example.com"
         )
-        valid_refresh = _refresh(user_id, identity)
+        valid_refresh = await _refresh(user_id, identity)
         forged = _forged_refresh(valid_refresh)
         assert forged != valid_refresh
 
@@ -894,7 +911,7 @@ async def test_r1_control_refresh_wrong_token_type_refused(http_client):
         user_id = await _seed_tenant_user(
             identity=identity, email=f"r0-{uuid.uuid4().hex[:8]}@example.com"
         )
-        response = await _http_refresh(http_client, _bearer(user_id, identity))
+        response = await _http_refresh(http_client, await _bearer(user_id, identity))
         assert response.status_code == 401, (
             "CONTROL_R1_REFRESH_WRONG_TYPE: an access token must not be "
             f"accepted by /auth/refresh, got {response.status_code} with body "
@@ -983,7 +1000,7 @@ async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_cli
         params = {"q": shared_code}  # IDENTICAL query parameters for both
         listing_a = await http_client.get(
             "/api/v1/skus", params=params,
-            headers={"Authorization": "Bearer " + _bearer(user_a, identity_a)},
+            headers={"Authorization": "Bearer " + (await _bearer(user_a, identity_a))},
         )
         premise = await _delete_sku_list_cache_keys(own_cache_keys)
         if premise.startswith("refused-ownership"):
@@ -1005,7 +1022,7 @@ async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_cli
             )
         listing_b = await http_client.get(
             "/api/v1/skus", params=params,
-            headers={"Authorization": "Bearer " + _bearer(user_b, identity_b)},
+            headers={"Authorization": "Bearer " + (await _bearer(user_b, identity_b))},
         )
         assert listing_a.status_code == 200 and listing_b.status_code == 200, (
             "CONTROL_R1_ISOLATION: both live tenants must list their SKUs "
@@ -1027,7 +1044,7 @@ async def test_r1_control_tenant_isolation_same_query_same_code_db_only(http_cli
         for identity, user_id, label in (
             (identity_a, user_a, "A"), (identity_b, user_b, "B"),
         ):
-            refresh = await _http_refresh(http_client, _refresh(user_id, identity))
+            refresh = await _http_refresh(http_client, await _refresh(user_id, identity))
             assert refresh.status_code == 200, (
                 f"CONTROL_R1_ISOLATION: tenant {label}'s live refresh must "
                 f"succeed, got {refresh.status_code}: {refresh.text[:200]}"
@@ -1130,7 +1147,7 @@ async def test_r1_red_diagnostic_sku_list_cache_not_tenant_scoped(http_client):
         params = {"q": shared_code}  # identical query parameters for both
         listing_a = await http_client.get(
             "/api/v1/skus", params=params,
-            headers={"Authorization": "Bearer " + _bearer(user_a, identity_a)},
+            headers={"Authorization": "Bearer " + (await _bearer(user_a, identity_a))},
         )
         assert listing_a.status_code == 200, (
             f"cache diagnostic: tenant A listing must succeed, got {listing_a.status_code}"
@@ -1154,7 +1171,7 @@ async def test_r1_red_diagnostic_sku_list_cache_not_tenant_scoped(http_client):
         # own page (no eviction: this second listing is served from cache).
         listing_a_again = await http_client.get(
             "/api/v1/skus", params=params,
-            headers={"Authorization": "Bearer " + _bearer(user_a, identity_a)},
+            headers={"Authorization": "Bearer " + (await _bearer(user_a, identity_a))},
         )
         assert listing_a_again.status_code == 200, (
             "cache diagnostic: tenant A repeat listing must succeed, got "
@@ -1170,7 +1187,7 @@ async def test_r1_red_diagnostic_sku_list_cache_not_tenant_scoped(http_client):
         # Tenant B must get its OWN page — never tenant A's cached one.
         listing_b = await http_client.get(
             "/api/v1/skus", params=params,
-            headers={"Authorization": "Bearer " + _bearer(user_b, identity_b)},
+            headers={"Authorization": "Bearer " + (await _bearer(user_b, identity_b))},
         )
         assert listing_b.status_code == 200, (
             f"cache diagnostic: tenant B listing must succeed, got {listing_b.status_code}"
@@ -1233,11 +1250,14 @@ async def test_r1_refresh_nonexistent_user_in_active_tenant_principal_branch(htt
     """
     identity = await TenantIdentity().create()
     try:
-        await _seed_tenant_user(
+        existing_user = await _seed_tenant_user(
             identity=identity, email=f"r1r1-ghost-{uuid.uuid4().hex[:8]}@example.com"
         )
         ghost_user = uuid.uuid4()
-        response = await _http_refresh(http_client, _refresh(ghost_user, identity))
+        epoch = await _credential_epoch(existing_user, identity)
+        response = await _http_refresh(
+            http_client, await _refresh(ghost_user, identity, absent_subject_epoch=epoch),
+        )
         assert_refresh_refused_with_code(
             response,
             expected_code="PRINCIPAL_NOT_FOUND",
@@ -1313,7 +1333,7 @@ async def test_r1_refresh_subject_db_fault_zero_issuance(http_client, monkeypatc
 
         app_under_test.dependency_overrides[get_db_session] = faulting_db_session
         try:
-            response = await _http_refresh(http_client, _refresh(user_id, identity))
+            response = await _http_refresh(http_client, await _refresh(user_id, identity))
         finally:
             app_under_test.dependency_overrides.pop(get_db_session, None)
 
@@ -1329,7 +1349,7 @@ async def test_r1_refresh_subject_db_fault_zero_issuance(http_client, monkeypatc
         )
 
         # Control: the same live subject with the fault disarmed refreshes.
-        response_ok = await _http_refresh(http_client, _refresh(user_id, identity))
+        response_ok = await _http_refresh(http_client, await _refresh(user_id, identity))
         assert response_ok.status_code == 200, (
             "CONTROL_R1_REFRESH_SUBJECT_DB_FAULT: with the fault disarmed the "
             f"live subject must still refresh (200), got {response_ok.status_code}"

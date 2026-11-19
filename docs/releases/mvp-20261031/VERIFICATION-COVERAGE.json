@@ -1,6 +1,6 @@
 {
-  "record": "CURRENT_E886_REVIEWED_SOURCE_BINDING_V1",
-  "authorization": "CTO-AUTH-MVP-E886610F-UNIFIED-BINDING-JOBS-ONCE-R1-20261119",
+  "record": "CURRENT_636082_QUEUE_TEST_SOURCE_BINDING_V1",
+  "authorization": "CTO-AUTH-MVP-636082CC-LOOP-CALLER-AND-JOBS-VERIFY-R1-20261119",
   "ruling": {
     "path": "AI_REPORT_INBOX/rc1-finite-closure-cto-20261015/CTO-REVIEW.zh-CN.md",
     "sha256": "37fa77e5ff1889c884f58ab929fe9ed06a7489446c933e9ddb81832a4c31a20c",
@@ -644,14 +644,13 @@
     }
   ],
   "explicit_non_claims": [
-    "The fixed e886 commit supplies reviewed backend/frontend bytes; no floating HEAD authority is used.",
-    "Selection, native node arrays, counts and timeout budgets retain their existing source and scope.",
-    "The historical collection and selection bindings remain on 3356; no new collection is claimed.",
-    "Local guards and one remaining jobs node do not establish hosted CI, independent acceptance or release."
+    "The full fixed test commit supplies reviewed backend/frontend objects for the jobs and queue CLI callers.",
+    "Selection and native node arrays retain their existing 3356 source; no new collection is claimed.",
+    "Local guard and directed test results do not establish hosted CI, independent acceptance or release."
   ],
-  "intake_version": 17,
+  "intake_version": 18,
   "intake_status": "REVIEWED_SOURCE_BINDING__NO_NEW_COLLECTION",
-  "product_anchor": "e886610f7d4f5d0e03c29217942544e059fc5774",
+  "product_anchor": "63d6ebf46ecae99e546b26e0541bf48a6c855bf4",
   "intake_sources": [
     {
       "relative_record": "mvp-rc2-post-images-cto-review-20261017/CTO-REVIEW.zh-CN.md",
@@ -695,17 +694,17 @@
     }
   ],
   "current_source_intake": {
-    "source_ref": "e886610f7d4f5d0e03c29217942544e059fc5774",
-    "backend_tree": "f9ed075da3ac76ef8d956a6dc0b5e443b5ad0aa6",
+    "source_ref": "63d6ebf46ecae99e546b26e0541bf48a6c855bf4",
+    "backend_tree": "4e41fa86db02573479ef98c517bdd215f6c099e2",
     "frontend_tree": "74e634ccdd53ac5249ec537c3c330b8d3a462074",
     "historical_collection_ref": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
     "current_native_collect": "RETAINED_3356_NATIVE_IDENTITIES__NO_NEW_COLLECTION",
     "current_hosted_ci": "NOT_RUN",
     "claim": "WHOLE_BACKEND_FRONTEND_SOURCE_COMPARISON_ONLY",
-    "authorization": "CTO-AUTH-MVP-E886610F-UNIFIED-BINDING-JOBS-ONCE-R1-20261119",
-    "source_tree": "b63a933cecf702bf4e37f07ff927ab24c454be65",
-    "source_parent": "62374ae321f774c13c5a67c9757de4a997b72319",
-    "source_contract_commit": "e886610f7d4f5d0e03c29217942544e059fc5774",
+    "authorization": "CTO-AUTH-MVP-636082CC-LOOP-CALLER-AND-JOBS-VERIFY-R1-20261119",
+    "source_tree": "4cb03da054da7970701ac3bdfad752e29c9bcd5c",
+    "source_parent": "636082cc7fab10ecd9c635a9142e4a1ea85a3cb2",
+    "source_contract_commit": "63d6ebf46ecae99e546b26e0541bf48a6c855bf4",
     "independent_v3_this_intake": "NOT_RUN"
   },
   "current_attachment_deltas": [
@@ -3079,8 +3078,8 @@
   "fixed_source_alignment": {
     "authority": "CTO-AUTH-2ADD-CI-ALIGNMENT-AND-FIVE-COLLECT-CODEXL-R1-20261101",
     "previous_comparison_source": "47716cdc88451e233c4142e7da0c3d82c368dd22",
-    "whole_backend_frontend_comparison_source": "e886610f7d4f5d0e03c29217942544e059fc5774",
-    "live_comparison_authority": "CTO-AUTH-MVP-E886610F-UNIFIED-BINDING-JOBS-ONCE-R1-20261119",
+    "whole_backend_frontend_comparison_source": "63d6ebf46ecae99e546b26e0541bf48a6c855bf4",
+    "live_comparison_authority": "CTO-AUTH-MVP-636082CC-LOOP-CALLER-AND-JOBS-VERIFY-R1-20261119",
     "historical_bindings_rebound": false,
     "overall_source_ok": false,
     "OLD_24_HOSTED_FAILURES": "OPEN__NOT_EXECUTED_THIS_TASK",
@@ -3263,8 +3262,8 @@
     "claim": "AUTHOR_NATIVE_COLLECT_ONLY__NOT_BUSINESS_OR_CI_PASS"
   },
   "fixed_live_source": {
-    "source_ref": "e886610f7d4f5d0e03c29217942544e059fc5774",
-    "backend_tree": "f9ed075da3ac76ef8d956a6dc0b5e443b5ad0aa6",
+    "source_ref": "63d6ebf46ecae99e546b26e0541bf48a6c855bf4",
+    "backend_tree": "4e41fa86db02573479ef98c517bdd215f6c099e2",
     "frontend_tree": "74e634ccdd53ac5249ec537c3c330b8d3a462074",
     "historical_collection_ref": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
     "current_native_collect": "RETAINED_3356_NATIVE_IDENTITIES__NO_NEW_COLLECTION",
@@ -6565,9 +6564,9 @@
     }
   },
   "current_ci_alignment": {
-    "authority": "CTO-AUTH-MVP-E886610F-UNIFIED-BINDING-JOBS-ONCE-R1-20261119",
-    "fixed_source": "e886610f7d4f5d0e03c29217942544e059fc5774",
-    "previous_live_source": "3356d9514e350896888e2f3260b23a1817343c59",
+    "authority": "CTO-AUTH-MVP-636082CC-LOOP-CALLER-AND-JOBS-VERIFY-R1-20261119",
+    "fixed_source": "63d6ebf46ecae99e546b26e0541bf48a6c855bf4",
+    "previous_live_source": "e886610f7d4f5d0e03c29217942544e059fc5774",
     "selection_counts": {
       "tracked": 292,
       "ordinary": 264,
@@ -13693,6 +13692,20 @@
     "source_tree": "f31ff695b404be02ab9b3ce62e134554673ce7d7",
     "source_parent": "7bb9a7223f3bc8f2d0969282c0e0ad3917fd2d01",
     "source_contract_commit": "3356d9514e350896888e2f3260b23a1817343c59",
+    "independent_v3_this_intake": "NOT_RUN"
+  },
+  "previous_e886_source_binding": {
+    "source_ref": "e886610f7d4f5d0e03c29217942544e059fc5774",
+    "backend_tree": "f9ed075da3ac76ef8d956a6dc0b5e443b5ad0aa6",
+    "frontend_tree": "74e634ccdd53ac5249ec537c3c330b8d3a462074",
+    "historical_collection_ref": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
+    "current_native_collect": "RETAINED_3356_NATIVE_IDENTITIES__NO_NEW_COLLECTION",
+    "current_hosted_ci": "NOT_RUN",
+    "claim": "WHOLE_BACKEND_FRONTEND_SOURCE_COMPARISON_ONLY",
+    "authorization": "CTO-AUTH-MVP-E886610F-UNIFIED-BINDING-JOBS-ONCE-R1-20261119",
+    "source_tree": "b63a933cecf702bf4e37f07ff927ab24c454be65",
+    "source_parent": "62374ae321f774c13c5a67c9757de4a997b72319",
+    "source_contract_commit": "e886610f7d4f5d0e03c29217942544e059fc5774",
     "independent_v3_this_intake": "NOT_RUN"
   }
 }

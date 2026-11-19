@@ -833,7 +833,8 @@ REUSE_0DA4_APPROVED_REF = "0da4c8502928933bb61ba07b784206dec3a03bdc"
 REUSE_AA19_APPROVED_REF = "aa19b49fad2618b1e01d071860f847cfbefb384b"
 REUSE_664_APPROVED_REF = "664659b9cebdb4fecdb4a975c7c4770cb56c60f3"
 REUSE_3356_APPROVED_REF = "3356d9514e350896888e2f3260b23a1817343c59"
-REUSE_LIVE_APPROVED_REF = "e886610f7d4f5d0e03c29217942544e059fc5774"
+REUSE_E886_APPROVED_REF = "e886610f7d4f5d0e03c29217942544e059fc5774"
+REUSE_LIVE_APPROVED_REF = "63d6ebf46ecae99e546b26e0541bf48a6c855bf4"
 REUSE_5033_APPROVED_REF = "5033e2cd039af3b989418ae0a57133a6355ca42c"
 REUSE_PREVIOUS_APPROVED_REF = "3a26b6d6baa2b73ecc044c3ffd30f4bb9f670a37"
 # Versioned fixed expectation travels with this tool, not an unavailable side commit.
@@ -3265,7 +3266,7 @@ def _reuse_expected_metadata(repo):
     # The new authority approves reviewed object bytes, not a new collection.
     expected["previous_3356_source_binding"] = dict(expected["current_source_intake"])
     authority = "CTO-AUTH-MVP-E886610F-UNIFIED-BINDING-JOBS-ONCE-R1-20261119"
-    fixed = REUSE_LIVE_APPROVED_REF
+    fixed = REUSE_E886_APPROVED_REF
     expected.update(record="CURRENT_E886_REVIEWED_SOURCE_BINDING_V1", authorization=authority,
                     intake_version=17, product_anchor=fixed,
                     intake_status="REVIEWED_SOURCE_BINDING__NO_NEW_COLLECTION")
@@ -3285,6 +3286,25 @@ def _reuse_expected_metadata(repo):
         "Selection, native node arrays, counts and timeout budgets retain their existing source and scope.",
         "The historical collection and selection bindings remain on 3356; no new collection is claimed.",
         "Local guards and one remaining jobs node do not establish hosted CI, independent acceptance or release.",
+    ]
+    expected["previous_e886_source_binding"] = dict(expected["current_source_intake"])
+    authority = "CTO-AUTH-MVP-636082CC-LOOP-CALLER-AND-JOBS-VERIFY-R1-20261119"
+    fixed = REUSE_LIVE_APPROVED_REF
+    expected.update(record="CURRENT_636082_QUEUE_TEST_SOURCE_BINDING_V1", authorization=authority,
+                    intake_version=18, product_anchor=fixed)
+    expected["fixed_source_alignment"].update(
+        whole_backend_frontend_comparison_source=fixed, live_comparison_authority=authority)
+    expected["fixed_live_source"].update(
+        source_ref=fixed, backend_tree=live_oid(":backend"), frontend_tree=live_oid(":frontend"))
+    expected["current_source_intake"] = dict(expected["fixed_live_source"],
+        authorization=authority, source_tree=live_oid("^{tree}"), source_parent=live_oid("^"),
+        source_contract_commit=fixed, independent_v3_this_intake="NOT_RUN")
+    expected["current_ci_alignment"].update(
+        authority=authority, fixed_source=fixed, previous_live_source=REUSE_E886_APPROVED_REF)
+    expected["explicit_non_claims"] = [
+        "The full fixed test commit supplies reviewed backend/frontend objects for the jobs and queue CLI callers.",
+        "Selection and native node arrays retain their existing 3356 source; no new collection is claimed.",
+        "Local guard and directed test results do not establish hosted CI, independent acceptance or release.",
     ]
     return expected
 

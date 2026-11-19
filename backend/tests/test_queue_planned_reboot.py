@@ -411,6 +411,8 @@ def _offline_owner(root, *, closed, handoff=None):
 
 
 def test_offline_r1r4_signed_checkpoint_admit_and_path_controls(tmp_path, monkeypatch, _offline_no_connections):
+    from concurrent.futures import ThreadPoolExecutor
+
     ops = _offline_ops()
     root = tmp_path / 'state'; root.mkdir(mode=0o700)
     monkeypatch.setenv('EXPORT_DIR', str(root))
@@ -447,11 +449,15 @@ def test_offline_r1r4_signed_checkpoint_admit_and_path_controls(tmp_path, monkey
     monkeypatch.setattr(ops, 'create_async_engine', lambda *_args, **_kw: Engine())
     checkpoint, permit = tmp_path / 'checkpoint.json', tmp_path / 'permit.json'
     common = ['--signing-key-file', str(key_file), '--infra-config-file', str(tmp_path/'unused')]
-    assert ops.main(['checkpoint', '--out', str(checkpoint), *common]) == 0
-    checkpoint_payload, _ = local._verify_signed_reboot_permit(checkpoint, authority, file_uid=authority['issuer_uid'])
-    assert checkpoint_payload['kind'] == 'planned_clean_checkpoint_v1'
-    current['value'] = dict(authority, boot='synthetic-new-boot')
-    assert ops.main(['admit', '--out', str(permit), '--checkpoint', str(checkpoint), *common]) == 0
+    # The CLI calls asyncio.run(); keep pytest's main-thread loop slot intact.
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        rc = executor.submit(ops.main, ['checkpoint', '--out', str(checkpoint), *common]).result()
+        assert rc == 0
+        checkpoint_payload, _ = local._verify_signed_reboot_permit(checkpoint, authority, file_uid=authority['issuer_uid'])
+        assert checkpoint_payload['kind'] == 'planned_clean_checkpoint_v1'
+        current['value'] = dict(authority, boot='synthetic-new-boot')
+        rc = executor.submit(ops.main, ['admit', '--out', str(permit), '--checkpoint', str(checkpoint), *common]).result()
+        assert rc == 0
     payload, _ = local._verify_signed_reboot_permit(permit, current['value'], file_uid=authority['app_uid'])
     assert payload['kind'] == 'planned_clean_reboot_v1' and payload['old_generation'] == fact['generation']
     before = (root / '.queue-owner.json').read_bytes()

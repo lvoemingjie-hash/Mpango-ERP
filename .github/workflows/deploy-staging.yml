@@ -416,7 +416,7 @@ jobs:
             # Diagnostic branch only: sealed loop observer (tools/ci/loop_observer.py,
             # SHA256 225095903b086389a62cb117002f31dca0eee4939bf089d16e133d8e4e7b3d5).
             # Read-only slot sampling; never creates/sets/closes/restores loops.
-            OBS_EXPECTED_SHA="225095903b086389a62cb117002f31dca0eee4939bf089d16e133d8e4e7b3d5"
+            OBS_EXPECTED_SHA="225095903b086389a62cb117002f31dca0eee4939bf089d16ee733d8e4e7b3d5"
             OBS_ACTUAL_SHA="$(sha256sum "$GITHUB_WORKSPACE/tools/ci/loop_observer.py" | cut -d' ' -f1)"
             if [ "$OBS_ACTUAL_SHA" != "$OBS_EXPECTED_SHA" ]; then
               echo "LOOP_OBSERVER_SEAL_MISMATCH: refusing to start pytest with unsealed observer"

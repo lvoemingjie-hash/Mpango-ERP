@@ -14,11 +14,11 @@ Approach:
         tenant_permission:<c>  -- Requires RequirePermission("<code>")
         platform_permission:<c>-- Requires platform-scoped permission (platform routes)
         internal_only          -- test/diagnostic endpoints gated to system:admin
+        service_one_time_proof -- staff recovery authorized by a one-time service proof
         non_compliant          -- NO auth strategy detected (FAIL by contract)
 
-    Any /api/v1/** route that is not classified into one of the first five
-    categories AND is not on the explicit PUBLIC_ALLOWLIST is treated as a
-    policy violation. The harness never silently relaxes checks; findings are
+    A route without a recognized policy is treated as a violation. The
+    harness never silently relaxes checks; findings are
     recorded as xfail tests so they are visible and tracked, not hidden.
 
 Task S1: test/contract-only harness - scans routes and classifies them.
@@ -81,6 +81,7 @@ from api.dependencies import get_current_user_context
 from api.middleware.rbac import RequirePermission, RequirePlatformAdmin, RequireOwner, RequireCredentialReissuePermission
 from core.security import TokenPayload
 from api.v1 import order_negotiations
+from api.v1.auth import consume_staff_recovery
 
 
 # ===========================================================================
@@ -196,6 +197,8 @@ PLATFORM_PUBLIC_ALLOWLIST: Set[str] = {
     "/api/v1/platform/info",
 }
 
+STAFF_RECOVERY_PROOF_ROUTE = ("POST", "/api/v1/auth/staff/recover-credential")
+
 
 @dataclass
 class RouteClassification:
@@ -204,7 +207,7 @@ class RouteClassification:
     method: str
     path: str
     policy: str  # one of: public, authenticated, tenant_permission:*,
-    #             platform_permission:*, internal_only, non_compliant
+    #             platform_permission:*, internal_only, service_one_time_proof, non_compliant
     permission_code: Optional[str] = None
     detected_auth_deps: List[str] = field(default_factory=list)
     detected_non_auth_deps: List[str] = field(default_factory=list)
@@ -327,7 +330,8 @@ def classify_route(route: APIRoute) -> RouteClassification:
       4. RBAC permission dependency                 -> tenant_permission
       5. get_current_user_context / resolve_client_identity / get_policy_subject
                                                    -> authenticated
-      6. No auth dependency detected -> non_compliant
+      6. Exact staff recovery consumer -> service_one_time_proof
+      7. No auth strategy detected -> non_compliant
     """
     methods = sorted(getattr(route, "methods", set()) or set())
     method = ",".join(methods) if methods else "?"
@@ -412,6 +416,9 @@ def classify_route(route: APIRoute) -> RouteClassification:
         # Has auth dep but no RequirePermission (e.g. get_current_user_context)
         policy = "authenticated"
         permission_code = None
+    elif (method, path) == STAFF_RECOVERY_PROOF_ROUTE and endpoint is consume_staff_recovery:
+        # The handler delegates authorization to the one-time proof consumer.
+        policy = "service_one_time_proof"
     else:
         policy = "non_compliant"
 
@@ -582,11 +589,34 @@ class TestRoutePolicyContract:
             "tenant_permission",
             "platform_permission",
             "internal_only",
+            "service_one_time_proof",
         }
         for c in ALL_CLASSIFICATIONS:
             assert c.policy in valid_policies | {"non_compliant"}, (
                 f"{c.method} {c.path} has unknown policy: {c.policy}"
             )
+
+        proof_routes = [
+            (c.method, c.path) for c in ALL_CLASSIFICATIONS
+            if c.policy == "service_one_time_proof"
+        ]
+        method, path = "POST", "/api/v1/auth/staff/recover-credential"
+        assert proof_routes == [(method, path)]
+        assert path not in PUBLIC_ALLOWLIST
+        assert classify_route(APIRoute(path, consume_staff_recovery, methods=["GET"])).policy == "non_compliant"
+
+        async def unguarded_handler():
+            return None
+
+        assert classify_route(APIRoute(path, unguarded_handler, methods=[method])).policy == "non_compliant"
+        owner_request = [
+            c for c in ALL_CLASSIFICATIONS
+            if (c.method, c.path) == ("POST", "/api/v1/staff/{user_id}/credential-recovery")
+        ]
+        assert len(owner_request) == 1
+        assert owner_request[0].policy == "tenant_permission"
+        assert "RequireOwner" in owner_request[0].detected_auth_deps
+        assert "owner:manage" in owner_request[0].permission_codes
 
     def test_no_unclassified_business_routes(self):
         """

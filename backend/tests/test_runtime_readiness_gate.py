@@ -1141,11 +1141,26 @@ def test_readiness_probes_are_behaviorally_read_only(
         admin.close()
     from sqlalchemy import event
     from sqlalchemy.engine import Engine
+    from scripts.provision_runtime_db_roles import PLATFORM_RECOVERY_REPORTING_SQL
 
     observed = []
 
     def observe_sql(connection, cursor, statement, parameters, context, executemany):
-        observed.append(statement)
+        observed.append((statement, connection.engine.url.username))
+
+    def is_read_only(statement, user):
+        keyword = statement.split(None, 1)[0].upper()
+        if keyword in {"SELECT", "SHOW"}:
+            return True
+        # The reporting probe admits this connection as read-only before
+        # executing the catalog query. WITH can also introduce writes.
+        return (
+            keyword == "WITH"
+            and user == "reporting_user"
+            and statement == PLATFORM_RECOVERY_REPORTING_SQL
+            and not re.search(r";|\b(?:INSERT|UPDATE|DELETE|MERGE|INTO|LOCK)\b",
+                              statement, re.IGNORECASE)
+        )
 
     helper = _load_helper()
     event.listen(Engine, "before_cursor_execute", observe_sql)
@@ -1154,8 +1169,7 @@ def test_readiness_probes_are_behaviorally_read_only(
                                         "t_dev") == []
     finally:
         event.remove(Engine, "before_cursor_execute", observe_sql)
-    assert observed and all(sql.split(None, 1)[0].upper() in {"SELECT", "SHOW"}
-                            for sql in observed), \
+    assert observed and all(is_read_only(sql, user) for sql, user in observed), \
         "READINESS_EXECUTED_NON_READ_ONLY_SQL"
     admin = _admin_connect(five_stage_database["server"]
                            .admin_db_url(five_stage_database["db"]))

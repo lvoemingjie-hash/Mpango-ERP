@@ -40,7 +40,6 @@ from tests.async_test_utils import run_coroutine
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_DIR.parent
-PROVISIONER = BACKEND_DIR / "scripts" / "provision_runtime_db_roles.py"
 BOOTSTRAP = BACKEND_DIR / "scripts" / "bootstrap_tenant_schema.py"
 
 PREFLIGHT_PATH = BACKEND_DIR / "scripts" / "setup_preflight.py"
@@ -60,7 +59,8 @@ def _load_module(name: str, path: Path):
 
 def _run_provisioner(args: list[str], extra_env: dict[str, str]):
     return subprocess.run(
-        [sys.executable, str(PROVISIONER), *args],
+        [sys.executable, "-m", "scripts.provision_runtime_db_roles", *args],
+        cwd=BACKEND_DIR,
         env={**os.environ, **extra_env},
         capture_output=True, text=True, timeout=180,
     )
@@ -1125,15 +1125,18 @@ def _canonical_two_role_lifecycle(server, resource_root):
             # --- wrong migration head: simulate drift on alembic_version and
             # require the named refusal --------------------------------------
             with admin.cursor() as cur:
+                cur.execute("SELECT version_num FROM alembic_version")
+                installed_heads = cur.fetchall()
+                assert installed_heads == [("046_staff_credential_recovery",)]
                 cur.execute("UPDATE alembic_version SET version_num = "
                             "'038_catalog_identity_vertical_slice'")
             with pytest.raises(RuntimeError) as excinfo:
                 run_coroutine(_boot_refuses())
-            assert "044_inventory_adjustment_approval" in str(excinfo.value)
+            assert "database is at ['038_catalog_identity_vertical_slice']" in str(excinfo.value)
+            assert "requires exactly ['046_staff_credential_recovery']" in str(excinfo.value)
             assert _tenant_schema_count(admin) == 0
             with admin.cursor() as cur:
-                cur.execute("UPDATE alembic_version SET version_num = "
-                            "'044_inventory_adjustment_approval'")
+                cur.execute("UPDATE alembic_version SET version_num = %s", installed_heads[0])
 
             guard0 = _guard_snapshot(admin)
 

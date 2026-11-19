@@ -44,31 +44,11 @@ jobs:
       matrix:
         # Hard budget cap: 50+25+35+30+20 = 160 runner-minutes total.
         include:
-          - shard: runtime-a
-            job-timeout-minutes: 50
-            pytest-timeout: 40m
-            expected-files: "100"
-            expected-nodes: "1741"
           - shard: runtime-b
             job-timeout-minutes: 25
             pytest-timeout: 18m
             expected-files: "97"
             expected-nodes: "1708"
-          - shard: topology
-            job-timeout-minutes: 35
-            pytest-timeout: 25m
-            expected-files: "39"
-            expected-nodes: "798"
-          - shard: invariants-jwt
-            job-timeout-minutes: 30
-            pytest-timeout: 20m
-            expected-files: "22"
-            expected-nodes: "410"
-          - shard: task-managed-pg
-            job-timeout-minutes: 20
-            pytest-timeout: 13m
-            expected-files: "6"
-            expected-nodes: "106"
     env:
       CI_OWNER_LABEL: zcode-mvp-invariants-ci-deploy-staging-r6
       # R6R1 (F-01) intended ONE credential-store path visible to the supply
@@ -432,9 +412,19 @@ jobs:
           PYOBS
           OBS_PID=$!
           OBSERVER_ARGS=()
-          if [ "${{ matrix.shard }}" = runtime-a ]; then
-            export PYTHONPATH="$PWD/../tools/ci${PYTHONPATH:+:$PYTHONPATH}"
-            OBSERVER_ARGS=(-p rc4_staff_credential_observer)
+          if [ "${{ matrix.shard }}" = runtime-b ]; then
+            # Diagnostic branch only: sealed loop observer (tools/ci/loop_observer.py,
+            # SHA256 225095903b086389a62cb117002f31dca0eee4939bf089d16e133d8e4e7b3d5).
+            # Read-only slot sampling; never creates/sets/closes/restores loops.
+            OBS_EXPECTED_SHA="225095903b086389a62cb117002f31dca0eee4939bf089d16e133d8e4e7b3d5"
+            OBS_ACTUAL_SHA="$(sha256sum "$GITHUB_WORKSPACE/tools/ci/loop_observer.py" | cut -d' ' -f1)"
+            if [ "$OBS_ACTUAL_SHA" != "$OBS_EXPECTED_SHA" ]; then
+              echo "LOOP_OBSERVER_SEAL_MISMATCH: refusing to start pytest with unsealed observer"
+              exit 1
+            fi
+            export PYTHONPATH="$GITHUB_WORKSPACE/tools/ci${PYTHONPATH:+:$PYTHONPATH}"
+            export LOOP_OBSERVER_LOG="$RUNNER_TEMP/loop-observer.jsonl"
+            OBSERVER_ARGS=(-p loop_observer)
           fi
           echo "shard ${{ matrix.shard }} test body started (raw pytest output goes to private runner staging, never to this console)"
           set +e
@@ -551,6 +541,7 @@ jobs:
           sanitize "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.json" "reconcile-${{ matrix.shard }}.sanitized.json" optional
           sanitize "$RUNNER_TEMP/not-run-${{ matrix.shard }}.nodeids.txt" "not-run-${{ matrix.shard }}.sanitized.nodeids.txt" optional
           sanitize "$RUNNER_TEMP/connections-${{ matrix.shard }}.csv" "connections-${{ matrix.shard }}.sanitized.csv" optional
+          sanitize "$RUNNER_TEMP/loop-observer.jsonl" "loop-observer-${{ matrix.shard }}.sanitized.jsonl" optional allow-empty
           # F-02 (R6R2): the tool diagnostic logs (gate/reconcile raw output
           # and identity-bearing diagnostics) are published ONLY through this
           # sanitizer channel, never to the console
@@ -629,10 +620,69 @@ jobs:
 
   # Build: Docker image
   # ---------------------------------------------------------------------------
+      - name: Loop observer log verification (non-masking)
+        if: always()
+        run: |
+          LOG="$RUNNER_TEMP/loop-observer.jsonl"
+          if [ ! -s "$LOG" ]; then
+            echo "OBSERVER_LOG_EMPTY_OR_ABSENT (evidence status only; does not gate)"
+          else
+          python3 - "$LOG" <<'PYV'
+          import json, sys
+          segs=[[]]; bad=0
+          for x in open(sys.argv[1],encoding='utf-8'):
+              x=x.strip()
+              if not x: continue
+              try: segs[-1].append(json.loads(x))
+              except Exception:
+                  bad+=1; segs.append([])
+          evs=[e for seg in segs for e in seg]
+          kinds={}
+          for e in evs: kinds[e['ev']]=kinds.get(e['ev'],0)+1
+          def skey(s):
+              if s is None: return None
+              if not isinstance(s,dict) or 'err' in s: return 'err'
+              if s.get('closed') is False: return 'live'
+              if s.get('closed') is True: return 'closed'
+              return 'unknown'
+          candidates=[]; closed_to_null=0; unknown_to_null=0; read_err=0; teardown=0; tail_unresolved=0
+          for seg in segs:
+              for j,(a,b) in enumerate(zip(seg,seg[1:])):
+                  ka,kb=skey(a['slot']),skey(b['slot'])
+                  if ka in ('err','unknown') or kb in ('err','unknown'):
+                      read_err+=1
+                      continue
+                  if ka=='live' and kb is None:
+                      later_activity=any(x['ev']=='protocol_in' for x in seg[j+2:])
+                      later_end=any(x['ev']=='session_end' for x in seg[j+2:])
+                      if later_activity: candidates.append(b['i'])
+                      elif later_end: teardown+=1
+                      else: tail_unresolved+=1
+                  elif ka=='closed' and kb is None: closed_to_null+=1
+                  elif ka=='unknown' and kb is None: unknown_to_null+=1
+          print('OBSERVER_LOG_LINES', len(evs), 'BAD_LINES', bad)
+          print('SESSION_START_PRESENT', kinds.get('session_start',0))
+          print('PROTOCOL_NODES', kinds.get('protocol_in',0))
+          print('PHASE_EVENTS', sum(kinds.get(k,0) for k in ('setup_in','setup_out','call_in','call_out','teardown_in','teardown_out')))
+          print('LAST_NODE_INDEX', max((e['i'] for e in evs), default=-1))
+          print('SESSION_END_MARKER', kinds.get('session_end',0))
+          print('SLOT_CLEAR_CANDIDATES', len(candidates))
+          for i in candidates[:5]: print('SLOT_CLEAR_AT_INDEX', i)
+          print('CLOSED_TO_NULL_OBSERVED', closed_to_null)
+          print('UNKNOWN_SLOT_TRANSITIONS', unknown_to_null)
+          print('SLOT_READ_ERRORS', read_err)
+          print('NORMAL_SESSION_TEARDOWN', teardown)
+          print('TAIL_CLEAR_UNRESOLVED', tail_unresolved)
+          status='complete' if kinds.get('session_end') and bad==0 else 'partial'
+          print('EVIDENCE_STATUS', status)
+          PYV
+          fi
+          exit 0
+
   build:
     name: Build Docker Image
     needs: test
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && needs.test.result == 'success' }}
+    if: false # diagnostic branch: build/deploy permanently disabled
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -695,7 +745,7 @@ jobs:
   deploy:
     name: Deploy to Staging
     needs: [test, build]
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && needs.test.result == 'success' && needs.build.result == 'success' }}
+    if: false # diagnostic branch: build/deploy permanently disabled
     runs-on: ubuntu-latest
     environment: staging
 

@@ -281,11 +281,13 @@ async def fresh_tenant(live_engine) -> Dict:
                 text(
                     "INSERT INTO users (email, password_hash, full_name, "
                     "is_active) VALUES (:email, :ph, :name, true) "
-                    "RETURNING id"
+                    "RETURNING id, credential_epoch"
                 ),
                 {"email": ADMIN_EMAIL, "ph": password_hash, "name": "S3-C Admin"},
             )
-            user_id = str(user_result.fetchone()[0])
+            actor = user_result.one()
+            user_id = str(actor.id)
+            credential_epoch = actor.credential_epoch
             print(f"  [S3-C] Admin user id={user_id}")
 
             # --- 2e: assign admin role to admin user ---
@@ -320,6 +322,7 @@ async def fresh_tenant(live_engine) -> Dict:
         "tenant_id": str(tenant_id),
         "retailer_id": str(retailer_id),
         "user_id": user_id,
+        "credential_epoch": credential_epoch,
         "email": ADMIN_EMAIL,
         "role_names": ["admin"],
         "permission_codes": permission_codes,
@@ -388,6 +391,7 @@ class TestFreshContextualJwtFlow:
             tenant_id=fresh_tenant["tenant_id"],
             tenant_schema=fresh_tenant["schema"],
             token_type="access",
+            credential_epoch=fresh_tenant["credential_epoch"],
         )
         settings = get_settings()
         decoded = jwt.decode(
@@ -409,6 +413,7 @@ class TestFreshContextualJwtFlow:
             tenant_id=fresh_tenant["tenant_id"],
             tenant_schema=fresh_tenant["schema"],
             token_type="access",
+            credential_epoch=fresh_tenant["credential_epoch"],
         )
         settings = get_settings()
         decoded = jwt.decode(
@@ -459,6 +464,7 @@ def _build_live_app(live_engine, tenant: Dict) -> FastAPI:
             tenant_id=tenant["tenant_id"],
             tenant_schema=_ts,
             token_type="access",
+            credential_epoch=tenant["credential_epoch"],
         )
         decoded = jwt.decode(
             tok, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]

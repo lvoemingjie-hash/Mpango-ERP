@@ -9,14 +9,17 @@ from schemas.auth import LoginRequest
 @pytest.mark.asyncio
 async def test_login_normalizes_email_before_cross_tenant_lookup(monkeypatch):
     captured: dict[str, str] = {}
+    tenant_id = "00000000-0000-0000-0000-000000000001"
+    credential_epoch = 7
 
     async def fake_find_user_across_tenants(db, email: str, password: str):
         captured["email"] = email
         captured["password"] = password
         match = SimpleNamespace(
             roles=["admin"],
+            credential_epoch=credential_epoch,
             wholesaler=SimpleNamespace(
-                id="00000000-0000-0000-0000-000000000001",
+                id=tenant_id,
                 code="ACME",
                 name="Acme Wholesale",
             ),
@@ -25,6 +28,7 @@ async def test_login_normalizes_email_before_cross_tenant_lookup(monkeypatch):
         return "00000000-0000-0000-0000-000000000002", [match]
 
     def fake_create_identity_token(**kwargs):
+        assert kwargs["tenant_credential_epochs"] == {tenant_id: credential_epoch}
         return f"identity-{kwargs['token_type']}-value"
 
     monkeypatch.setattr(auth_api, "find_user_across_tenants", fake_find_user_across_tenants)

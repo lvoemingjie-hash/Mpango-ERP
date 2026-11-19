@@ -251,6 +251,8 @@ def test_gate_refuses_database_without_completed_setup():
                          ["041_catalog_product_main_image"],
                          ["042_order_negotiation_proposals"],
                          ["043_staff_authority_and_credentials"],
+                         ["044_inventory_adjustment_approval"],
+                         ["045_owner_staff_recovery"],
                          ["041_catalog_product_main_image", "042_order_negotiation_proposals"],
                          ["999_unapproved_future"]):
             probe = _admin_connect(server.admin_db_url(db))
@@ -262,7 +264,7 @@ def test_gate_refuses_database_without_completed_setup():
                     cur.execute("SELECT version_num FROM public.alembic_version ORDER BY version_num")
                     before = cur.fetchall()
                 reasons = helper.evaluate_contract(server.admin_db_url(db))
-                assert any("requires exactly '044_inventory_adjustment_approval'" in r for r in reasons), (
+                assert any("requires exactly '046_staff_credential_recovery'" in r for r in reasons), (
                     "RC2_READINESS_HEAD_MUST_REFUSE", versions, reasons)
                 with probe.cursor() as cur:
                     cur.execute("SELECT version_num FROM public.alembic_version ORDER BY version_num")

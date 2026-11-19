@@ -26,37 +26,53 @@ class TestJWTTokenClaims:
 
     def test_identity_token_has_no_tenant_claims(self):
         """Identity token should NOT have tenant_id or tenant_schema."""
+        user_id = "00000000-0000-0000-0000-000000000011"
+        tenant_id = "00000000-0000-0000-0000-000000000022"
         token = create_identity_token(
-            user_id="user-123",
+            user_id=user_id,
             roles=["admin"],
             token_type="access",
+            tenant_user_map={tenant_id: user_id},
+            tenant_credential_epochs={tenant_id: 1},
         )
 
         payload = decode_token(token)
 
-        assert payload.user_id == "user-123"
+        assert payload.user_id == user_id
         assert payload.roles == ["admin"]
         assert payload.is_identity_only is True
         assert payload.tenant_id is None
         assert payload.tenant_schema is None
+        assert payload.tmap == {tenant_id: user_id}
+        assert payload.tver == {tenant_id: 1}
+        from core.security import InvalidTokenError
+        with pytest.raises(InvalidTokenError, match="Invalid session binding"):
+            create_identity_token(user_id=user_id, roles=["admin"])
 
     def test_contextual_token_has_tenant_claims(self):
         """Contextual token MUST have tenant_id and tenant_schema."""
+        user_id = "00000000-0000-0000-0000-000000000011"
+        tenant_id = "00000000-0000-0000-0000-000000000022"
+        tenant_schema = "t_" + tenant_id.replace("-", "")
         token = create_contextual_token(
-            user_id="user-123",
+            user_id=user_id,
             roles=["admin"],
-            tenant_id="tenant-456",
-            tenant_schema="t_tenant456",
+            tenant_id=tenant_id,
+            tenant_schema=tenant_schema,
             token_type="access",
+            credential_epoch=1,
         )
 
         payload = decode_token(token)
 
-        assert payload.user_id == "user-123"
+        assert payload.user_id == user_id
         assert payload.roles == ["admin"]
         assert payload.is_identity_only is False
-        assert payload.tenant_id == "tenant-456"
-        assert payload.tenant_schema == "t_tenant456"
+        assert payload.tenant_id == tenant_id
+        assert payload.tenant_schema == tenant_schema
+        assert payload.credential_epoch == 1
+        with pytest.raises(TypeError, match="credential_epoch"):
+            create_contextual_token(user_id, ["admin"], tenant_id, tenant_schema)
 
     def test_super_admin_identity_token_has_super_admin_role(self):
         """Super admin Identity token should have super_admin role."""

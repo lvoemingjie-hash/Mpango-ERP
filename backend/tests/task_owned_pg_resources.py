@@ -229,7 +229,7 @@ def task_postgres(module, *, bare=False, shell=False, cluster_only=False):
                      MPANGO_DB_APP_URL=url("mpango_app", database), MPANGO_DB_MIGRATE_ROLE="mpango_migrate",
                      MPANGO_DB_APP_ROLE="mpango_app", MPANGO_DB_MIGRATE_PASSWORD=passwords["mpango_migrate"],
                      MPANGO_DB_APP_PASSWORD=passwords["mpango_app"], REPORTING_USER_PASSWORD=passwords["reporting_user"])
-        command = [sys.executable, "-B", "scripts/provision_runtime_db_roles.py"]
+        command = [sys.executable, "-B", "-m", "scripts.provision_runtime_db_roles"]
         _native(root, "provision", command + ["--provision"], env=setup)
         migration = dict(setup, DATABASE_URL=url("mpango_migrate", database))
         _native(root, "migration", [sys.executable, "-B", "-m", "alembic", "upgrade", "head"], env=migration)

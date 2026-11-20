@@ -464,6 +464,7 @@ async def _admit_fresh_task_demo_target(db):
     from pathlib import Path
     from urllib.parse import urlsplit
     from sqlalchemy import text
+    from scripts.runtime_readiness_gate import REQUIRED_REVISION
 
     manifest_path = os.getenv('MPANGO_FRESH_DEMO_TASK_MANIFEST')
     if not manifest_path or os.getenv('MPANGO_ENV') not in {'test','dev'}:
@@ -489,10 +490,10 @@ async def _admit_fresh_task_demo_target(db):
     database = await db.scalar(text('SELECT current_database()'))
     privileges=(await db.execute(text("SELECT current_user,rolsuper,rolcreatedb,rolcreaterole,rolbypassrls,"
         "has_schema_privilege(current_user,'public','CREATE') FROM pg_roles WHERE rolname=current_user"))).one()
-    head = await db.scalar(text('SELECT version_num FROM public.alembic_version'))
+    heads = (await db.execute(text('SELECT version_num FROM public.alembic_version ORDER BY version_num'))).scalars().all()
     occupied = await db.scalar(text("SELECT EXISTS(SELECT 1 FROM public.wholesalers) OR "
         "EXISTS(SELECT 1 FROM pg_namespace WHERE nspname ~ '^t_[0-9a-f]{32}$')"))
-    if (database != manifest['database'] or head != '044_inventory_adjustment_approval' or occupied
+    if (database != manifest['database'] or heads != [REQUIRED_REVISION] or occupied
             or privileges[0]!='mpango_app' or tuple(privileges[1:])!=(False,)*5):
         raise RuntimeError('FRESH_TASK_DEMO_TARGET_REQUIRED')
 

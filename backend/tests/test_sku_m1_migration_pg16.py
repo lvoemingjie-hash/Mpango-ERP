@@ -763,15 +763,21 @@ def test_real_pg16_demo_seeder_uses_canonical_catalog_identity(tmp_path) -> None
         for key in ("TMPDIR", "TMP", "TEMP"):
             env[key] = str(tmp_path)
         # Three-identity: the demo seeder's internal bootstrap runs as the
-        # runtime app role; the migration authority confers the
-        # product-minimum grants on the disposable database first.
-        from tests.order_state_r2.test_migration_c3 import _grant_product_minimum
+        # runtime app role; the disposable database receives the formal
+        # production grant and verification phases from the product
+        # provisioner (same recipe as the C5 bootstrap-parity test),
+        # including the recovery-table ACL — never a hand-written grant set.
+        from tests.test_combined_setup_authority_contract import _run_provisioner
 
-        grant_engine = create_engine(_sync_url(db_url), future=True)
-        try:
-            _grant_product_minimum(grant_engine)
-        finally:
-            grant_engine.dispose()
+        provision_env = {
+            "MPANGO_DB_ADMIN_URL": os.environ["TEST_ADMIN_DATABASE_URL"],
+            "MPANGO_DB_MIGRATE_URL": str(db_url),
+            "MPANGO_DB_APP_URL": db_url.app_url.replace("postgresql+asyncpg://", "postgresql://", 1),
+        }
+        grants = _run_provisioner(["--apply-grants"], provision_env)
+        assert grants.returncode == 0, grants.stderr
+        verify = _run_provisioner(["--verify"], provision_env)
+        assert verify.returncode == 0, verify.stderr
         import json
         import tempfile
         from urllib.parse import urlsplit

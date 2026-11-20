@@ -4,8 +4,10 @@ from uuid import UUID
 
 import pytest
 
+from fastapi import HTTPException
+
 from api.v1.auth import get_current_user, select_tenant
-from core.security import TokenPayload
+from core.security import TokenPayload, create_identity_token, decode_token
 from schemas.auth import CurrentUserResponse, SelectTenantRequest
 
 
@@ -13,12 +15,19 @@ from schemas.auth import CurrentUserResponse, SelectTenantRequest
 async def test_select_tenant_uses_user_roles_table_and_returns_contextual_tokens():
     user_id = "11111111-1111-1111-1111-111111111111"
     tenant_id = "22222222-2222-4222-8222-222222222222"
-    tenant_schema = "t_demo"
+    tenant_schema = f"t_{UUID(tenant_id).hex}"
+    signed_epoch = 7
+    identity = decode_token(create_identity_token(
+        user_id, ["admin"], tenant_user_map={tenant_id: user_id},
+        tenant_credential_epochs={tenant_id: signed_epoch},
+    ))
 
     db = AsyncMock()
 
     user_result = MagicMock()
-    user_result.fetchone.return_value = SimpleNamespace(id=UUID(user_id), is_active=True, is_deleted=False)
+    user_result.fetchone.return_value = SimpleNamespace(
+        id=UUID(user_id), is_active=True, is_deleted=False, credential_epoch=7,
+    )
 
     roles_result = MagicMock()
     roles_result.fetchall.return_value = [("admin",), ("manager",)]
@@ -35,7 +44,7 @@ async def test_select_tenant_uses_user_roles_table_and_returns_contextual_tokens
     ) as mock_create_contextual_token:
         response = await select_tenant(
             request=SelectTenantRequest(tenant_id=tenant_id),
-            token=TokenPayload(user_id=user_id, roles=["admin"]),
+            token=identity,
             db=db,
         )
 
@@ -55,6 +64,24 @@ async def test_select_tenant_uses_user_roles_table_and_returns_contextual_tokens
     assert len(mock_create_contextual_token.call_args_list) == 2
     assert mock_create_contextual_token.call_args_list[0].kwargs["token_type"] == "access"
     assert mock_create_contextual_token.call_args_list[1].kwargs["token_type"] == "refresh"
+    for call in mock_create_contextual_token.call_args_list:
+        assert call.kwargs["credential_epoch"] == signed_epoch
+        assert call.kwargs["tenant_id"] == tenant_id
+        assert call.kwargs["tenant_schema"] == tenant_schema
+
+    user_result.fetchone.return_value = SimpleNamespace(
+        id=UUID(user_id), is_active=True, is_deleted=False, credential_epoch=8,
+    )
+    db.execute = AsyncMock(return_value=user_result)
+    with patch("api.v1.auth.get_wholesaler_by_id", new=AsyncMock(return_value=wholesaler)), patch(
+        "api.v1.auth.create_contextual_token",
+    ) as mint:
+        with pytest.raises(HTTPException) as refused:
+            await select_tenant(SelectTenantRequest(tenant_id=tenant_id), token=identity, db=db)
+    assert refused.value.status_code == 401
+    assert refused.value.detail["code"] == "SESSION_REVOKED"
+    db.execute.assert_awaited_once()
+    mint.assert_not_called()
 
     # A malformed double must still expose a missing model field, not cause
     # production authentication to invent a permissive default.
@@ -63,7 +90,7 @@ async def test_select_tenant_uses_user_roles_table_and_returns_contextual_tokens
     with patch("api.v1.auth.get_wholesaler_by_id", new=AsyncMock(return_value=wholesaler)):
         with pytest.raises(AttributeError, match="is_deleted"):
             await select_tenant(request=SelectTenantRequest(tenant_id=tenant_id),
-                                token=TokenPayload(user_id=user_id, roles=["admin"]), db=db)
+                                token=identity, db=db)
 
 
 @pytest.mark.asyncio

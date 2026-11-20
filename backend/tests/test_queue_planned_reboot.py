@@ -523,7 +523,6 @@ async def _offline_r1r4_child(root, fact, proof):
 
 @pytest.mark.asyncio
 async def test_offline_r1r4_replace_then_dir_fsync_fails_new_process_refuses(tmp_path, monkeypatch, _offline_no_connections):
-    import socket
     import stat
     root = tmp_path/'state'; root.mkdir(mode=0o700)
     monkeypatch.setenv('EXPORT_DIR', str(root))
@@ -550,8 +549,8 @@ async def test_offline_r1r4_replace_then_dir_fsync_fails_new_process_refuses(tmp
     proof.write_text(json.dumps({'version': 1, **{k:fact[k] for k in ('host','boot','database','pid','start_ticks')}})); proof.chmod(0o600)
     inputs = tmp_path/'input.json'; inputs.write_text(json.dumps({'fact':fact, 'proof':str(proof), 'root':str(root)})); inputs.chmod(0o600)
     before = {p.name:p.read_bytes() for p in root.iterdir() if p.is_file()}
-    env = {k:os.environ[k] for k in ('PATH','HOME','LANG','PYTHONPATH','DATABASE_URL','REPORTING_DATABASE_URL','SECRET_KEY','MPANGO_ENV','REDIS_URL','EXPORT_DIR') if k in os.environ}
-    child = await asyncio.create_subprocess_exec(sys.executable, '-B', str(Path(__file__).resolve()), '--offline-r1r4-child', str(inputs),
+    env = {k:os.environ[k] for k in ('PATH','HOME','LANG','DATABASE_URL','REPORTING_DATABASE_URL','SECRET_KEY','MPANGO_ENV','REDIS_URL','EXPORT_DIR') if k in os.environ}
+    child = await asyncio.create_subprocess_exec(sys.executable, '-B', '-m', 'tests.test_queue_planned_reboot', '--offline-r1r4-child', str(inputs),
         cwd=str(Path(__file__).resolve().parents[1]), env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     stdout, stderr = await asyncio.wait_for(child.communicate(), 30)
     assert child.returncode == 0, (stdout, stderr)

@@ -3311,11 +3311,13 @@ def _reuse_expected_metadata(repo):
     authority = "CTO-AUTH-MVP-CC669C48-CI-SOURCE-ALIGN-ZCODEL-R1-20261120"
     fixed = REUSE_LIVE_APPROVED_REF
     expected.update(record="CURRENT_CC669C48_CI_SOURCE_ALIGNMENT_V1", authorization=authority,
-                    intake_version=19, product_anchor=fixed)
+                    intake_version=19, product_anchor=fixed,
+                    intake_status="RECOLLECTED_AT_CC669C48__IDENTICAL_TO_FROZEN_VALUES")
     expected["fixed_source_alignment"].update(
         whole_backend_frontend_comparison_source=fixed, live_comparison_authority=authority)
     expected["fixed_live_source"].update(
-        source_ref=fixed, backend_tree=live_oid(":backend"), frontend_tree=live_oid(":frontend"))
+        source_ref=fixed, backend_tree=live_oid(":backend"), frontend_tree=live_oid(":frontend"),
+        current_native_collect="RECOLLECTED_ALL_FIVE_LEGS_AT_CC669C48__MEASUREMENT_ONLY_MATCHES_FROZEN_COUNTS_AND_CANONICAL")
     expected["current_source_intake"] = dict(expected["fixed_live_source"],
         authorization=authority, source_tree=live_oid("^{tree}"), source_parent=live_oid("^"),
         source_contract_commit=fixed, independent_v3_this_intake="NOT_RUN")
@@ -3323,8 +3325,8 @@ def _reuse_expected_metadata(repo):
         authority=authority, fixed_source=fixed, previous_live_source=REUSE_63D6_APPROVED_REF)
     expected["explicit_non_claims"] = [
         "The fixed cc669c48 commit supplies reviewed backend/frontend bytes: the demo-seeder admission fix plus its fixture authorization repair.",
-        "The five-leg frozen selection was re-verified unchanged at cc669c48: 1741/1708/798/410/106 nodes, 4763 total, canonical digests identical; no counts, files or digests were edited.",
-        "No hosted CI, backend full-body run, independent acceptance or release is claimed by this alignment.",
+        "Two separate facts: the historical frozen selection and its source tables are unchanged; this round separately re-collected all five legs at cc669c48 as measurement only, and the results equal the frozen values (1741/1708/798/410/106 nodes, 4763 total, identical canonical digests) — no counts, files or digests were edited.",
+        "The recollection ran collect-only with no test bodies and claims no hosted CI, no independent acceptance, and no release.",
     ]
     return expected
 

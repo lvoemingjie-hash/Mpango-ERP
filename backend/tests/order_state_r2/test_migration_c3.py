@@ -502,13 +502,23 @@ def test_c5_bootstrap_before_039_refuses_before_tenant_objects():
 def test_c5_catalog_parity_migration_vs_bootstrap():
     """The 039 DDL and the bootstrap DDL must produce catalog-identical
     order_credit_holds tables (columns/constraints/indexes)."""
+    from tests.test_combined_setup_authority_contract import _run_provisioner
+
     source = os.environ["TEST_DATABASE_URL"]
     with temporary_database_url(source, "r2c5para") as db_url:
         engine = _engine(db_url)
         _upgrade_to_038(db_url)
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT version_num FROM public.alembic_version")).scalars().all() == [
+                "038_catalog_identity_vertical_slice"
+            ]
         ws_mig = uuid.uuid4()
         schema_mig = _register_tenant(engine, ws_mig)
         _upgrade_to_head(db_url, "039_order_credit_holds")
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT version_num FROM public.alembic_version")).scalars().all() == [
+                "039_order_credit_holds"
+            ]
 
         def _catalog(schema: str, observing_engine=engine) -> tuple:
             with observing_engine.connect() as conn:
@@ -544,19 +554,32 @@ def test_c5_catalog_parity_migration_vs_bootstrap():
             return (norm(cols), norm(cons), norm(idx))
 
         mig_catalog = _catalog(schema_mig)
-        # Current bootstrap gets a separate genuinely migrated 041 database.
-        # Never change ownership of the historical tenant or spoof its head
-        # merely to pass the current 040/041 owner gates.
+        # Current bootstrap runs on a separate database with the production
+        # grant and verification phases, including the recovery-table ACL.
         with temporary_database_url(source, "r2c5boot") as boot_url:
             _upgrade_to_head(boot_url)
             boot_engine = _engine(boot_url)
-            _grant_product_minimum(boot_engine)
-            spec = importlib.util.spec_from_file_location(
-                "r2_bootstrap_module_parity", BOOTSTRAP_SCRIPT)
-            bootstrap_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(bootstrap_module)
-            ws_boot = uuid.uuid4()
             try:
+                with boot_engine.connect() as conn:
+                    assert conn.execute(text("SELECT version_num FROM public.alembic_version")).scalars().all() == [
+                        "046_staff_credential_recovery"
+                    ]
+                provision_env = {
+                    "MPANGO_DB_ADMIN_URL": os.environ["TEST_ADMIN_DATABASE_URL"],
+                    "MPANGO_DB_MIGRATE_URL": str(boot_url),
+                    "MPANGO_DB_APP_URL": boot_url.app_url.replace("postgresql+asyncpg://", "postgresql://", 1),
+                }
+                grants = _run_provisioner(["--apply-grants"], provision_env)
+                assert grants.returncode == 0, grants.stderr
+                verify = _run_provisioner(["--verify"], provision_env)
+                assert verify.returncode == 0, verify.stderr
+
+                spec = importlib.util.spec_from_file_location(
+                    "r2_bootstrap_module_parity", BOOTSTRAP_SCRIPT)
+                assert spec and spec.loader
+                bootstrap_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(bootstrap_module)
+                ws_boot = uuid.uuid4()
                 _run_in_fresh_loop(asyncio_run, bootstrap_module.bootstrap(
                     f"t_{ws_boot.hex}", boot_url.app_url))
                 boot_catalog = _catalog(f"t_{ws_boot.hex}", boot_engine)

@@ -118,10 +118,10 @@ def test_runtime_public_admission_is_read_only_and_bound(monkeypatch, case):
             check.close()
 
     @contextmanager
-    def current_child():
+    def admission_child(revision="head"):
         with temporary_database_url(os.environ["TEST_DATABASE_URL"], "dc11dadmit") as child:
             with _database_url_env(child):
-                run_alembic_upgrade(_alembic_config(child), "head")
+                run_alembic_upgrade(_alembic_config(child), revision)
             engine = create_engine(str(child).replace("postgresql+asyncpg://", "postgresql://", 1), future=True)
             try:
                 _grant_product_minimum(engine)
@@ -133,7 +133,7 @@ def test_runtime_public_admission_is_read_only_and_bound(monkeypatch, case):
         with temporary_database_url(os.environ["TEST_DATABASE_URL"], "dc11dempty") as empty:
             exercise(str(empty), "DC11D_RUNTIME_IDENTITY_DATABASE_REQUIRED")
         # A healthy lookalike must not conceal a wrong-database connection.
-        with current_child() as (child, _):
+        with admission_child() as (child, _):
             exercise(child.app_url, "DC11D_RUNTIME_IDENTITY_DATABASE_REQUIRED")
     elif case == "identity":
         database = urlparse(actual_url).path
@@ -141,13 +141,19 @@ def test_runtime_public_admission_is_read_only_and_bound(monkeypatch, case):
             exercise(urlparse(os.environ[key])._replace(path=database).geturl(),
                      "DC11D_RUNTIME_IDENTITY_DATABASE_REQUIRED")
     elif case == "head_objects":
-        with current_child() as (child, engine):
+        with admission_child("043_staff_authority_and_credentials") as (child, engine):
+            monkeypatch.setattr(settings_module, "get_settings", lambda: SimpleNamespace(DATABASE_URL=child.app_url))
+            with engine.connect() as db:
+                assert db.execute(text("SELECT version_num FROM public.alembic_version")).scalars().all() == [
+                    "043_staff_authority_and_credentials"
+                ]
+            exercise(child.app_url, "DC11D_CURRENT_HEAD_REQUIRED")
+        with admission_child() as (child, engine):
             monkeypatch.setattr(settings_module, "get_settings", lambda: SimpleNamespace(DATABASE_URL=child.app_url))
             with engine.begin() as db:
-                db.execute(text("UPDATE public.alembic_version SET version_num='043_staff_authority_and_credentials'"))
-            exercise(child.app_url, "DC11D_CURRENT_HEAD_REQUIRED")
-            with engine.begin() as db:
-                db.execute(text("UPDATE public.alembic_version SET version_num='044_inventory_adjustment_approval'"))
+                assert db.execute(text("SELECT version_num FROM public.alembic_version")).scalars().all() == [
+                    "046_staff_credential_recovery"
+                ]
                 db.execute(text("ALTER TABLE public.staff_stock_audit_events RENAME TO admission_hidden_audit_events"))
             exercise(child.app_url, "DC11D_CURRENT_PUBLIC_SUPPLY_REQUIRED")
     else:
@@ -222,7 +228,7 @@ def test_s1r5_catalog_dispatch_uses_owned_database_and_removes_it(monkeypatch):
                 cursor.execute("SELECT current_database(), current_user")
                 assert cursor.fetchone() == (target, source.user)
                 cursor.execute("SELECT version_num FROM public.alembic_version")
-                assert cursor.fetchone()[0] == "044_inventory_adjustment_approval"
+                assert cursor.fetchall() == [("046_staff_credential_recovery",)]
         finally:
             connection.close()
         seen.append(target)
@@ -321,7 +327,7 @@ def test_p21_real_runtime_identity_and_closed_connections():
     before = json.loads((root / "authority-before.json").read_text())
     after = json.loads((root / "authority-after.json").read_text())
     assert before == after, "FR3_P21_AUTHORITY_CHANGED"
-    assert before["head"] == [["044_inventory_adjustment_approval"]], "FR3_P21_WRONG_HEAD"
+    assert before["head"] == [["046_staff_credential_recovery"]], "FR3_P21_WRONG_HEAD"
     assert json.loads((root / "connection-close-proof.json").read_text())["remaining"] == [], "FR3_P21_CONNECTIONS_REMAIN"
 
 

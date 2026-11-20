@@ -1,21 +1,21 @@
 """DC-12R1-S3-S2B-I1-R4-R1: Real Alembic Upgrade Proof + Exact Fail-Closed Catalog.
 
-Replaces helper-only evidence with actual ``alembic upgrade head`` (036 -> 038 via 037)
-execution against real PostgreSQL 16.
+Executes real Alembic upgrades against PostgreSQL 16 from historical 036
+through 037 and 038 to the fixed target 039.
 
 Every RED test:
   1. Provision a disposable database, upgrade to Alembic 036.
   2. Register a tenant through the public registry path (wholesalers +
      tenant_registrations) and bootstrap the tenant schema to its 036 baseline.
   3. Create ONE malformed catalog condition.
-  4. Run ``alembic upgrade head`` (actual env.py + revision chain).
+  4. Upgrade to 039 through the actual env.py and historical revision chain.
   5. Assert PreflightFailure with exact root cause.
   6. Assert ``alembic_version`` remains 036 (transaction rolled back).
   7. Assert complete catalog + permission fingerprint unchanged.
 
 Every GREEN test:
   8. Repair the malformation.
-  9. Run ``alembic upgrade head`` again — reaches sole head 038.
+  9. Upgrade to 039 and check the separate current script-directory head.
  10. Run a second upgrade — no-op, fingerprint unchanged.
 
 Also includes:
@@ -51,7 +51,7 @@ REV_036 = "036_retailer_mvp_identity"
 REV_037 = "037_payment_declarations_schema"
 REV_038 = "038_catalog_identity_vertical_slice"
 REV_HEAD = "039_order_credit_holds"  # Frozen historical target, not current metadata head
-CURRENT_HEAD = "044_inventory_adjustment_approval"
+CURRENT_HEAD = "046_staff_credential_recovery"
 
 DECL = "payment_declarations"
 RECEIPT = "receipt_sequences"
@@ -1118,7 +1118,7 @@ class TestRealAlembicUpgradeFailClosed:
                     with app_eng.begin() as conn:
                         fp_before = _catalog_fingerprint(conn, schema)
 
-                    # First upgrade to 037
+                    # First upgrade to the fixed historical target.
                     run_alembic_upgrade(config, REV_HEAD)
                     with eng.connect() as conn:
                         assert _current_revision(conn) == REV_HEAD
@@ -1201,7 +1201,7 @@ class TestExactCatalogShapeBypass:
                 with app_eng.begin() as conn:
                     repair_fn(conn, schema)
 
-                # 8. Upgrade to sole head 037
+                # 8. Upgrade to the fixed historical target.
                 run_alembic_upgrade(config, REV_HEAD)
                 with eng.connect() as conn:
                     assert _current_revision(conn) == REV_HEAD

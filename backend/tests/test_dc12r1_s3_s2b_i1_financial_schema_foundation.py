@@ -485,15 +485,14 @@ class TestConcurrency:
 
 
 class TestMigrationHead:
-    """The current profile has exactly the frozen 044 head; node names remain historical."""
+    """The current profile has exactly the frozen 046 head; node names remain historical."""
 
     async def test_head_is_038(self):
         async with AsyncSessionLocal() as db:
-            row = (await db.execute(text(
+            revisions = (await db.execute(text(
                 "SELECT version_num FROM public.alembic_version"
-            ))).first()
-            assert row is not None
-            assert row[0] == "044_inventory_adjustment_approval"
+            ))).scalars().all()
+            assert revisions == ["046_staff_credential_recovery"]
 
     async def test_sole_head(self):
         async with AsyncSessionLocal() as db:

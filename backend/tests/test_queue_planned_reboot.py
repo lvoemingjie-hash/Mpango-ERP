@@ -350,29 +350,197 @@ async def test_ops_checkpoint_and_admit_read_real_owner_without_writes(physical_
 
 
 @pytest.mark.asyncio
-async def test_z_interrupted_handoff_refuses_fresh_process_with_old_proof(physical_identity, monkeypatch, tmp_path):
+@pytest.fixture
+def s2_dedicated_target(tmp_path):
+    """S2-only isolation: a dedicated disposable database and a dedicated
+    export root, prepared through the existing one-shot database entry and
+    the formal provisioner grant/verify phases. Parent and child business
+    connections stay mpango_app, reporting stays reporting_user, and no
+    administrator credential reaches the worker environment."""
+    import stat as _stat
+    import subprocess as _subprocess
+    import sys as _sys2
+    import sys as _sys
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import make_url as _make_url
+    from tests.async_test_utils import temporary_database_url as _temporary_database_url
+    from urllib.parse import urlsplit as _urlsplit
+
+    def _leaf_audit(path):
+        path = Path(path)
+        current = Path(path.anchor)
+        user_owned = False
+        for part in path.parts[1:]:
+            current = current / part
+            info = current.lstat()
+            assert not current.is_symlink(), ('PATH_SYMLINK', str(current))
+            if info.st_uid == os.getuid():
+                user_owned = True
+            elif user_owned:
+                raise AssertionError(('PATH_OWNER', str(current)))
+            else:
+                assert info.st_uid == 0, ('PATH_FOREIGN_ANCESTOR', str(current), info.st_uid)
+                assert not info.st_mode & 0o002, ('PATH_WORLD_WRITABLE', str(current))
+        assert _stat.S_ISDIR(path.lstat().st_mode), ('PATH_TYPE', str(path))
+        assert _stat.S_IMODE(path.lstat().st_mode) == 0o700, ('PATH_MODE', str(path))
+        return path
+
+    # CI provides a private temp root via TMPDIR (RUNNER_TEMP/c91-pytest-tmp,
+    # mode 0700); the local run supplies the same-shaped private root. The
+    # audit and the formal reads/writes use this one pair of real directories.
+    safe_root = _leaf_audit(os.environ['TMPDIR'])
+    export_root = safe_root / ('export-root-' + uuid4().hex); export_root.mkdir(mode=0o700)
+    probes_root = safe_root / ('probes-' + uuid4().hex); probes_root.mkdir(mode=0o700)
+    protected = safe_root / ('protected-' + uuid4().hex); protected.mkdir(mode=0o700)
+    import hashlib as _hashlib
+    import psycopg2 as _psycopg2
+
+    def _hard_check():
+        from core.jobs.local_queue import _read_protected_reboot_file
+        # actual targets must be readable through the product's protected
+        # reader, and a group-writable ancestor must be refused.
+        sample = protected / 'protected-read-sample.json'
+        sample.write_text(json.dumps({'payload': {'kind': 'sample'}, 'signature': 'AA=='}))
+        sample.chmod(0o600)
+        _read_protected_reboot_file(sample, os.getuid(), private=True)
+        sample.unlink()
+        unsafe = safe_root / ('group-writable-sample-' + uuid4().hex)
+        unsafe.mkdir()
+        unsafe.chmod(0o771)
+        bad = unsafe / 'sample.json'
+        bad.write_text(json.dumps({'payload': {'kind': 'sample'}, 'signature': 'AA=='}))
+        bad.chmod(0o600)
+        refused = False
+        try:
+            _read_protected_reboot_file(bad, os.getuid(), private=True)
+        except ValueError as error:
+            refused = error.args[0] == 'unsafe parent'
+        finally:
+            bad.unlink(); unsafe.rmdir()
+        assert refused, 'GROUP_WRITABLE_ANCESTOR_NOT_REFUSED'
+    _hard_check()
+
+    shared_database_url = os.environ['TEST_DATABASE_URL']
+    shared_marker_path = Path(os.environ['EXPORT_DIR']).resolve() / '.queue-owner.json'
+
+    def _shared_snapshot():
+        exists = shared_marker_path.exists()
+        digest = _hashlib.sha256(shared_marker_path.read_bytes()).hexdigest() if exists else None
+        admin = _psycopg2.connect(shared_database_url)
+        try:
+            with admin.cursor() as cursor:
+                cursor.execute("SELECT current_database(), current_user, to_regclass('public.sys_jobs') IS NOT NULL")
+                identity = cursor.fetchone()
+                cursor.execute("SELECT count(*), coalesce(md5(string_agg(to_jsonb(t)::text,'' ORDER BY id)),'') "
+                               "FROM public.sys_jobs AS t")
+                row = cursor.fetchone()
+        finally:
+            admin.close()
+        return {'database': identity[0], 'database_user': identity[1], 'sys_jobs_present': identity[2],
+                'marker_path': str(shared_marker_path), 'marker_exists': exists, 'marker_sha256': digest,
+                'sys_jobs_count': row[0], 'sys_jobs_row_content_sha256': row[1]}
+    assert _shared_snapshot()['database_user'] == 'mpango_app', 'S2_SNAPSHOT_IDENTITY'
+    shared_before = _shared_snapshot()
+    source = os.environ['TEST_DATABASE_URL']
+    with _temporary_database_url(source, 's2isolat') as db_url:
+        migration_url = str(db_url)
+        app_url = db_url.app_url.replace('postgresql+asyncpg://', 'postgresql://', 1)
+        env = {**os.environ, 'DATABASE_URL': migration_url,
+               'MPANGO_DB_ADMIN_URL': os.environ['TEST_ADMIN_DATABASE_URL'],
+               'MPANGO_DB_MIGRATE_URL': migration_url,
+               'MPANGO_DB_APP_URL': app_url,
+               'MPANGO_DB_MIGRATE_ROLE': 'mpango_migrate', 'MPANGO_DB_APP_ROLE': 'mpango_app'}
+        for label, argv in [('migrate', [_sys.executable, '-B', '-m', 'alembic', 'upgrade', 'head']),
+                            ('apply-grants', [_sys.executable, '-B', '-m', 'scripts.provision_runtime_db_roles', '--apply-grants']),
+                            ('verify', [_sys.executable, '-B', '-m', 'scripts.provision_runtime_db_roles', '--verify'])]:
+            result = _subprocess.run(argv, cwd=Path(__file__).resolve().parents[1], env=env,
+                                     capture_output=True, timeout=120)
+            Path(tmp_path / ('s2-prepare-' + label + '.log')).write_bytes(result.stderr or result.stdout)
+            assert result.returncode == 0, ('S2_DEDICATED_PREPARATION', label, result.stderr[-400:])
+        probe = create_engine(app_url, future=True)
+        with probe.connect() as connection:
+            head = connection.execute(text('SELECT version_num FROM public.alembic_version')).scalars().all()
+        probe.dispose()
+        assert head == ['046_staff_credential_recovery'], ('S2_DEDICATED_HEAD', head)
+        app_identity = _make_url(app_url)
+        reporting_source = _make_url(os.environ['TEST_REPORTING_DATABASE_URL'])
+        reporting_url = reporting_source.set(database=app_identity.database)
+        assert app_identity.username == 'mpango_app' and _make_url(migration_url).username == 'mpango_migrate'
+        assert reporting_url.username == 'reporting_user'
+        assert _urlsplit(app_url).path.lstrip('/') == _make_url(migration_url).database
+        original_env = json.loads(Path(os.environ['ASYNC_QUEUE_RUNTIME_ENV']).read_text())
+        child_env = {k: v for k, v in original_env.items()
+                     if not any(token in k for token in ('ADMIN', 'MIGRATION', 'OPERATOR'))}
+        child_env['DATABASE_URL'] = app_url
+        child_env['REPORTING_DATABASE_URL'] = str(reporting_url)
+        child_env['EXPORT_DIR'] = str(export_root)
+        child_env['ASYNC_QUEUE_PROBE_ROOT'] = str(probes_root)
+        child_path = protected / 's2-dedicated-runtime-env.json'
+        child_path.write_text(json.dumps(child_env, indent=1)); child_path.chmod(0o600)
+        try:
+            yield {'db_url': db_url, 'app_url': app_url, 'export_root': export_root,
+                   'child_env_path': child_path, 'child_env': child_env,
+                   'database': app_identity.database, 'protected': protected}
+        finally:
+            shared_after = _shared_snapshot()
+            receipt = {'before': shared_before, 'after': shared_after,
+                       'shared_state_unchanged': shared_before == shared_after}
+            (safe_root / 's2-shared-state-unchanged.json').write_text(json.dumps(receipt, indent=1) + '\n')
+            os.chmod(safe_root / 's2-shared-state-unchanged.json', 0o600)
+            assert shared_before == shared_after, ('S2_SHARED_STATE_CHANGED', receipt)
+
+async def test_z_interrupted_handoff_refuses_fresh_process_with_old_proof(physical_identity, monkeypatch, tmp_path, s2_dedicated_target):
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine as _dedicated_engine_factory
+    from sqlalchemy.pool import NullPool as _NullPool
+    from sqlalchemy.engine import make_url as _make_url
     state=physical_identity
-    result,_=await _child('old-closed',tmp_path,state['actual']);assert result['code']=='CLOSED'
-    new_boot='simulated-'+uuid4().hex;proof,authority=await _permit(state,new_boot)
-    authority_path=tmp_path/'authority.json';authority_path.write_text(json.dumps(authority));authority_path.chmod(0o600)
-    result,_=await _child('interrupted',tmp_path,new_boot,extra={'JOB_QUEUE_PLANNED_REBOOT_PROOF_FILE':str(proof),'A2_CHILD_AUTHORITY':str(authority_path)})
-    assert result=={'code':'INJECTED_HANDOFF_AFTER_STARTING','workers':0}
-    owner=await _owner();marker=Path(os.environ['EXPORT_DIR'])/'.queue-owner.json';journal=Path(os.environ['EXPORT_DIR'])/'.queue-reboot-handoff.json'
-    marker_before=marker.read_bytes();journal_before=journal.read_bytes()
-    assert owner['state']=='STARTING' and owner['planned_reboot_handoff']['phase']=='INCOMPLETE'
-    assert json.loads(marker_before)==owner and json.loads(journal_before)['phase']=='INCOMPLETE'
-    oldproof={k:owner[k] for k in ('host','boot','database','pid','start_ticks')};oldproof['version']=1
-    oldpath=tmp_path/'old-exit-proof.json';oldpath.write_text(json.dumps(oldproof));oldpath.chmod(0o600)
-    state['boot']['value']=new_boot;monkeypatch.setenv('JOB_QUEUE_RECOVERY_CONFIRMED','1');monkeypatch.setenv('JOB_QUEUE_RECOVERY_PROOF_FILE',str(oldpath))
-    legacy=local.LocalJobQueue(1);legacy._previous_receipt=owner
-    assert legacy._recovery_proven() is True, 'OLD_SAME_BOOT_PROOF_MUST_BE_VALID'
-    async with AsyncSessionLocal() as db:
-        db.info['tenant_schema']='public';before=(await db.execute(text('SELECT id::text, status, attempts, payload::text, is_deleted FROM public.sys_jobs ORDER BY id'))).all()
-    result,_=await _child('retry-old-proof',tmp_path,new_boot,extra={'JOB_QUEUE_RECOVERY_CONFIRMED':'1','JOB_QUEUE_RECOVERY_PROOF_FILE':str(oldpath)})
-    assert result=={'code':'JOB_RECOVERY_HANDOFF_INCOMPLETE','workers':0}
-    async with AsyncSessionLocal() as db:
-        db.info['tenant_schema']='public';after=(await db.execute(text('SELECT id::text, status, attempts, payload::text, is_deleted FROM public.sys_jobs ORDER BY id'))).all()
-    assert after==before and marker.read_bytes()==marker_before and journal.read_bytes()==journal_before
+    isolation=s2_dedicated_target
+    dedicated_engine=_dedicated_engine_factory(isolation['app_url'].replace('postgresql://','postgresql+asyncpg://',1),poolclass=_NullPool)
+    dedicated_maker=async_sessionmaker(dedicated_engine,expire_on_commit=False)
+    monkeypatch.setattr(sys.modules[__name__],'AsyncSessionLocal',dedicated_maker)
+    monkeypatch.setattr(local,'AsyncSessionLocal',dedicated_maker)
+    monkeypatch.setattr(local,'async_engine',dedicated_engine)
+    monkeypatch.setenv('DATABASE_URL',isolation['app_url'])
+    monkeypatch.setenv('EXPORT_DIR',str(isolation['export_root']))
+    monkeypatch.setenv('ASYNC_QUEUE_RUNTIME_ENV',str(isolation['child_env_path']))
+    assert _make_url(os.environ['DATABASE_URL']).username=='mpango_app'
+    assert _make_url(isolation['child_env']['DATABASE_URL']).username=='mpango_app'
+    assert _make_url(isolation['child_env']['REPORTING_DATABASE_URL']).username=='reporting_user'
+    assert Path(os.environ['EXPORT_DIR'])==isolation['export_root']
+    state['tmp']=isolation['protected']
+    try:
+        result,_=await _child('old-closed',tmp_path,state['actual']);assert result['code']=='CLOSED'
+        new_boot='simulated-'+uuid4().hex;proof,authority=await _permit(state,new_boot)
+        authority_path=isolation['protected']/'authority.json';authority_path.write_text(json.dumps(authority));authority_path.chmod(0o600)
+        result,_=await _child('interrupted',tmp_path,new_boot,extra={'JOB_QUEUE_PLANNED_REBOOT_PROOF_FILE':str(proof),'A2_CHILD_AUTHORITY':str(authority_path)})
+        assert result=={'code':'INJECTED_HANDOFF_AFTER_STARTING','workers':0}
+        owner=await _owner();marker=Path(os.environ['EXPORT_DIR'])/'.queue-owner.json';journal=Path(os.environ['EXPORT_DIR'])/'.queue-reboot-handoff.json'
+        marker_before=marker.read_bytes();journal_before=journal.read_bytes()
+        assert owner['state']=='STARTING' and owner['planned_reboot_handoff']['phase']=='INCOMPLETE'
+        assert json.loads(marker_before)==owner and json.loads(journal_before)['phase']=='INCOMPLETE'
+        oldproof={k:owner[k] for k in ('host','boot','database','pid','start_ticks')};oldproof['version']=1
+        oldpath=isolation['protected']/'old-exit-proof.json';oldpath.write_text(json.dumps(oldproof));oldpath.chmod(0o600)
+        state['boot']['value']=new_boot;monkeypatch.setenv('JOB_QUEUE_RECOVERY_CONFIRMED','1');monkeypatch.setenv('JOB_QUEUE_RECOVERY_PROOF_FILE',str(oldpath))
+        legacy=local.LocalJobQueue(1);legacy._previous_receipt=owner
+        assert legacy._recovery_proven() is True, 'OLD_SAME_BOOT_PROOF_MUST_BE_VALID'
+        sessions={}
+        async with dedicated_maker() as db:
+            db.info['tenant_schema']='public'
+            sessions=dict((await db.execute(text('SELECT usename, count(*) FROM pg_stat_activity WHERE datname=current_database() GROUP BY usename'))).all())
+            before=(await db.execute(text('SELECT id::text, status, attempts, payload::text, is_deleted FROM public.sys_jobs ORDER BY id'))).all()
+        result,_=await _child('retry-old-proof',tmp_path,new_boot,extra={'JOB_QUEUE_RECOVERY_CONFIRMED':'1','JOB_QUEUE_RECOVERY_PROOF_FILE':str(oldpath)})
+        assert result=={'code':'JOB_RECOVERY_HANDOFF_INCOMPLETE','workers':0}
+        async with dedicated_maker() as db:
+            db.info['tenant_schema']='public';after=(await db.execute(text('SELECT id::text, status, attempts, payload::text, is_deleted FROM public.sys_jobs ORDER BY id'))).all()
+        assert after==before and marker.read_bytes()==marker_before and journal.read_bytes()==journal_before
+        evidence_root=isolation['protected']
+        (evidence_root/'s2-connection-identity.json').write_text(json.dumps(
+            {'dedicated_database':isolation['database'],'parent_child_business_user':'mpango_app',
+             'reporting_user':'reporting_user','pg_stat_activity_usenames':sessions,
+             'export_root':str(isolation['export_root'])},indent=1)+'\n');os.chmod(evidence_root/'s2-connection-identity.json',0o600)
+    finally:
+        await dedicated_engine.dispose()
+
 
 
 @pytest.fixture

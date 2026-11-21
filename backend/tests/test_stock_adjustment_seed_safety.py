@@ -82,11 +82,6 @@ async def test_actual_owned_fresh_demo_admission_then_occupied_rejection(tmp_pat
         record['fresh_admission']='PASS';record['occupied_zero_write_refusal']='PASS';save()
     finally:
         if engine is not None:await engine.dispose()
-        # The product refusal path returns before disposing its runtime-side
-        # session (documented in test_migration_c3); a deterministic collect
-        # closes the leaked session so owner-only teardown stays meaningful.
-        import gc as _gc
-        _gc.collect()
         with connection.cursor() as cursor:
             cursor.execute('SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=%s',(database,))
             assert cursor.fetchone()==(migrate.username,)

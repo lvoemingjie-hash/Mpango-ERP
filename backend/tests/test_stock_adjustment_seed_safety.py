@@ -36,13 +36,21 @@ async def test_actual_owned_fresh_demo_admission_then_occupied_rejection(tmp_pat
         mu=migrate.set(database=database).render_as_string(hide_password=False)
         au=app.set(database=database).render_as_string(hide_password=False)
         env={**os.environ,'DATABASE_URL':mu,'MPANGO_DB_ADMIN_URL':admin,'MPANGO_DB_MIGRATE_URL':mu,'MPANGO_DB_APP_URL':au}
-        for label,argv in [('migrate',[sys.executable,'-B','-m','alembic','upgrade','044_inventory_adjustment_approval']),
+        for label,argv in [('migrate',[sys.executable,'-B','-m','alembic','upgrade','046_staff_credential_recovery']),
                            ('grants',[sys.executable,'-B','scripts/provision_runtime_db_roles.py','--apply-grants'])]:
             result=subprocess.run(argv,cwd=Path(__file__).resolve().parents[1],env=env,capture_output=True,timeout=90)
             for stream,data in [('stdout',result.stdout),('stderr',result.stderr)]:
                 path=root/(database+'-'+label+'.'+stream);path.write_bytes(data);os.chmod(path,0o600)
             record['calls'].append({'label':label,'argv':argv,'rc':result.returncode});save()
             assert result.returncode==0,'M2_SEED_ADMISSION_PREPARATION'
+        head_connection=psycopg2.connect(mu)
+        try:
+            with head_connection.cursor() as head_cursor:
+                head_cursor.execute('SELECT version_num FROM public.alembic_version')
+                assert head_cursor.fetchall()==[('046_staff_credential_recovery',)],'M2_SEED_ADMISSION_PREPARATION_HEAD'
+        finally:
+            head_connection.close()
+        record['prepared_head']='046_staff_credential_recovery';save()
         cid=os.environ['MPANGO_INVARIANTS_R0_PG_CONTAINER']
         info=json.loads(subprocess.check_output(['docker','inspect',cid]))[0]
         manifest=tmp_path/'fresh-demo-task.json'
@@ -74,6 +82,11 @@ async def test_actual_owned_fresh_demo_admission_then_occupied_rejection(tmp_pat
         record['fresh_admission']='PASS';record['occupied_zero_write_refusal']='PASS';save()
     finally:
         if engine is not None:await engine.dispose()
+        # The product refusal path returns before disposing its runtime-side
+        # session (documented in test_migration_c3); a deterministic collect
+        # closes the leaked session so owner-only teardown stays meaningful.
+        import gc as _gc
+        _gc.collect()
         with connection.cursor() as cursor:
             cursor.execute('SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=%s',(database,))
             assert cursor.fetchone()==(migrate.username,)

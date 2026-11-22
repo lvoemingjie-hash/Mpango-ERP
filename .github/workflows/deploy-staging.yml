@@ -270,7 +270,7 @@ jobs:
           umask 077
           set -a; . "$RUNNER_TEMP/c91-test-env.sh"; set +a
           case "${{ matrix.shard }}" in
-            runtime-a|runtime-b) export MPANGO_ENV=test ;;
+            runtime-a|runtime-b|topology) export MPANGO_ENV=test ;;
             invariants-jwt) export MPANGO_ENV=staging ;;
           esac
           python tools/ci/prepare_test_evidence.py queue-runtime-env --mode create --repo-root "$GITHUB_WORKSPACE" --task-root "$RUNNER_TEMP/rc4-queue-private" --shard "${{ matrix.shard }}" --github-env "$GITHUB_ENV" > "$RUNNER_TEMP/queue-inputs.log" 2>&1

@@ -3345,11 +3345,17 @@ def _reuse_expected_metadata(repo):
     expected["current_source_intake"] = dict(expected["fixed_live_source"],
         authorization=authority, source_tree=live_oid("^{tree}"), source_parent=live_oid("^"),
         source_contract_commit=fixed, independent_v3_this_intake="NOT_RUN")
+    expected["selection_binding"].update(authority=authority, source_ref=fixed)
+    expected["current_collection_binding"].update(
+        source_ref=fixed, node_counts=CURRENT_COLLECTION_COUNTS,
+        canonical_sha256=CANONICAL_NODEID_SHA256, ordered_nodeid_sha256=CURRENT_ORDERED_NODEID_SHA256)
     expected["current_ci_alignment"].update(
-        authority=authority, fixed_source=fixed, previous_live_source=REUSE_CC669_APPROVED_REF)
+        authority=authority, fixed_source=fixed, previous_live_source=REUSE_CC669_APPROVED_REF,
+        source_ref=fixed, node_counts=CURRENT_COLLECTION_COUNTS,
+        file_counts=CURRENT_COLLECTION_FILE_COUNTS)
     expected["explicit_non_claims"] = [
-        "The fixed ddd5f1b2 commit supplies reviewed backend/frontend bytes: the seed-safety and planned-reboot fixture preparations moved test_queue_planned_reboot.py from runtime-b to topology (structural classifier: TEST_ADMIN_DATABASE_URL), moving 21 nodeids between legs.",
-        "The five-leg frozen expectations are retained unchanged pending CTO re-freeze: measured at ddd5f1b2 as 1741/1687/819/410/106 nodes (total 4763) with runtime-a, invariants-jwt and task-managed-pg nodeid lists identical name-by-name in order; no counts, files or digests were edited by this alignment.",
+        "The fixed ddd5f1b2 commit supplies reviewed backend/frontend bytes: test_queue_planned_reboot.py moved from runtime-b to topology, moving 21 nodeids between legs; the other three legs are unchanged; total remains 4763.",
+        "The five-leg frozen expectations are measured at ddd5f1b2 as 1741/1687/819/410/106 nodes (total 4763) with runtime-a, invariants-jwt and task-managed-pg nodeid lists identical name-by-name in order.",
         "No hosted CI, backend full-body run, independent acceptance or release is claimed by this alignment.",
     ]
     return expected

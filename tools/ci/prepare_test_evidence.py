@@ -173,22 +173,26 @@ REUSE_664_CURRENT_COLLECTION_FILE_COUNTS = {
 # Current R3 values come from the affected native collections against T.
 CANONICAL_NODEID_SHA256 = {
     **REUSE_664_CANONICAL_NODEID_SHA256,
-    "runtime-b": "0c4cb0023145e389864fc9f9628924066c80f6fb71e0d6b4b3f614a480572652",
+    "runtime-b": "76073ad40ab8306a0cb557b6cac06f3443220f3b65727d49a66468779eeb8e04",
+    "topology": "552863f3ff7bf4a7df8b9a5a93c68db71bd2ef046da3c20b8f97d6acdbe87ad1",
     "task-managed-pg": "b43e814ee6b719238a4c8b1f1da8042d65054148e7243604c658ca60f6dae4b9",
 }
 CURRENT_COLLECTION_COUNTS = {
     **REUSE_664_CURRENT_COLLECTION_COUNTS,
-    "runtime-b": 1708,
+    "runtime-b": 1687,
+    "topology": 819,
     "task-managed-pg": 106,
 }
 CURRENT_ORDERED_NODEID_SHA256 = {
     **REUSE_664_CURRENT_ORDERED_NODEID_SHA256,
-    "runtime-b": "32fcf1b6ca16e268211807432b482ae4afeaf9810efb7afbbaf46c5e3c806aaa",
+    "runtime-b": "f07b4df50845ab45a58abd9a36ec73e2952f574d6ff08e5454b9a00794ba165d",
+    "topology": "9cba74eb8dcf5f1d355d06d5265e3511a9c63fb441c832070fbfa6d5fadcdcc2",
     "task-managed-pg": "3f7244255446496481a7ddea70b02be394ee52ccf2372dc15a1e992440a14c3c",
 }
 CURRENT_COLLECTION_FILE_COUNTS = {
     **REUSE_664_CURRENT_COLLECTION_FILE_COUNTS,
-    "runtime-b": 97,
+    "runtime-b": 96,
+    "topology": 40,
     "task-managed-pg": 6,
 }
 
@@ -3921,7 +3925,7 @@ SYNTHETIC_IDENTITY_VALUES = frozenset(
 
 
 QUEUE_CAPTURE_SHA256 = "0c926de0958bbf72f658efec4512adfb234488086f78a406c08769a34d32e492"
-QUEUE_PROFILES = {"runtime-a": "test", "runtime-b": "test", "invariants-jwt": "staging"}
+QUEUE_PROFILES = {"runtime-a": "test", "runtime-b": "test", "topology": "test", "invariants-jwt": "staging"}
 QUEUE_OS_KEYS = ("HOME", "PATH", "LANG", "USER", "LOGNAME", "VIRTUAL_ENV",
                  "PYTHONUNBUFFERED", "PYTHONNOUSERSITE")
 

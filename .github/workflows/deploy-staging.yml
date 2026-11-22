@@ -52,13 +52,13 @@ jobs:
           - shard: runtime-b
             job-timeout-minutes: 25
             pytest-timeout: 18m
-            expected-files: "97"
-            expected-nodes: "1708"
+            expected-files: "96"
+            expected-nodes: "1687"
           - shard: topology
             job-timeout-minutes: 35
             pytest-timeout: 25m
-            expected-files: "39"
-            expected-nodes: "798"
+            expected-files: "40"
+            expected-nodes: "819"
           - shard: invariants-jwt
             job-timeout-minutes: 30
             pytest-timeout: 20m
@@ -264,7 +264,7 @@ jobs:
 
       - name: Assemble task-private queue child inputs
         id: queue-inputs
-        if: steps.provision.outcome == 'success' && (matrix.shard == 'runtime-a' || matrix.shard == 'runtime-b' || matrix.shard == 'invariants-jwt')
+        if: steps.provision.outcome == 'success' && (matrix.shard == 'runtime-a' || matrix.shard == 'runtime-b' || matrix.shard == 'invariants-jwt' || matrix.shard == 'topology')
         run: |
           set -euo pipefail
           umask 077
@@ -305,7 +305,7 @@ jobs:
           echo "postgres:16 local image precondition satisfied (id + digest recorded for later reconciliation)"
 
       - name: Shard gate (argfile + collect-only membership check)
-        if: steps.provision.outcome == 'success' && ((matrix.shard != 'runtime-a' && matrix.shard != 'runtime-b' && matrix.shard != 'invariants-jwt') || steps.queue-inputs.outcome == 'success')
+        if: steps.provision.outcome == 'success' && ((matrix.shard != 'runtime-a' && matrix.shard != 'runtime-b' && matrix.shard != 'topology' && matrix.shard != 'invariants-jwt') || steps.queue-inputs.outcome == 'success')
         run: |
           set -euo pipefail
           umask 077
@@ -336,7 +336,7 @@ jobs:
             task-managed-pg) export C91_R3_RESOURCE_ROOT="$RUNNER_TEMP/c91-resource-root"; mkdir -p "$C91_R3_RESOURCE_ROOT"; chmod 700 "$C91_R3_RESOURCE_ROOT" ;;
           esac
           case "${{ matrix.shard }}" in
-            runtime-a|runtime-b|invariants-jwt)
+            runtime-a|runtime-b|topology|invariants-jwt)
               python ../tools/ci/prepare_test_evidence.py queue-runtime-env --mode verify --repo-root "$GITHUB_WORKSPACE" --task-root "$RUNNER_TEMP/rc4-queue-private" --shard "${{ matrix.shard }}"
               ;;
           esac
@@ -375,7 +375,7 @@ jobs:
           echo "reuse admission accepted in bounded scope; rcj full node coverage remains GAP"
 
       - name: Run shard test body (single pytest invocation)
-        if: steps.provision.outcome == 'success' && steps.reuse-admission.outcome == 'success' && ((matrix.shard != 'runtime-a' && matrix.shard != 'runtime-b' && matrix.shard != 'invariants-jwt') || steps.queue-inputs.outcome == 'success')
+        if: steps.provision.outcome == 'success' && steps.reuse-admission.outcome == 'success' && ((matrix.shard != 'runtime-a' && matrix.shard != 'runtime-b' && matrix.shard != 'topology' && matrix.shard != 'invariants-jwt') || steps.queue-inputs.outcome == 'success')
         working-directory: backend
         run: |
           set -euo pipefail
@@ -396,7 +396,7 @@ jobs:
             task-managed-pg) export C91_R3_RESOURCE_ROOT="$RUNNER_TEMP/c91-resource-root"; mkdir -p "$C91_R3_RESOURCE_ROOT"; chmod 700 "$C91_R3_RESOURCE_ROOT" ;;
           esac
           case "${{ matrix.shard }}" in
-            runtime-a|runtime-b|invariants-jwt)
+            runtime-a|runtime-b|topology|invariants-jwt)
               python ../tools/ci/prepare_test_evidence.py queue-runtime-env --mode verify --repo-root "$GITHUB_WORKSPACE" --task-root "$RUNNER_TEMP/rc4-queue-private" --shard "${{ matrix.shard }}"
               ;;
           esac

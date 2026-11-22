@@ -699,7 +699,7 @@
     "backend_tree": "0c953f46cfd93773a9c1df4ae056b4ad6d651595",
     "frontend_tree": "74e634ccdd53ac5249ec537c3c330b8d3a462074",
     "historical_collection_ref": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
-    "current_native_collect": "RECOLLECTED_ALL_FIVE_LEGS_AT_CC669C48__MEASUREMENT_ONLY_MATCHES_FROZEN_COUNTS_AND_CANONICAL",
+    "current_native_collect": "DDD5F1B2__21_NODES_MOVED_RUNTIME_B_TO_TOPOLOGY__OTHER_THREE_LEGS_UNCHANGED__TOTAL_4763",
     "current_hosted_ci": "NOT_RUN",
     "claim": "WHOLE_BACKEND_FRONTEND_SOURCE_COMPARISON_ONLY",
     "authorization": "CTO-AUTH-MVP-DDD5-FIVE-LEG-SOURCE-ALIGN-LOCAL-ZCODEL-R1-20261122",
@@ -3268,7 +3268,7 @@
     "backend_tree": "0c953f46cfd93773a9c1df4ae056b4ad6d651595",
     "frontend_tree": "74e634ccdd53ac5249ec537c3c330b8d3a462074",
     "historical_collection_ref": "2add5eec0f21e1bc6e505e77e9385e33a105f347",
-    "current_native_collect": "RECOLLECTED_ALL_FIVE_LEGS_AT_CC669C48__MEASUREMENT_ONLY_MATCHES_FROZEN_COUNTS_AND_CANONICAL",
+    "current_native_collect": "DDD5F1B2__21_NODES_MOVED_RUNTIME_B_TO_TOPOLOGY__OTHER_THREE_LEGS_UNCHANGED__TOTAL_4763",
     "current_hosted_ci": "NOT_RUN",
     "claim": "WHOLE_BACKEND_FRONTEND_SOURCE_COMPARISON_ONLY"
   },

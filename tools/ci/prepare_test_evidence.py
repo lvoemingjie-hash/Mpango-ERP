@@ -3342,7 +3342,8 @@ def _reuse_expected_metadata(repo):
     expected["fixed_source_alignment"].update(
         whole_backend_frontend_comparison_source=fixed, live_comparison_authority=authority)
     expected["fixed_live_source"].update(
-        source_ref=fixed, backend_tree=live_oid(":backend"), frontend_tree=live_oid(":frontend"))
+        source_ref=fixed, backend_tree=live_oid(":backend"), frontend_tree=live_oid(":frontend"),
+        current_native_collect="DDD5F1B2__21_NODES_MOVED_RUNTIME_B_TO_TOPOLOGY__OTHER_THREE_LEGS_UNCHANGED__TOTAL_4763")
     expected["current_source_intake"] = dict(expected["fixed_live_source"],
         authorization=authority, source_tree=live_oid("^{tree}"), source_parent=live_oid("^"),
         source_contract_commit=fixed, independent_v3_this_intake="NOT_RUN")
@@ -3514,6 +3515,7 @@ def cmd_verify_reuse(args: argparse.Namespace) -> int:
     problems = []
     if coverage != expected:
         problems.append("REUSE_METADATA_PROVENANCE")
+
     object_problems, object_count = _reuse_object_problems(repo, args.approved_ref)
     problems.extend(object_problems)
     external_problems, external_count = _reuse_external_object_problems(repo, args.approved_ref)

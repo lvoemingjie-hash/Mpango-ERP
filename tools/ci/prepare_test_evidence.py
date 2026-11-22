@@ -3337,7 +3337,8 @@ def _reuse_expected_metadata(repo):
     authority = "CTO-AUTH-MVP-DDD5-FIVE-LEG-SOURCE-ALIGN-LOCAL-ZCODEL-R1-20261122"
     fixed = REUSE_LIVE_APPROVED_REF
     expected.update(record="CURRENT_DDD5_FIVE_LEG_SOURCE_ALIGNMENT_V1", authorization=authority,
-                    intake_version=20, product_anchor=fixed)
+                    intake_version=20, product_anchor=fixed,
+                    intake_status="RECOLLECTED_AT_DDD5F1B2__21_NODES_MOVED_RUNTIME_B_TO_TOPOLOGY")
     expected["fixed_source_alignment"].update(
         whole_backend_frontend_comparison_source=fixed, live_comparison_authority=authority)
     expected["fixed_live_source"].update(

@@ -650,7 +650,7 @@
     "No hosted CI, backend full-body run, independent acceptance or release is claimed by this alignment."
   ],
   "intake_version": 20,
-  "intake_status": "RECOLLECTED_AT_CC669C48__IDENTICAL_TO_FROZEN_VALUES",
+  "intake_status": "RECOLLECTED_AT_DDD5F1B2__21_NODES_MOVED_RUNTIME_B_TO_TOPOLOGY",
   "product_anchor": "ddd5f1b2c8936b44d9d3fa2618d22198dd2ca453",
   "intake_sources": [
     {

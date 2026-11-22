@@ -3352,7 +3352,12 @@ def _reuse_expected_metadata(repo):
     expected["current_ci_alignment"].update(
         authority=authority, fixed_source=fixed, previous_live_source=REUSE_CC669_APPROVED_REF,
         source_ref=fixed, node_counts=CURRENT_COLLECTION_COUNTS,
-        file_counts=CURRENT_COLLECTION_FILE_COUNTS)
+        file_counts=CURRENT_COLLECTION_FILE_COUNTS,
+        native_collection_source_ref=fixed)
+    expected["selection_binding"]["migration_note"] = (
+        "test_queue_planned_reboot.py moved from runtime-b to topology (21 nodes) at ddd5f1b2")
+    expected["current_collection_binding"]["migration_note"] = (
+        "test_queue_planned_reboot.py moved from runtime-b to topology (21 nodes) at ddd5f1b2")
     expected["explicit_non_claims"] = [
         "The fixed ddd5f1b2 commit supplies reviewed backend/frontend bytes: test_queue_planned_reboot.py moved from runtime-b to topology, moving 21 nodeids between legs; the other three legs are unchanged; total remains 4763.",
         "The five-leg frozen expectations are measured at ddd5f1b2 as 1741/1687/819/410/106 nodes (total 4763) with runtime-a, invariants-jwt and task-managed-pg nodeid lists identical name-by-name in order.",

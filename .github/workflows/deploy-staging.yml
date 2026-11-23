@@ -429,11 +429,15 @@ jobs:
           fi
           # Diagnostic observation (two-leg candidate only): append-and-flush
           # phase timeline for invariants-jwt, mirroring the runtime-a plugin
-          # channel. Reading never depends on pytest exit hooks; the recorder
-          # changes no collection, ordering or outcome.
+          # channel. Sequence numbers are bound to the ORIGINAL gate product
+          # (the frozen collect list) and checked against the order pytest
+          # actually collected in-process; a mismatch yields a value-free
+          # marker instead of numbers. Reading never depends on pytest exit
+          # hooks; the recorder changes no collection, ordering or outcome.
           if [ "${{ matrix.shard }}" = invariants-jwt ]; then
             export PYTHONPATH="$PWD/../tools/ci${PYTHONPATH:+:$PYTHONPATH}"
             export JWT_PHASE_OBSERVATION_FILE="$RUNNER_TEMP/jwt-phase-observation.jsonl"
+            export JWT_FROZEN_ORDER_FILE="$RUNNER_TEMP/collect-${{ matrix.shard }}.txt"
             OBSERVER_ARGS=(-p jwt_phase_observer)
           fi
           echo "shard ${{ matrix.shard }} test body started (raw pytest output goes to private runner staging, never to this console)"

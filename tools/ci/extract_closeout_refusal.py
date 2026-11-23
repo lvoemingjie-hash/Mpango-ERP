@@ -71,7 +71,18 @@ URL_SCOPE
 """.split()) | {"JSON_INVALID"}
 
 _ALLOWED = frozenset("QUEUE_" + name for name in _ALLOWED_STATIC) | {
-    "QUEUE_INPUT_IO_OR_SHAPE_" + name for name in ("OSError", "ValueError", "KeyError")
+    # The closeout entry wraps the body in
+    #   except (OSError, ValueError, KeyError) as error:
+    #       Refused("QUEUE_INPUT_IO_OR_SHAPE_" + type(error).__name__, 3)
+    # so the printed category carries the CONCRETE subclass name, not the
+    # caught base class. The base names stay for completeness; the three
+    # subclass names below were produced by the real entry offline (missing
+    # path, file used as a directory component, unreadable directory), each
+    # with rc 3, and are the ones observed in practice.
+    "QUEUE_INPUT_IO_OR_SHAPE_" + name for name in (
+        "OSError", "ValueError", "KeyError",
+        "FileNotFoundError", "NotADirectoryError", "PermissionError",
+    )
 } | frozenset(
     "QUEUE_MISSING_KEY_" + key for key in (
         "RUNNER_TEMP", "GITHUB_WORKSPACE", "GITHUB_SHA", "GITHUB_RUN_ID",

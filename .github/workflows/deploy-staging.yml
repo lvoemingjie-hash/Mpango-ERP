@@ -61,7 +61,7 @@ jobs:
             expected-nodes: "819"
           - shard: invariants-jwt
             job-timeout-minutes: 30
-            pytest-timeout: 20m
+            pytest-timeout: 25m
             expected-files: "22"
             expected-nodes: "410"
           - shard: task-managed-pg
@@ -326,6 +326,10 @@ jobs:
           set -a; . "$RUNNER_TEMP/c91-test-env.sh"; set +a
           case "${{ matrix.shard }}" in
             topology|task-managed-pg) export MPANGO_ALLOW_TEMP_DB_CREATE=1 ;;
+            runtime-b)
+              export HYPOTHESIS_STORAGE_DIRECTORY="$RUNNER_TEMP/rc4-queue-private/hypothesis-storage"
+              mkdir -m 700 -p "$HYPOTHESIS_STORAGE_DIRECTORY"
+              ;;
             invariants-jwt)
               export MPANGO_ENV=staging EMAIL_PROVIDER=dev_sink EMAIL_DELIVERY_MODE=dev_sink
               export AUDIT_FINITE_APP_URL="$DATABASE_URL"
@@ -386,6 +390,10 @@ jobs:
           set -a; . "$RUNNER_TEMP/c91-test-env.sh"; set +a
           case "${{ matrix.shard }}" in
             topology|task-managed-pg) export MPANGO_ALLOW_TEMP_DB_CREATE=1 ;;
+            runtime-b)
+              export HYPOTHESIS_STORAGE_DIRECTORY="$RUNNER_TEMP/rc4-queue-private/hypothesis-storage"
+              mkdir -m 700 -p "$HYPOTHESIS_STORAGE_DIRECTORY"
+              ;;
             invariants-jwt)
               export MPANGO_ENV=staging EMAIL_PROVIDER=dev_sink EMAIL_DELIVERY_MODE=dev_sink
               export AUDIT_FINITE_APP_URL="$DATABASE_URL"

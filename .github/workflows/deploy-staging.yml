@@ -1,14 +1,17 @@
 # =============================================================================
-# Track E2: Staging Deployment Pipeline
+# Two-leg diagnostic observation (local candidate derived from b8c9ca17).
 #
-# Triggers on push to main. Runs backend tests as gatekeeper.
-# Tests always run; image publication requires explicit manual opt-in.
+# DIAGNOSTIC ONLY — not a release candidate. Derived from the five-leg
+# workflow with only the original runtime-b (1687 nodes) and invariants-jwt
+# (410 nodes) legs kept in original order; original supply, queue environment,
+# pytest semantics, dependencies, parallelism and time limits unchanged.
+# Manual dispatch only, publish stays false, and build/deploy are permanently
+# non-runnable (${{ false }}). Observation additions never alter product
+# sources, fixtures, selection, timeouts or cleanup guards.
 # =============================================================================
-name: Deploy Staging
+name: Deploy Staging (two-leg diagnostic observation)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       publish:
@@ -39,36 +42,24 @@ jobs:
       # with its own PG16/Redis7/credentials/database. fail-fast stays false
       # so independent legs keep their evidence when one leg fails; a failed
       # leg still fails the workflow — nothing below swallows a failure.
+      # Diagnostic scope keeps the original runtime-b and invariants-jwt legs
+      # only; the other three legs' entries are deliberately absent.
       fail-fast: false
       max-parallel: 2
       matrix:
-        # Hard budget cap: 50+25+35+30+20 = 160 runner-minutes total.
+        # Hard budget cap for the diagnostic scope: 25+30 = 55 runner-minutes
+        # total (original per-leg values unchanged).
         include:
-          - shard: runtime-a
-            job-timeout-minutes: 50
-            pytest-timeout: 40m
-            expected-files: "100"
-            expected-nodes: "1741"
           - shard: runtime-b
             job-timeout-minutes: 25
             pytest-timeout: 18m
             expected-files: "96"
             expected-nodes: "1687"
-          - shard: topology
-            job-timeout-minutes: 35
-            pytest-timeout: 25m
-            expected-files: "40"
-            expected-nodes: "819"
           - shard: invariants-jwt
             job-timeout-minutes: 30
             pytest-timeout: 20m
             expected-files: "22"
             expected-nodes: "410"
-          - shard: task-managed-pg
-            job-timeout-minutes: 20
-            pytest-timeout: 13m
-            expected-files: "6"
-            expected-nodes: "106"
     env:
       CI_OWNER_LABEL: zcode-mvp-invariants-ci-deploy-staging-r6
       # R6R1 (F-01) intended ONE credential-store path visible to the supply
@@ -436,6 +427,15 @@ jobs:
             export PYTHONPATH="$PWD/../tools/ci${PYTHONPATH:+:$PYTHONPATH}"
             OBSERVER_ARGS=(-p rc4_staff_credential_observer)
           fi
+          # Diagnostic observation (two-leg candidate only): append-and-flush
+          # phase timeline for invariants-jwt, mirroring the runtime-a plugin
+          # channel. Reading never depends on pytest exit hooks; the recorder
+          # changes no collection, ordering or outcome.
+          if [ "${{ matrix.shard }}" = invariants-jwt ]; then
+            export PYTHONPATH="$PWD/../tools/ci${PYTHONPATH:+:$PYTHONPATH}"
+            export JWT_PHASE_OBSERVATION_FILE="$RUNNER_TEMP/jwt-phase-observation.jsonl"
+            OBSERVER_ARGS=(-p jwt_phase_observer)
+          fi
           echo "shard ${{ matrix.shard }} test body started (raw pytest output goes to private runner staging, never to this console)"
           set +e
           timeout --signal=INT --kill-after=60s ${{ matrix.pytest-timeout }} poetry run pytest "${OBSERVER_ARGS[@]}" "${TEST_FILES[@]}" -q --tb=short --junitxml=../junit-${{ matrix.shard }}.xml > "$RUNNER_TEMP/pytest-stdout.txt" 2> "$RUNNER_TEMP/pytest-stderr.txt"
@@ -468,7 +468,25 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
+          # Diagnostic observation: the ORIGINAL entry, command line and
+          # redirections are unchanged; only its real exit code is captured
+          # for the refusal-category extractor below. The step still fails
+          # with the original rc and the log stays runner-private.
+          set +e
           python tools/ci/prepare_test_evidence.py queue-runtime-env --mode closeout --repo-root "$GITHUB_WORKSPACE" --task-root "$RUNNER_TEMP/rc4-queue-private" --shard "${{ matrix.shard }}" --receipt "$RUNNER_TEMP/rc4-queue-closeout.json" > "$RUNNER_TEMP/queue-closeout.log" 2>&1
+          closeout_rc=$?
+          set -e
+          printf '%s\n' "$closeout_rc" > "$RUNNER_TEMP/queue-closeout.rc"
+          exit "$closeout_rc"
+
+      - name: Extract closeout first refusal category (observation only; never masks)
+        if: always() && steps.queue-inputs.outcome == 'success'
+        run: |
+          # Fixed-allowlist extraction of the FIRST named refusal category the
+          # original closeout entry printed, plus the real rc. The summary
+          # carries no log text, environment values, directory names, process
+          # arguments or wiring values; it never masks the closeout failure.
+          python tools/ci/extract_closeout_refusal.py --log "$RUNNER_TEMP/queue-closeout.log" --rc-file "$RUNNER_TEMP/queue-closeout.rc" --out "$RUNNER_TEMP/queue-closeout-refusal-summary.json"
 
       - name: Sanitize shard evidence for publication (fail-closed)
         if: always()
@@ -563,6 +581,12 @@ jobs:
           sanitize "$RUNNER_TEMP/reconcile-${{ matrix.shard }}.diag.json" "reconcile-${{ matrix.shard }}.sanitized.diag.json" optional allow-empty
           sanitize "$RUNNER_TEMP/rc4-queue-private/receipt.json" "queue-inputs-${{ matrix.shard }}.sanitized.json" optional
           sanitize "$RUNNER_TEMP/rc4-queue-closeout.json" "queue-closeout-${{ matrix.shard }}.sanitized.json" optional
+          # Diagnostic observation (two-leg candidate only): the refusal
+          # summary is allowlist category + real rc by construction; the
+          # phase timeline carries only sequence numbers, phase names, events
+          # and monotonic offsets. Both ride the existing sanitizer outlet.
+          sanitize "$RUNNER_TEMP/queue-closeout-refusal-summary.json" "queue-closeout-refusal-${{ matrix.shard }}.sanitized.json" optional
+          sanitize "$RUNNER_TEMP/jwt-phase-observation.jsonl" "jwt-phase-observation-${{ matrix.shard }}.sanitized.jsonl" optional allow-empty
           cp "$RUNNER_TEMP"/GAP-*.txt "$PUB"/ 2>/dev/null || true
 
       - name: Upload sanitized shard evidence (never masks the test rc)
@@ -632,7 +656,9 @@ jobs:
   build:
     name: Build Docker Image
     needs: test
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && needs.test.result == 'success' }}
+    # Diagnostic candidate: image publication is permanently non-runnable,
+    # regardless of the publish input or the test result.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -695,7 +721,9 @@ jobs:
   deploy:
     name: Deploy to Staging
     needs: [test, build]
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && needs.test.result == 'success' && needs.build.result == 'success' }}
+    # Diagnostic candidate: staging handoff is permanently non-runnable,
+    # regardless of the publish input or any upstream result.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     environment: staging
 
